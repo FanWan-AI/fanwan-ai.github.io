@@ -7,7 +7,11 @@ import { debug, info } from './log.js';
 const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data', 'ai', 'modelswatch');
 
-const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''; 
+// Configurable per-page value (can be set via GitHub repository Variables)
+const GH_PER_PAGE = parseInt(process.env.MODELSWATCH_GH_PER_PAGE || '140', 10) || 140;
+// GitHub API enforces a maximum per_page of 100; clamp to avoid errors
+const GH_PER_PAGE_CLAMPED = Math.min(GH_PER_PAGE, 100);
 
 function iso(d) { return new Date(d).toISOString(); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -42,33 +46,58 @@ export async function fetchGithubTop(){
   const since = (new Date(Date.now()-365*86400000)).toISOString().slice(0,10);
   // Simpler query to avoid 422: remove license OR filters
   const q1 = encodeURIComponent(`stars:>500 pushed:>=${since}`);
-  // Request up to 100 results per page from GitHub search (per_page max=100)
-  const url1 = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=100`;
+  // Support requesting more than 100 items by paginating when MODELSWATCH_GH_PER_PAGE > 100
+  const desired = GH_PER_PAGE;
+  const perPage = GH_PER_PAGE_CLAMPED; // <= 100
+  const pages = Math.max(1, Math.ceil(desired / perPage));
+  // GitHub Search API only returns up to the first 1000 results (10 pages of 100)
+  const MAX_GH_PAGES = 10;
+  const effectivePages = Math.min(pages, MAX_GH_PAGES);
   const cacheFile = path.join(DATA_DIR, '.gh.search.etag');
   const lastOut = path.join(DATA_DIR, 'top_github.json');
   let etag=null; try{ etag=fs.readFileSync(cacheFile,'utf8'); }catch{}
+  let allItems = [];
   let res;
-  try{
-    res = await gh(url1, etag);
-  }catch(e){
-    // fallback query with lower star threshold if validation fails
+  for (let p = 1; p <= effectivePages; p++) {
+    const url = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=${perPage}&page=${p}`;
     try{
-  const q2 = encodeURIComponent(`stars:>200 pushed:>=${since}`);
-  const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=stars&order=desc&per_page=100`;
-      res = await gh(url2, etag);
-    }catch(e2){
-      throw e2;
+      // Only use etag optimization when fetching the first page and only a single page is requested
+      const useEtag = (pages === 1 && etag);
+      res = await gh(url, useEtag ? etag : null);
+    }catch(e){
+      // On failure, try a relaxed fallback for the whole fetch (single attempt)
+      if (p === 1) {
+        try{
+          const q2 = encodeURIComponent(`stars:>200 pushed:>=${since}`);
+          const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=stars&order=desc&per_page=${perPage}&page=${p}`;
+          res = await gh(url2, null);
+        }catch(e2){
+          throw e2;
+        }
+      } else {
+        // If a subsequent page fails, break and reuse what we have
+        break;
+      }
     }
-  }
-  if (res.status === 304) {
-  debug('GitHub search not modified');
-    // Try to reuse last written items if available
-    try{ const prev = readJSON(lastOut); if(prev && Array.isArray(prev.items)) return prev.items; }catch{}
-    return [];
-  }
-  if (res.etag) fs.writeFileSync(cacheFile, res.etag, 'utf8');
 
-  const items = (res.data.items||[]).filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION').map(r=>({
+    if (res && res.status === 304) {
+      debug('GitHub search not modified (304)');
+      try{ const prev = readJSON(lastOut); if(prev && Array.isArray(prev.items)) return prev.items; }catch{}
+      return [];
+    }
+
+    if (res && res.data && Array.isArray(res.data.items)) {
+      allItems = allItems.concat(res.data.items);
+    }
+
+    // Save etag from first page only (best-effort)
+    if (p === 1 && res && res.etag) fs.writeFileSync(cacheFile, res.etag, 'utf8');
+
+    // Be polite to GitHub API between pages
+    if (p < pages) await sleep(500);
+  }
+
+  const items = (allItems||[]).filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION').map(r=>({
     id: r.full_name,
     source: 'github',
     name: r.name,

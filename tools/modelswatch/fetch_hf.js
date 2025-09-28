@@ -12,10 +12,12 @@ function ensureDirs(){ fs.mkdirSync(DATA_DIR, {recursive:true}); fs.mkdirSync(IT
 function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n', 'utf8'); }
 
 const HF_TOKEN = process.env.HF_TOKEN || '';
+// Configurable HF fetch limit via repository Variables; default to 140 to surface more models
+const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '140', 10) || 140;
 async function hfList(){
   // Public browse endpoint (documented): sort=downloads, limit
   // Increase HF fetch limit to include more top models for the hotlist (was 60)
-  const url = 'https://huggingface.co/api/models?sort=downloads&direction=-1&limit=100';
+  const url = `https://huggingface.co/api/models?sort=downloads&direction=-1&limit=${HF_FETCH_LIMIT}`;
   const headers = { 'User-Agent': 'modelswatch/1.0' };
   if (HF_TOKEN) {
     headers.Authorization = `Bearer ${HF_TOKEN}`;
