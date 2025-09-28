@@ -14,7 +14,8 @@ function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '
 const HF_TOKEN = process.env.HF_TOKEN || '';
 async function hfList(){
   // Public browse endpoint (documented): sort=downloads, limit
-  const url = 'https://huggingface.co/api/models?sort=downloads&direction=-1&limit=60';
+  // Increase HF fetch limit to include more top models for the hotlist (was 60)
+  const url = 'https://huggingface.co/api/models?sort=downloads&direction=-1&limit=100';
   const headers = { 'User-Agent': 'modelswatch/1.0' };
   if (HF_TOKEN) {
     headers.Authorization = `Bearer ${HF_TOKEN}`;

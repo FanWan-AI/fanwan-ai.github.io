@@ -42,7 +42,8 @@ export async function fetchGithubTop(){
   const since = (new Date(Date.now()-365*86400000)).toISOString().slice(0,10);
   // Simpler query to avoid 422: remove license OR filters
   const q1 = encodeURIComponent(`stars:>500 pushed:>=${since}`);
-  const url1 = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=60`;
+  // Request up to 100 results per page from GitHub search (per_page max=100)
+  const url1 = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=100`;
   const cacheFile = path.join(DATA_DIR, '.gh.search.etag');
   const lastOut = path.join(DATA_DIR, 'top_github.json');
   let etag=null; try{ etag=fs.readFileSync(cacheFile,'utf8'); }catch{}
@@ -52,8 +53,8 @@ export async function fetchGithubTop(){
   }catch(e){
     // fallback query with lower star threshold if validation fails
     try{
-      const q2 = encodeURIComponent(`stars:>200 pushed:>=${since}`);
-      const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=stars&order=desc&per_page=60`;
+  const q2 = encodeURIComponent(`stars:>200 pushed:>=${since}`);
+  const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=stars&order=desc&per_page=100`;
       res = await gh(url2, etag);
     }catch(e2){
       throw e2;
