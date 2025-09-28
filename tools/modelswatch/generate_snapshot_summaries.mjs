@@ -239,8 +239,10 @@ async function main(){
           // Allow process.env overrides but prefer group-mode + speed mode + small concurrency to reduce total token/call overhead.
           const triEnv = { ...process.env, BILINGUAL_MODE: bilingual ? '1' : '0' };
           // adaptive defaults based on number of items to generate
-          const autoGroup = toGen.length > 12 ? '6' : (toGen.length > 4 ? '3' : '1');
-          const autoConc = toGen.length > 12 ? '3' : (toGen.length > 6 ? '2' : '1');
+          // Use smaller group sizes and higher concurrency to favor parallel smaller requests
+          // Many providers are faster with smaller batched requests.
+          const autoGroup = toGen.length > 24 ? '3' : (toGen.length > 8 ? '2' : '1');
+          const autoConc = toGen.length > 24 ? '6' : (toGen.length > 12 ? '4' : 2);
           triEnv.TRI_GROUP_JSON_SIZE = process.env.TRI_GROUP_JSON_SIZE || autoGroup;
           triEnv.TRI_BATCH_CONCURRENCY = process.env.TRI_BATCH_CONCURRENCY || autoConc;
           // Use speed mode for daily snapshot generation to avoid expensive rewrite/expand passes
@@ -256,7 +258,13 @@ async function main(){
             child.stdout.on('data', d=> { out += d.toString(); });
             child.stderr.on('data', d=> { process.stderr.write(d.toString()); });
             child.on('error', e=> { console.warn('[snapshot-summaries] batch python spawn error', e.message); });
+            // Safety timeout: if the batch python process takes too long, kill it and fall back to fast placeholders
+            const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT || '600'); // seconds
+            let killedTimer = setTimeout(()=>{
+              try{ child.kill('SIGKILL'); process.stderr.write('[snapshot-summaries] batch python killed due to timeout'); }catch(e){}
+            }, BATCH_KILL_TIMEOUT*1000);
             child.on('close', code=>{
+              clearTimeout(killedTimer);
               if(code===0){
                 try {
                   const parsed = JSON.parse(out);
@@ -265,10 +273,7 @@ async function main(){
                     const entry = toGen[idx]; if(!entry) return;
                     const { it, key, hash } = entry;
                     let en = r.en||''; let zh = r.zh||''; let es = r.es||'';
-                    if(bilingual){
-                      // Spanish fallback to English (UI will show English where Spanish expected)
-                      if(!es) es = en;
-                    }
+                    if(bilingual){ if(!es) es = en; }
                     if(!(en||zh||es) && ENABLE_FALLBACK){
                       const base = (it.summary || it.description || '').slice(0,160).trim();
                       const short = base || it.name || it.id;
@@ -292,10 +297,29 @@ async function main(){
                   const diag = parsed.diagnostics || {};
                   console.log(`[snapshot-summaries] batch tri_summarizer results total=${results.length} ok=${diag.ok_count||''} cacheHits=${diag.cache_hits||''} cacheMiss=${diag.cache_misses||''} json=${diag.json_path_count||''} seq=${diag.seq_path_count||''} elapsed=${diag.elapsed_sec||''}s`);
                 } catch(e){
-                  console.warn('[snapshot-summaries] batch parse error', e.message);
+                  console.warn('[snapshot-summaries] batch parse error', e.message, '-> falling back to fast placeholders');
+                  // fallthrough to placeholder fallback below
                 }
-              } else {
-                console.warn('[snapshot-summaries] batch python exit', code);
+              }
+              // If child exited non-zero OR parsing failed, fill placeholders so pipeline continues
+              if(code!==0 || generated.length === 0){
+                try{
+                  console.warn('[snapshot-summaries] using placeholder fallback for', toGen.length, 'items');
+                  for(const entry of toGen){
+                    const { it, key, hash } = entry;
+                    const base = (it.summary || it.description || '').slice(0,160).trim();
+                    const short = base || it.name || it.id || '';
+                    const en = `Auto summary (batch-fallback): ${short}`;
+                    const zh = `自动摘要（占位）: ${short}`;
+                    const es = bilingual ? en : `Resumen automático: ${short}`;
+                    const neutral = zh || en || es || it.summary || it.description || '';
+                    it.summary_en = en; it.summary_zh = zh; it.summary_es = es; it.summary = neutral;
+                    cache.models[key] = { hash, updated_at: it.updated_at || nowIso, summary_en: en, summary_zh: zh, summary_es: es, summary: neutral, last_generated: nowIso, fallback: true };
+                    generated.push(true);
+                    gen++;
+                    fallbackCount++;
+                  }
+                }catch(e){ console.warn('[snapshot-summaries] placeholder fallback failed', e.message); }
               }
               resolveBatch();
             });
