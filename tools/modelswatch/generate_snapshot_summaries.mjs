@@ -241,8 +241,9 @@ async function main(){
           // adaptive defaults based on number of items to generate
           // Use smaller group sizes and higher concurrency to favor parallel smaller requests
           // Many providers are faster with smaller batched requests.
-          const autoGroup = toGen.length > 24 ? '3' : (toGen.length > 8 ? '2' : '1');
-          const autoConc = toGen.length > 24 ? '6' : (toGen.length > 12 ? '4' : 2);
+          // Conservative defaults: favor smaller group sizes and moderate concurrency in CI to reduce long per-batch latency
+          const autoGroup = toGen.length > 32 ? '3' : (toGen.length > 12 ? '2' : '1');
+          const autoConc = toGen.length > 32 ? '6' : (toGen.length > 12 ? '4' : 2);
           triEnv.TRI_GROUP_JSON_SIZE = process.env.TRI_GROUP_JSON_SIZE || autoGroup;
           triEnv.TRI_BATCH_CONCURRENCY = process.env.TRI_BATCH_CONCURRENCY || autoConc;
           // Use speed mode for daily snapshot generation to avoid expensive rewrite/expand passes
@@ -259,7 +260,8 @@ async function main(){
             child.stderr.on('data', d=> { process.stderr.write(d.toString()); });
             child.on('error', e=> { console.warn('[snapshot-summaries] batch python spawn error', e.message); });
             // Safety timeout: if the batch python process takes too long, kill it and fall back to fast placeholders
-            const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT || '600'); // seconds
+              // enforce a stricter kill timeout by default for CI daily runs to avoid long hangs
+              const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT || '300'); // seconds
             let killedTimer = setTimeout(()=>{
               try{ child.kill('SIGKILL'); process.stderr.write('[snapshot-summaries] batch python killed due to timeout'); }catch(e){}
             }, BATCH_KILL_TIMEOUT*1000);

@@ -464,7 +464,7 @@ async function main(){
   });
   // If picks are too few, try relaxed selection to reach MIN_PICKS (ignore cooldown/owner uniqueness and quotas)
   try{
-    const totalPicksNow = (gTop?.length||0) + (hTop?.length||0);
+    let totalPicksNow = (gTop?.length||0) + (hTop?.length||0);
     if(totalPicksNow < MIN_PICKS && RELAX_SELECTION){
       const need = MIN_PICKS - totalPicksNow;
       const candidates = [];
@@ -477,13 +477,13 @@ async function main(){
       const score = it=> (it.stats?.stars_7d||0) * 2 + (it.stats?.hf_downloads_7d||0)/1000 + (it.score||0) + (it.stats?.stars||0);
       remaining.sort((a,b)=> score(b)-score(a));
       const fill = remaining.slice(0, need);
+      // Push fill into the proper source arrays and collect which were added
+      const addedG = []; const addedH = [];
       for(const f of fill){
-        if(f.source==='github') gTop.push(f); else hTop.push(f);
+        if(f.source==='github'){ gTop.push(f); addedG.push(f); } else { hTop.push(f); addedH.push(f); }
       }
       // Recompute summaries quickly for newly added picks
       if(fill.length){
-        const newG = gTop.slice(-fill.filter(x=>x.source==='github').length);
-        const newH = hTop.slice(-fill.filter(x=>x.source==='hf').length);
         const fastMap = async (arr)=> await mapLimit(arr, SUMMARY_CONCURRENCY, async (it)=>{
           if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
             const snap = SUMMARY_CACHE[it.id];
@@ -500,13 +500,12 @@ async function main(){
           const neutral = zh || en || es || it.summary || it.description || '';
           return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
         });
-        const addedG = fill.filter(x=>x.source==='github');
-        const addedH = fill.filter(x=>x.source==='hf');
         const addedGsum = await fastMap(addedG);
         const addedHsum = await fastMap(addedH);
-        // merge into gsum/hsum
-        gsum.push(...addedGsum);
-        hsum.push(...addedHsum);
+        // merge into gsum/hsum and update counts
+        if(addedGsum.length) gsum.push(...addedGsum);
+        if(addedHsum.length) hsum.push(...addedHsum);
+        totalPicksNow = (gTop?.length||0) + (hTop?.length||0);
       }
     }
   }catch(e){ console.warn('[daily] relaxed selection failed', e); }
@@ -554,12 +553,12 @@ async function main(){
     // ensure archiveDir exists
     try{ await import('fs/promises').then(fs=>fs.mkdir(archiveDir, { recursive: true })); }catch{}
   const combined = { version:SCHEMA_VERSION, date: yyyyMmDd, updated_at: now, items: [...gDecorated, ...hDecorated] };
-    // Ensure non-empty picks: if combined is empty and fallback enabled, try to fill from candidates
+    // Ensure non-empty picks: if combined is below MIN_PICKS and fallback enabled, fill aggressively
     try{
       if(ENABLE_FALLBACK){
-        const totalPicks = (gDecorated?.length||0) + (hDecorated?.length||0);
+        let totalPicks = (gDecorated?.length||0) + (hDecorated?.length||0);
         if(totalPicks < MIN_PICKS){
-          // Score remaining candidates and pick top to reach MIN_PICKS
+          // Score remaining candidates and pick top to reach MIN_PICKS (ignore cooldown/owner)
           const candidates = [];
           if(Array.isArray(cg)) candidates.push(...cg.map(i=>({...i, source:'github'})));
           if(Array.isArray(ch)) candidates.push(...ch.map(i=>({...i, source:'hf'})));
@@ -572,6 +571,8 @@ async function main(){
           const need = Math.min(MAX_PICKS, MIN_PICKS - totalPicks);
           const fill = remaining.slice(0, need).map(it=>({ ...it, reason_label:'fallback', reason_text:'fallback pick to meet daily minimum', source: it.source||'unknown' }));
           combined.items.push(...fill);
+          totalPicks = combined.items.length;
+          info(`[daily] fallback filled ${fill.length} items to reach minimum picks (now ${totalPicks})`);
         }
       }
     }catch(e){ console.warn('[daily] fallback fill failed', e); }
