@@ -28,8 +28,11 @@ jobs:
           SNAPSHOT_USE_BATCH: 1
           TRI_CACHE_FILE: data/ai/modelswatch/tri_cache.json
           TRI_CACHE_PERSIST: 1
-          # Optional: cap number of NEW LLM summaries per run (uncomment to enable)
-          # SNAPSHOT_MAX_NEW: 40
+          # Cap number of NEW LLM summaries per run to limit cold-start cost
+          SNAPSHOT_MAX_NEW: 40
+          SNAPSHOT_MIN_PER_SOURCE: 3
+          # Kill long-running batch summarizer after N seconds
+          SNAPSHOT_BATCH_KILL_TIMEOUT: 300
           MODELSWATCH_DAILY_GH_N: ${{ vars.MODELSWATCH_DAILY_GH_N }}
           MODELSWATCH_DAILY_HF_N: ${{ vars.MODELSWATCH_DAILY_HF_N }}
           MODELSWATCH_DAILY_COOLDOWN_DAYS: ${{ vars.MODELSWATCH_DAILY_COOLDOWN_DAYS }}
@@ -37,6 +40,9 @@ jobs:
           MODELSWATCH_DAILY_ALPHA: ${{ vars.MODELSWATCH_DAILY_ALPHA }}
         run: |
           node -v
+          echo "[workflow] Checking tokens: GITHUB_TOKEN/HF_TOKEN present? (no secrets printed)"
+          if [ -z "${GITHUB_TOKEN}" ]; then echo "[workflow][warn] GITHUB_TOKEN not set"; fi
+          if [ -z "${HF_TOKEN}" ]; then echo "[workflow][warn] HF_TOKEN not set"; fi
           # Build snapshots (weekly usually does, but ensure freshness)
           node tools/modelswatch/build_snapshots.mjs || echo "snapshot build failed"
           # Incremental tri-lingual snapshot summaries (reuses cache)
@@ -50,6 +56,8 @@ jobs:
           git config user.email "github-actions@users.noreply.github.com"
           git add data/ai/modelswatch/daily_*.json data/ai/modelswatch/daily/*.json data/ai/modelswatch/daily/dates.json data/ai/modelswatch/state.json
           git add data/ai/modelswatch/snapshots/** data/ai/modelswatch/summary_cache.json data/ai/modelswatch/summaries_coverage.json || true
+          # Also persist tri_cache and summary cache if updated during run
+          git add data/ai/modelswatch/tri_cache.json data/ai/modelswatch/summary_cache.json || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else

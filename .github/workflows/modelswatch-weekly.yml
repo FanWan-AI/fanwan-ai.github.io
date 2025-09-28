@@ -44,8 +44,11 @@ jobs:
           TRI_CACHE_PERSIST: 1
           # Ensure snapshot summaries are generated via the Python batch summarizer
           BILINGUAL_MODE: 1
-          # Optional rate-limits for cold-start control (uncomment to enable)
-          # SNAPSHOT_MAX_NEW: 40
+          # Rate-limits for cold-start control: cap number of NEW LLM summaries per run
+          SNAPSHOT_MAX_NEW: 40
+          SNAPSHOT_MIN_PER_SOURCE: 5
+          # Kill long-running batch summarizer after N seconds (prevents runaway jobs)
+          SNAPSHOT_BATCH_KILL_TIMEOUT: 300
           # New performance toggles
           SNAPSHOT_USE_BATCH: 1         # use single python batch call for snapshot summaries
           SPEED_MODE: 1                 # disable rewrite/expand for speed
@@ -62,6 +65,9 @@ jobs:
         run: |
           node -v
           python -V
+          echo "[workflow] Checking for GH/HF token availability (no secrets printed)"
+          if [ -z "${GITHUB_TOKEN}" ]; then echo "[workflow][warn] GITHUB_TOKEN is not set (will use unauthenticated GitHub requests)"; fi
+          if [ -z "${HF_TOKEN}" ]; then echo "[workflow][warn] HF_TOKEN is not set (HuggingFace requests may be limited)"; fi
           python -m pip install --upgrade pip >/dev/null 2>&1 || true
           python -m pip install requests >/dev/null 2>&1 || true
           if [ "${RESET_MODELWATCH_ALL}" = "1" ]; then
@@ -94,6 +100,8 @@ jobs:
           git config user.email "github-actions@users.noreply.github.com"
           # Add all generated ModelWatch artefacts under data/ai/modelswatch; tolerant to missing files
           git add -A data/ai/modelswatch || true
+          # Ensure tri cache and summary cache are staged for commit when present
+          git add data/ai/modelswatch/tri_cache.json data/ai/modelswatch/summary_cache.json || true
           if git diff --cached --quiet; then
             echo "No changes to commit"
           else
