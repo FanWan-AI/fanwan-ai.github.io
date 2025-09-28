@@ -235,7 +235,23 @@ async function main(){
       if(useBatch){
         const prompts = toGen.map(x=> buildPrompt(x.it));
         await new Promise(resolveBatch=>{
-          const child = spawn('python', ['tools/tri_summarizer.py','--batch'], { env: { ...process.env, BILINGUAL_MODE: bilingual ? '1':'0' } });
+          // Prepare tri_summarizer env with sane defaults for batch daily runs.
+          // Allow process.env overrides but prefer group-mode + speed mode + small concurrency to reduce total token/call overhead.
+          const triEnv = { ...process.env, BILINGUAL_MODE: bilingual ? '1' : '0' };
+          // adaptive defaults based on number of items to generate
+          const autoGroup = toGen.length > 12 ? '6' : (toGen.length > 4 ? '3' : '1');
+          const autoConc = toGen.length > 12 ? '3' : (toGen.length > 6 ? '2' : '1');
+          triEnv.TRI_GROUP_JSON_SIZE = process.env.TRI_GROUP_JSON_SIZE || autoGroup;
+          triEnv.TRI_BATCH_CONCURRENCY = process.env.TRI_BATCH_CONCURRENCY || autoConc;
+          // Use speed mode for daily snapshot generation to avoid expensive rewrite/expand passes
+          triEnv.SPEED_MODE = process.env.SPEED_MODE || '1';
+          // Persist cache to speed up future runs
+          triEnv.TRI_CACHE_FILE = process.env.TRI_CACHE_FILE || path.join(DATA_DIR, 'tri_cache.json');
+          triEnv.TRI_CACHE_PERSIST = process.env.TRI_CACHE_PERSIST || '1';
+          // Log chosen settings so it's visible in the CI/local run
+          console.log(`[snapshot-summaries] invoking tri_summarizer with GROUP=${triEnv.TRI_GROUP_JSON_SIZE} CONC=${triEnv.TRI_BATCH_CONCURRENCY} SPEED_MODE=${triEnv.SPEED_MODE} CACHE=${triEnv.TRI_CACHE_FILE}`);
+
+          const child = spawn('python', ['tools/tri_summarizer.py','--batch'], { env: triEnv });
             let out='';
             child.stdout.on('data', d=> { out += d.toString(); });
             child.stderr.on('data', d=> { process.stderr.write(d.toString()); });
