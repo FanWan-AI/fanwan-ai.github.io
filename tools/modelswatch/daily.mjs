@@ -378,6 +378,11 @@ async function main(){
   const COOLDOWN = Number(process.env.MODELSWATCH_DAILY_COOLDOWN_DAYS||'14');
   const WINDOW = Number(process.env.MODELSWATCH_DAILY_HISTORY_WINDOW||'7');
   const ALPHA = Number(process.env.MODELSWATCH_DAILY_ALPHA||'1.0');
+  // Fast/efficient daily mode: avoid heavy LLM calls, favor cached/truncated summaries
+  const FAST_SUMMARY = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_FAST_SUMMARY || '1');
+  // If picks are too few, allow relaxed selection (ignore cooldown/owner uniqueness) to reach MIN_PICKS
+  const RELAX_SELECTION = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_RELAX_SELECTION || '1');
+  const SUMMARY_CONCURRENCY = Number(process.env.MODELSWATCH_SUMMARY_CONCURRENCY||'3') || 3;
 
   // Load categories (capabilities only) and recent history
   const knownCaps = loadCategories();
@@ -403,7 +408,7 @@ async function main(){
   const hTop = selectDiverse(ch, NHF, { ...recent, quota:{...quotaHF}, alpha: ALPHA, cooldownDays: COOLDOWN, knownCaps });
   info(`[daily] github candidates=${cg.length}, pick=${gTop.length}; hf candidates=${ch.length}, pick=${hTop.length}`);
   // Summarize with DeepSeek when available; limit concurrency to 3
-  const gsum = await mapLimit(gTop, 3, async (it)=> {
+  const gsum = await mapLimit(gTop, SUMMARY_CONCURRENCY, async (it)=> {
     // Consult in-memory summary cache populated from sidecars
     try{ if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
       const snap = SUMMARY_CACHE[it.id];
@@ -421,7 +426,13 @@ async function main(){
       const neutral = it.summary_zh || it.summary_en || it.summary_es || it.summary || it.description || '';
       return { ...it, summary: neutral, summary_en: it.summary_en, summary_zh: it.summary_zh, summary_es: it.summary_es };
     }
-    // Last resort: call LLM once for tri-lingual outputs
+    // Last resort: either use FAST truncated fallback or call LLM
+    if(FAST_SUMMARY){
+      const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
+      const zh = base; const en = base; const es = '';
+      const neutral = zh || en || es || it.summary || it.description || '';
+      return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+    }
     const { zh, en, es } = await smartSummarizeMulti(it);
     const neutral = zh || en || es || it.summary || it.description || '';
     return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
@@ -441,10 +452,64 @@ async function main(){
       const neutral = it.summary_zh || it.summary_en || it.summary_es || it.summary || it.description || '';
       return { ...it, summary: neutral, summary_en: it.summary_en, summary_zh: it.summary_zh, summary_es: it.summary_es };
     }
+    if(FAST_SUMMARY){
+      const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
+      const zh = base; const en = base; const es = '';
+      const neutral = zh || en || es || it.summary || it.description || '';
+      return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+    }
     const { zh, en, es } = await smartSummarizeMulti(it);
     const neutral = zh || en || es || it.summary || it.description || '';
     return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
   });
+  // If picks are too few, try relaxed selection to reach MIN_PICKS (ignore cooldown/owner uniqueness and quotas)
+  try{
+    const totalPicksNow = (gTop?.length||0) + (hTop?.length||0);
+    if(totalPicksNow < MIN_PICKS && RELAX_SELECTION){
+      const need = MIN_PICKS - totalPicksNow;
+      const candidates = [];
+      if(Array.isArray(cg)) candidates.push(...cg.map(i=>({...i, source:'github'})));
+      if(Array.isArray(ch)) candidates.push(...ch.map(i=>({...i, source:'hf'})));
+      // filter out already chosen ids
+      const pickedIds = new Set([...(gTop||[]).map(i=>i.id), ...(hTop||[]).map(i=>i.id)].filter(Boolean));
+      const remaining = candidates.filter(it=>{ const id = it.id||it.repo_id||it.url||it.name; return id && !pickedIds.has(id); });
+      // score by simple growth/importance proxy
+      const score = it=> (it.stats?.stars_7d||0) * 2 + (it.stats?.hf_downloads_7d||0)/1000 + (it.score||0) + (it.stats?.stars||0);
+      remaining.sort((a,b)=> score(b)-score(a));
+      const fill = remaining.slice(0, need);
+      for(const f of fill){
+        if(f.source==='github') gTop.push(f); else hTop.push(f);
+      }
+      // Recompute summaries quickly for newly added picks
+      if(fill.length){
+        const newG = gTop.slice(-fill.filter(x=>x.source==='github').length);
+        const newH = hTop.slice(-fill.filter(x=>x.source==='hf').length);
+        const fastMap = async (arr)=> await mapLimit(arr, SUMMARY_CONCURRENCY, async (it)=>{
+          if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
+            const snap = SUMMARY_CACHE[it.id];
+            const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+            return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
+          }
+          if(FAST_SUMMARY){
+            const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
+            const zh = base; const en = base; const es = '';
+            const neutral = zh || en || es || it.summary || it.description || '';
+            return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+          }
+          const { zh, en, es } = await smartSummarizeMulti(it);
+          const neutral = zh || en || es || it.summary || it.description || '';
+          return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+        });
+        const addedG = fill.filter(x=>x.source==='github');
+        const addedH = fill.filter(x=>x.source==='hf');
+        const addedGsum = await fastMap(addedG);
+        const addedHsum = await fastMap(addedH);
+        // merge into gsum/hsum
+        gsum.push(...addedGsum);
+        hsum.push(...addedHsum);
+      }
+    }
+  }catch(e){ console.warn('[daily] relaxed selection failed', e); }
   // --- Reason label & text augmentation ---
   function inferReasonLabel(it){
     const s = (it.summary||'').toLowerCase();
