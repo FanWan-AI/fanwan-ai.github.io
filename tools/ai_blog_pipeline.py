@@ -1343,6 +1343,47 @@ def _load_env_files(paths=(".env.local", ".env", os.path.join("content","blog","
         except Exception as e:
             print("warn: failed loading", p, e)
 
+
+def _as_bool(s: str | None, default=False) -> bool:
+    if s is None:
+        return default
+    try:
+        return re.match(r'^(1|true|yes|on)$', str(s).strip(), re.I) is not None
+    except Exception:
+        return default
+
+
+def load_modelswatch_daily(date_str: str | None = None) -> list:
+    """Load picks from data/ai/modelswatch/daily/<date>.json if exists and return normalized entries list."""
+    try:
+        if not date_str:
+            date_str = datetime.utcnow().strftime('%Y-%m-%d')
+        p = os.path.join('data', 'ai', 'modelswatch', 'daily', f"{date_str}.json")
+        if not os.path.exists(p):
+            return []
+        with open(p, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        items = data.get('items') if isinstance(data, dict) and data.get('items') else (data if isinstance(data, list) else [])
+        norm = []
+        for it in (items or []):
+            try:
+                title = it.get('name') or it.get('title') or it.get('id') or it.get('headline') or ''
+                url = it.get('url') or it.get('html_url') or it.get('card_url') or it.get('repo_url') or ''
+                summary = it.get('summary') or it.get('summary_en') or it.get('summary_zh') or it.get('description') or ''
+                if not title or not url:
+                    continue
+                norm.append({
+                    'title': title,
+                    'url': url,
+                    'ts': it.get('ts') or it.get('updated_at') or _today_cn_08_utc_iso(),
+                    'summary': summary,
+                })
+            except Exception:
+                continue
+        return norm
+    except Exception:
+        return []
+
 def _debug_provider_keys_present():
     try:
         present = {
@@ -2445,10 +2486,21 @@ def main():
     # 0) load local env for API keys (won't be committed if .gitignore ignores .env*)
     _load_env_files()
     _debug_provider_keys_present()
-    # Daily permanently disabled: we will not write blog HTML/RSS/sections or emails.
-    daily_enable = False
+    # Daily enable flag: controlled via env DAILY_ENABLE (1/true/yes to enable)
+    daily_enable = _as_bool(os.getenv('DAILY_ENABLE'), False)
+    source_priority = [s.strip() for s in os.getenv('SCHOLARPUSH_SOURCE_PRIORITY', 'feeds').split(',') if s.strip()]
     # 1) 抓取
     entries = fetch_items(limit_per_feed=int(os.getenv("PER_FEED_LIMIT", "25")))
+    # If configured, try to seed entries from modelswatch daily archive (prefer modelswatch over feeds)
+    modelswatch_seed = []
+    try:
+        if 'modelswatch' in source_priority:
+            today = datetime.utcnow().strftime('%Y-%m-%d')
+            modelswatch_seed = load_modelswatch_daily(today)
+            if modelswatch_seed:
+                print(f"Loaded {len(modelswatch_seed)} modelswatch daily seed items for {today}")
+    except Exception as e:
+        print("modelswatch seed load failed:", e)
     min_items = int(os.getenv("MIN_ITEMS","6"))
     if len(entries) < min_items:
         print("Not enough entries today; skip.")
@@ -2456,7 +2508,19 @@ def main():
 
     # 2) 选题 & 成文（仍生成 Daily JSON 仅用于 ScholarPush 的中文摘要，不落盘）
     max_words = int(os.getenv("MAX_WORDS","1100"))
-    j = pick_and_write(entries, max_words=max_words)
+    # If we have modelswatch seeds, merge them ahead of feed entries (de-duplicate by URL)
+    merged_entries = []
+    seen_urls = set()
+    for it in (modelswatch_seed or []):
+        u = (it.get('url') or '').strip()
+        if u and u not in seen_urls:
+            merged_entries.append(it); seen_urls.add(u)
+    for it in entries:
+        u = (it.get('url') or '').strip()
+        if u and u not in seen_urls:
+            merged_entries.append(it); seen_urls.add(u)
+
+    j = pick_and_write(merged_entries or entries, max_words=max_words)
     # Skipping HTML/RSS/sections/Buttondown regardless of env
     print("Daily outputs disabled; only generating ScholarPush JSON.")
 
@@ -2472,7 +2536,7 @@ def main():
         except Exception:
             pass
         sp = make_scholarpush(
-            entries,
+            merged_entries or entries,
             n_items=int(os.getenv("SCHOLARPUSH_ITEMS","8")),
             daily=j,
         )

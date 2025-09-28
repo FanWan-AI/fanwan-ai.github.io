@@ -372,6 +372,9 @@ async function main(){
   const N = Number(process.env.MODELSWATCH_DAILY_N||'6');
   const NGH = Number(process.env.MODELSWATCH_DAILY_GH_N||N);
   const NHF = Number(process.env.MODELSWATCH_DAILY_HF_N||N);
+  const MIN_PICKS = Number(process.env.MODELSWATCH_DAILY_MIN_PICKS||'3');
+  const MAX_PICKS = Number(process.env.MODELSWATCH_DAILY_MAX_PICKS||'8');
+  const ENABLE_FALLBACK = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_FALLBACK || 'true');
   const COOLDOWN = Number(process.env.MODELSWATCH_DAILY_COOLDOWN_DAYS||'14');
   const WINDOW = Number(process.env.MODELSWATCH_DAILY_HISTORY_WINDOW||'7');
   const ALPHA = Number(process.env.MODELSWATCH_DAILY_ALPHA||'1.0');
@@ -486,6 +489,27 @@ async function main(){
     // ensure archiveDir exists
     try{ await import('fs/promises').then(fs=>fs.mkdir(archiveDir, { recursive: true })); }catch{}
   const combined = { version:SCHEMA_VERSION, date: yyyyMmDd, updated_at: now, items: [...gDecorated, ...hDecorated] };
+    // Ensure non-empty picks: if combined is empty and fallback enabled, try to fill from candidates
+    try{
+      if(ENABLE_FALLBACK){
+        const totalPicks = (gDecorated?.length||0) + (hDecorated?.length||0);
+        if(totalPicks < MIN_PICKS){
+          // Score remaining candidates and pick top to reach MIN_PICKS
+          const candidates = [];
+          if(Array.isArray(cg)) candidates.push(...cg.map(i=>({...i, source:'github'})));
+          if(Array.isArray(ch)) candidates.push(...ch.map(i=>({...i, source:'hf'})));
+          // Remove already picked ids
+          const pickedIds = new Set((combined.items||[]).map(it=>it.id||it.repo_id||it.url||it.name));
+          const remaining = candidates.filter(it=>{ const id = it.id||it.repo_id||it.url||it.name; return id && !pickedIds.has(id); });
+          // Simple scoring function: recent growth proxies
+          const score = it=> (it.stats?.stars_7d||0) * 2 + (it.stats?.hf_downloads_7d||0)/1000 + (it.score||0);
+          remaining.sort((a,b)=> score(b)-score(a));
+          const need = Math.min(MAX_PICKS, MIN_PICKS - totalPicks);
+          const fill = remaining.slice(0, need).map(it=>({ ...it, reason_label:'fallback', reason_text:'fallback pick to meet daily minimum', source: it.source||'unknown' }));
+          combined.items.push(...fill);
+        }
+      }
+    }catch(e){ console.warn('[daily] fallback fill failed', e); }
     const archivePath = path.join(archiveDir, `${yyyyMmDd}.json`);
     writeJSON(archivePath, combined);
   info(`[daily] archived ${combined.items.length} items -> ${archivePath}`);
