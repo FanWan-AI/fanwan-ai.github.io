@@ -233,8 +233,8 @@ async function main(){
       // Batch mode: call python tri_summarizer once if USE_PYTHON_SUMMARIZER or force batch path via env SNAPSHOT_USE_BATCH
       const useBatch = /^(1|true|yes|on)$/i.test(process.env.SNAPSHOT_USE_BATCH||process.env.USE_PYTHON_SUMMARIZER||'');
       if(useBatch){
-        const prompts = toGen.map(x=> buildPrompt(x.it));
-        await new Promise(resolveBatch=>{
+  const prompts = toGen.map(x=> buildPrompt(x.it));
+  await new Promise(async resolveBatch=>{
           // Prepare tri_summarizer env with sane defaults for batch daily runs.
           // Allow process.env overrides but prefer group-mode + speed mode + small concurrency to reduce total token/call overhead.
           const triEnv = { ...process.env, BILINGUAL_MODE: bilingual ? '1' : '0' };
@@ -254,81 +254,89 @@ async function main(){
           // Log chosen settings so it's visible in the CI/local run
           console.log(`[snapshot-summaries] invoking tri_summarizer with GROUP=${triEnv.TRI_GROUP_JSON_SIZE} CONC=${triEnv.TRI_BATCH_CONCURRENCY} SPEED_MODE=${triEnv.SPEED_MODE} CACHE=${triEnv.TRI_CACHE_FILE}`);
 
-          const child = spawn('python', ['tools/tri_summarizer.py','--batch'], { env: triEnv });
-            let out='';
-            child.stdout.on('data', d=> { out += d.toString(); });
-            child.stderr.on('data', d=> { process.stderr.write(d.toString()); });
-            child.on('error', e=> { console.warn('[snapshot-summaries] batch python spawn error', e.message); });
-            // Safety timeout: if the batch python process takes too long, kill it and fall back to fast placeholders
-              // enforce a stricter kill timeout by default for CI daily runs to avoid long hangs
-              const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT || '300'); // seconds
-            let killedTimer = setTimeout(()=>{
-              try{ child.kill('SIGKILL'); process.stderr.write('[snapshot-summaries] batch python killed due to timeout'); }catch(e){}
-            }, BATCH_KILL_TIMEOUT*1000);
-            child.on('close', code=>{
-              clearTimeout(killedTimer);
-              if(code===0){
-                try {
-                  const parsed = JSON.parse(out);
-                  const results = parsed.results||[];
-                  results.forEach((r, idx)=>{
-                    const entry = toGen[idx]; if(!entry) return;
-                    const { it, key, hash } = entry;
-                    let en = r.en||''; let zh = r.zh||''; let es = r.es||'';
-                    if(bilingual){ if(!es) es = en; }
-                    if(!(en||zh||es) && ENABLE_FALLBACK){
-                      const base = (it.summary || it.description || '').slice(0,160).trim();
-                      const short = base || it.name || it.id;
-                      en = en || `Auto summary (fallback:empty): ${short}`;
-                      zh = zh || `自动摘要（占位:空响应）: ${short}`;
-                      if(!bilingual) es = es || `Resumen automático (fallback: vacío): ${short}`; else es = en || zh;
-                    }
-                    const neutral = zh || en || es || it.summary || it.description || '';
-                    if(en||zh||es){
-                      it.summary_en = en; it.summary_zh = zh; it.summary_es = es; it.summary = neutral;
-                      const isFallback = !(r.en||r.zh||r.es);
-                      if(isFallback) fallbackCount++;
-                      cache.models[key] = { hash, updated_at: it.updated_at || nowIso, summary_en: en, summary_zh: zh, summary_es: es, summary: neutral, last_generated: nowIso, fallback: isFallback };
-                      gen++;
-                      generated.push(true);
-                    } else {
-                      generated.push(false);
-                      failedHashes.push(hash);
-                    }
-                  });
-                  const diag = parsed.diagnostics || {};
-                  console.log(`[snapshot-summaries] batch tri_summarizer results total=${results.length} ok=${diag.ok_count||''} cacheHits=${diag.cache_hits||''} cacheMiss=${diag.cache_misses||''} json=${diag.json_path_count||''} seq=${diag.seq_path_count||''} elapsed=${diag.elapsed_sec||''}s`);
-                } catch(e){
-                  console.warn('[snapshot-summaries] batch parse error', e.message, '-> falling back to fast placeholders');
-                  // fallthrough to placeholder fallback below
-                }
-              }
-              // If child exited non-zero OR parsing failed, fill placeholders so pipeline continues
-              if(code!==0 || generated.length === 0){
-                try{
-                  console.warn('[snapshot-summaries] using placeholder fallback for', toGen.length, 'items');
-                  for(const entry of toGen){
-                    const { it, key, hash } = entry;
-                    const base = (it.summary || it.description || '').slice(0,160).trim();
-                    const short = base || it.name || it.id || '';
-                    const en = `Auto summary (batch-fallback): ${short}`;
-                    const zh = `自动摘要（占位）: ${short}`;
-                    const es = bilingual ? en : `Resumen automático: ${short}`;
-                    const neutral = zh || en || es || it.summary || it.description || '';
-                    it.summary_en = en; it.summary_zh = zh; it.summary_es = es; it.summary = neutral;
-                    cache.models[key] = { hash, updated_at: it.updated_at || nowIso, summary_en: en, summary_zh: zh, summary_es: es, summary: neutral, last_generated: nowIso, fallback: true };
-                    generated.push(true);
-                    gen++;
-                    fallbackCount++;
+          // spawn helper with a kill-watchdog and return parsed bundle or null
+          const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT || '600'); // seconds; default increased to 600
+          console.log(`[snapshot-summaries] batch kill timeout (seconds) = ${BATCH_KILL_TIMEOUT}`);
+          const runBatchChild = (envOverrides)=>{
+            return new Promise(resolveChild=>{
+              const env = { ...triEnv, ...(envOverrides||{}) };
+              const child = spawn('python', ['tools/tri_summarizer.py','--batch'], { env });
+              let out=''; let killedByTimeout = false;
+              child.stdout.on('data', d=> { out += d.toString(); });
+              child.stderr.on('data', d=> { process.stderr.write(d.toString()); });
+              child.on('error', e=> { console.warn('[snapshot-summaries] batch python spawn error', e.message); });
+              const killedTimer = setTimeout(()=>{
+                killedByTimeout = true;
+                try{ child.kill('SIGKILL'); process.stderr.write('[snapshot-summaries] batch python killed due to timeout\n'); }catch(e){}
+              }, BATCH_KILL_TIMEOUT*1000);
+              child.on('close', code=>{
+                clearTimeout(killedTimer);
+                if(code===0 && !killedByTimeout){
+                  try{
+                    const parsed = JSON.parse(out);
+                    return resolveChild({ ok: true, parsed });
+                  }catch(e){
+                    console.warn('[snapshot-summaries] batch parse error', e.message);
+                    return resolveChild({ ok: false, parsed: null, parse_error: true });
                   }
-                }catch(e){ console.warn('[snapshot-summaries] placeholder fallback failed', e.message); }
-              }
-              resolveBatch();
+                }
+                // Non-zero exit or killed by timeout
+                return resolveChild({ ok: false, parsed: null, killed: killedByTimeout });
+              });
+              // feed prompts
+              child.stdin.write(JSON.stringify(prompts)+'\n');
+              child.stdin.end();
             });
-            // feed prompts
-            // Send prompts as JSON array to leverage new batch input format (reduces line-splitting edge cases)
-            child.stdin.write(JSON.stringify(prompts)+'\n');
-            child.stdin.end();
+          };
+
+          // First attempt
+          const first = await runBatchChild();
+          let parsed = null; let parsedDiag = null; let usedRetry = false;
+          if(first.ok && first.parsed){ parsed = first.parsed; }
+          else if(first.killed){
+            // Retry once with smaller group size and modest concurrency to reduce per-batch latency
+            console.warn('[snapshot-summaries] initial tri_summarizer batch killed by timeout; retrying with smaller groups');
+            usedRetry = true;
+            const retryOverrides = { TRI_GROUP_JSON_SIZE: '1', TRI_BATCH_CONCURRENCY: (process.env.TRI_BATCH_CONCURRENCY || '2').toString(), SPEED_MODE: triEnv.SPEED_MODE || '1' };
+            const second = await runBatchChild(retryOverrides);
+            if(second.ok && second.parsed){ parsed = second.parsed; }
+          }
+
+          if(parsed){
+            try {
+              const results = parsed.results||[];
+              results.forEach((r, idx)=>{
+                const entry = toGen[idx]; if(!entry) return;
+                const { it, key, hash } = entry;
+                let en = r.en||''; let zh = r.zh||''; let es = r.es||'';
+                if(bilingual){ if(!es) es = en; }
+                if(!(en||zh||es) && ENABLE_FALLBACK){
+                  const base = (it.summary || it.description || '').slice(0,160).trim();
+                  const short = base || it.name || it.id;
+                  en = en || `Auto summary (fallback:empty): ${short}`;
+                  zh = zh || `自动摘要（占位:空响应）: ${short}`;
+                  if(!bilingual) es = es || `Resumen automático (fallback: vacío): ${short}`; else es = en || zh;
+                }
+                const neutral = zh || en || es || it.summary || it.description || '';
+                if(en||zh||es){
+                  it.summary_en = en; it.summary_zh = zh; it.summary_es = es; it.summary = neutral;
+                  const isFallback = !(r.en||r.zh||r.es);
+                  if(isFallback) fallbackCount++;
+                  cache.models[key] = { hash, updated_at: it.updated_at || nowIso, summary_en: en, summary_zh: zh, summary_es: es, summary: neutral, last_generated: nowIso, fallback: isFallback };
+                  gen++;
+                  generated.push(true);
+                } else {
+                  generated.push(false);
+                  failedHashes.push(hash);
+                }
+              });
+              const diag = parsed.diagnostics || {};
+              console.log(`[snapshot-summaries] batch tri_summarizer results total=${results.length} ok=${diag.ok_count||''} cacheHits=${diag.cache_hits||''} cacheMiss=${diag.cache_misses||''} json=${diag.json_path_count||''} seq=${diag.seq_path_count||''} elapsed=${diag.elapsed_sec||''}s${usedRetry? ' (used-retry)':''}`);
+            } catch(e){
+              console.warn('[snapshot-summaries] batch parse error -> falling back to fast placeholders', e.message);
+            }
+          }
+          // If parsed missing or child failed, fall through to placeholder fallback below
         });
       } else {
         // fallback to previous per-item path if batch disabled
