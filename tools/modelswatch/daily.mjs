@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import { fetchGithubTop } from './fetch_github.js';
 import { fetchHFTop } from './fetch_hf.js';
 import { SCHEMA_VERSION } from './schema.js';
+import { fastSummary, promptHash } from './fast_summary.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '../../');
@@ -426,12 +427,12 @@ async function main(){
       const neutral = it.summary_zh || it.summary_en || it.summary_es || it.summary || it.description || '';
       return { ...it, summary: neutral, summary_en: it.summary_en, summary_zh: it.summary_zh, summary_es: it.summary_es };
     }
-    // Last resort: either use FAST truncated fallback or call LLM
+    // Last resort: use FAST truncated fallback (must be synchronous and quick)
     if(FAST_SUMMARY){
-      const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
-      const zh = base; const en = base; const es = '';
-      const neutral = zh || en || es || it.summary || it.description || '';
-      return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+      const fs = fastSummary(it);
+      const neutral = fs.zh || fs.en || fs.es || it.summary || it.description || '';
+      // attach a marker so downstream knows this needs async enrichment
+      return { ...it, summary: neutral, summary_en: fs.en, summary_zh: fs.zh, summary_es: fs.es, _summary_method: fs.method };
     }
     const { zh, en, es } = await smartSummarizeMulti(it);
     const neutral = zh || en || es || it.summary || it.description || '';
@@ -453,10 +454,9 @@ async function main(){
       return { ...it, summary: neutral, summary_en: it.summary_en, summary_zh: it.summary_zh, summary_es: it.summary_es };
     }
     if(FAST_SUMMARY){
-      const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
-      const zh = base; const en = base; const es = '';
-      const neutral = zh || en || es || it.summary || it.description || '';
-      return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
+      const fs = fastSummary(it);
+      const neutral = fs.zh || fs.en || fs.es || it.summary || it.description || '';
+      return { ...it, summary: neutral, summary_en: fs.en, summary_zh: fs.zh, summary_es: fs.es, _summary_method: fs.method };
     }
     const { zh, en, es } = await smartSummarizeMulti(it);
     const neutral = zh || en || es || it.summary || it.description || '';
@@ -547,6 +547,31 @@ async function main(){
   writeJSON(path.join(dir,'daily_github.json'), { version:SCHEMA_VERSION, updated_at: now, items: gDecorated });
   writeJSON(path.join(dir,'daily_hf.json'), { version:SCHEMA_VERSION, updated_at: now, items: hDecorated });
   info(`[daily] wrote daily_github.json=${gsum.length}, daily_hf.json=${hsum.length}`);
+
+  // --- Build pending_summaries.json (deduped, cap by SNAPSHOT_MAX_NEW) ---
+  try{
+    const pendingPath = path.join(dir, 'pending_summaries.json');
+    let existing = [];
+    try{ if(existsSync(pendingPath)) existing = JSON.parse(readFileSync(pendingPath,'utf8'))||[]; }catch{}
+    const seen = new Set(existing || []);
+    const toAdd = [];
+    function considerPush(it){
+      try{
+        // If item was produced by fast_summary (marker) or lacks enriched summary
+        if(it._summary_method === 'fast' || !(it.summary_en || it.summary_zh || it.summary_es)){
+          const h = promptHash(it);
+          if(!seen.has(h)) { seen.add(h); toAdd.push(h); }
+        }
+      }catch{}
+    }
+    (gDecorated||[]).forEach(considerPush);
+    (hDecorated||[]).forEach(considerPush);
+    const MAX_NEW = Number(process.env.SNAPSHOT_MAX_NEW||'40') || 40;
+    const combined = Array.from(seen);
+    // Keep newest additions at front; cap total pending to MAX_NEW
+    const finalList = combined.slice(0, MAX_NEW);
+    try{ writeJSON(pendingPath, finalList); info(`[daily] wrote pending_summaries.json ${finalList.length} items`); }catch(e){ console.warn('[daily] failed write pending', e.message||e); }
+  }catch(e){ console.warn('[daily] pending build failed', e); }
 
   // --- Write combined archive for calendar browsing ---
   try{
