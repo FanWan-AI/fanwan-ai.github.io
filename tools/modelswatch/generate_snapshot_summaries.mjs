@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { summarizeTriJSON, summarizeDiagnostics } from './summarize_multi.mjs';
+import { fastSummary, promptHash } from './fast_summary.mjs';
 import { spawn, spawnSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -339,31 +340,36 @@ async function main(){
           // If parsed missing or child failed, fall through to placeholder fallback below
         });
       } else {
-        // fallback to previous per-item path if batch disabled
-        const per = await mapLimit(toGen, MAX_CONCURRENCY, async ({ it, key, hash })=>{
-          const prompt = buildPrompt(it);
-          const res = await llmRequest(prompt);
-          let { en, zh, es } = res;
-          if(bilingual){ if(!es) es = en; }
-          if(!(en||zh||es) && ENABLE_FALLBACK){
-            const base = (it.summary || it.description || '').slice(0,160).trim();
-            const short = base || it.name || it.id;
-            en = en || `Auto summary (fallback): ${short}`;
-            zh = zh || `自动摘要（占位）: ${short}`;
-            if(!bilingual) es = es || `Resumen automático (fallback): ${short}`; else es = en || zh;
-          }
-          const neutral = zh || en || es || it.summary || it.description || '';
-          if(en||zh||es){
+        // Fast-path: use synchronous extractive fastSummary for snapshots to keep critical path quick.
+        // Attach fast placeholders and push hashes to pending for async enrichment by tri_worker.
+        const pendingOut = [];
+        for(const entry of toGen){
+          const it = entry.it;
+          try{
+            const fsum = fastSummary(it);
+            const en = fsum.en||''; const zh = fsum.zh||''; const es = fsum.es||'';
+            const neutral = zh || en || es || it.summary || it.description || '';
             it.summary_en = en; it.summary_zh = zh; it.summary_es = es; it.summary = neutral;
-            const isFallback = !(res.en||res.zh||res.es);
-            if(isFallback) fallbackCount++;
-            cache.models[key] = { hash, updated_at: it.updated_at || nowIso, summary_en: en, summary_zh: zh, summary_es: es, summary: neutral, last_generated: nowIso, fallback: isFallback };
-            gen++; return true;
-          }
-          failedHashes.push(hash);
-          return false;
-        });
-        generated = per;
+            it._summary_method = fsum.method || 'fast';
+            // Do not mark cache.models as fully generated; enqueue for tri_worker
+            try{ const h = promptHash(it); pendingOut.push(h); }catch(e){}
+            gen++; generated.push(true);
+          }catch(e){ generated.push(false); failedHashes.push(entry.hash); }
+        }
+        // Merge pending with existing pending file atomically
+        try{
+          const existing = readJSON(PENDING_FILE) || [];
+          const combined = Array.from(new Set([...(existing||[]), ...pendingOut]));
+          // cap
+          const cap = Math.max(0, Number(process.env.SNAPSHOT_MAX_NEW||'40')) || 40;
+          const final = combined.slice(0, cap);
+          // atomic write
+          const tmp = PENDING_FILE + '.tmp.' + Date.now();
+          try{ fs.mkdirSync(path.dirname(PENDING_FILE), { recursive: true }); fs.writeFileSync(tmp, JSON.stringify(final, null, 2)); fs.renameSync(tmp, PENDING_FILE); }
+          catch(e){ try{ if(fs.existsSync(tmp)) fs.unlinkSync(tmp); }catch{} }
+          if(final.length) console.log('[snapshot-summaries] wrote pending failures', final.length);
+          else if(fs.existsSync(PENDING_FILE) && (existing||[]).length===0) { try{ fs.unlinkSync(PENDING_FILE); }catch{} }
+        }catch(e){ console.warn('[snapshot-summaries] failed write pending', e.message||e); }
       }
     }
   }

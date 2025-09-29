@@ -103,19 +103,7 @@ jobs:
           node tools/modelswatch/classification_stats.mjs || echo "classification stats failed"
           # Build cross-date HF aggregation for frontend "all dates" search
           node tools/modelswatch/build_all_hf.mjs || echo "build_all_hf failed"
-          # Asynchronous enrichment worker: process pending_summaries.json and update tri_cache
-          echo "[workflow] Checking pending_summaries.json before running tri_worker"
-          if [ -s data/ai/modelswatch/pending_summaries.json ]; then
-            node -e "const fs=require('fs');const f='data/ai/modelswatch/pending_summaries.json';try{const a=JSON.parse(fs.readFileSync(f)); if(!Array.isArray(a)||a.length===0){console.log('[workflow] pending_summaries.json is empty; skipping tri_worker'); process.exit(0);} console.log('[workflow] pending count='+a.length);}catch(e){console.log('[workflow] pending_summaries.json parse error',e); process.exit(0);}"
-            if [ $? -eq 0 ]; then
-              echo "[workflow] Running async tri_worker to enrich pending summaries"
-              node tools/modelswatch/tri_worker.mjs || echo "tri_worker failed"
-            else
-              echo "[workflow] Node check failed; skipping tri_worker"
-            fi
-          else
-            echo "[workflow] pending_summaries.json not found or empty; skipping tri_worker"
-          fi
+          # Asynchronous enrichment worker moved to a dedicated step (run only when pending present).
       - name: Commit and push
         run: |
           git config user.name "github-actions"
@@ -143,3 +131,34 @@ jobs:
               git push origin HEAD:main
             fi
           fi
+      - name: Run async tri_worker (if pending)
+        env:
+          SNAPSHOT_BATCH_KILL_TIMEOUT: ${{ vars.SNAPSHOT_BATCH_KILL_TIMEOUT || '900' }}
+          TRI_GROUP_JSON_SIZE: ${{ vars.TRI_GROUP_JSON_SIZE || '1' }}
+          TRI_BATCH_CONCURRENCY: ${{ vars.TRI_BATCH_CONCURRENCY || '2' }}
+          TRI_CACHE_FILE: data/ai/modelswatch/tri_cache.json
+          TRI_CACHE_PERSIST: 1
+        run: |
+          echo "[workflow] Checking pending_summaries.json before running tri_worker"
+          if [ -s data/ai/modelswatch/pending_summaries.json ]; then
+            node -e "const fs=require('fs');const f='data/ai/modelswatch/pending_summaries.json';try{const a=JSON.parse(fs.readFileSync(f)); if(!Array.isArray(a)||a.length===0){console.log('[workflow] pending_summaries.json is empty; skipping tri_worker'); process.exit(0);} console.log('[workflow] pending count='+a.length);}catch(e){console.log('[workflow] pending_summaries.json parse error',e); process.exit(0);}"
+            if [ $? -eq 0 ]; then
+              echo "[workflow] Running async tri_worker to enrich pending summaries"
+              node tools/modelswatch/tri_worker.mjs || echo "tri_worker failed"
+            else
+              echo "[workflow] Node check failed; skipping tri_worker"
+            fi
+          else
+            echo "[workflow] pending_summaries.json not found or empty; skipping tri_worker"
+          fi
+      - name: Upload modelswatch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: modelswatch-diagnostics
+          path: |
+            data/ai/modelswatch/tri_worker_diagnostics.json
+            data/ai/modelswatch/summaries_diagnostics.json
+            data/ai/modelswatch/pending_summaries.json
+            data/ai/modelswatch/tri_cache.json
+            data/ai/modelswatch/summary_cache.json
