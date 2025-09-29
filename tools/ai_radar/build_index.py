@@ -1,8 +1,16 @@
 import json, os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parents[3]
-OUT_DIR = BASE_DIR / 'data' / 'ai' / 'airadar'
+BASE_DIR = Path(__file__).resolve().parent
+# find repo root
+REPO_ROOT = BASE_DIR
+for _ in range(6):
+    if (REPO_ROOT / '.git').exists() or (REPO_ROOT / 'README.md').exists():
+        break
+    if REPO_ROOT.parent == REPO_ROOT:
+        break
+    REPO_ROOT = REPO_ROOT.parent
+OUT_DIR = REPO_ROOT / 'data' / 'ai' / 'airadar'
 DATES_INDEX = OUT_DIR / 'dates.json'
 INDEX_PATH = OUT_DIR / 'index.json'
 

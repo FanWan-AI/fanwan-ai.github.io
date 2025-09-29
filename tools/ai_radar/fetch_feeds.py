@@ -3,13 +3,22 @@ from datetime import datetime, timezone
 from dateutil import parser as dtp
 from utils import canonical_url
 
-BASE_DIR = os.path.dirname(__file__)
-FEED_FILES = [os.path.join(BASE_DIR, 'feeds', 'core.txt')]
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent
+FEED_FILES = [str(BASE_DIR.joinpath('feeds', 'core.txt'))]
 # Optionally include extra feeds if present
 EXTRA_FILE = os.path.join(BASE_DIR, 'feeds', 'extra.txt')
 if os.path.exists(EXTRA_FILE):
     FEED_FILES.append(EXTRA_FILE)
-OUT_DIR = os.path.normpath(os.path.join(BASE_DIR, '..', '..', '..', 'data', 'ai', 'airadar'))
+# Resolve repository root robustly (look for README.md or .git as anchors)
+REPO_ROOT = BASE_DIR
+for _ in range(6):
+    if (REPO_ROOT / '.git').exists() or (REPO_ROOT / 'README.md').exists():
+        break
+    if REPO_ROOT.parent == REPO_ROOT:
+        break
+    REPO_ROOT = REPO_ROOT.parent
+OUT_DIR = str(REPO_ROOT.joinpath('data', 'ai', 'airadar'))
 TMP_PATH = os.path.join(OUT_DIR, '_events_tmp.json')
 
 os.makedirs(OUT_DIR, exist_ok=True)

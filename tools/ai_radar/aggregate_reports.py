@@ -36,8 +36,17 @@ try:
 except Exception:
     chat_once = None
 
-BASE_DIR = os.path.dirname(__file__)
-OUT_DIR = os.path.normpath(os.path.join(BASE_DIR, '..', '..', '..', 'data', 'ai', 'airadar'))
+from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent
+# find repo root
+REPO_ROOT = BASE_DIR
+for _ in range(6):
+    if (REPO_ROOT / '.git').exists() or (REPO_ROOT / 'README.md').exists():
+        break
+    if REPO_ROOT.parent == REPO_ROOT:
+        break
+    REPO_ROOT = REPO_ROOT.parent
+OUT_DIR = str(REPO_ROOT.joinpath('data', 'ai', 'airadar'))
 TMP_PATH = os.path.join(OUT_DIR, '_events_tmp.json')
 LATEST_PATH = os.path.join(OUT_DIR, 'latest.json')
 DATES_INDEX = os.path.join(OUT_DIR, 'dates.json')
