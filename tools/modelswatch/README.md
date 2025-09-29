@@ -5,8 +5,11 @@ node tools/modelswatch/daily.mjs
 # 启动本地静态服务
 npm run serve
 # 浏览器访问
-# http://localhost:8080/lab/modelswatch.htmlModel Watch Scripts - Logging
-=============================
+
+访问本地服务（示例）： `http://127.0.0.1:8000/lab/modelswatch.html`
+
+## Model Watch Scripts - Logging
+
 
 The scripts under this folder now use a lightweight logging utility (`log.js`).
 
@@ -27,8 +30,7 @@ Example:
 
 In CI you can omit MODELSWATCH_DEBUG to keep logs concise.
 
-Schema Migration (Phase 1)
---------------------------
+## Schema Migration (Phase 1)
 Canonical cumulative fields for HF models are now:
   stats.downloads_total
   stats.likes_total
@@ -45,11 +47,13 @@ Schema versioning:
   See schema.js (SCHEMA_VERSION=1). Hotlists and daily files embed { version } and front-end warns on mismatch.
 
 Recommended pipeline order (first run / maintenance):
-  1. node tools/modelswatch/weekly.mjs  (refresh corpus & tops)
-  2. node tools/modelswatch/build_snapshots.mjs
-  3. node tools/modelswatch/update_model_hotlist.mjs
-  4. node tools/modelswatch/update_project_hotlist.mjs
-  (Optional) node tools/modelswatch/seed_hotlists.mjs for first-time seeding before updates.
+
+1. node tools/modelswatch/weekly.mjs  (refresh corpus & tops)
+2. node tools/modelswatch/build_snapshots.mjs
+3. node tools/modelswatch/update_model_hotlist.mjs
+4. node tools/modelswatch/update_project_hotlist.mjs
+
+(Optional) node tools/modelswatch/seed_hotlists.mjs for first-time seeding before updates.
 
 Daily picks (LLM summaries + reasons):
   node tools/modelswatch/daily.mjs
