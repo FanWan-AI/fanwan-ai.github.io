@@ -71,7 +71,24 @@ jobs:
           # If weekly already produced enriched snapshot sidecars for the latest snapshot, skip running the batch summarizer here.
           LATEST_FILE=data/ai/modelswatch/latest_snapshot.json
           if [ -f "$LATEST_FILE" ] && LATEST=$(jq -r .latest $LATEST_FILE 2>/dev/null) && [ -n "$LATEST" ] && [ -f "data/ai/modelswatch/snapshots/$LATEST/hf_summaries.json" ]; then
-            echo "[workflow] enriched hf_summaries.json present for latest snapshot; skipping generate_snapshot_summaries"
+            echo "[workflow] enriched hf_summaries.json present for latest snapshot; checking quality of zh summaries"
+            HS=\"data/ai/modelswatch/snapshots/$LATEST/hf_summaries.json\"
+            total=$(jq '.items | length' "$HS" 2>/dev/null || echo 0)
+            # count entries with a non-placeholder Chinese summary (length > 40 and not containing common placeholder markers)
+            good=$(jq '[.items[] | select((.summary_zh|type=="string") and (.summary_zh|length > 40) and ( (.summary_zh|test("占位|占位符|Auto summary|batch-fallback|fallback|自动摘要" )|not ))] | length' "$HS" 2>/dev/null || echo 0)
+            echo "[workflow] snapshot $LATEST total=$total good_zh=$good"
+            pct=0
+            if [ "$total" -gt 0 ]; then
+              pct=$(( 100 * good / total ))
+            fi
+            echo "[workflow] zh_quality_pct=$pct%"
+            # threshold: require at least 50% non-placeholder Chinese summaries, otherwise regenerate (force batch)
+            if [ "$pct" -lt 50 ]; then
+              echo "[workflow] zh coverage below threshold; forcing batch generation to produce bilingual summaries"
+              SNAPSHOT_USE_BATCH=1 node tools/modelswatch/generate_snapshot_summaries.mjs || echo "snapshot summaries failed"
+            else
+              echo "[workflow] zh coverage sufficient; skipping generate_snapshot_summaries"
+            fi
           else
             echo "[workflow] enriched snapshot not found -> generating summaries"
             node tools/modelswatch/generate_snapshot_summaries.mjs || echo "snapshot summaries failed"
