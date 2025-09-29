@@ -54,12 +54,13 @@ jobs:
           # Kill long-running batch summarizer after N seconds (prevents runaway jobs)
           # Prefer to configure this via GitHub Repository Variables: set variable 'SNAPSHOT_BATCH_KILL_TIMEOUT'
           # Fallback to 900 seconds if the variable is not set
-          SNAPSHOT_BATCH_KILL_TIMEOUT: ${{ vars.SNAPSHOT_BATCH_KILL_TIMEOUT || '900' }}
+          SNAPSHOT_BATCH_KILL_TIMEOUT: ${{ vars.SNAPSHOT_BATCH_KILL_TIMEOUT || '1800' }}
           # Tunable fetch limits (set these as repository Variables to adjust without code changes)
           MODELSWATCH_HF_LIMIT: ${{ vars.MODELSWATCH_HF_LIMIT }}
           MODELSWATCH_GH_PER_PAGE: ${{ vars.MODELSWATCH_GH_PER_PAGE }}
           # New performance toggles
-          SNAPSHOT_USE_BATCH: ${{ vars.SNAPSHOT_USE_BATCH || '0' }}         # use single python batch call for snapshot summaries (default off -> fast-path)
+          # Force weekly snapshot generation to use batch (bilingual summaries produced in batch)
+          SNAPSHOT_USE_BATCH: ${{ vars.SNAPSHOT_USE_BATCH || '1' }}         # use single python batch call for snapshot summaries (default ON for weekly)
           SPEED_MODE: 1                 # disable rewrite/expand for speed
           UNIFIED_JSON_NO_SEQ: 1        # if JSON-first returns partial, skip sequential fallback
           SKIP_TOP_ENRICH: 1            # skip per-item enrichment in weekly top lists (avoid duplicate summarization)
@@ -164,3 +165,44 @@ jobs:
             data/ai/modelswatch/pending_summaries.json
             data/ai/modelswatch/tri_cache.json
             data/ai/modelswatch/summary_cache.json
+
+  tri_worker:
+    name: tri_worker (long-run)
+    runs-on: ubuntu-latest
+    needs: run
+    timeout-minutes: 180
+    if: ${{ always() }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run tri_worker (only when pending present)
+        env:
+          SNAPSHOT_BATCH_KILL_TIMEOUT: ${{ vars.SNAPSHOT_BATCH_KILL_TIMEOUT || '3600' }}
+          TRI_GROUP_JSON_SIZE: ${{ vars.TRI_GROUP_JSON_SIZE || '2' }}
+          TRI_BATCH_CONCURRENCY: ${{ vars.TRI_BATCH_CONCURRENCY || '4' }}
+          TRI_CACHE_FILE: data/ai/modelswatch/tri_cache.json
+          TRI_CACHE_PERSIST: 1
+        run: |
+          echo "[tri_worker job] checking pending_summaries.json"
+          if [ -s data/ai/modelswatch/pending_summaries.json ]; then
+            node -e "const fs=require('fs');const f='data/ai/modelswatch/pending_summaries.json';try{const a=JSON.parse(fs.readFileSync(f)); if(!Array.isArray(a)||a.length===0){console.log('[tri_worker job] pending is empty; skipping'); process.exit(0);} console.log('[tri_worker job] pending count='+a.length);}catch(e){console.log('[tri_worker job] parse error',e); process.exit(0);}"
+            if [ $? -eq 0 ]; then
+              echo "[tri_worker job] running tri_worker.mjs"
+              node tools/modelswatch/tri_worker.mjs || echo "tri_worker job failed"
+            else
+              echo "[tri_worker job] node check failed; skipping"
+            fi
+          else
+            echo "[tri_worker job] pending file not present or empty; skipping"
+          fi
