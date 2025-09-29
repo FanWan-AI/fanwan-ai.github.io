@@ -86,7 +86,17 @@ async function main(){
       const h = hashItem(it);
       const cached = cache.models[key];
       // In bilingual mode, only require en + zh; es can be empty (later UI will map to en)
-      const hasFull = bilingual ? (cached && cached.hash === h && cached.summary_en && cached.summary_zh) : (cached && cached.hash === h && cached.summary_en && cached.summary_zh && cached.summary_es);
+      // Treat cached zh/es as invalid if they look like placeholders, are too short, or are identical to the English text.
+      function looksLikePlaceholder(t){ try{ return !t || /(占位|占位符|Auto summary|batch-fallback|fallback|自动摘要)/i.test(String(t)); }catch(e){ return true; } }
+      function isGoodLangText(txt, other){ if(!txt) return false; const s = String(txt).trim(); if(s.length < 40) return false; if(looksLikePlaceholder(s)) return false; if(other && String(other||'').trim() && s === String(other||'').trim()) return false; return true; }
+      let hasFull = false;
+      if(cached && cached.hash === h && cached.summary_en){
+        if(bilingual){
+          hasFull = isGoodLangText(cached.summary_zh, cached.summary_en) && Boolean(cached.summary_en);
+        } else {
+          hasFull = isGoodLangText(cached.summary_zh, cached.summary_en) && isGoodLangText(cached.summary_es, cached.summary_en) && Boolean(cached.summary_en);
+        }
+      }
       if(hasFull){
         // merge
         it.summary_en = cached.summary_en; it.summary_zh = cached.summary_zh; it.summary_es = bilingual ? (cached.summary_es || cached.summary_en) : cached.summary_es; it.summary = cached.summary || it.summary_zh || it.summary_en || it.summary_es || it.summary || it.description || '';

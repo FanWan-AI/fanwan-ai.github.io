@@ -131,14 +131,18 @@ async function main(){
       const meta = indexToHash[i]; if(!meta) continue;
       const h = meta.hash;
       const en = r.en||''; const zh = r.zh||''; const es = r.es||'';
-      triCache[h] = { en, zh, es, last_generated: new Date().toISOString() };
+      // detect placeholder or poor-quality zh (too short or identical to en)
+      function looksLikePlaceholder(t){ try{ return !t || /(占位|占位符|Auto summary|batch-fallback|fallback|自动摘要)/i.test(String(t)); }catch(e){ return true; } }
+      function isGoodLangText(txt, other){ if(!txt) return false; const s = String(txt).trim(); if(s.length < 40) return false; if(looksLikePlaceholder(s)) return false; if(other && String(other||'').trim() && s === String(other||'').trim()) return false; return true; }
+      const isFallback = !isGoodLangText(zh, en);
+      triCache[h] = { en, zh, es, last_generated: new Date().toISOString(), fallback: !!isFallback };
       processedHashes.push(h);
       // Also update summary_cache with a source:key style to help daily lookups
       try{
         const summaryCache = readJSON(SUMMARY_CACHE_FILE) || { models: {} };
         const key = `${meta.source}:${meta.id}`;
         summaryCache.models = summaryCache.models || {};
-        summaryCache.models[key] = { hash: h, updated_at: new Date().toISOString(), summary_en: en, summary_zh: zh, summary_es: es, summary: zh||en||es };
+        summaryCache.models[key] = { hash: h, updated_at: new Date().toISOString(), summary_en: en, summary_zh: zh, summary_es: es, summary: zh||en||es, fallback: !!isFallback };
         writeJSON(SUMMARY_CACHE_FILE, summaryCache);
       }catch(e){ console.warn('[tri_worker] update summary_cache failed', e.message||e); }
     }
