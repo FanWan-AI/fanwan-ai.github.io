@@ -488,6 +488,98 @@ async function main(){
     const neutral = zh || en || es || it.summary || it.description || '';
     return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
   });
+  // --- Enforce MUST-BILINGUAL policy: for any picked item lacking a valid Chinese/English summary,
+  // try to obtain a bilingual summary via LLM (smartSummarizeMulti) up to a configurable cap.
+  // If LLM cannot produce a valid bilingual summary, the item will be removed from picks.
+  const BILINGUAL_REQUIRED = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_REQUIRE_BILINGUAL || '1');
+  const BILINGUAL_CAP = Number(process.env.MODELSWATCH_DAILY_BILINGUAL_CAP || '20') || 20;
+  const placeholderRE = /占位|占位符|Auto summary|batch-fallback|fallback|自动摘要/i;
+  function isValidBilingualItem(it){
+    try{
+      if(!it) return false;
+      const en = String(it.summary_en||it.summary||'').trim();
+      const zh = String(it.summary_zh||it.summary||'').trim();
+      if(!en || !zh) return false;
+      if(en.length < 40 || zh.length < 40) return false;
+      if(placeholderRE.test(en) || placeholderRE.test(zh)) return false;
+      return true;
+    }catch(e){ return false; }
+  }
+
+  async function tryFillBilingual(arr, allPool){
+    // arr: array of items already summarized (may contain placeholders). allPool: original candidate pool (cg or ch)
+    const needs = arr.filter(it => !isValidBilingualItem(it));
+    if(!BILINGUAL_REQUIRED) return arr; // nothing to enforce
+    if(needs.length === 0) return arr;
+    const cap = Math.min(BILINGUAL_CAP, needs.length);
+    // Attempt to call LLM for the first `cap` missing items
+    const toCall = needs.slice(0, cap);
+    const llmRes = await mapLimit(toCall, SUMMARY_CONCURRENCY, async (it)=>{
+      try{
+        const { zh, en, es } = await smartSummarizeMulti(it);
+        return { it, zh: zh||'', en: en||'', es: es||'' };
+      }catch(e){ return { it, zh:'', en:'', es:'' }; }
+    });
+    // Apply LLM results
+    for(const r of llmRes){
+      const it = r.it;
+      if(r.zh && r.en && !placeholderRE.test(r.zh) && !placeholderRE.test(r.en) && r.zh.length>40 && r.en.length>40){
+        it.summary_zh = r.zh; it.summary_en = r.en; it.summary_es = r.es || (process.env.BILINGUAL_MODE? r.en : r.es);
+        it.summary = it.summary_zh || it.summary_en || it.summary;
+      }
+    }
+    // Filter to valid bilingual items
+    let filtered = arr.filter(isValidBilingualItem);
+    // If we still lack items, attempt to find replacements from allPool that already have bilingual summaries
+    const needMore = arr.length - filtered.length;
+    if(needMore > 0){
+      const pickedIds = new Set(filtered.map(i=>i.id));
+      const excluded = new Set(arr.map(i=>i.id));
+      const candidatePool = (allPool||[]).filter(it=> it && it.id && !pickedIds.has(it.id) && !excluded.has(it.id));
+      // Prefer those with bilingual sidecars / cache
+      const preBilingual = candidatePool.filter(it=> {
+        try{ if(it.summary_en && it.summary_zh && !placeholderRE.test(it.summary_zh) && !placeholderRE.test(it.summary_en) && it.summary_zh.length>40 && it.summary_en.length>40) return true; }catch{} return false;
+      });
+      if(preBilingual.length){
+        const add = preBilingual.slice(0, needMore);
+        filtered.push(...add);
+      }
+      // If still short, try LLM on remaining candidates up to remaining cap
+      if(filtered.length < arr.length){
+        const stillNeed = arr.length - filtered.length;
+        const remainingCandidates = candidatePool.filter(it=> !preBilingual.includes(it)).slice(0, Math.max(stillNeed, 0));
+        const usedLLM = Math.max(0, llmRes.length);
+        const capRemain = Math.max(0, BILINGUAL_CAP - usedLLM);
+        const toCall2 = remainingCandidates.slice(0, Math.min(capRemain, remainingCandidates.length));
+        const llmRes2 = await mapLimit(toCall2, SUMMARY_CONCURRENCY, async (it)=>{
+          try{ const r = await smartSummarizeMulti(it); return { it, zh: r.zh||'', en: r.en||'', es: r.es||'' }; }catch(e){ return { it, zh:'', en:'', es:'' }; }
+        });
+        for(const r of llmRes2){
+          if(r.zh && r.en && !placeholderRE.test(r.zh) && !placeholderRE.test(r.en) && r.zh.length>40 && r.en.length>40){
+            r.it.summary_zh = r.zh; r.it.summary_en = r.en; r.it.summary_es = r.es || (process.env.BILINGUAL_MODE? r.en : r.es); r.it.summary = r.it.summary_zh || r.it.summary_en || r.it.summary;
+            filtered.push(r.it);
+          }
+        }
+      }
+    }
+    // Final filtered set may be smaller than original; return it
+    return filtered;
+  }
+
+  // apply to github and hf picks
+  try{
+    const gPool = cg.map(i=> ({ ...i, source:'github' }));
+    const hPool = ch.map(i=> ({ ...i, source:'hf' }));
+    const enforcedG = await tryFillBilingual(gsum, gPool);
+    const enforcedH = await tryFillBilingual(hsum, hPool);
+    // replace the summary arrays with enforced versions
+    // note: we keep decoration/archiving logic compatible; later pending_summaries build will pick up fast placeholders
+    // Update gsum/hsum references
+    // ensure arrays are reassigned
+    gsum.length = 0; enforcedG.forEach(x=> gsum.push(x));
+    hsum.length = 0; enforcedH.forEach(x=> hsum.push(x));
+    info(`[daily] enforced bilingual: github before=${gTop.length} after=${gsum.length}; hf before=${hTop.length} after=${hsum.length}`);
+  }catch(e){ console.warn('[daily] bilingual enforcement failed', e); }
   // If picks are too few, try relaxed selection to reach MIN_PICKS (ignore cooldown/owner uniqueness and quotas)
   try{
     let totalPicksNow = (gTop?.length||0) + (hTop?.length||0);
