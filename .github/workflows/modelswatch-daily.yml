@@ -60,7 +60,8 @@ jobs:
           if [ -z "${HF_TOKEN}" ]; then echo "[workflow][warn] HF_TOKEN not set"; fi
           # Skip building snapshots if weekly has already produced a recent snapshot.
           # Check data/ai/modelswatch/latest_snapshot.json -> compare 'latest' with today's date in Asia/Shanghai.
-          if node -e "try{const fs=require('fs');const p='data/ai/modelswatch/latest_snapshot.json'; if(!fs.existsSync(p)){ process.exit(1);} const j=JSON.parse(fs.readFileSync(p)); const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'}).replace(/\//g,'-'); if(j && j.latest && j.latest===today){ console.log('[workflow] latest_snapshot matches today -> skipping build_snapshots'); process.exit(0);} }catch(e){ process.exit(1);} process.exit(1);"; then
+          LATEST_FILE=data/ai/modelswatch/latest_snapshot.json
+          if [ -f "$LATEST_FILE" ] && [ "$(TZ=Asia/Shanghai date +%F)" = "$(jq -r .latest $LATEST_FILE 2>/dev/null)" ]; then
             echo "[workflow] latest snapshot present for today; skipping build_snapshots"
           else
             echo "[workflow] no latest snapshot for today -> building snapshots"
@@ -68,11 +69,12 @@ jobs:
           fi
           # Incremental tri-lingual snapshot summaries (reuses cache)
           # If weekly already produced enriched snapshot sidecars for the latest snapshot, skip running the batch summarizer here.
-          if node -e "try{const fs=require('fs');const p='data/ai/modelswatch/latest_snapshot.json'; if(!fs.existsSync(p)){ process.exit(1);} const j=JSON.parse(fs.readFileSync(p)); const latest=j.latest; if(!latest){ process.exit(1);} const hf='data/ai/modelswatch/snapshots/'+latest+'/hf_summaries.json'; if(fs.existsSync(hf)){ console.log('[workflow] enriched hf_summaries.json present for latest snapshot; skipping generate_snapshot_summaries'); process.exit(0);} }catch(e){ process.exit(1);} process.exit(1); then
+          LATEST_FILE=data/ai/modelswatch/latest_snapshot.json
+          if [ -f "$LATEST_FILE" ] && LATEST=$(jq -r .latest $LATEST_FILE 2>/dev/null) && [ -n "$LATEST" ] && [ -f "data/ai/modelswatch/snapshots/$LATEST/hf_summaries.json" ]; then
+            echo "[workflow] enriched hf_summaries.json present for latest snapshot; skipping generate_snapshot_summaries"
+          else
             echo "[workflow] enriched snapshot not found -> generating summaries"
             node tools/modelswatch/generate_snapshot_summaries.mjs || echo "snapshot summaries failed"
-          else
-            echo "[workflow] skipped generate_snapshot_summaries (enriched snapshot exists)"
           fi
           # Summary coverage JSON
           node tools/modelswatch/summaries_coverage.mjs || echo "summaries coverage failed"
