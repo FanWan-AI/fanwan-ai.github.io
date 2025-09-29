@@ -400,7 +400,39 @@ async function main(){
         if(!it || !it.id) return it;
         const pref = `${src}:${it.id}`;
         // prefer cache.models entry if present
-        const cached = (cache && cache.models && (cache.models[pref] || cache.models[it.id])) || null;
+        let cached = (cache && cache.models && (cache.models[pref] || cache.models[it.id])) || null;
+        // If no good cached entry in summary_cache, try tri_cache as fallback (both full and short keys)
+        if(!cached || !cached.summary_zh){
+          try{
+            const triCachePath = process.env.TRI_CACHE_FILE || path.join(DATA_DIR, 'tri_cache.json');
+            if(fs.existsSync(triCachePath)){
+              const triRaw = JSON.parse(fs.readFileSync(triCachePath,'utf8')) || {};
+              const items = triRaw.items || triRaw || {};
+              // compute hash for this item to lookup
+              const h = hashItem(it);
+              const hex = String(h).replace(/^sha256:/,'');
+              const short = hex.slice(0,16);
+              // tri_cache stores legacy short keys in items; prefer full normalized key if present
+              let triEntry = null;
+              if(items[h]) triEntry = items[h];
+              if(!triEntry && items[short]) triEntry = items[short];
+              // if items stored under normalizedKey.short mapping where stored value contains key field, search by key field
+              if(!triEntry){
+                for(const k of Object.keys(items)){
+                  const v = items[k] || {};
+                  if(v && (v.key === h || v.key === ('sha256:'+hex) || k === short || k === hex || k === ('sha256:'+hex))){ triEntry = v; break; }
+                }
+              }
+              if(triEntry && (triEntry.summary_zh || triEntry.zh || triEntry.en)){
+                cached = cached || {};
+                cached.summary_en = cached.summary_en || triEntry.en || triEntry.summary_en || '';
+                cached.summary_zh = cached.summary_zh || triEntry.zh || triEntry.summary_zh || '';
+                cached.summary_es = cached.summary_es || triEntry.es || triEntry.summary_es || cached.summary_en || '';
+                cached.summary = cached.summary || triEntry.zh || triEntry.summary || cached.summary_en || '';
+              }
+            }
+          }catch(e){ /* ignore tri cache read errors */ }
+        }
         if(cached){
           it.summary_en = it.summary_en || cached.summary_en || '';
           it.summary_zh = it.summary_zh || cached.summary_zh || '';

@@ -123,7 +123,9 @@ def _persist_flush():
         pass
 
 def _hash_prompt(prompt: str) -> str:
-    return hashlib.sha256(prompt.encode('utf-8')).hexdigest()[:16]
+    # Use full sha256 hex digest prefixed with `sha256:` to be compatible with Node promptHash
+    # and other tools in the repo which expect the 'sha256:<hex>' form.
+    return 'sha256:' + hashlib.sha256(prompt.encode('utf-8')).hexdigest()
 
 def _enforce_length(en: str, zh: str, es: str) -> Tuple[str, str, str, List[str]]:
     """Apply soft length enforcement and trimming rules.
@@ -409,6 +411,29 @@ def tri_summary_cached(prompt: str) -> Dict[str, Any]:
             _DIAG.setdefault('persist_ignored', 0)
             _DIAG['persist_ignored'] = _DIAG.get('persist_ignored', 0) + 1
 
+    # Compatibility: some older persisted caches used a shortened 16-char key (hex-only).
+    # Our current hashes are prefixed 'sha256:<hex>'; derive the legacy short key from the hex portion.
+    if _PERSIST_ENABLED:
+        try:
+            hexpart = h.replace('sha256:', '')
+            short = hexpart[:16]
+            if short in _PERSIST_CACHE:
+                _DIAG["cache_hits"] += 1
+                entry = _PERSIST_CACHE[short]
+                en_c = entry.get('en','')
+                zh_c = entry.get('zh','')
+                es_c = entry.get('es','')
+                if _is_good_zh(zh_c, en_c):
+                    # normalize meta.hash to full prefixed form for consistency
+                    res = { 'en': en_c, 'zh': zh_c, 'es': es_c, 'meta': { 'ok': True, 'path': 'persist_short', 'hash': h, 'cache_hit': True, 'persist_key': short } }
+                    _CACHE[h] = res
+                    return res
+                else:
+                    _DIAG.setdefault('persist_ignored', 0)
+                    _DIAG['persist_ignored'] = _DIAG.get('persist_ignored', 0) + 1
+        except Exception:
+            pass
+
     # Miss -> compute
     _DIAG["cache_misses"] += 1
     res = tri_summary(prompt)
@@ -419,7 +444,10 @@ def tri_summary_cached(prompt: str) -> Dict[str, Any]:
     res["meta"]["hash"] = h
     # optionally persist minimal entry
     if _PERSIST_ENABLED and res.get('en'):
-        _PERSIST_CACHE[h] = { 'en': res.get('en',''), 'zh': res.get('zh',''), 'es': res.get('es','') }
+        # Persist under normalized full 'sha256:<hex>' key for compatibility across tools
+        _PERSIST_CACHE[h] = { 'en': res.get('en',''), 'zh': res.get('zh',''), 'es': res.get('es',''), 'persisted_at': time.time() }
+        _DIAG.setdefault('persisted', 0)
+        _DIAG['persisted'] = _DIAG.get('persisted', 0) + 1
     return res
 
 def tri_summary_batch(prompts: List[str]) -> Dict[str, Any]:
@@ -540,7 +568,10 @@ def tri_summary_batch(prompts: List[str]) -> Dict[str, Any]:
                 _CACHE[h] = r
                 # Persist only when Chinese summary looks valid; otherwise avoid persisting poor zh
                 if _PERSIST_ENABLED and _is_good_zh(zh, en):
-                    _PERSIST_CACHE[h] = { 'en': en, 'zh': zh, 'es': es }
+                    # Persist under normalized full 'sha256:<hex>' key
+                    _PERSIST_CACHE[h] = { 'en': en, 'zh': zh, 'es': es, 'persisted_at': time.time() }
+                    _DIAG.setdefault('persisted', 0)
+                    _DIAG['persisted'] = _DIAG.get('persisted', 0) + 1
                 results[idx] = r
         # Process misses in chunks
         for start in range(0, len(misses_index), group_size):

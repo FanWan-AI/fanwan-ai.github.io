@@ -63,8 +63,36 @@ async function main(){
   const triCacheExisting = readJSON(TRI_CACHE_FILE) || {};
   const pendingAll = Array.isArray(pending) ? pending.slice() : [];
   const uniquePending = Array.from(new Set(pendingAll));
-  // Select up to MAX_NEW hashes that are not already in triCacheExisting
-  let toProcess = uniquePending.filter(h => !(triCacheExisting && triCacheExisting[h]));
+  // tri_cache stored shape: preferred { version:1, items: { '<key>': {en,zh,es,...} } }
+  // but we accept legacy flat maps. Build triExistingMap with both full 'sha256:<hex>' and short legacy hex keys.
+  const triExistingMap = new Map();
+  try{
+    if(triCacheExisting && typeof triCacheExisting === 'object'){
+      if(triCacheExisting.items && typeof triCacheExisting.items === 'object'){
+        for(const k of Object.keys(triCacheExisting.items)){
+          triExistingMap.set(k, true);
+          // if key looks like short hex (16 chars), also map full prefixed form
+          if(/^[0-9a-f]{16}$/.test(k)){
+            triExistingMap.set('sha256:'+k.padEnd(64, '0').slice(0,64), true);
+          }
+        }
+      }
+      // legacy flat map: keys may be full 'sha256:<hex>' or hex-only
+      for(const k of Object.keys(triCacheExisting)){
+        if(k === 'version' || k === 'items' || k === 'generated_at') continue;
+        triExistingMap.set(k, true);
+        if(/^[0-9a-f]{64}$/.test(k)) triExistingMap.set('sha256:'+k, true);
+        if(/^[0-9a-f]{16}$/.test(k)) triExistingMap.set('sha256:'+k.padEnd(64,'0').slice(0,64), true);
+      }
+    }
+  }catch(e){}
+  // Select up to MAX_NEW hashes that are not already in triExistingMap (consider both full and short forms)
+  let toProcess = uniquePending.filter(h => {
+    const hex = String(h).replace(/^sha256:/,'');
+    const short = hex.slice(0,16);
+    const forms = [h, hex, short, 'sha256:'+hex];
+    return !forms.some(f => triExistingMap.has(f));
+  });
   if(!PROCESS_ALL) toProcess = toProcess.slice(0, MAX_NEW);
 
   // load candidate pool (corpus & snapshots)
@@ -174,20 +202,30 @@ async function main(){
       // detect placeholder or poor-quality zh (too short or identical to en)
       function looksLikePlaceholder(t){ try{ return !t || /(占位|占位符|Auto summary|batch-fallback|fallback|自动摘要)/i.test(String(t)); }catch(e){ return true; } }
       function isGoodLangText(txt, other){ if(!txt) return false; const s = String(txt).trim(); if(s.length < 40) return false; if(looksLikePlaceholder(s)) return false; if(other && String(other||'').trim() && s === String(other||'').trim()) return false; return true; }
-      const isFallback = !isGoodLangText(zh, en);
-      triCache[h] = { en, zh, es, last_generated: new Date().toISOString(), fallback: !!isFallback };
+  const isFallback = !isGoodLangText(zh, en);
+  // Normalize triCache into preferred shape
+  if(!triCache || typeof triCache !== 'object') triCache = { version: 1, items: {} };
+  triCache.items = triCache.items || {};
+  // Persist using normalized key: ensure full 'sha256:<hex>' form
+  const normalizedKey = (String(h).startsWith('sha256:')) ? h : ('sha256:'+String(h));
+  triCache.items[normalizedKey.replace(/^sha256:/,'').slice(0,16)] = { en, zh, es, last_generated: new Date().toISOString(), fallback: !!isFallback, key: normalizedKey };
+  processedHashes.push(normalizedKey);
       processedHashes.push(h);
       // Also update summary_cache with a source:key style to help daily lookups
       try{
-        const summaryCache = readJSON(SUMMARY_CACHE_FILE) || { models: {} };
-        const key = `${meta.source}:${meta.id}`;
-        summaryCache.models = summaryCache.models || {};
-        summaryCache.models[key] = { hash: h, updated_at: new Date().toISOString(), summary_en: en, summary_zh: zh, summary_es: es, summary: zh||en||es, fallback: !!isFallback };
-        writeJSON(SUMMARY_CACHE_FILE, summaryCache);
+  const summaryCache = readJSON(SUMMARY_CACHE_FILE) || { models: {} };
+  const key = `${meta.source}:${meta.id}`;
+  summaryCache.models = summaryCache.models || {};
+  summaryCache.models[key] = { hash: (String(h).startsWith('sha256:')? h : 'sha256:'+h), updated_at: new Date().toISOString(), summary_en: en, summary_zh: zh, summary_es: es, summary: zh||en||es, fallback: !!isFallback };
+  writeJSON(SUMMARY_CACHE_FILE, summaryCache);
       }catch(e){ console.warn('[tri_worker] update summary_cache failed', e.message||e); }
     }
-    writeJSON(TRI_CACHE_FILE, triCache);
-    console.log('[tri_worker] updated tri_cache with', results.length, 'entries');
+    // Normalize on-disk tri_cache format to { version:1, generated_at, items: { shortKey: {..} } }
+    try{
+      const out = { version: 1, generated_at: new Date().toISOString(), items: (triCache && triCache.items) ? triCache.items : {} };
+      writeJSON(TRI_CACHE_FILE, out);
+      console.log('[tri_worker] updated tri_cache with', Object.keys(out.items).length, 'entries');
+    }catch(e){ console.warn('[tri_worker] failed writing tri_cache', e.message||e); }
     // Optionally refresh snapshot sidecars so frontend can pick up tri_cache changes
     try{
   const DO_REFRESH = ['1','true','yes','on'].includes((process.env.POST_REFRESH_SNAPSHOTS||'0').toLowerCase());
