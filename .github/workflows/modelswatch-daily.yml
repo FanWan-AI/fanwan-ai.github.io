@@ -28,7 +28,9 @@ jobs:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           # Tri/bi-lingual summarizer and caching toggles
           BILINGUAL_MODE: 1
-          SNAPSHOT_USE_BATCH: ${{ vars.SNAPSHOT_USE_BATCH || '0' }}
+          # Daily should not inherit the weekly global batch flag by default.
+          # Use repository variable SNAPSHOT_USE_BATCH_DAILY to control daily batch behavior; default to '0' (no batch).
+          SNAPSHOT_USE_BATCH: ${{ vars.SNAPSHOT_USE_BATCH_DAILY || '0' }}
           # Prefer picks that have bilingual summaries (zh+en) produced by weekly snapshots
           MODELSWATCH_DAILY_REQUIRE_BILINGUAL: ${{ vars.MODELSWATCH_DAILY_REQUIRE_BILINGUAL || '1' }}
           TRI_CACHE_FILE: data/ai/modelswatch/tri_cache.json
@@ -56,10 +58,22 @@ jobs:
           echo "[workflow] Checking tokens: GITHUB_TOKEN/HF_TOKEN present? (no secrets printed)"
           if [ -z "${GITHUB_TOKEN}" ]; then echo "[workflow][warn] GITHUB_TOKEN not set"; fi
           if [ -z "${HF_TOKEN}" ]; then echo "[workflow][warn] HF_TOKEN not set"; fi
-          # Build snapshots (weekly usually does, but ensure freshness)
-          node tools/modelswatch/build_snapshots.mjs || echo "snapshot build failed"
+          # Skip building snapshots if weekly has already produced a recent snapshot.
+          # Check data/ai/modelswatch/latest_snapshot.json -> compare 'latest' with today's date in Asia/Shanghai.
+          if node -e "try{const fs=require('fs');const p='data/ai/modelswatch/latest_snapshot.json'; if(!fs.existsSync(p)){ process.exit(1);} const j=JSON.parse(fs.readFileSync(p)); const today=new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Shanghai'}).replace(/\//g,'-'); if(j && j.latest && j.latest===today){ console.log('[workflow] latest_snapshot matches today -> skipping build_snapshots'); process.exit(0);} }catch(e){ process.exit(1);} process.exit(1);"; then
+            echo "[workflow] latest snapshot present for today; skipping build_snapshots"
+          else
+            echo "[workflow] no latest snapshot for today -> building snapshots"
+            node tools/modelswatch/build_snapshots.mjs || echo "snapshot build failed"
+          fi
           # Incremental tri-lingual snapshot summaries (reuses cache)
-          node tools/modelswatch/generate_snapshot_summaries.mjs || echo "snapshot summaries failed"
+          # If weekly already produced enriched snapshot sidecars for the latest snapshot, skip running the batch summarizer here.
+          if node -e "try{const fs=require('fs');const p='data/ai/modelswatch/latest_snapshot.json'; if(!fs.existsSync(p)){ process.exit(1);} const j=JSON.parse(fs.readFileSync(p)); const latest=j.latest; if(!latest){ process.exit(1);} const hf='data/ai/modelswatch/snapshots/'+latest+'/hf_summaries.json'; if(fs.existsSync(hf)){ console.log('[workflow] enriched hf_summaries.json present for latest snapshot; skipping generate_snapshot_summaries'); process.exit(0);} }catch(e){ process.exit(1);} process.exit(1); then
+            echo "[workflow] enriched snapshot not found -> generating summaries"
+            node tools/modelswatch/generate_snapshot_summaries.mjs || echo "snapshot summaries failed"
+          else
+            echo "[workflow] skipped generate_snapshot_summaries (enriched snapshot exists)"
+          fi
           # Summary coverage JSON
           node tools/modelswatch/summaries_coverage.mjs || echo "summaries coverage failed"
           node tools/modelswatch/daily.mjs
