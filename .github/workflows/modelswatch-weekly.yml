@@ -123,12 +123,18 @@ jobs:
             # Fetch remote main and attempt a rebase to avoid push rejection when remote has moved on
             git fetch origin main || true
             if git show-ref --verify --quiet refs/remotes/origin/main; then
-              echo "Attempting to rebase on origin/main"
-              if git rebase origin/main; then
+              echo "Attempting to rebase on origin/main (with autostash)"
+              echo "[debug] git status before rebase:"; git status --porcelain || true
+              echo "[debug] unstaged/diff files:"; git diff --name-only || true
+              # Use --autostash to automatically stash local changes, rebase, then reapply stash
+              if git rebase --autostash origin/main; then
                 git push origin HEAD:main
               else
-                echo "[warning] Rebase failed, aborting push to avoid conflicts"
+                echo "[warning] Rebase with autostash failed, aborting push to avoid conflicts"
                 git rebase --abort || true
+                # Output status for debugging in CI logs
+                echo "[debug] git status after failed rebase:"; git status --porcelain || true
+                echo "[debug] git diff after failed rebase:"; git --no-pager diff || true
               fi
             else
               # No remote ref found; push normally
