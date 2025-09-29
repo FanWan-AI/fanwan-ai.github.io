@@ -104,8 +104,18 @@ jobs:
           # Build cross-date HF aggregation for frontend "all dates" search
           node tools/modelswatch/build_all_hf.mjs || echo "build_all_hf failed"
           # Asynchronous enrichment worker: process pending_summaries.json and update tri_cache
-          echo "[workflow] Running async tri_worker to enrich pending summaries"
-          node tools/modelswatch/tri_worker.mjs || echo "tri_worker failed"
+          echo "[workflow] Checking pending_summaries.json before running tri_worker"
+          if [ -s data/ai/modelswatch/pending_summaries.json ]; then
+            node -e "const fs=require('fs');const f='data/ai/modelswatch/pending_summaries.json';try{const a=JSON.parse(fs.readFileSync(f)); if(!Array.isArray(a)||a.length===0){console.log('[workflow] pending_summaries.json is empty; skipping tri_worker'); process.exit(0);} console.log('[workflow] pending count='+a.length);}catch(e){console.log('[workflow] pending_summaries.json parse error',e); process.exit(0);}"
+            if [ $? -eq 0 ]; then
+              echo "[workflow] Running async tri_worker to enrich pending summaries"
+              node tools/modelswatch/tri_worker.mjs || echo "tri_worker failed"
+            else
+              echo "[workflow] Node check failed; skipping tri_worker"
+            fi
+          else
+            echo "[workflow] pending_summaries.json not found or empty; skipping tri_worker"
+          fi
       - name: Commit and push
         run: |
           git config user.name "github-actions"
