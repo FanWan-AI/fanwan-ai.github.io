@@ -419,6 +419,29 @@ async function main(){
   const RELAX_SELECTION = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_RELAX_SELECTION || '1');
   const SUMMARY_CONCURRENCY = Number(process.env.MODELSWATCH_SUMMARY_CONCURRENCY||'3') || 3;
 
+  // Treat these strings as placeholders/fallbacks coming from batch summarizer
+  const placeholderRE = /占位|占位符|Auto summary|batch-fallback|fallback|自动摘要/i;
+
+  // Choose a neutral summary preferring non-placeholder Chinese, then English, then others.
+  function chooseNeutralFromSnap(snap, it){
+    try{
+      const zh = (snap && snap.summary_zh) ? String(snap.summary_zh).trim() : '';
+      const en = (snap && snap.summary_en) ? String(snap.summary_en).trim() : '';
+      const es = (snap && snap.summary_es) ? String(snap.summary_es).trim() : '';
+      const s = (snap && snap.summary) ? String(snap.summary).trim() : '';
+      const itSummary = (it && it.summary) ? String(it.summary).trim() : '';
+      const itDesc = (it && it.description) ? String(it.description).trim() : '';
+      if(zh && zh.length > 40 && !placeholderRE.test(zh)) return zh;
+      if(en && en.length > 40 && !placeholderRE.test(en)) return en;
+      if(es && es.length > 40 && !placeholderRE.test(es)) return es;
+      if(s && s.length > 40 && !placeholderRE.test(s)) return s;
+      if(itSummary && itSummary.length > 40 && !placeholderRE.test(itSummary)) return itSummary;
+      if(itDesc && itDesc.length > 40 && !placeholderRE.test(itDesc)) return itDesc;
+      // fallback to whatever is available (including placeholders) to preserve existing behaviour
+      return zh || en || es || s || itSummary || itDesc || '';
+    }catch(e){ return (snap && (snap.summary_zh||snap.summary_en||snap.summary_es||snap.summary)) || (it && (it.summary||it.description)) || ''; }
+  }
+
   // Load categories (capabilities only) and recent history
   const knownCaps = loadCategories();
   const recent = loadRecentFromArchives(WINDOW);
@@ -472,13 +495,13 @@ async function main(){
   const gsum = await mapLimit(gTop, SUMMARY_CONCURRENCY, async (it)=> {
     // Consult in-memory summary cache populated from sidecars
     try{ const snap = lookupCachedSummary(it); if(snap){
-      const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+      const neutral = chooseNeutralFromSnap(snap, it);
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }}catch{}
     // Also consult global sidecar arrays as fallback
     const snap = (globalThis.__SNAP_SUMMARIES_GH||[]).find(s=>s.id===it.id);
     if(snap && (snap.summary_zh||snap.summary_en||snap.summary_es)){
-      const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+      const neutral = chooseNeutralFromSnap(snap, it);
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }
     // If the item itself already has a summary fields, reuse without calling LLM
@@ -499,12 +522,12 @@ async function main(){
   });
   const hsum = await mapLimit(hTop, 3, async (it)=> {
     try{ const snap = lookupCachedSummary(it); if(snap){
-      const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+      const neutral = chooseNeutralFromSnap(snap, it);
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }}catch{}
     const snap = (globalThis.__SNAP_SUMMARIES_HF||[]).find(s=>s.id===it.id);
     if(snap && (snap.summary_zh||snap.summary_en||snap.summary_es)){
-      const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+      const neutral = chooseNeutralFromSnap(snap, it);
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }
     if(it.summary || it.summary_en || it.summary_zh || it.summary_es) {
@@ -525,7 +548,6 @@ async function main(){
   // If LLM cannot produce a valid bilingual summary, the item will be removed from picks.
   const BILINGUAL_REQUIRED = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_REQUIRE_BILINGUAL || '1');
   const BILINGUAL_CAP = Number(process.env.MODELSWATCH_DAILY_BILINGUAL_CAP || '20') || 20;
-  const placeholderRE = /占位|占位符|Auto summary|batch-fallback|fallback|自动摘要/i;
   function isValidBilingualItem(it){
     try{
       if(!it) return false;
@@ -533,7 +555,7 @@ async function main(){
       const zh = String(it.summary_zh||it.summary||'').trim();
       if(!en || !zh) return false;
       if(en.length < 40 || zh.length < 40) return false;
-      if(placeholderRE.test(en) || placeholderRE.test(zh)) return false;
+      if(/占位|占位符|Auto summary|batch-fallback|fallback|自动摘要/i.test(en) || /占位|占位符|Auto summary|batch-fallback|fallback|自动摘要/i.test(zh)) return false;
       return true;
     }catch(e){ return false; }
   }
