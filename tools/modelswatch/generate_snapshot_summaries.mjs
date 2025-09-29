@@ -381,8 +381,33 @@ async function main(){
   const enrichedGHPath = path.join(dayDir, 'gh_summaries.json');
   // Ensure directory exists to avoid write errors when snapshots folder is not present
   try { fs.mkdirSync(dayDir, { recursive: true }); } catch(e) { /* ignore */ }
-  writeJSON(enrichedHFPath, { date: day, items: itemsHF });
-  writeJSON(enrichedGHPath, { date: day, items: itemsGH });
+  // Ensure each item in sidecars includes explicit summary_en and summary_zh fields by resolving cache keys
+  function resolveSidecarFields(arr, src){
+    return (arr||[]).map(it => {
+      try{
+        if(!it || !it.id) return it;
+        const pref = `${src}:${it.id}`;
+        // prefer cache.models entry if present
+        const cached = (cache && cache.models && (cache.models[pref] || cache.models[it.id])) || null;
+        if(cached){
+          it.summary_en = it.summary_en || cached.summary_en || '';
+          it.summary_zh = it.summary_zh || cached.summary_zh || '';
+          it.summary_es = it.summary_es || cached.summary_es || (cached.summary_en || '');
+          it.summary = it.summary || cached.summary || it.summary_zh || it.summary_en || it.summary_es || it.description || '';
+        } else {
+          // if no cached entry, but item already has summary field, normalize names
+          it.summary_en = it.summary_en || it.summary || '';
+          it.summary_zh = it.summary_zh || it.summary || '';
+          it.summary_es = it.summary_es || it.summary || '';
+        }
+        return it;
+      }catch(e){ return it; }
+    });
+  }
+  const outHF = resolveSidecarFields(itemsHF, 'hf');
+  const outGH = resolveSidecarFields(itemsGH, 'github');
+  writeJSON(enrichedHFPath, { date: day, items: outHF });
+  writeJSON(enrichedGHPath, { date: day, items: outGH });
   const failedCount = (generated||[]).filter(v=>v===false).length;
   if(toGen.length){
     console.log(`[snapshot-summaries] total=${total} reuse=${reuse} generated=${gen} failed=${failedCount} batch=${/^(1|true|yes|on)$/i.test(process.env.SNAPSHOT_USE_BATCH||process.env.USE_PYTHON_SUMMARIZER||'')} -> wrote hf_summaries.json & gh_summaries.json`);

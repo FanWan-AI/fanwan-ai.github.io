@@ -327,23 +327,57 @@ async function main(){
     const snapGHPath = path.join(snapDir, 'gh_summaries.json');
     // load local summary cache if present to avoid LLM calls
     const summaryCachePath = path.join(dir, 'summary_cache.json');
+    // Normalized in-memory map: allow lookups by both 'source:id' and plain 'id'
     let SUMMARY_CACHE = {};
-    try{ if(existsSync(summaryCachePath)) SUMMARY_CACHE = JSON.parse(readFileSync(summaryCachePath,'utf8'))||{}; }catch{}
+    try{
+      if(existsSync(summaryCachePath)){
+        const raw = JSON.parse(readFileSync(summaryCachePath,'utf8'))||{};
+        // The cache file shape is { schema_version, generated_at, models: { "github:owner/repo": {...} } }
+        if(raw && raw.models && typeof raw.models === 'object'){
+          for(const k of Object.keys(raw.models)){
+            const v = raw.models[k];
+            SUMMARY_CACHE[k] = v;
+            // also expose unprefixed id for convenience (but do not override an existing explicit key)
+            if(k.includes(':')){
+              const id = k.split(':').slice(1).join(':');
+              if(!(id in SUMMARY_CACHE)) SUMMARY_CACHE[id] = v;
+            }
+          }
+        } else if(raw && typeof raw === 'object'){
+          // backward compat: file may already be a flat map
+          for(const k of Object.keys(raw)) SUMMARY_CACHE[k] = raw[k];
+        }
+      }
+    }catch(e){ /* ignore parse/load errors and leave SUMMARY_CACHE empty */ }
     if(existsSync(snapHFPath)){
       try {
         const snapHF = JSON.parse(readFileSync(snapHFPath,'utf8'));
         // merge summaries into corpus later when matching by id
         globalThis.__SNAP_SUMMARIES_HF = Array.isArray(snapHF.items)? snapHF.items : (Array.isArray(snapHF)? snapHF : []);
         // populate SUMMARY_CACHE from sidecar for fast lookup
-        if(Array.isArray(snapHF.items)) snapHF.items.forEach(s=>{ if(s && s.id) SUMMARY_CACHE[s.id] = s; });
+        if(Array.isArray(snapHF.items)) snapHF.items.forEach(s=>{ if(s && s.id){ SUMMARY_CACHE[s.id] = s; const pref = `hf:${s.id}`; if(!(pref in SUMMARY_CACHE)) SUMMARY_CACHE[pref] = s; } });
       }catch{}
     }
     if(existsSync(snapGHPath)){
       try {
         const snapGH = JSON.parse(readFileSync(snapGHPath,'utf8'));
         globalThis.__SNAP_SUMMARIES_GH = Array.isArray(snapGH.items)? snapGH.items : (Array.isArray(snapGH)? snapGH : []);
-        if(Array.isArray(snapGH.items)) snapGH.items.forEach(s=>{ if(s && s.id) SUMMARY_CACHE[s.id] = s; });
+        if(Array.isArray(snapGH.items)) snapGH.items.forEach(s=>{ if(s && s.id){ SUMMARY_CACHE[s.id] = s; const pref = `github:${s.id}`; if(!(pref in SUMMARY_CACHE)) SUMMARY_CACHE[pref] = s; } });
       }catch{}
+    }
+
+    // Helper to resolve cached summary for an item. Prefer explicit source-prefixed key.
+    function lookupCachedSummary(it){
+      if(!it || !it.id) return null;
+      const src = it.source || 'github';
+      const pref = `${src}:${it.id}`;
+      if(SUMMARY_CACHE && SUMMARY_CACHE[pref]) return SUMMARY_CACHE[pref];
+      if(SUMMARY_CACHE && SUMMARY_CACHE[it.id]) return SUMMARY_CACHE[it.id];
+      // fallback to global sidecars
+      const arr = src==='hf' ? (globalThis.__SNAP_SUMMARIES_HF||[]) : (globalThis.__SNAP_SUMMARIES_GH||[]);
+      const found = arr.find(x=> x && x.id === it.id);
+      if(found) return found;
+      return null;
     }
   }catch{}
   let cg = readJSON(path.join(dir,'corpus.github.json')).items||[];
@@ -437,8 +471,7 @@ async function main(){
   // Summarize with DeepSeek when available; limit concurrency to 3
   const gsum = await mapLimit(gTop, SUMMARY_CONCURRENCY, async (it)=> {
     // Consult in-memory summary cache populated from sidecars
-    try{ if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
-      const snap = SUMMARY_CACHE[it.id];
+    try{ const snap = lookupCachedSummary(it); if(snap){
       const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }}catch{}
@@ -465,8 +498,7 @@ async function main(){
     return { ...it, summary: neutral, summary_en: en, summary_zh: zh, summary_es: es };
   });
   const hsum = await mapLimit(hTop, 3, async (it)=> {
-    try{ if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
-      const snap = SUMMARY_CACHE[it.id];
+    try{ const snap = lookupCachedSummary(it); if(snap){
       const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
       return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
     }}catch{}
@@ -603,11 +635,11 @@ async function main(){
       // Recompute summaries quickly for newly added picks
       if(fill.length){
         const fastMap = async (arr)=> await mapLimit(arr, SUMMARY_CONCURRENCY, async (it)=>{
-          if(typeof SUMMARY_CACHE !== 'undefined' && SUMMARY_CACHE[it.id]){
-            const snap = SUMMARY_CACHE[it.id];
-            const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
-            return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
-          }
+          const snap = lookupCachedSummary(it);
+          if(snap){
+              const neutral = snap.summary_zh || snap.summary_en || snap.summary_es || snap.summary || it.summary || it.description || '';
+              return { ...it, summary: neutral, summary_en: snap.summary_en, summary_zh: snap.summary_zh, summary_es: snap.summary_es };
+            }
           if(FAST_SUMMARY){
             const base = truncateSummary(it.summary || it.description || it.card_desc || it.name || '');
             const zh = base; const en = base; const es = '';
