@@ -5,7 +5,7 @@ node tools/modelswatch/daily.mjs
 # 启动本地静态服务
 npm run serve
 # 浏览器访问
-# http://localhost:8080/lab/modelswatch/modelswatch.htmlModel Watch Scripts - Logging
+# http://localhost:8080/lab/modelswatch.htmlModel Watch Scripts - Logging
 =============================
 
 The scripts under this folder now use a lightweight logging utility (`log.js`).

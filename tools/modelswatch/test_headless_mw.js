@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 
 async function run(){
-  const url = 'http://127.0.0.1:8000/lab/modelswatch/modelswatch.html';
+  const url = 'http://127.0.0.1:8000/lab/modelswatch.html';
   const browser = await puppeteer.launch({ args: ['--no-sandbox','--disable-setuid-sandbox'] });
   const page = await browser.newPage();
   const logs = [];

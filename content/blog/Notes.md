@@ -235,7 +235,7 @@ CI 配置（已接好）：
 
 内容来源与生成：
 - 抓取/聚合：可通过 RSS/Atom 源获取当天内容（详见下节 `sources.ai.json`）。
-- 结构化摘要：仓库提供了 `tools/ai_blog_pipeline.py`，其内置 `PROMPT_SCHOLAR` 会把当日条目整理成结构化 JSON（含 headline、one_liner、tags、links、stats 等）。
+- 结构化摘要：仓库提供了 `tools/scholarpush/ai_blog_pipeline.py`，其内置 `PROMPT_SCHOLAR` 会把当日条目整理成结构化 JSON（含 headline、one_liner、tags、links、stats 等）。
 - 语言：
   - 你可以先用中文生成 feed，再使用 `tools/translate.mjs` 对 JSON 中的中文字段（对象含 `zh` 时）进行 en/es 预填充（该工具基于词典/回退策略，以便你后期校对）。
   - 或者在生成时就让你的管道同时产出多语言字段。
@@ -257,7 +257,7 @@ CI 配置（已接好）：
 - 可以随时增删；提交到 main 后，CI 不会直接使用它生成页面，但它是你的抓取脚本的权威输入清单（建议你的采集脚本读取此文件）。
 
 接入建议：
-- 如你使用 `tools/ai_blog_pipeline.py`，可把其中的内置 `SOURCES` 替换为读取 `tools/sources.ai.json`（简例）：
+- 如你使用 `tools/scholarpush/ai_blog_pipeline.py`，可把其中的内置 `SOURCES` 替换为读取 `tools/sources.ai.json`（简例）：
   - Python 伪代码：
     1) `with open('tools/sources.ai.json','r',encoding='utf-8') as f: sources = [x['url'] for x in json.load(f)]`
     2) 迭代 `sources` 去抓取，每源设置合理的超时与去重
