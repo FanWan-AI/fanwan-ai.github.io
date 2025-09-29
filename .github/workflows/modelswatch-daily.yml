@@ -79,28 +79,16 @@ jobs:
           # Summary coverage JSON
           node tools/modelswatch/summaries_coverage.mjs || echo "summaries coverage failed"
           node tools/modelswatch/daily.mjs
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@users.noreply.github.com"
-          git add data/ai/modelswatch/daily_*.json data/ai/modelswatch/daily/*.json data/ai/modelswatch/daily/dates.json data/ai/modelswatch/state.json
-          git add data/ai/modelswatch/snapshots/** data/ai/modelswatch/summary_cache.json data/ai/modelswatch/summaries_coverage.json || true
-          # Also persist tri_cache and summary cache if updated during run
-          git add data/ai/modelswatch/tri_cache.json data/ai/modelswatch/summary_cache.json || true
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "chore(modelswatch): daily picks"
-            git fetch origin main || true
-            if git show-ref --verify --quiet refs/remotes/origin/main; then
-              echo "Attempting to rebase on origin/main"
-              if git rebase origin/main; then
-                git push origin HEAD:main
-              else
-                echo "[warning] Rebase failed, aborting push to avoid conflicts"
-                git rebase --abort || true
-              fi
-            else
-              git push origin HEAD:main
-            fi
-          fi
+      - name: Create or update PR with generated daily artifacts
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(modelswatch): daily picks"
+          title: "chore(modelswatch): daily picks (automated)"
+          body: |
+            This PR was opened automatically by the ModelWatch daily workflow.
+            It contains generated daily picks and snapshot summary artifacts for review.
+          base: main
+          branch: modelswatch/daily-${{ github.run_id }}
+          labels: automated, modelswatch
+          assignees: ''
