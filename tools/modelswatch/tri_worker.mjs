@@ -45,7 +45,9 @@ async function runBatchPrompts(prompts, triEnv, timeoutSec){
       }
       return resolve({ ok:false, killed:killedByTimeout });
     });
-    child.stdin.write(JSON.stringify(prompts)+'\n');
+    // send base64-encoded prompts to avoid Unicode/encoding issues in Python child
+    const b64prompts = prompts.map(s => ({ b64: Buffer.from(String(s||''), 'utf8').toString('base64') }));
+    child.stdin.write(JSON.stringify(b64prompts)+'\n');
     child.stdin.end();
   });
 }
@@ -85,6 +87,26 @@ async function main(){
     }
   }catch(e){ console.warn('[tri_worker] snapshot scan failed', e.message||e); }
 
+    // Also load summary_cache and map stored cache.hash -> item stub so pending hashes from summary_cache can be resolved
+    try{
+      const summaryCache = readJSON(path.join(DATA_DIR,'summary_cache.json')) || { models: {} };
+      const models = summaryCache.models || {};
+      for(const key of Object.keys(models)){
+        try{
+          const val = models[key] || {};
+          const h = val.hash;
+          if(!h) continue;
+          if(hashToItem.has(h)) continue; // keep existing richer item if present
+          // key format is "source:id" e.g. 'github:owner/repo' or 'hf:repo'
+          const parts = String(key).split(':');
+          const src = parts[0] || 'unknown';
+          const id = parts.slice(1).join(':') || (val.id||'');
+          const stub = { id: id, name: id, source: src, url: val.url||'', summary: val.summary||val.summary_en||val.summary_zh||'', description: val.summary||val.summary_en||val.summary_zh||'', tags: [], stats: {} };
+          hashToItem.set(h, stub);
+        }catch(e){}
+      }
+    }catch(e){ /* ignore */ }
+
   // build prompts array and map index->hash for only missing hashes
   const prompts = [];
   const indexToHash = [];
@@ -92,7 +114,23 @@ async function main(){
     const item = hashToItem.get(h);
     if(!item){ console.warn('[tri_worker] item for hash not found', h); continue; }
     const prompt = buildPromptFromItem(item);
-    prompts.push(prompt);
+  // sanitize prompt to avoid unpaired surrogates or control characters that crash Python utf-8 encoding
+  let safe = String(prompt||'');
+  try{ safe = safe.normalize('NFC'); }catch(e){}
+  // remove C0 control chars
+  safe = safe.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+  // replace any surrogate code units (unpaired) with replacement char to avoid Python encoding errors
+  try{
+    // deterministic replacement by scanning code units
+    let out = '';
+    for(let i=0;i<safe.length;i++){
+      const cc = safe.charCodeAt(i);
+      if(cc >= 0xD800 && cc <= 0xDFFF){ out += '\uFFFD'; }
+      else { out += safe.charAt(i); }
+    }
+    safe = out;
+  }catch(e){ safe = safe.replace(/[\uD800-\uDFFF]/g, '\uFFFD'); }
+    prompts.push(safe);
     indexToHash.push({ hash:h, id: item.id || item.repo_id || item.name, source: item.source || 'unknown' });
   }
   if(prompts.length===0){ console.log('[tri_worker] no prompts to process'); return; }
@@ -102,7 +140,7 @@ async function main(){
     BILINGUAL_MODE: process.env.BILINGUAL_MODE || '1',
     TRI_GROUP_JSON_SIZE: process.env.TRI_GROUP_JSON_SIZE || (prompts.length>32 ? '3' : prompts.length>12 ? '2' : '1'),
     TRI_BATCH_CONCURRENCY: process.env.TRI_BATCH_CONCURRENCY || '2',
-    SPEED_MODE: process.env.SPEED_MODE || '1',
+    SPEED_MODE: (typeof process.env.SPEED_MODE !== 'undefined') ? process.env.SPEED_MODE : '1',
     TRI_CACHE_FILE: TRI_CACHE_FILE,
     TRI_CACHE_PERSIST: process.env.TRI_CACHE_PERSIST || '1'
   };

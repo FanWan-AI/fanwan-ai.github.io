@@ -178,6 +178,41 @@ def _enforce_length(en: str, zh: str, es: str) -> Tuple[str, str, str, List[str]
 
     return en, zh, es, warnings
 
+
+def _count_cjk_chars(t: str) -> int:
+    if not t:
+        return 0
+    return sum(1 for ch in t if '\u4e00' <= ch <= '\u9fff')
+
+
+def _looks_like_placeholder(t: str) -> bool:
+    try:
+        if not t or not str(t).strip():
+            return True
+        import re
+        return bool(re.search(r'(占位|占位符|Auto summary|batch-fallback|fallback|自动摘要)', str(t), re.I))
+    except Exception:
+        return True
+
+
+def _is_good_zh(zh: str, en: str | None = None) -> bool:
+    """Return True if zh looks like a valid Chinese summary we can trust from cache."""
+    try:
+        if not zh or not str(zh).strip():
+            return False
+        s = str(zh).strip()
+        if _looks_like_placeholder(s):
+            return False
+        # require at least some Chinese characters (len threshold tuned conservatively)
+        if _count_cjk_chars(s) < 20:
+            return False
+        if en and str(en or '').strip() and s == str(en).strip():
+            # if zh is identical to en, treat as invalid
+            return False
+        return True
+    except Exception:
+        return False
+
 def _rewrite(lang: str, content: str, original: str, target: str) -> str:
     """Rewrite trimmed content more semantically instead of hard cut.
     lang: 'en'|'zh'|'es'
@@ -361,9 +396,18 @@ def tri_summary_cached(prompt: str) -> Dict[str, Any]:
     if _PERSIST_ENABLED and h in _PERSIST_CACHE:
         _DIAG["cache_hits"] += 1
         entry = _PERSIST_CACHE[h]
-        res = { 'en': entry.get('en',''), 'zh': entry.get('zh',''), 'es': entry.get('es',''), 'meta': { 'ok': True, 'path': 'persist', 'hash': h, 'cache_hit': True } }
-        _CACHE[h] = res
-        return res
+        # Only trust persisted entry if Chinese summary appears valid; otherwise treat as miss
+        en_c = entry.get('en','')
+        zh_c = entry.get('zh','')
+        es_c = entry.get('es','')
+        if _is_good_zh(zh_c, en_c):
+            res = { 'en': en_c, 'zh': zh_c, 'es': es_c, 'meta': { 'ok': True, 'path': 'persist', 'hash': h, 'cache_hit': True } }
+            _CACHE[h] = res
+            return res
+        else:
+            # treat as cache miss so fresh summarization can produce proper bilingual output
+            _DIAG.setdefault('persist_ignored', 0)
+            _DIAG['persist_ignored'] = _DIAG.get('persist_ignored', 0) + 1
 
     # Miss -> compute
     _DIAG["cache_misses"] += 1
@@ -425,8 +469,13 @@ def tri_summary_batch(prompts: List[str]) -> Dict[str, Any]:
                 cached = _CACHE[h]
             elif _PERSIST_ENABLED and h in _PERSIST_CACHE:
                 entry = _PERSIST_CACHE[h]
-                cached = { 'en': entry.get('en',''), 'zh': entry.get('zh',''), 'es': entry.get('es',''), 'meta': { 'ok': True, 'path': 'persist', 'hash': h, 'cache_hit': True } }
-                _CACHE[h] = cached
+                en_c = entry.get('en','')
+                zh_c = entry.get('zh','')
+                es_c = entry.get('es','')
+                # Only trust persisted entry if chinese summary is good
+                if _is_good_zh(zh_c, en_c):
+                    cached = { 'en': en_c, 'zh': zh_c, 'es': es_c, 'meta': { 'ok': True, 'path': 'persist', 'hash': h, 'cache_hit': True } }
+                    _CACHE[h] = cached
             if cached:
                 results.append({k: cached[k] for k in ('en','zh','es','meta')})
                 cache_hits_index.append(i)
@@ -489,7 +538,8 @@ def tri_summary_batch(prompts: List[str]) -> Dict[str, Any]:
                 meta = { 'ok': bool(en or zh or es), 'path': 'json_group', 'hash': h }
                 r = { 'en': en, 'zh': zh, 'es': es, 'meta': meta }
                 _CACHE[h] = r
-                if _PERSIST_ENABLED and en:
+                # Persist only when Chinese summary looks valid; otherwise avoid persisting poor zh
+                if _PERSIST_ENABLED and _is_good_zh(zh, en):
                     _PERSIST_CACHE[h] = { 'en': en, 'zh': zh, 'es': es }
                 results[idx] = r
         # Process misses in chunks
@@ -594,8 +644,23 @@ if __name__ == "__main__":
         if ds.startswith('['):
             try:
                 arr = json.loads(ds)
-                if isinstance(arr,list):
-                    prompts = [str(x) for x in arr]
+                if isinstance(arr, list):
+                    # If tri_worker sent base64-wrapped prompts, decode them into strings
+                    try:
+                        import base64
+                        if all(isinstance(x, dict) and 'b64' in x for x in arr):
+                            prompts = []
+                            for x in arr:
+                                try:
+                                    b64 = x.get('b64','')
+                                    decoded = base64.b64decode(b64).decode('utf-8', 'replace')
+                                    prompts.append(decoded)
+                                except Exception:
+                                    prompts.append('')
+                        else:
+                            prompts = [str(x) for x in arr]
+                    except Exception:
+                        prompts = [str(x) for x in arr]
                 else:
                     prompts = []
             except Exception:

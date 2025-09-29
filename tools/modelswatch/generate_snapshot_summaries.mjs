@@ -258,7 +258,9 @@ async function main(){
           triEnv.TRI_GROUP_JSON_SIZE = process.env.TRI_GROUP_JSON_SIZE || autoGroup;
           triEnv.TRI_BATCH_CONCURRENCY = process.env.TRI_BATCH_CONCURRENCY || autoConc;
           // Use speed mode for daily snapshot generation to avoid expensive rewrite/expand passes
-          triEnv.SPEED_MODE = process.env.SPEED_MODE || '1';
+          // Respect explicit SPEED_MODE set in environment (e.g., GitHub repository variables).
+          // If undefined, fall back to '1' to preserve previous default behavior.
+          triEnv.SPEED_MODE = (typeof process.env.SPEED_MODE !== 'undefined') ? process.env.SPEED_MODE : '1';
           // Persist cache to speed up future runs
           triEnv.TRI_CACHE_FILE = process.env.TRI_CACHE_FILE || path.join(DATA_DIR, 'tri_cache.json');
           triEnv.TRI_CACHE_PERSIST = process.env.TRI_CACHE_PERSIST || '1';
@@ -308,7 +310,7 @@ async function main(){
             // Retry once with smaller group size and modest concurrency to reduce per-batch latency
             console.warn('[snapshot-summaries] initial tri_summarizer batch killed by timeout; retrying with smaller groups');
             usedRetry = true;
-            const retryOverrides = { TRI_GROUP_JSON_SIZE: '1', TRI_BATCH_CONCURRENCY: (process.env.TRI_BATCH_CONCURRENCY || '2').toString(), SPEED_MODE: triEnv.SPEED_MODE || '1' };
+            const retryOverrides = { TRI_GROUP_JSON_SIZE: '1', TRI_BATCH_CONCURRENCY: (process.env.TRI_BATCH_CONCURRENCY || '2').toString(), SPEED_MODE: (typeof triEnv.SPEED_MODE !== 'undefined' ? triEnv.SPEED_MODE : '1') };
             const second = await runBatchChild(retryOverrides);
             if(second.ok && second.parsed){ parsed = second.parsed; }
           }
