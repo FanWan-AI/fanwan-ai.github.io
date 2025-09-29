@@ -405,8 +405,34 @@ async function main(){
   const quotaHF = buildQuotaFromCorpus(ch, NHF, knownCaps);
 
   // Diverse selection per source
-  const gTop = selectDiverse(cg, NGH, { ...recent, quota:{...quotaGH}, alpha: ALPHA, cooldownDays: COOLDOWN, knownCaps });
-  const hTop = selectDiverse(ch, NHF, { ...recent, quota:{...quotaHF}, alpha: ALPHA, cooldownDays: COOLDOWN, knownCaps });
+  // Prefer items that already have bilingual summaries (weekly snapshots / summary_cache)
+  const REQUIRE_BILINGUAL = /^(1|true|yes|on)$/i.test(process.env.MODELSWATCH_DAILY_REQUIRE_BILINGUAL || '1');
+  function hasBilingual(it){
+    try{
+      if(it && (it.summary_en && it.summary_zh)) return true;
+      // also check sidecar globals populated earlier
+      const snapArr = (it.source === 'hf' ? (globalThis.__SNAP_SUMMARIES_HF || []) : (globalThis.__SNAP_SUMMARIES_GH || []));
+      const s = snapArr.find(x=> x && x.id === it.id);
+      if(s && s.summary_en && s.summary_zh) return true;
+    }catch(e){}
+    return false;
+  }
+
+  // helper to try filling from bilingual pool first, then fallback to general pool
+  function selectPreferBilingual(allItems, N, opts){
+    if(!REQUIRE_BILINGUAL) return selectDiverse(allItems, N, opts);
+    const bilingualPool = allItems.filter(hasBilingual);
+    const picked = selectDiverse(bilingualPool, N, opts);
+    if(picked.length >= N) return picked;
+    // fill remaining from the remaining items excluding already picked ids
+    const pickedIds = new Set(picked.map(p=>p.id));
+    const remainingPool = allItems.filter(it=> !pickedIds.has(it.id));
+    const fill = selectDiverse(remainingPool, N - picked.length, opts);
+    return [...picked, ...fill];
+  }
+
+  const gTop = selectPreferBilingual(cg, NGH, { ...recent, quota:{...quotaGH}, alpha: ALPHA, cooldownDays: COOLDOWN, knownCaps });
+  const hTop = selectPreferBilingual(ch, NHF, { ...recent, quota:{...quotaHF}, alpha: ALPHA, cooldownDays: COOLDOWN, knownCaps });
   info(`[daily] github candidates=${cg.length}, pick=${gTop.length}; hf candidates=${ch.length}, pick=${hTop.length}`);
   // Summarize with DeepSeek when available; limit concurrency to 3
   const gsum = await mapLimit(gTop, SUMMARY_CONCURRENCY, async (it)=> {
