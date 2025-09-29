@@ -68,37 +68,12 @@ function buildContext(){
 const weeklyDiagnostics = { attempts:0, success:0, last_status:0, last_body_excerpt:'', retries:0 };
 
 async function callLLM(prompt, lang){
-  if(!API_KEY){ return { text: fallbackText(lang, 'no_api_key') }; }
-  const payload = JSON.stringify({
-    model: MODEL,
-    messages: [
-      { role: 'system', content: 'You are an analyst producing concise factual weekly summaries about open-source AI model trends.' },
-      { role: 'user', content: prompt }
-    ],
-    temperature: 0.5,
-    max_tokens: 400
-  });
-  const url = `${BASE_URL}/chat/completions`;
-  for(let attempt=0; attempt<3; attempt++){
-    weeklyDiagnostics.attempts++;
-    const result = await new Promise(resolve=>{
-      const req = https.request(url,{method:'POST',headers:{'Content-Type':'application/json','Accept':'application/json','User-Agent':'modelswatch-weekly/1.0','Authorization':`Bearer ${API_KEY}`}},res=>{
-        let data=''; res.on('data',d=>data+=d); res.on('end',()=>{
-          weeklyDiagnostics.last_status = res.statusCode||0;
-          weeklyDiagnostics.last_body_excerpt = (data||'').slice(0,200);
-          try { const j=JSON.parse(data||'{}'); const text=j.choices?.[0]?.message?.content?.trim(); if(text){ weeklyDiagnostics.success++; return resolve(text); } } catch{}
-          resolve(null);
-        });
-      });
-      req.on('error',()=>resolve(null));
-      req.setTimeout(CONN_TIMEOUT,()=>{ req.destroy(); resolve(null); });
-      req.write(payload); req.end();
-    });
-    if(result){ return { text: result }; }
-    weeklyDiagnostics.retries++;
-    await new Promise(r=>setTimeout(r, 400*(attempt+1)));
-  }
-  return { text: fallbackText(lang,'timeout') };
+  // Weekly overview LLM calls are intentionally disabled; return an empty placeholder
+  // This avoids timeouts and external dependencies. If you want the weekly overview,
+  // re-enable API_KEY and logic above.
+  weeklyDiagnostics.attempts++;
+  weeklyDiagnostics.last_status = 0;
+  return { text: fallbackText(lang,'disabled') };
 }
 
 function fallbackText(lang, reason){

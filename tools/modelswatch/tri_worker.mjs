@@ -56,14 +56,16 @@ async function main(){
   console.log('[tri_worker] starting');
   const pending = readJSON(PENDING_FILE) || [];
   if(!Array.isArray(pending) || pending.length===0){ console.log('[tri_worker] no pending items'); return; }
-  // cap
+  // cap (can be disabled via PROCESS_ALL_PENDING=1 to process everything in one run)
   const MAX_NEW = Number(process.env.SNAPSHOT_MAX_NEW||'40') || 40;
+  const PROCESS_ALL = ['1','true','yes','on'].includes((process.env.PROCESS_ALL_PENDING||'0').toLowerCase());
   // Start with pending list but remove those already present in tri_cache
   const triCacheExisting = readJSON(TRI_CACHE_FILE) || {};
   const pendingAll = Array.isArray(pending) ? pending.slice() : [];
   const uniquePending = Array.from(new Set(pendingAll));
   // Select up to MAX_NEW hashes that are not already in triCacheExisting
-  const toProcess = uniquePending.filter(h => !(triCacheExisting && triCacheExisting[h])).slice(0, MAX_NEW);
+  let toProcess = uniquePending.filter(h => !(triCacheExisting && triCacheExisting[h]));
+  if(!PROCESS_ALL) toProcess = toProcess.slice(0, MAX_NEW);
 
   // load candidate pool (corpus & snapshots)
   const corpusGH = (readJSON(path.join(DATA_DIR,'corpus.github.json'))?.items) || [];
@@ -186,6 +188,28 @@ async function main(){
     }
     writeJSON(TRI_CACHE_FILE, triCache);
     console.log('[tri_worker] updated tri_cache with', results.length, 'entries');
+    // Optionally refresh snapshot sidecars so frontend can pick up tri_cache changes
+    try{
+  const DO_REFRESH = ['1','true','yes','on'].includes((process.env.POST_REFRESH_SNAPSHOTS||'0').toLowerCase());
+  const AUTO_COMMIT = ['1','true','yes','on'].includes((process.env.TRI_AUTO_COMMIT||'0').toLowerCase());
+      if(DO_REFRESH){
+        console.log('[tri_worker] POST_REFRESH_SNAPSHOTS=on -> regenerating snapshot summaries and coverage');
+        // invoke the Node scripts used in weekly/daily to regenerate hf/gh summaries and coverage
+        try{ require('child_process').execSync('node tools/modelswatch/summaries_coverage.mjs || true', { stdio: 'inherit' }); }catch(e){}
+        try{ require('child_process').execSync('node tools/modelswatch/generate_snapshot_summaries.mjs || true', { stdio: 'inherit' }); }catch(e){}
+        try{ require('child_process').execSync('node tools/modelswatch/summaries_coverage.mjs || true', { stdio: 'inherit' }); }catch(e){}
+        if(AUTO_COMMIT){
+          try{
+            console.log('[tri_worker] TRI_AUTO_COMMIT=on -> staging and committing updated modelswatch artifacts');
+            require('child_process').execSync('git config user.name "tri_worker"', { stdio: 'inherit' });
+            require('child_process').execSync('git config user.email "tri_worker@local"', { stdio: 'inherit' });
+            require('child_process').execSync('git add -A data/ai/modelswatch || true', { stdio: 'inherit' });
+            require('child_process').execSync('git commit -m "chore(modelswatch): tri_worker refresh snapshots" || true', { stdio: 'inherit' });
+            require('child_process').execSync('git push origin HEAD:main || true', { stdio: 'inherit' });
+          }catch(e){ console.warn('[tri_worker] auto commit failed', e.message||e); }
+        }
+      }
+    }catch(e){ console.warn('[tri_worker] post-refresh failed', e.message||e); }
   } else {
     console.warn('[tri_worker] batch failed; no cache updates');
   }
