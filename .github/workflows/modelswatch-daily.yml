@@ -79,16 +79,51 @@ jobs:
           # Summary coverage JSON
           node tools/modelswatch/summaries_coverage.mjs || echo "summaries coverage failed"
           node tools/modelswatch/daily.mjs
-      - name: Create or update PR with generated daily artifacts
-        uses: peter-evans/create-pull-request@v5
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "chore(modelswatch): daily picks"
-          title: "chore(modelswatch): daily picks (automated)"
-          body: |
-            This PR was opened automatically by the ModelWatch daily workflow.
-            It contains generated daily picks and snapshot summary artifacts for review.
-          base: main
-          branch: modelswatch/daily-${{ github.run_id }}
-          labels: automated, modelswatch
-          assignees: ''
+      - name: Commit and push changes directly to main
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          # Check whether the target branch 'main' has branch protection enabled.
+          # Best-effort using the GitHub REST API. If protected, exit with a clear message.
+          echo "[workflow] Checking branch protection for 'main'..."
+          PROT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.luke-cage-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/main/protection") || true
+          if [ "$PROT_STATUS" = "200" ]; then
+            echo "Branch 'main' appears to be protected (HTTP 200 from protection endpoint)."
+            echo "This workflow is configured to push directly to 'main', but branch protection will block direct pushes."
+            echo "Options: 1) disable protection for automation commits, 2) allow GITHUB_TOKEN to bypass (not possible), 3) allow PR-based flow."
+            echo "Failing early to avoid confusing push errors. If you want me to fall back to creating a PR instead, tell me and I'll switch back."
+            exit 1
+          elif [ "$PROT_STATUS" = "404" ]; then
+            echo "Branch protection not detected for 'main' (HTTP 404). Proceeding with commit/push."
+          else
+            echo "Could not determine branch protection status (HTTP $PROT_STATUS). Proceeding but push may fail if protection exists."
+          fi
+          # Stage generated artifacts
+          git add data/ai/modelswatch/daily_*.json data/ai/modelswatch/daily/*.json data/ai/modelswatch/daily/dates.json data/ai/modelswatch/state.json || true
+          git add data/ai/modelswatch/snapshots/** data/ai/modelswatch/summary_cache.json data/ai/modelswatch/summaries_coverage.json || true
+          git add data/ai/modelswatch/tri_cache.json data/ai/modelswatch/summary_cache.json || true
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "chore(modelswatch): daily picks"
+          # Ensure we have the latest remote main
+          git fetch origin main || true
+          # Try a rebase first (preserve linear history). If rebase fails, abort and try a merge fallback.
+          if git rebase --autostash origin/main; then
+            echo "Rebase succeeded; pushing to origin/main"
+            git push origin HEAD:main
+          else
+            echo "Rebase failed; aborting rebase and attempting merge fallback"
+            git rebase --abort || true
+            if git merge --no-edit origin/main; then
+              echo "Merge succeeded; pushing to origin/main"
+              if ! git push origin HEAD:main; then
+                echo "Push failed; attempting force-with-lease"
+                git push --force-with-lease origin HEAD:main
+              fi
+            else
+              echo "Merge also failed; leaving changes for manual resolution and failing the job"
+              exit 1
+            fi
+          fi
