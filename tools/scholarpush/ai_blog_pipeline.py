@@ -8,7 +8,7 @@ from dateutil import tz as dttz
 from zoneinfo import ZoneInfo
 from markdown2 import markdown as md2html
 from bs4 import BeautifulSoup as BS
-from ai_llm import chat_once
+from tools.ai_llm import chat_once
 
 # ===== 基础路径 =====
 SITE_BASE = ""  # 如你用子路径，可以填 "/wanfan.github.io"
