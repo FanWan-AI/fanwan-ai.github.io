@@ -16,35 +16,69 @@ const DEFAULT_LATEST_WINDOW_DAYS = 45;
 const TASK_DOMAIN_TAGS = {
   agent: ['Agent', 'Tool Use', 'LLM'],
   asr: ['Speech', 'ASR', 'Recognition'],
+  avsr: ['Speech', 'Multimodal', 'AVSR'],
   'code-generation': ['LLM', 'Code Generation', 'Developer Tools'],
   compression: ['Optimization', 'Model Compression', 'Efficiency'],
+  'contrastive-learning': ['Representation Learning', 'Contrastive', 'Retrieval'],
+  'data-synthesis': ['NLP', 'Data Augmentation', 'Synthesis'],
+  dialog: ['NLP', 'Dialogue', 'Conversational AI'],
   diffusion: ['Multimodal', 'Generative Models', 'Diffusion'],
+  gnn: ['Graph', 'GNN', 'Representation Learning'],
   'image-classification': ['Computer Vision', 'Classification', 'Perception'],
   'instruction-tuning': ['LLM', 'Alignment', 'Instruction Tuning'],
+  'knowledge-graph': ['Knowledge Graph', 'Graph', 'Reasoning'],
   'language-modeling': ['LLM', 'Pretraining', 'Foundation Model'],
+  'medical-imaging': ['Computer Vision', 'Medical Imaging', 'Healthcare'],
+  multilingual: ['NLP', 'Multilingual', 'Cross-Lingual'],
+  'multimodal-vision': ['Multimodal', 'Vision-Language', 'VQA'],
   multimodal: ['Multimodal', 'Vision-Language', 'LLM'],
+  peft: ['LLM', 'Fine-Tuning', 'Efficiency'],
   nerf: ['3D', 'Computer Vision', 'NeRF'],
+  'pretraining-finetuning': ['LLM', 'Pretraining', 'NLP'],
+  recommendation: ['Recommendation', 'Personalization', 'Ranking'],
   'object-detection': ['Computer Vision', 'Detection', 'Perception'],
+  'speaker-representation': ['Speech', 'Speaker Recognition', 'Audio'],
   segmentation: ['Computer Vision', 'Segmentation', 'Perception'],
+  'super-resolution': ['Computer Vision', 'Super-Resolution', 'Enhancement'],
   'text-to-video': ['Multimodal', 'Generative Models', 'Video'],
-  tts: ['Speech', 'TTS', 'Synthesis']
+  tts: ['Speech', 'TTS', 'Synthesis'],
+  'vector-search': ['Information Retrieval', 'Vector Search', 'ANN'],
+  'video-understanding': ['Computer Vision', 'Video', 'Action Recognition'],
+  slu: ['Speech', 'SLU', 'Dialogue']
 };
 
 const SLUG_TO_TASK_KEY = {
   agent: null,
   asr: 'asr',
+  avsr: 'avsr',
   'code-generation': 'code_generation',
   compression: 'model_compression',
+  'contrastive-learning': 'contrastive_learning',
+  'data-synthesis': 'nlp_data_synthesis',
+  dialog: 'dialogue_system_optimization',
   diffusion: 'text_to_image',
+  gnn: 'gnn',
   'image-classification': 'image_classification',
   'instruction-tuning': 'instruction_tuning',
+  'knowledge-graph': 'kg_reasoning',
   'language-modeling': 'llm_pretraining',
+  'medical-imaging': 'medical_image_processing',
+  multilingual: 'multilingual_processing',
+  'multimodal-vision': 'vqa',
   multimodal: 'multimodal_understanding_generation',
+  peft: 'lora_adapter',
   nerf: 'nerf',
+  'pretraining-finetuning': 'llm_pretraining',
+  recommendation: 'general_recommendation',
   'object-detection': 'object_detection',
   segmentation: 'semantic_segmentation',
+  'speaker-representation': null,
+  'super-resolution': 'super_resolution',
   'text-to-video': 'text_to_video',
-  tts: 'tts'
+  tts: 'tts',
+  'vector-search': 'vector_retrieval',
+  'video-understanding': null,
+  slu: 'slu'
 };
 
 const DISPLAY_OVERRIDES = {
@@ -52,6 +86,21 @@ const DISPLAY_OVERRIDES = {
     zh: 'Agent（智能体）',
     en: 'LLM Agent Systems',
     es: 'Sistemas de agentes LLM'
+  },
+  'speaker-representation': {
+    zh: '说话人表示（Speaker Embedding）',
+    en: 'Speaker Representation & Diarization',
+    es: 'Representación del Hablante y Diarización'
+  },
+  'vector-search': {
+    zh: '向量检索（ANN）',
+    en: 'Vector Search (Approximate Nearest Neighbour)',
+    es: 'Búsqueda Vectorial (Vecino Más Cercano Aproximado)'
+  },
+  'video-understanding': {
+    zh: '视频理解与动作识别',
+    en: 'Video Understanding & Action Recognition',
+    es: 'Comprensión de Video y Reconocimiento de Acciones'
   }
 };
 
@@ -78,6 +127,8 @@ const PHASE_DEFAULT_RATIONALE = {
   frontier: '代表当前最前沿的探索方向。',
   survey: '系统总结该领域的研究脉络与挑战。'
 };
+
+const REFRESH_MODE = process.argv.includes('--refresh');
 
 async function loadJson(filePath) {
   const raw = await fs.readFile(filePath, 'utf8');
@@ -126,9 +177,10 @@ function truncateSentences(text, maxSentences = 2) {
   if (!text) return '';
   const normalized = text.replace(/\s+/g, ' ').trim();
   if (!normalized) return '';
-  const sentenceEndings = /(?<=[。！？!?\.])\s*/g;
-  const parts = normalized.split(sentenceEndings).filter(Boolean);
-  const selected = parts.slice(0, maxSentences);
+  const sentencePattern = /[^。！？!?]*[。！？!?]|[^。！？!?]*\.(?=\s|$)|[^。！？!?]+$/g;
+  const matches = normalized.match(sentencePattern) || [normalized];
+  const sentences = matches.map((segment) => segment.trim()).filter(Boolean);
+  const selected = sentences.slice(0, maxSentences);
   return selected.join(' ').trim();
 }
 
@@ -144,6 +196,35 @@ function buildOverview(slug, core) {
     zh: truncateSentences(basis.summary_zh || basis.summary_en || ''),
     en: truncateSentences(basis.summary_en || basis.summary_zh || ''),
     es: truncateSentences(basis.summary_es || basis.summary_en || '')
+  };
+}
+
+function normalizeItemsForRefresh(slug, items) {
+  if (!Array.isArray(items)) return [];
+  const domainTags = TASK_DOMAIN_TAGS[slug] ? [...TASK_DOMAIN_TAGS[slug]] : null;
+  return items.map((item) => ({
+    ...item,
+    tags: domainTags ? [...domainTags] : Array.isArray(item.tags) && item.tags.length ? item.tags : [toTitleCase(slug)]
+  }));
+}
+
+function buildOverviewFromItems(slug, raw, items) {
+  if (OVERVIEW_OVERRIDES[slug]) {
+    return OVERVIEW_OVERRIDES[slug];
+  }
+  const source = items.find((entry) => entry.phase === 'origin') || items[0];
+  if (!source) {
+    return {
+      zh: truncateSentences(raw?.overview?.zh || raw?.overview?.en || ''),
+      en: truncateSentences(raw?.overview?.en || raw?.overview?.zh || ''),
+      es: truncateSentences(raw?.overview?.es || raw?.overview?.en || '')
+    };
+  }
+  const summary = source.summary_i18n || {};
+  return {
+    zh: truncateSentences(summary.zh || summary.en || ''),
+    en: truncateSentences(summary.en || summary.zh || ''),
+    es: truncateSentences(summary.es || summary.en || '')
   };
 }
 
@@ -304,10 +385,32 @@ function rebuildTaskPayload(slug, raw, displayMap) {
 
 async function migrateTaskFile(filePath, displayMap) {
   const raw = await loadJson(filePath);
+  const slug = raw.task || raw.slug || path.basename(filePath, '.json');
+
   if (Array.isArray(raw.items)) {
-    return false;
+    if (!REFRESH_MODE) {
+      return false;
+    }
+    const items = normalizeItemsForRefresh(slug, raw.items);
+    const overview = buildOverviewFromItems(slug, raw, items);
+    const display = ensureDisplay(slug, displayMap);
+  const lineageHint = raw.lineage_graph_hint ?? (items.some((entry) => ['bridge', 'frontier'].includes(entry.phase)) || false);
+    const payload = {
+      ...raw,
+      task: slug,
+      display,
+      overview,
+      lineage_graph_hint: Boolean(lineageHint),
+      updated_at: raw.updated_at || null,
+      items,
+      latest_window_days: raw.latest_window_days ?? DEFAULT_LATEST_WINDOW_DAYS
+    };
+    delete payload.slug;
+    const serializedRefresh = `${JSON.stringify(payload, null, 2)}\n`;
+    await fs.writeFile(filePath, serializedRefresh, 'utf8');
+    return true;
   }
-  const slug = raw.slug || path.basename(filePath, '.json');
+
   const payload = rebuildTaskPayload(slug, raw, displayMap);
   const serialized = `${JSON.stringify(payload, null, 2)}\n`;
   await fs.writeFile(filePath, serialized, 'utf8');
