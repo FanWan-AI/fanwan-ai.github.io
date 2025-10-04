@@ -641,6 +641,28 @@ with open(LATEST_PATH, 'w', encoding='utf-8') as f:
 
 print(f"[ai-radar] latest.json generated: {out['count']} items -> {LATEST_PATH}")
 
+def _merge_item(existing: dict, fresh: dict) -> None:
+    if existing is fresh:
+        return
+    for key, value in (fresh or {}).items():
+        if key in ('title_i18n', 'excerpt_i18n'):
+            if not isinstance(value, dict):
+                continue
+            dest = existing.setdefault(key, {})
+            if not isinstance(dest, dict):
+                existing[key] = value
+                continue
+            for lang, text in value.items():
+                if text or lang not in dest:
+                    dest[lang] = text
+            continue
+        if isinstance(value, dict) and isinstance(existing.get(key), dict):
+            dest = existing.setdefault(key, {})
+            dest.update(value)
+            continue
+        if value is not None:
+            existing[key] = value
+
 # Helper to compute Beijing date string for an ISO8601 timestamp
 def _bj_date_str(iso: str) -> str:
     try:
@@ -672,7 +694,7 @@ if os.path.exists(DATES_INDEX):
         dates = []
 
 for d, arr in by_date.items():
-    # Append-only: merge with existing daily file if present, dedupe by id/url, preserve existing order
+    # Merge-or-append with existing daily file if present; refresh metadata/translations when re-seen
     daily_path = os.path.join(OUT_DIR, f'{d}.json')
     existing_items = []
     if os.path.exists(daily_path):
@@ -682,20 +704,39 @@ for d, arr in by_date.items():
                 existing_items = prev.get('items') or []
         except Exception:
             existing_items = []
-    # Build sets for fast dedup
-    seen_ids = {it.get('id') for it in existing_items if it.get('id')}
-    seen_urls = {it.get('url') for it in existing_items if it.get('url')}
-    # Keep only truly new items for that Beijing date
+    by_id = {}
+    by_url = {}
+    for idx, existing in enumerate(existing_items):
+        key_id = existing.get('id')
+        key_url = existing.get('url')
+        if key_id:
+            by_id[key_id] = idx
+        if key_url:
+            by_url[key_url] = idx
+
     new_unique = []
+    refreshed = 0
     for it in arr:
-        i = it.get('id'); u = it.get('url')
-        if (i and i in seen_ids) or (u and u in seen_urls):
+        idx = None
+        key_id = it.get('id')
+        key_url = it.get('url')
+        if key_id and key_id in by_id:
+            idx = by_id[key_id]
+        elif key_url and key_url in by_url:
+            idx = by_url[key_url]
+        if idx is not None:
+            _merge_item(existing_items[idx], it)
+            refreshed += 1
             continue
-        seen_ids.add(i)
-        seen_urls.add(u)
+        existing_items.append(it)
+        idx = len(existing_items) - 1
+        if key_id:
+            by_id[key_id] = idx
+        if key_url:
+            by_url[key_url] = idx
         new_unique.append(it)
-    # Append new items to the end (do not reorder existing ones)
-    combined = existing_items + new_unique
+
+    combined = existing_items
     daily_out = {
         'generated_at': now.isoformat().replace('+00:00','Z'),
         'window_hours': WINDOW_HOURS,
@@ -704,7 +745,10 @@ for d, arr in by_date.items():
     }
     with open(daily_path, 'w', encoding='utf-8') as f:
         json.dump(daily_out, f, ensure_ascii=False, indent=2)
-    print(f"[ai-radar] daily archive updated (append-only): {daily_path} (+{len(new_unique)} new, total {daily_out['count']})")
+    msg_bits = [f"+{len(new_unique)} new"]
+    if refreshed:
+        msg_bits.append(f"{refreshed} refreshed")
+    print(f"[ai-radar] daily archive updated: {daily_path} ({', '.join(msg_bits)}, total {daily_out['count']})")
     if d in dates:
         dates.remove(d)
     dates.insert(0, d)
