@@ -102,8 +102,8 @@ const translations = {
   module_ai_finance_title: 'AI 理财助手',
   module_ai_finance_desc: '让AI为您的财富增值',
   // New modules
-  module_ai_trends_title: 'AI 风向标',
-  module_ai_trends_desc: '全球AI热点实时同步，洞察技术浪潮下的每一次脉动。',
+  module_ai_trends_title: 'AI 前沿要闻',
+  module_ai_trends_desc: '精选全球AI领域最重要、最前沿的动态与资讯。',
   module_model_watch_title: 'AI 模型雷达',
   module_model_watch_desc: '把握AI模型发展的脉搏，追踪从开源到应用的最新动态与轨迹。',
   module_news_radar_desc: '多源聚合与主题热度追踪，分钟级更新。',
@@ -379,8 +379,8 @@ const translations = {
   module_ai_finance_title: 'AI Finance Mentor',
   module_ai_finance_desc: 'Empower Your Wealth with AI.',
   // New modules
-  module_ai_trends_title: 'AI Trends',
-  module_ai_trends_desc: 'Real‑time global AI hotspots—track the pulse of every wave of innovation.',
+  module_ai_trends_title: 'AI Frontier Briefing',
+  module_ai_trends_desc: 'Curated selection of the most critical and cutting-edge developments in AI.',
   module_model_watch_title: 'AI Model Radar',
   module_model_watch_desc: 'Capture the pulse of AI development. Track the journey of models and tools from open source to production.',
   module_news_radar_desc: 'Multi-source aggregation with hot-topic tracking, minute-level updates.',
@@ -646,8 +646,8 @@ const translations = {
   module_ai_finance_title: 'Asesor Financiero con IA',
   module_ai_finance_desc: 'Potencie Su Patrimonio con IA.',
   // New modules
-  module_ai_trends_title: 'Tendencias IA',
-  module_ai_trends_desc: 'Calor global de la IA en tiempo real: toma el pulso a cada ola de innovación.',
+  module_ai_trends_title: 'Resumen de la Vanguardia IA',
+  module_ai_trends_desc: 'Selección de los desarrollos más cruciales y avanzados en Inteligencia Artificial.',
   module_model_watch_title: 'Radar de Modelos de IA',
   module_model_watch_desc: 'Capta el pulso del desarrollo de IA. Rastrea la trayectoria de modelos y herramientas, desde código abierto hasta producción.',
   module_news_radar_desc: 'Agregación multi‑fuente y seguimiento de temas en tendencia.',
