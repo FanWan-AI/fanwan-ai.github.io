@@ -32,6 +32,9 @@ const translations = {
   module_scholarpush_desc: '每日AI顶会/期刊论文精粹，一分钟掌握学术前沿。',
   module_scholarpush_title: '学术快报',
   module_scholarpush_name: '🧠 学术快报 · ScholarPush · ImpulsoAcadémico',
+  module_paperhub_title: 'AI Paper Hub',
+  module_paperhub_desc: '今日精选 × 发展脉络：从最新突破到长期演化，一站式掌握 AI 研究。',
+  module_paperhub_name: '🧠 AI Paper Hub · 学术快报 2.0 · Centro de Papers IA',
   
   module_ai_teacher_desc: '孩子的专属AI导师，适配个性化学习路径，答疑解惑无所不能。',
   module_ai_teacher_title: 'AI 教师',
@@ -250,6 +253,9 @@ const translations = {
   module_scholarpush_desc: 'Daily highlights from top AI venues—grasp the frontier in a minute.',
   module_scholarpush_title: 'ScholarPush',
   module_scholarpush_name: '🧠 学术快报 · ScholarPush · ImpulsoAcadémico',
+  module_paperhub_title: 'AI Paper Hub',
+  module_paperhub_desc: 'Highlights × Milestones: daily breakthroughs and long-term evolution in one place.',
+  module_paperhub_name: '🧠 AI Paper Hub · ScholarPush 2.0 · AI Paper Center',
   
   module_ai_teacher_desc: 'A personal AI tutor for your child—tailored learning paths and instant, patient answers.',
   module_ai_teacher_title: 'AI Teacher',
@@ -458,6 +464,9 @@ const translations = {
   module_scholarpush_desc: 'Lo esencial de los congresos y revistas de IA, cada día en un minuto.',
   module_scholarpush_title: 'ImpulsoAcadémico',
   module_scholarpush_name: '🧠 学术快报 · ScholarPush · ImpulsoAcadémico',
+  module_paperhub_title: 'AI Paper Hub',
+  module_paperhub_desc: 'Destacados × hitos: síntesis diaria y evolución a largo plazo en un mismo lugar.',
+  module_paperhub_name: '🧠 AI Paper Hub · ScholarPush 2.0 · Centro de Papers IA',
   
   module_ai_teacher_desc: 'El tutor de IA personal de tus hijos: rutas de aprendizaje a medida y respuestas al instante.',
   module_ai_teacher_title: 'Maestro IA',
