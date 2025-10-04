@@ -1,6 +1,10 @@
 import json, os, re, sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
+
+import requests
+from bs4 import BeautifulSoup
 
 # Ensure project root on sys.path for importing tools.ai_llm and to find .env
 _HERE = Path(__file__).resolve()
@@ -15,20 +19,21 @@ else:
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Load .env if present (simple KEY=VAL parser)
-def _load_env_dotenv(p: Path):
-    if not p.exists():
+def _load_env_dotenv(path: Path) -> None:
+    if not path.exists():
         return
     try:
-        for line in p.read_text(encoding='utf-8').splitlines():
-            s = line.strip()
+        for raw in path.read_text(encoding='utf-8').splitlines():
+            s = raw.strip()
             if not s or s.startswith('#'):
                 continue
-            if '=' in s:
-                k, v = s.split('=', 1)
-                k = k.strip(); v = v.strip().strip('"').strip("'")
-                if k:
-                    os.environ.setdefault(k, v)
+            if '=' not in s:
+                continue
+            k, v = s.split('=', 1)
+            k = k.strip()
+            v = v.strip().strip('"').strip("'")
+            if k and not os.getenv(k):
+                os.environ.setdefault(k, v)
     except Exception:
         pass
 
@@ -109,10 +114,186 @@ def _clean_hn_excerpt(text: str) -> str:
     s = re.sub(r"\s{2,}", ' ', s).strip()
     return s
 
+FETCH_PREVIEWS = os.getenv('RADAR_FETCH_PREVIEW', '1').lower() in ('1', 'true', 'yes')
+PREVIEW_MAX = int((os.getenv('RADAR_PREVIEW_MAX', '') or '12').split('#')[0] or 12)
+PREVIEW_MIN_LEN = int((os.getenv('RADAR_PREVIEW_MIN_LEN', '') or '60').split('#')[0] or 60)
+PREVIEW_TIMEOUT = float(os.getenv('RADAR_PREVIEW_TIMEOUT', '6') or 6)
+PREVIEW_DENY = tuple(filter(None, [h.strip().lower() for h in os.getenv('RADAR_PREVIEW_DENY', 'youtube.com,youtu.be,apps.apple.com,github.com,twitter.com,x.com,instagram.com').split(',')]))
+PREVIEW_UA = os.getenv('RADAR_PREVIEW_UA', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36')
+
+_preview_session = None
+_preview_cache = {}
+
+def _preview_session_instance():
+    global _preview_session
+    if _preview_session is None:
+        sess = requests.Session()
+        sess.headers.update({
+            'User-Agent': PREVIEW_UA,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8'
+        })
+        _preview_session = sess
+    return _preview_session
+
+def _normalize_preview(text: str) -> str:
+    if not text:
+        return ''
+    cleaned = re.sub(r'\s+', ' ', str(text)).strip()
+    return cleaned[:480]
+
+def _extract_preview_from_html(html: str) -> str:
+    if not html:
+        return ''
+    soup = BeautifulSoup(html, 'html.parser')
+    candidates = []
+    meta_props = (
+        ('property', 'og:description'),
+        ('name', 'description'),
+        ('name', 'og:description'),
+        ('name', 'twitter:description'),
+        ('itemprop', 'description'),
+    )
+    for attr, value in meta_props:
+        tag = soup.find('meta', attrs={attr: value})
+        if tag and tag.get('content'):
+            candidates.append(tag['content'])
+    def _collect_from(node, limit=5):
+        if not node:
+            return
+        for p in node.find_all('p', limit=limit):
+            text = p.get_text(' ', strip=True)
+            if len(text) >= PREVIEW_MIN_LEN:
+                candidates.append(text)
+    _collect_from(soup.find('article'), limit=6)
+    _collect_from(soup.find('main'), limit=5)
+    if not candidates:
+        for p in soup.find_all('p', limit=6):
+            text = p.get_text(' ', strip=True)
+            if len(text) >= PREVIEW_MIN_LEN:
+                candidates.append(text)
+                break
+    for cand in candidates:
+        norm = _normalize_preview(cand)
+        if len(norm) >= PREVIEW_MIN_LEN:
+            return norm
+    if candidates:
+        return _normalize_preview(candidates[0])
+    return ''
+
+def _should_fetch_preview(it: dict) -> bool:
+    raw = (it.get('raw_excerpt') or '').strip()
+    if len(raw) >= PREVIEW_MIN_LEN:
+        return False
+    url = it.get('url') or ''
+    try:
+        host = (urlparse(url).hostname or '').lower()
+    except Exception:
+        host = ''
+    if any(block in host for block in PREVIEW_DENY):
+        return False
+    return bool(url)
+
+def _fetch_preview(it: dict) -> str:
+    url = it.get('url') or ''
+    if not url:
+        return ''
+    if url in _preview_cache:
+        return _preview_cache[url]
+    try:
+        sess = _preview_session_instance()
+        resp = sess.get(url, timeout=PREVIEW_TIMEOUT, allow_redirects=True)
+        ctype = resp.headers.get('Content-Type', '')
+        if resp.status_code >= 400 or ('text/html' not in ctype.lower() and 'application/xhtml+xml' not in ctype.lower()):
+            _preview_cache[url] = ''
+            return ''
+        text = _extract_preview_from_html(resp.text)
+        _preview_cache[url] = text
+        return text
+    except Exception as exc:
+        _preview_cache[url] = ''
+        print(f"[ai-radar] preview fetch failed: {url} ({exc})")
+        return ''
+
+def _strip_code_fence(text: str) -> str:
+    if not text:
+        return ''
+    t = text.strip()
+    if t.startswith('```') and t.endswith('```'):
+        t = re.sub(r'^```[a-zA-Z]*', '', t, count=1).strip()
+        if t.endswith('```'):
+            t = t[:-3]
+    return t.strip()
+
+def _summarize_with_llm(it: dict) -> dict:
+    if FAKE_TRANSLATE:
+        base = (it.get('title') or '').strip() or '测试摘要'
+        return {
+            'summary_en': f'[test-summary] {base}',
+            'summary_zh': f'（测试摘要）{base}'
+        }
+    if not DO_TRANSLATE or not chat_once:
+        return {}
+    title = (it.get('title') or '').strip()
+    url = it.get('url') or ''
+    known = (it.get('raw_excerpt') or '').strip()
+    site = ''
+    try:
+        site = (it.get('source', {}) or {}).get('site') or urlparse(url).netloc or ''
+    except Exception:
+        site = ''
+    payload = {
+        'title': title,
+        'source': site,
+        'url': url,
+        'published_at': it.get('published_at'),
+        'known_excerpt': known,
+    }
+    prompt = (
+        "你是一名专业的科技新闻编辑，需要为网站生成摘要。"
+        "请优先生成简体中文摘要，同时给出英文摘要。"
+        "如果能够访问链接，请综合文章内容；否则基于已有信息做出最合理的概括，但不要明确说明无法访问。"
+        "保持事实准确，避免捏造具体数字。"
+        "\n输出严格 JSON（不使用代码块、不添加多余文本）：\n"
+        "{\"summary_zh\": \"中文摘要，2-3 句\", \"summary_en\": \"English summary, 1-2 sentences\"}\n\n"
+        f"文章信息：{json.dumps(payload, ensure_ascii=False)}"
+    )
+    try:
+        raw = chat_once(prompt, system='You generate concise, high-accuracy news summaries.', temperature=0.15, max_tokens=SUMMARY_MAX_TOKENS, want_json=True)
+    except Exception as exc:
+        print(f"[ai-radar] summary LLM error for {url}: {exc}")
+        return {}
+    text = _strip_code_fence(raw)
+    try:
+        data = json.loads(text)
+    except Exception:
+        try:
+            data = json.loads(text.replace('\n', '').replace('\r', ''))
+        except Exception:
+            print(f"[ai-radar] failed to parse summary JSON: {raw[:180]}")
+            return {}
+    if not isinstance(data, dict):
+        return {}
+    return data
+
 # Clean excerpts and filter to AI stories
 for it in filtered:
     it['raw_excerpt'] = _clean_hn_excerpt(it.get('raw_excerpt') or '')
 filtered = [it for it in filtered if _is_ai_story(it)]
+
+if FETCH_PREVIEWS and filtered:
+    targets = [it for it in filtered if _should_fetch_preview(it)]
+    targets.sort(key=lambda x: x.get('published_at', ''), reverse=True)
+    fetched = 0
+    for it in targets:
+        if fetched >= PREVIEW_MAX:
+            break
+        preview = _fetch_preview(it)
+        if preview:
+            it['raw_excerpt'] = preview
+            fetched += 1
+    if fetched:
+        print(f"[ai-radar] enriched {fetched} items with preview summaries")
 
 # --- Optional i18n translation for Top K items to control cost ---
 TOP_TRANSLATE = (os.getenv('RADAR_TRANSLATE_TOP', '') or '').strip().lower()
@@ -130,6 +311,8 @@ DO_TRANSLATE = (
     os.getenv('RADAR_DO_TRANSLATE', '1').lower() in ('1','true','yes')
     and (FAKE_TRANSLATE or (bool(chat_once) and _HAS_ANY_LLM_KEY))
 )
+CAN_SUMMARIZE = FAKE_TRANSLATE or (bool(chat_once) and _HAS_ANY_LLM_KEY)
+
 
 def _int_env(name: str, default: int) -> int:
     """Parse integer env vars robustly: tolerate inline comments and non-numeric tails."""
@@ -142,11 +325,33 @@ def _int_env(name: str, default: int) -> int:
     except Exception:
         return int(default)
 
+SUMMARIZE_MISSING = os.getenv('RADAR_SUMMARIZE_MISSING', '1').lower() in ('1','true','yes')
+SUMMARY_LIMIT = _int_env('RADAR_SUMMARIZE_LIMIT', 16)
+SUMMARY_MAX_TOKENS = _int_env('RADAR_SUMMARIZE_MAX_TOKENS', 480)
+SUMMARY_TRIGGER_LEN = _int_env('RADAR_SUMMARY_TRIGGER_LEN', 48)
+
 def _looks_cjk(s: str) -> bool:
     try:
         return bool(re.search(r'[\u3400-\u9fff]', s or ''))
     except Exception:
         return False
+
+
+def _needs_summary(it: dict) -> bool:
+    base_excerpt = (it.get('raw_excerpt') or '').strip()
+    bundle = it.get('excerpt_i18n') or {}
+    zh = (bundle.get('zh') or '').strip()
+    en = (bundle.get('en') or '').strip()
+    if zh and len(zh) >= SUMMARY_TRIGGER_LEN:
+        return False
+    if base_excerpt and len(base_excerpt) >= SUMMARY_TRIGGER_LEN:
+        return False
+    if en and len(en) >= SUMMARY_TRIGGER_LEN:
+        return False
+    title = (it.get('title') or '').strip()
+    if _looks_cjk(title) or _looks_cjk(base_excerpt):
+        return False
+    return True
 
 def _translate_pair(text: str, src_lang: str, tgt_lang: str) -> str:
     if not DO_TRANSLATE:
@@ -375,6 +580,34 @@ elif filtered and not DO_TRANSLATE:
     if os.getenv('RADAR_DO_TRANSLATE','1').lower() not in ('1','true','yes'):
         reason = 'RADAR_DO_TRANSLATE disabled'
     print(f"[ai-radar] translation disabled: {reason}")
+
+# --- Summaries via LLM for items missing excerpts ---
+if SUMMARIZE_MISSING and CAN_SUMMARIZE and filtered and SUMMARY_LIMIT > 0:
+    summary_candidates = [it for it in filtered if _needs_summary(it)]
+    if summary_candidates:
+        summary_candidates.sort(key=lambda x: x.get('published_at', ''), reverse=True)
+        taken = 0
+        for it in summary_candidates:
+            if taken >= SUMMARY_LIMIT:
+                break
+            data = _summarize_with_llm(it)
+            if not data:
+                continue
+            zh = (data.get('summary_zh') or '').strip()
+            en = (data.get('summary_en') or '').strip()
+            bundle = it.setdefault('excerpt_i18n', {})
+            if zh:
+                bundle['zh'] = zh
+            if en:
+                bundle.setdefault('en', en)
+            if en and not (it.get('raw_excerpt') or '').strip():
+                it['raw_excerpt'] = en
+            if zh or en:
+                taken += 1
+        if taken:
+            print(f"[ai-radar] generated LLM summaries for {taken} items (limit {SUMMARY_LIMIT})")
+elif SUMMARIZE_MISSING and filtered and SUMMARY_LIMIT > 0 and not CAN_SUMMARIZE:
+    print("[ai-radar] summarization skipped: no LLM provider configured")
 
 # Ensure tri-language alignment without faking translations: only set base language
 for it in filtered:

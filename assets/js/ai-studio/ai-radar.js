@@ -126,6 +126,12 @@ async function renderAIRadar(containerId = 'ai-radar') {
     return (localStorage.getItem('lang')||document.documentElement.lang||'zh').toLowerCase();
   }
 
+  function tr(key, fallback=''){
+    const lang = currentLang();
+    const dict = window.translations || {};
+    return (dict[lang] && dict[lang][key]) ?? (dict.en && dict.en[key]) ?? fallback;
+  }
+
   async function loadDates(){
     try{ dates = await fetch('/data/ai/airadar/dates.json',{cache:'no-store'}).then(r=>r.json()); if(!Array.isArray(dates)) dates=[]; }
     catch{ dates=[]; }
@@ -221,15 +227,21 @@ async function renderAIRadar(containerId = 'ai-radar') {
   }
 
   async function filterItems(){
-    const q=(qEl?.value||'').trim().toLowerCase();
-    const src=(srcEl?.value||'').trim().toLowerCase();
-  const tag=(tagEl?.value||'').trim().toLowerCase();
+    const q = (qEl?.value||'').trim().toLowerCase();
+    const src = (srcEl?.value||'').trim().toLowerCase();
+    const tag = (tagEl?.value||'').trim().toLowerCase();
     // Choose source: global when searching, else current date payload
     let pool = items;
     if (q) { pool = await getAllItems(); }
     return pool.filter(it=>{
-      if (src){ const host = extractHost(it.url||''); if(host && !host.includes(src)) return false; }
-  if (tag){ const tags=(it.tags||[]).map(x=>String(x).toLowerCase()); if(!tags.includes(tag)) return false; }
+      if (src){
+        const host = extractHost(it.url||'');
+        if (host && !host.includes(src)) return false;
+      }
+      if (tag){
+        const tags = (it.tags||[]).map(x=>String(x).toLowerCase());
+        if (!tags.includes(tag)) return false;
+      }
       if (!q) return true;
       const ti = it.title_i18n || {};
       const ei = it.excerpt_i18n || {};
@@ -247,6 +259,16 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const lang = currentLang();
     const titleRaw = getTitle(it, lang);
     const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : '(无标题)';
+    const titleZh = pickLangText(it.title_i18n, 'zh', '');
+    const titleEn = pickLangText(it.title_i18n, 'en', it.title || '');
+    let secondaryTitle = '';
+    if (lang === 'zh') {
+      secondaryTitle = titleEn && titleEn.trim() && titleEn.trim() !== title ? titleEn.trim() : '';
+    } else if (lang === 'en') {
+      secondaryTitle = titleZh && titleZh.trim() && titleZh.trim() !== title ? titleZh.trim() : '';
+    } else {
+      secondaryTitle = titleEn && titleEn.trim() && titleEn.trim() !== title ? titleEn.trim() : '';
+    }
     const hostDisp = sourceDisplay(it) || '未知来源';
     const time = relTime(it.published_at);
     const catBadges = (it.tags||[]).map(lbl=>{
@@ -255,24 +277,57 @@ async function renderAIRadar(containerId = 'ai-radar') {
       return `<span class="badge ${cls}">${b}</span>`;
     }).join(' ');
     const badges = catBadges || guessBadges(it).map(b=>`<span class="badge ${badgeClass(b)}">${b}</span>`).join(' ');
-  const excerptClean = cleanExcerpt(getExcerpt(it, lang));
+    const excerptPrimary = cleanExcerpt(getExcerpt(it, lang));
+    const excerptZh = cleanExcerpt(pickLangText(it.excerpt_i18n, 'zh', ''));
+    const excerptEn = cleanExcerpt(pickLangText(it.excerpt_i18n, 'en', ''));
+    let excerptSecondary = '';
+    if (lang === 'zh') {
+      excerptSecondary = excerptEn && excerptEn !== excerptPrimary ? excerptEn : '';
+    } else if (lang === 'en') {
+      excerptSecondary = excerptZh && excerptZh !== excerptPrimary ? excerptZh : '';
+    } else {
+      excerptSecondary = excerptEn && excerptEn !== excerptPrimary ? excerptEn : '';
+    }
+    const fallbackExcerpt = tr('radar_card_no_summary', '暂无摘要，点击“阅读原文”了解详情。');
+    const originalLabel = tr('radar_card_original', '阅读原文');
+    const originalBadgeLabel = tr('radar_badge_original', '原文');
     const needsI18nBadge = !(it.title_i18n && (it.title_i18n[lang]||it.title_i18n.zh||it.title_i18n.en));
     const topClass = isTop ? ' card--top' : '';
     const aria = `${title} - ${hostDisp}`;
+    const published = it.published_at ? new Date(it.published_at) : null;
+    const fallbackTime = (!time && published && !Number.isNaN(published.getTime())) ? published.toLocaleString() : '';
+    const metaBits = [];
+    if (time) metaBits.push(time);
+    else if (fallbackTime) metaBits.push(fallbackTime);
+    if (hostDisp) metaBits.push(hostDisp);
+    const metaText = metaBits.join(' ｜ ');
+    const tagsBlock = (it.tags||[]).map(tag=>`<span class="tag">${tag}</span>`).join('');
+    const badgeParts = [];
+    if (badges) badgeParts.push(badges);
+    if (needsI18nBadge) badgeParts.push(`<span class="badge badge-translation">🌐 ${originalBadgeLabel}</span>`);
+    const badgesBlock = badgeParts.length ? `<div class="rad-badges">${badgeParts.join('')}</div>` : '';
+    const summaryBlock = excerptPrimary
+      ? `<p class="rad-excerpt">${excerptPrimary}</p>${excerptSecondary ? `<p class="rad-excerpt secondary">${excerptSecondary}</p>` : ''}`
+      : `<p class="rad-excerpt rad-excerpt--empty">${fallbackExcerpt}</p>`;
     return `
       <article class="card rad-card${topClass}" tabindex="0" aria-label="${aria}">
-        <div style="display:flex;align-items:flex-start;gap:8px;justify-content:space-between">
-          <h3 class="rad-title" style="margin:0">
-            ${badges?`<span style=\"margin-right:6px\">${badges}</span>`:''}
-            <a href="${it.url}" target="_blank" rel="noopener">${title}</a>
-            ${needsI18nBadge ? '<span class="badge" style="margin-left:6px">🌐 原文</span>' : ''}
-          </h3>
+        <div class="rad-card-head">
+          ${badgesBlock}
+          <div class="rad-card-title">
+            <h3 class="rad-title"><a href="${it.url}" target="_blank" rel="noopener">${title}</a></h3>
+            ${secondaryTitle ? `<p class="rad-title-secondary">${secondaryTitle}</p>` : ''}
+          </div>
         </div>
-        <div class="rad-meta">
-          <span>${time||new Date(it.published_at).toLocaleString()}</span>
-          <span>｜${hostDisp}</span>
+        <div class="rad-card-body">
+          <div class="rad-meta">${metaText}</div>
+          ${summaryBlock}
+          ${tagsBlock ? `<div class="rad-tags">${tagsBlock}</div>` : ''}
         </div>
-  ${excerptClean?`<p class="rad-excerpt">${excerptClean}</p>`:''}
+        <div class="rad-card-footer">
+          <div class="rad-card-actions">
+            <a class="rad-link" href="${it.url}" target="_blank" rel="noopener">${originalLabel}</a>
+          </div>
+        </div>
       </article>
     `;
   }
@@ -291,8 +346,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
         return !topKeys.has(key);
       });
       const slice = deduped.slice(0, PAGE*page);
-  const needsMore = slice.length < deduped.length;
-  listEl.innerHTML = slice.map(it => cardHTML(it)).join('') + (needsMore ? `<div style="grid-column:1 / -1;display:flex;justify-content:center;margin:8px 0"><button id="rad-more" class="btn outline" aria-label="加载更多">加载更多</button></div>` : '');
+      const needsMore = slice.length < deduped.length;
+      listEl.innerHTML = slice.map(it => cardHTML(it)).join('') + (needsMore ? `<div style="grid-column:1 / -1;display:flex;justify-content:center;margin:8px 0"><button id="rad-more" class="btn outline" aria-label="加载更多">加载更多</button></div>` : '');
       setupCardInteractivity();
       const more = document.getElementById('rad-more');
       more?.addEventListener('click', ()=>{ page++; draw(); });
@@ -306,8 +361,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
       const link = card.querySelector('a[href]');
       const url = link?.getAttribute('href');
       if (!url) return;
-  card.addEventListener('click', (e)=>{ if (e.target.closest('a,button')) return; window.open(url, '_blank', 'noopener'); });
-  card.addEventListener('keydown', (e)=>{ if (e.target.closest('a,button')) return; if (e.key==='Enter' || e.key===' '){ e.preventDefault(); window.open(url, '_blank', 'noopener'); }});
+      card.addEventListener('click', (e)=>{ if (e.target.closest('a,button')) return; window.open(url, '_blank', 'noopener'); });
+      card.addEventListener('keydown', (e)=>{ if (e.target.closest('a,button')) return; if (e.key==='Enter' || e.key===' '){ e.preventDefault(); window.open(url, '_blank', 'noopener'); }});
     });
   }
 
@@ -332,26 +387,30 @@ async function renderAIRadar(containerId = 'ai-radar') {
     return res.slice(0,N);
   }
   function renderTop(){
-  if(!topEl) return;
-  // Hide Top when searching
-  const hasQuery = (document.getElementById('rad-q')?.value||'').trim().length>0;
-  if (hasQuery){ topEl.innerHTML=''; return; }
+    if(!topEl) return;
+    // Hide Top when searching
+    const hasQuery = (document.getElementById('rad-q')?.value||'').trim().length>0;
+    if (hasQuery){ topEl.innerHTML=''; return; }
     // Use current date payload for Top 8 (not global)
     const arr = items.slice();
     const top = getTopItems(arr);
     topKeys = new Set(top.map(it => it.id || it.url || it.title));
-    // Build a separated Top 5 container
     const wrap = document.createElement('div');
-    wrap.className = 'top5-wrap';
-    const title = document.createElement('div');
-    title.className = 'top5-title';
-  title.textContent = 'Top 8';
-    wrap.appendChild(title);
+    wrap.className = 'rad-top-wrap';
+    const heading = document.createElement('div');
+    heading.className = 'rad-top-heading';
+    const titleEl = document.createElement('h3');
+    titleEl.textContent = tr('radar_top_label', 'Top 8');
+    const subtitle = document.createElement('span');
+    subtitle.textContent = tr('radar_top_caption', '今日关注度最高的 8 条资讯');
+    heading.appendChild(titleEl);
+    heading.appendChild(subtitle);
+    wrap.appendChild(heading);
     const grid = document.createElement('div');
-  grid.className = 'grid grid--four';
+    grid.className = 'rad-top-grid';
     grid.innerHTML = top.map(it => cardHTML(it, true)).join('');
     wrap.appendChild(grid);
-    topEl.innerHTML='';
+    topEl.innerHTML = '';
     try { topEl.classList.remove('rad-list'); } catch {}
     topEl.appendChild(wrap);
   }
@@ -380,7 +439,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (idx === -1) idx = 0;
     if (idx < dates.length - 1) {
       dateEl.value = dates[idx + 1];
-    await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
+      await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
     }
   });
   nextEl?.addEventListener('click', async ()=>{
@@ -389,7 +448,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (idx === -1) idx = 0; // if empty, treat as latest
     if (idx > 0) {
       dateEl.value = dates[idx - 1];
-    await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
+      await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
     }
   });
 
