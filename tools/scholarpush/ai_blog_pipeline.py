@@ -8,7 +8,7 @@ from dateutil import tz as dttz
 from zoneinfo import ZoneInfo
 from markdown2 import markdown as md2html
 from bs4 import BeautifulSoup as BS
-from tools.ai_llm import chat_once
+from ai_llm import chat_once
 
 # ===== 基础路径 =====
 SITE_BASE = ""  # 如你用子路径，可以填 "/wanfan.github.io"
@@ -19,12 +19,6 @@ TPL_PATH = "tools/templates/blog_post_template.html"
 os.makedirs(BLOG_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OG_DIR, exist_ok=True)
-
-# —— 超轻量摘要缓存（用于 4–6 句中文 digest，降低重复成本）——
-_SUM_CACHE_DIR = os.path.join(DATA_DIR, "cache", "digest")
-os.makedirs(_SUM_CACHE_DIR, exist_ok=True)
-_BUL_CACHE_DIR = os.path.join(DATA_DIR, "cache", "bullets")
-os.makedirs(_BUL_CACHE_DIR, exist_ok=True)
 
 # ScholarPush prompt for academic flash cards
 PROMPT_SCHOLAR = r"""
@@ -48,19 +42,21 @@ JSON schema:
             "key_numbers": [
                 {"dataset":"", "metric":"", "ours":"", "baseline":"", "impr_abs":"", "impr_rel":"%或N/A"}
             ],
-            "reusability": [],
-            "limitations": [],
+            "reusability": ["可复用做法×1-3（如数据增强/损失/检索/蒸馏/缓存/对齐技巧）"],
+            "limitations": ["边界/风险×0-2（如数据泄漏/评测偏差/算力门槛）"],
             "links": {"paper":"URL或N/A", "code":"URL或N/A", "project":"URL或N/A"},
             "tags": ["短标签×3-6，如 LLM,RAG,Agent,Eval"],
             "impact_score": 0,
-    "quick_read": "用中文写4–6句：背景/方法/创新/证据/可借鉴/影响（若无具体数字可相对表述）",
+        "reproducibility_score": 0,
+        "quick_read": "120-180字中文摘要（可选）",
         "who_should_try": "适用人群（可选）"
         }
     ],
     "refs": [{"title":"", "url":""}],
     "stats": {"by_task": {"LLM":0}, "with_code": 0, "new_benchmarks": 0},
     "must_reads": [0,1,2,3,4],
-    "nice_to_read": [5,6,7,8,9,10,11,12]
+    "nice_to_read": [5,6,7,8,9,10,11,12],
+    "deep_dive": {"title":"可选主题", "summary":"三句话要点（可选）", "refs": [0,3,5]}
 }
 
 Rules:
@@ -69,8 +65,6 @@ Rules:
 - 数字缺失时 key_numbers 填 "N/A"；不要编造。
 - “links.paper”若能从条目中提取 arXiv/论文页就填，否则 N/A。
 - items 按 impact_score 降序。
-- 严禁把上面 JSON schema 中的示例占位文本（如“可复用做法×1-3…/边界/风险×0-2…”）原样抄入输出；若无法确定，请将 reusability/limitations 返回为空数组 []。
-- reusability/limitations 必须是“该条目特有、可落地”的要点（1–3 / 0–2 条），避免空泛的通用话术。
 
 Entries:
 [[ENTRIES]]
@@ -726,38 +720,32 @@ def _make_daily_summary_map(j: dict) -> dict:
     return m
 
 def _best_zh_summary(u_norm: str, it: dict, entries_map: dict, daily_map: dict) -> str:
-    """Prefer a 4–6 sentence Chinese digest synthesized from the English abstract.
-    Fallback to Daily zh or one_liner/quick_read. Keep sentence-aware clamping.
+    """Pick a richer Chinese summary, preferring EN->ZH of source abstract when available.
+    - Start with Daily zh (if mapped) else item's one_liner/quick_read.
+    - If source English summary exists, translate to zh and pick the longer one.
+    - Soft-cap the length using SCHOLARPUSH_ZH_SUMMARY_CHARS (default 520).
     """
-    # 1) 基线中文（Daily/one_liner/quick_read）
     try:
         base = (daily_map.get(u_norm) or (it.get("one_liner") or it.get("quick_read") or "")).strip()
     except Exception:
         base = (it.get("one_liner") or it.get("quick_read") or "").strip()
-
-    # 2) 英文摘要 → 中文 4–6 句 digest（带缓存）
     en_src = (entries_map.get(u_norm, {}).get("summary_en") or "").strip()
-    title_en = (entries_map.get(u_norm, {}).get("title_en") or "").strip()
-    zh_digest = ""
+    zh_from_en = ""
     if en_src:
-        cached = _digest_cache_get(title_en, en_src)
-        if cached:
-            zh_digest = cached
-        else:
-            zh_digest = _synthesize_digest_zh(title_en, en_src) or ""
-            if zh_digest:
-                _digest_cache_put(title_en, en_src, zh_digest)
-
-    # 3) 选择信息量更高者
-    cand = zh_digest if len(zh_digest) > len(base) else base
+        try:
+            zh_from_en = _translate_en_to_zh(en_src) or ""
+        except Exception:
+            zh_from_en = ""
+    cand = zh_from_en if len(zh_from_en) > len(base) else base
+    # Strip any leftover arXiv/公告/摘要前缀
     cand = _clean_arxiv_announce_prefix(cand)
-
-    # 4) 句子感知截断，避免截半句
+    # Soft cap length with sentence awareness to avoid mid-sentence truncation
     try:
         cap = int(os.getenv("SCHOLARPUSH_ZH_SUMMARY_CHARS", "520") or "520")
     except Exception:
         cap = 520
     if cand and len(cand) > cap + 40:
+        # sentence-aware clamp: accumulate sentences until close to cap
         parts = [p for p in SENT_SPLIT.split(cand) if p]
         acc = ''
         for p in parts:
@@ -767,14 +755,17 @@ def _best_zh_summary(u_norm: str, it: dict, entries_map: dict, daily_map: dict) 
             else:
                 break
         if not acc:
+            # fallback: cut at last punctuation within window
             window = cand[:cap+40]
             m = re.search(r'[。！？!?；;。]\s*[^。！？!?；;。]*$', window)
             if m:
                 acc = window[:m.end()].strip()
             else:
                 acc = cand[:cap].rstrip()
+        # ensure it ends with a sentence terminator
         if not acc.endswith(('。','！','？','!','?','；',';')):
-            acc = acc.rstrip('，,、 ') + '。'
+            acc = acc.rstrip('，,、 ')
+            acc = acc + '。'
         cand = acc
     return cand
 
@@ -872,224 +863,6 @@ def _translate_en_to_es(text: str) -> str:
     except Exception as e:
         _log(f"[translate] en->es exception: {e}")
         return ""
-
-# ===== 论文摘要 → 中文 4–6 句“研究脉络”综合 =====
-def _digest_cache_get(title: str, abstract_en: str) -> str | None:
-    try:
-        raw = (title or "") + "\n" + (abstract_en or "")
-        key = hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
-        path = os.path.join(_SUM_CACHE_DIR, key + ".txt")
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                txt = f.read().strip()
-                return txt or None
-    except Exception:
-        return None
-    return None
-
-def _digest_cache_put(title: str, abstract_en: str, text_zh: str):
-    try:
-        raw = (title or "") + "\n" + (abstract_en or "")
-        key = hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
-        path = os.path.join(_SUM_CACHE_DIR, key + ".txt")
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(text_zh or "")
-    except Exception:
-        pass
-
-def _synthesize_digest_zh(title: str, abstract_en: str, max_sents: tuple=(4,6)) -> str:
-    """
-    用中文写 4–6 句“研究脉络总结”：背景→方法→创新→证据/结果→可借鉴→影响/边界。
-    输入只需题目与英文摘要；若摘要为空，返回空串。
-    """
-    title = (title or "").strip()
-    abs_en = (abstract_en or "").strip()
-    if not abs_en:
-        return ""
-    prompt = (
-        "阅读以下论文题目与摘要，请用中文写一段 4–6 句的研究脉络总结，覆盖："
-        "1) 背景/动机与现有缺口；2) 方法或数据/系统；3) 关键创新点（最多两条）；"
-        "4) 主要证据或结果（若无具体数字可用相对表述，如‘优于主流基线’）；"
-        "5) 值得借鉴的做法；6) 对领域的潜在影响或适用边界。"
-        "要求：不逐句翻译，不套用论文原句；客观、信息密度高；禁止列表/小标题；"
-        f"句子数限制在 {max_sents[0]}–{max_sents[1]} 句。\n\n"
-        f"题目：{title}\n摘要（英文）：\n{abs_en}\n"
-    )
-    try:
-        out = chat_once(
-            prompt,
-            system="You are a senior AI editor. Focus on accurate, compact Chinese synthesis.",
-            temperature=0.2,
-            max_tokens=520,
-        )
-        return (out or "").strip()
-    except Exception:
-        return ""
-
-def _translate_bullets_zh_to_en_es(reusability: list[str] | list, limitations: list[str] | list) -> dict:
-    """
-    Translate Chinese bullet lists to English and Spanish with one JSON return.
-    Returns {"en": {"reusability":[], "limitations":[]}, "es": {...}}. On failure, returns empty dict.
-    """
-    try:
-        reu = [str(x).strip() for x in (reusability or []) if str(x).strip()]
-        lim = [str(x).strip() for x in (limitations or []) if str(x).strip()]
-        # cache key by content
-        raw = json.dumps({"reusability": reu, "limitations": lim}, ensure_ascii=False, sort_keys=True)
-        key = hashlib.md5(raw.encode("utf-8")).hexdigest()[:16]
-        cache_path = os.path.join(_BUL_CACHE_DIR, key + ".json")
-        try:
-            if os.path.exists(cache_path):
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    cached = json.load(f)
-                    if isinstance(cached, dict):
-                        return cached
-        except Exception:
-            pass
-        payload = {
-            "reusability": reu,
-            "limitations": lim,
-        }
-        prompt = (
-            "You will be given two arrays of Chinese bullet points describing 'reusability' and 'limitations' for a paper.\n"
-            "Translate each bullet faithfully into fluent English and Spanish, preserving facts, numbers, and technical terms.\n"
-            "Do not add or remove information.\n"
-            "Return ONLY a valid JSON object with this exact schema and same ordering as input arrays:\n"
-            "{\n  \"en\": { \"reusability\": [..], \"limitations\": [..] },\n  \"es\": { \"reusability\": [..], \"limitations\": [..] }\n}\n"
-            "Input JSON (Chinese):\n" + json.dumps(payload, ensure_ascii=False)
-        )
-        out = chat_once(prompt, system="You are a precise translator. Return only valid JSON.", temperature=0.0, max_tokens=800, want_json=True)
-        try:
-            j = _extract_json_from_text(out)
-        except Exception:
-            j = _extract_json_relaxed(out)
-    # Basic validation
-        if not isinstance(j, dict):
-            return {}
-        for lang in ("en","es"):
-            if lang not in j or not isinstance(j[lang], dict):
-                return {}
-            for key in ("reusability","limitations"):
-                if key not in j[lang] or not isinstance(j[lang][key], list):
-                    j[lang][key] = []
-        # Strip CJK in en/es; drop lines that look untranslated
-        def _strip_cjk_list(arr: list[str]):
-            out = []
-            for s in arr:
-                t = (s or "").strip()
-                if not t:
-                    continue
-                if _looks_cjk(t):
-                    continue
-                out.append(t)
-            return out
-        j["en"]["reusability"] = _strip_cjk_list(j["en"].get("reusability", []))
-        j["en"]["limitations"] = _strip_cjk_list(j["en"].get("limitations", []))
-        j["es"]["reusability"] = _strip_cjk_list(j["es"].get("reusability", []))
-        j["es"]["limitations"] = _strip_cjk_list(j["es"].get("limitations", []))
-        # write cache
-        try:
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(j, f, ensure_ascii=False)
-        except Exception:
-            pass
-        return j
-    except Exception as e:
-        _log(f"[translate] bullets zh->en/es exception: {e}")
-        return {}
-
-# ==== Bullet helpers: placeholder detection, cleaning, and inference from summary (ZH) ====
-_REU_PLACEHOLDER_TOKENS = (
-    "可复用做法×1-3", "可复用做法x1-3",
-)
-_LIM_PLACEHOLDER_TOKENS = (
-    "边界/风险×0-2", "邊界/風險×0-2",
-)
-
-def _is_placeholder_bullet(s: str) -> bool:
-    try:
-        t = (s or "").strip()
-        if not t:
-            return True
-        if t.upper() == "N/A":
-            return True
-        for k in _REU_PLACEHOLDER_TOKENS:
-            if k in t:
-                return True
-        for k in _LIM_PLACEHOLDER_TOKENS:
-            if k in t:
-                return True
-        # Overly generic catch-alls we choose to drop
-        if re.fullmatch(r"[\u4e00-\u9fffA-Za-z0-9，,·\s（）()\-/]+", t) and ("如" in t or "例如" in t) and ("数据" in t and "损失" in t and "检索" in t):
-            return True
-        return False
-    except Exception:
-        return False
-
-def _clean_bullet_list(arr, limit=None):
-    out = []
-    try:
-        for x in (arr or []):
-            s = (x or "").strip()
-            if not s:
-                continue
-            if _is_placeholder_bullet(s):
-                continue
-            out.append(s)
-            if limit and len(out) >= limit:
-                break
-    except Exception:
-        pass
-    return out
-
-def _infer_bullets_from_summary_zh(zh_abs: str, one_liner: str = "") -> dict:
-    """Infer per-item Chinese bullets from the zh summary; returns {reusability:[], limitations:[]}.
-    Uses caching to avoid repeated calls. Returns empty arrays on failure.
-    """
-    zh_src = (zh_abs or one_liner or "").strip()
-    if not zh_src:
-        return {"reusability": [], "limitations": []}
-    try:
-        key_raw = zh_src
-        key = hashlib.md5(key_raw.encode("utf-8")).hexdigest()[:16]
-        cache_path = os.path.join(_BUL_CACHE_DIR, f"infer_{key}.json")
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, "r", encoding="utf-8") as f:
-                    cached = json.load(f)
-                    if isinstance(cached, dict):
-                        return {
-                            "reusability": list(cached.get("reusability", []) or []),
-                            "limitations": list(cached.get("limitations", []) or []),
-                        }
-            except Exception:
-                pass
-        prompt = (
-            "根据以下中文摘要，为该研究提炼两类中文要点：\n"
-            "- reusability（可复用做法 1–3 条）：例如可复用的数据增强、优化/损失、检索/缓存、蒸馏/对齐、评估/标注流程、工程/系统设计要点等；要求具体、可落地，不要空泛口号。\n"
-            "- limitations（局限/边界 0–2 条）：例如数据泄漏/评测偏差、算力/数据规模限制、泛化/鲁棒性不足、安全/隐私/合规等；没有就空数组。\n"
-            "严格返回 JSON（仅 JSON）：{\"reusability\":[], \"limitations\":[]}，每条≤28字；禁止抄写示例占位语。\n\n"
-            f"摘要：\n{zh_src}\n"
-        )
-        out = chat_once(prompt, system="你是严谨的技术编辑。只返回有效 JSON。", temperature=0.1, max_tokens=400, want_json=True)
-        try:
-            j = _extract_json_from_text(out)
-        except Exception:
-            j = _extract_json_relaxed(out)
-        if not isinstance(j, dict):
-            return {"reusability": [], "limitations": []}
-        reu = _clean_bullet_list(j.get("reusability"), limit=3)
-        lim = _clean_bullet_list(j.get("limitations"), limit=2)
-        res = {"reusability": reu, "limitations": lim}
-        try:
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(res, f, ensure_ascii=False)
-        except Exception:
-            pass
-        return res
-    except Exception as e:
-        _log(f"[infer] bullets from zh failed: {e}")
-        return {"reusability": [], "limitations": []}
 
 def _compact_key_numbers(kn_list: list) -> list:
     """把 key_numbers[] 压成 1~3 个徽章文本，如 'FID -0.8', 'UCF101 +2.1'。"""
@@ -1285,23 +1058,6 @@ def _maybe_attach_source_link(it: dict, title_map: dict, entries: list):
             _classify_and_attach_link(links, u)
             if all(links.get(k) and links.get(k) != "N/A" for k in ("paper","pdf","code","project")):
                 break
-
-        # Fallback: if we still have no usable link, try translating the Chinese headline/one_liner to EN and match by overlap
-        if not any(links.get(k) and links.get(k) != "N/A" for k in ("paper","code","project")):
-            try:
-                zh_text = (it.get("headline") or it.get("one_liner") or "").strip()
-                if zh_text:
-                    # lazy import of translator within this module
-                    en_guess = _translate_zh_to_en(zh_text)
-                    if en_guess:
-                        url_guess = _find_source_url_by_text([en_guess.lower()], entries)
-                        if url_guess:
-                            _classify_and_attach_link(links, url_guess)
-                            # If arXiv, ensure pdf as well
-                            if (not links.get("pdf") or links.get("pdf") == "N/A"):
-                                links["pdf"] = _arxiv_pdf(links.get("paper",""))
-            except Exception:
-                pass
     except Exception:
         return
 
@@ -1342,47 +1098,6 @@ def _load_env_files(paths=(".env.local", ".env", os.path.join("content","blog","
                         os.environ[k] = v
         except Exception as e:
             print("warn: failed loading", p, e)
-
-
-def _as_bool(s: str | None, default=False) -> bool:
-    if s is None:
-        return default
-    try:
-        return re.match(r'^(1|true|yes|on)$', str(s).strip(), re.I) is not None
-    except Exception:
-        return default
-
-
-def load_modelswatch_daily(date_str: str | None = None) -> list:
-    """Load picks from data/ai/modelswatch/daily/<date>.json if exists and return normalized entries list."""
-    try:
-        if not date_str:
-            date_str = datetime.utcnow().strftime('%Y-%m-%d')
-        p = os.path.join('data', 'ai', 'modelswatch', 'daily', f"{date_str}.json")
-        if not os.path.exists(p):
-            return []
-        with open(p, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        items = data.get('items') if isinstance(data, dict) and data.get('items') else (data if isinstance(data, list) else [])
-        norm = []
-        for it in (items or []):
-            try:
-                title = it.get('name') or it.get('title') or it.get('id') or it.get('headline') or ''
-                url = it.get('url') or it.get('html_url') or it.get('card_url') or it.get('repo_url') or ''
-                summary = it.get('summary') or it.get('summary_en') or it.get('summary_zh') or it.get('description') or ''
-                if not title or not url:
-                    continue
-                norm.append({
-                    'title': title,
-                    'url': url,
-                    'ts': it.get('ts') or it.get('updated_at') or _today_cn_08_utc_iso(),
-                    'summary': summary,
-                })
-            except Exception:
-                continue
-        return norm
-    except Exception:
-        return []
 
 def _debug_provider_keys_present():
     try:
@@ -1567,7 +1282,7 @@ def _build_stats(items: list) -> dict:
             new_bench += 1
     return {"by_task": by_task, "with_code": with_code, "new_benchmarks": new_bench}
 
-def _split_picks(items: list, top_n=10, next_n=12):
+def _split_picks(items: list, top_n=5, next_n=8):
     items_sorted = sorted(items, key=lambda x: (int(x.get("impact_score",0)), int(x.get("reproducibility_score",0))), reverse=True)
     must_idx = list(range(0, min(top_n, len(items_sorted))))
     nice_idx = list(range(len(must_idx), min(len(must_idx)+next_n, len(items_sorted))))
@@ -1745,8 +1460,22 @@ def make_scholarpush(entries, n_items=8, daily=None):
             must, nice = _split_picks(j["items"])
             j["must_reads"] = must
             j["nice_to_read"] = nice
-        # Remove deep_dive entirely (feature dropped on frontend)
-        j.pop("deep_dive", None)
+        # drop empty/useless deep_dive
+        try:
+            dd = (j.get("deep_dive") or {}) if isinstance(j.get("deep_dive"), dict) else {}
+            t = str(dd.get("title") or '').strip()
+            s = str(dd.get("summary") or '').strip()
+            refs = [i for i in (dd.get("refs") or []) if isinstance(i,int) and i>=0 and i < len(j.get("items",[]))]
+            # If no refs provided, auto-fill from must_reads (top 1–3) so Deep Dive shows actionable links
+            if not refs:
+                mr = [i for i in (j.get("must_reads") or []) if isinstance(i,int) and i>=0 and i < len(j.get("items",[]))]
+                refs = mr[:3]
+            if (not t or t.upper()=="N/A") and (not s or s.upper()=="N/A") and not refs:
+                j.pop("deep_dive", None)
+            else:
+                j["deep_dive"] = {"title": t, "summary": s, "refs": refs}
+        except Exception:
+            j.pop("deep_dive", None)
 
         # Build title map for link fallback
         title_map = _build_entry_title_map(entries)
@@ -1773,14 +1502,10 @@ def make_scholarpush(entries, n_items=8, daily=None):
                 _maybe_attach_source_link(it, title_map, base_entries)
             except Exception:
                 pass
-            # Prefer any available source-like URL to anchor metadata
             paper = it.get("links", {}).get("paper", "") or ""
-            project = it.get("links", {}).get("project", "") or ""
-            code = it.get("links", {}).get("code", "") or ""
-            primary_url = paper or project or code
-            u_norm = _normalize_url(primary_url)
+            u_norm = _normalize_url(paper)
 
-            # 标题 i18n：中文来自 headline；英文优先 entries 映射，否则回退中文
+            # 标题 i18n：中文来自 headline；英文来自 entries
             zh_title = (it.get("headline") or "").strip()
             en_title = (entries_map.get(u_norm, {}).get("title_en") or zh_title)
             it["title_i18n"] = {"zh": zh_title, "en": en_title}
@@ -1804,18 +1529,10 @@ def make_scholarpush(entries, n_items=8, daily=None):
             it["summary_i18n"] = {"zh": zh_abs, "en": en_abs, "es": es_abs}
 
             # host/ts/pdf/has_code/key_numbers_compact
-            # host 优先来自 entries_map；否则从任一可用链接派生
-            host = (
-                entries_map.get(u_norm, {}).get("host")
-                or _hostname(paper)
-                or _hostname(project)
-                or _hostname(code)
-            )
+            host = entries_map.get(u_norm, {}).get("host") or _hostname(paper)
             it["host"] = host
-            # 补齐 PDF（若 primary 是 arXiv 也能得到）
             if not it["links"].get("pdf") or it["links"]["pdf"] == "N/A":
-                it["links"]["pdf"] = _arxiv_pdf(primary_url)
-            # 统一时间戳：来自 entries_map 对应 URL；否则退回到当天 08:00
+                it["links"]["pdf"] = _arxiv_pdf(paper)
             it["ts"] = entries_map.get(u_norm, {}).get("ts") or j["generated_at"]
             it["has_code"] = bool(it["links"].get("code") and it["links"]["code"] != "N/A")
             if "key_numbers_compact" not in it:
@@ -1831,65 +1548,26 @@ def make_scholarpush(entries, n_items=8, daily=None):
                 it["key_numbers_compact"] = [ _clean_badge_text(s) for s in it.get("key_numbers_compact", []) if _clean_badge_text(s) ]
             except Exception:
                 pass
-            # Clean bullets and infer if placeholders/empty
-            zh_reu = _clean_bullet_list(it.get("reusability"), limit=3)
-            zh_lim = _clean_bullet_list(it.get("limitations"), limit=2)
-            if not zh_reu and not zh_lim:
-                infer = _infer_bullets_from_summary_zh(zh_abs, it.get("one_liner",""))
-                zh_reu = _clean_bullet_list(infer.get("reusability"), limit=3)
-                zh_lim = _clean_bullet_list(infer.get("limitations"), limit=2)
-            it["reusability"] = zh_reu
-            it["limitations"] = zh_lim
-            # Build i18n translations for reusability/limitations
-            try:
-                i18n_bul = _translate_bullets_zh_to_en_es(zh_reu, zh_lim) if (zh_reu or zh_lim) else {}
-            except Exception:
-                i18n_bul = {}
-            it["reusability_i18n"] = {
-                "zh": zh_reu,
-                "en": (i18n_bul.get("en", {}) or {}).get("reusability", []),
-                "es": (i18n_bul.get("es", {}) or {}).get("reusability", []),
-            }
-            it["limitations_i18n"] = {
-                "zh": zh_lim,
-                "en": (i18n_bul.get("en", {}) or {}).get("limitations", []),
-                "es": (i18n_bul.get("es", {}) or {}).get("limitations", []),
-            }
-            # Clean tags locally (drop empties/N/A)
-            try:
-                tags = []
-                for x in (it.get("tags") or []):
+            # Clean noisy arrays: drop 'N/A'/empty, cap lengths for UI
+            def _clean_list(arr, limit=None):
+                out = []
+                for x in (arr or []):
                     s = (x or "").strip()
                     if not s or s.upper() == "N/A":
                         continue
-                    tags.append(s)
-                it["tags"] = tags
-            except Exception:
-                it["tags"] = it.get("tags") or []
+                    out.append(s)
+                    if limit and len(out) >= limit:
+                        break
+                return out
+            it["reusability"] = _clean_list(it.get("reusability"), limit=3)
+            it["limitations"] = _clean_list(it.get("limitations"), limit=2)
+            it["tags"] = _clean_list(it.get("tags"))
             # links were enriched before; ensure pdf present for arXiv/OpenReview
             try:
                 if (not it["links"].get("pdf")) or it["links"]["pdf"] == "N/A":
                     it["links"]["pdf"] = _arxiv_pdf(it["links"].get("paper",""))
             except Exception:
                 pass
-
-        # Populate refs from attached links to aid client-side healing and provenance
-        try:
-            seen_urls = set()
-            refs = []
-            for it in j.get("items", []):
-                l = it.get("links", {})
-                for k in ("paper","project","code"):
-                    u = (l.get(k) or "").strip()
-                    if (not u) or u == "N/A" or u in seen_urls:
-                        continue
-                    n = _normalize_url(u)
-                    title = entries_map.get(n, {}).get("title_en") or BS((it.get("headline") or ""), "html.parser").text.strip()
-                    refs.append({"title": title, "url": u})
-                    seen_urls.add(u)
-            j["refs"] = refs
-        except Exception:
-            pass
 
         _validate_scholarpush(j)
         if not j.get("items"):
@@ -1928,8 +1606,6 @@ def make_scholarpush(entries, n_items=8, daily=None):
                     must, nice = _split_picks(j["items"])
                     j["must_reads"] = must
                     j["nice_to_read"] = nice
-                # Remove deep_dive in salvage
-                j.pop("deep_dive", None)
                 # 统一字段注入（抢救路径也注入）
                 try:
                     entries_map = _make_entries_map(base_entries)
@@ -1981,39 +1657,20 @@ def make_scholarpush(entries, n_items=8, daily=None):
                         it["key_numbers_compact"] = [ _clean_badge_text(s) for s in it.get("key_numbers_compact", []) if _clean_badge_text(s) ]
                     except Exception:
                         pass
-                    # Clean bullets and infer if placeholders/empty (salvage)
-                    zh_reu = _clean_bullet_list(it.get("reusability"), limit=3)
-                    zh_lim = _clean_bullet_list(it.get("limitations"), limit=2)
-                    if not zh_reu and not zh_lim:
-                        infer = _infer_bullets_from_summary_zh(zh_abs, it.get("one_liner",""))
-                        zh_reu = _clean_bullet_list(infer.get("reusability"), limit=3)
-                        zh_lim = _clean_bullet_list(infer.get("limitations"), limit=2)
-                    it["reusability"] = zh_reu
-                    it["limitations"] = zh_lim
-                    try:
-                        i18n_bul = _translate_bullets_zh_to_en_es(zh_reu, zh_lim) if (zh_reu or zh_lim) else {}
-                    except Exception:
-                        i18n_bul = {}
-                    it["reusability_i18n"] = {
-                        "zh": zh_reu,
-                        "en": (i18n_bul.get("en", {}) or {}).get("reusability", []),
-                        "es": (i18n_bul.get("es", {}) or {}).get("reusability", []),
-                    }
-                    it["limitations_i18n"] = {
-                        "zh": zh_lim,
-                        "en": (i18n_bul.get("en", {}) or {}).get("limitations", []),
-                        "es": (i18n_bul.get("es", {}) or {}).get("limitations", []),
-                    }
-                    try:
-                        tags = []
-                        for x in (it.get("tags") or []):
+                    # Clean lists in salvage path
+                    def _clean_list(arr, limit=None):
+                        out = []
+                        for x in (arr or []):
                             s = (x or "").strip()
                             if not s or s.upper() == "N/A":
                                 continue
-                            tags.append(s)
-                        it["tags"] = tags
-                    except Exception:
-                        it["tags"] = it.get("tags") or []
+                            out.append(s)
+                            if limit and len(out) >= limit:
+                                break
+                        return out
+                    it["reusability"] = _clean_list(it.get("reusability"), limit=3)
+                    it["limitations"] = _clean_list(it.get("limitations"), limit=2)
+                    it["tags"] = _clean_list(it.get("tags"))
                     # already enriched
                 _validate_scholarpush(j)
                 return j
@@ -2130,8 +1787,6 @@ def make_scholarpush(entries, n_items=8, daily=None):
                     must, nice = _split_picks(j["items"])
                     j["must_reads"] = must
                     j["nice_to_read"] = nice
-                # Remove deep_dive in regex-salvage
-                j.pop("deep_dive", None)
 
                 # 统一字段注入（正则抢救路径也注入）
                 try:
@@ -2178,39 +1833,20 @@ def make_scholarpush(entries, n_items=8, daily=None):
                         it["key_numbers_compact"] = [ _clean_badge_text(s) for s in it.get("key_numbers_compact", []) if _clean_badge_text(s) ]
                     except Exception:
                         pass
-                    # Clean bullets and infer if placeholders/empty (regex-salvage)
-                    zh_reu = _clean_bullet_list(it.get("reusability"), limit=3)
-                    zh_lim = _clean_bullet_list(it.get("limitations"), limit=2)
-                    if not zh_reu and not zh_lim:
-                        infer = _infer_bullets_from_summary_zh(zh_abs, it.get("one_liner",""))
-                        zh_reu = _clean_bullet_list(infer.get("reusability"), limit=3)
-                        zh_lim = _clean_bullet_list(infer.get("limitations"), limit=2)
-                    it["reusability"] = zh_reu
-                    it["limitations"] = zh_lim
-                    try:
-                        i18n_bul = _translate_bullets_zh_to_en_es(zh_reu, zh_lim) if (zh_reu or zh_lim) else {}
-                    except Exception:
-                        i18n_bul = {}
-                    it["reusability_i18n"] = {
-                        "zh": zh_reu,
-                        "en": (i18n_bul.get("en", {}) or {}).get("reusability", []),
-                        "es": (i18n_bul.get("es", {}) or {}).get("reusability", []),
-                    }
-                    it["limitations_i18n"] = {
-                        "zh": zh_lim,
-                        "en": (i18n_bul.get("en", {}) or {}).get("limitations", []),
-                        "es": (i18n_bul.get("es", {}) or {}).get("limitations", []),
-                    }
-                    try:
-                        tags = []
-                        for x in (it.get("tags") or []):
+                    # Clean lists in regex-salvage path
+                    def _clean_list(arr, limit=None):
+                        out = []
+                        for x in (arr or []):
                             s = (x or "").strip()
                             if not s or s.upper() == "N/A":
                                 continue
-                            tags.append(s)
-                        it["tags"] = tags
-                    except Exception:
-                        it["tags"] = it.get("tags") or []
+                            out.append(s)
+                            if limit and len(out) >= limit:
+                                break
+                        return out
+                    it["reusability"] = _clean_list(it.get("reusability"), limit=3)
+                    it["limitations"] = _clean_list(it.get("limitations"), limit=2)
+                    it["tags"] = _clean_list(it.get("tags"))
                     _maybe_attach_source_link(it, title_map, entries)
                 _validate_scholarpush(j)
                 return j
@@ -2233,87 +1869,73 @@ def make_scholarpush(entries, n_items=8, daily=None):
         except Exception:
             pass
 
-    print("make_scholarpush failed, fallback:", e)
-    # Ensure we have some entries to fallback on
-    fb_entries = entries if entries else (base_entries[:max(8, int(os.getenv("MAX_ENTRIES","40")))] if base_entries else [])
-    j = _fallback_scholarpush(fb_entries, n_items=n_items)
-    j.pop("deep_dive", None)
+        print("make_scholarpush failed, fallback:", e)
+        # Ensure we have some entries to fallback on
+        fb_entries = entries if entries else (base_entries[:max(8, int(os.getenv("MAX_ENTRIES","40")))] if base_entries else [])
+        j = _fallback_scholarpush(fb_entries, n_items=n_items)
 
-    # 注入统一字段（与上面主路径一致）
-    entries_map = _make_entries_map(base_entries)
-    daily_map = _make_daily_summary_map(daily) if daily else {}
-    title_map = _build_entry_title_map(base_entries)
-    for it in j.get("items", []):
-        paper = it.get("links", {}).get("paper", "") or ""
-        u_norm = _normalize_url(paper)
-        zh_title = (it.get("headline") or "").strip()
-        en_title = (entries_map.get(u_norm, {}).get("title_en") or zh_title)
-        it["title_i18n"] = {"zh": zh_title, "en": en_title}
-        zh_abs = _best_zh_summary(u_norm, it, entries_map, daily_map)
-        # English from zh; if fails or looks CJK, use source EN
-        en_try = _translate_zh_to_en(zh_abs)
-        en_src = (entries_map.get(u_norm, {}).get("summary_en") or "").strip()
-        en_abs = en_try if (en_try and not _looks_cjk(en_try)) else en_src
-        # Spanish from zh; if fails/CJK, try EN->ES; else empty
-        es_try = _translate_zh_to_es(zh_abs)
-        if (not es_try) or _looks_cjk(es_try):
-            es_from_en = _translate_en_to_es(en_abs)
-            es_abs = es_from_en if (es_from_en and not _looks_cjk(es_from_en)) else ""
-        else:
-            es_abs = es_try
-        it["summary_i18n"] = {"zh": zh_abs, "en": en_abs, "es": es_abs}
-        host = entries_map.get(u_norm, {}).get("host") or _hostname(paper)
-        it["host"] = host
-        if not it["links"].get("pdf") or it["links"]["pdf"] == "N/A":
-            it["links"]["pdf"] = _arxiv_pdf(paper)
-        it["ts"] = entries_map.get(u_norm, {}).get("ts") or j.get("generated_at")
-        it["has_code"] = bool(it["links"].get("code") and it["links"]["code"] != "N/A")
-        if "key_numbers_compact" not in it:
-            it["key_numbers_compact"] = _compact_key_numbers(it.get("key_numbers"))
+        # 注入统一字段（与上面主路径一致）
         try:
-            knc = [ (s or "").strip() for s in (it.get("key_numbers_compact") or []) if s and (s or "").strip().upper() != "N/A" ]
-            it["key_numbers_compact"] = knc[:3]
+            entries_map = _make_entries_map(base_entries)
         except Exception:
-            it["key_numbers_compact"] = it.get("key_numbers_compact") or []
+            entries_map = {}
         try:
-            it["key_numbers_compact"] = [ _clean_badge_text(s) for s in it.get("key_numbers_compact", []) if _clean_badge_text(s) ]
+            daily_map = _make_daily_summary_map(daily) if daily else {}
         except Exception:
-            pass
-        # Clean bullets and infer if placeholders/empty (fallback)
-        zh_reu = _clean_bullet_list(it.get("reusability"), limit=3)
-        zh_lim = _clean_bullet_list(it.get("limitations"), limit=2)
-        if not zh_reu and not zh_lim:
-            infer = _infer_bullets_from_summary_zh(zh_abs, it.get("one_liner",""))
-            zh_reu = _clean_bullet_list(infer.get("reusability"), limit=3)
-            zh_lim = _clean_bullet_list(infer.get("limitations"), limit=2)
-        it["reusability"] = zh_reu
-        it["limitations"] = zh_lim
-        try:
-            i18n_bul = _translate_bullets_zh_to_en_es(zh_reu, zh_lim) if (zh_reu or zh_lim) else {}
-        except Exception:
-            i18n_bul = {}
-        it["reusability_i18n"] = {
-            "zh": zh_reu,
-            "en": (i18n_bul.get("en", {}) or {}).get("reusability", []),
-            "es": (i18n_bul.get("es", {}) or {}).get("reusability", []),
-        }
-        it["limitations_i18n"] = {
-            "zh": zh_lim,
-            "en": (i18n_bul.get("en", {}) or {}).get("limitations", []),
-            "es": (i18n_bul.get("es", {}) or {}).get("limitations", []),
-        }
-        try:
-            tags = []
-            for x in (it.get("tags") or []):
-                s = (x or "").strip()
-                if not s or s.upper() == "N/A":
-                    continue
-                tags.append(s)
-            it["tags"] = tags
-        except Exception:
-            it["tags"] = it.get("tags") or []
-        _maybe_attach_source_link(it, title_map, base_entries)
-    return j
+            daily_map = {}
+        title_map = _build_entry_title_map(base_entries)
+        for it in j.get("items", []):
+            paper = it.get("links", {}).get("paper", "") or ""
+            u_norm = _normalize_url(paper)
+            zh_title = (it.get("headline") or "").strip()
+            en_title = (entries_map.get(u_norm, {}).get("title_en") or zh_title)
+            it["title_i18n"] = {"zh": zh_title, "en": en_title}
+            zh_abs = _best_zh_summary(u_norm, it, entries_map, daily_map)
+            # English from zh; if fails or looks CJK, use source EN
+            en_try = _translate_zh_to_en(zh_abs)
+            en_src = (entries_map.get(u_norm, {}).get("summary_en") or "").strip()
+            en_abs = en_try if (en_try and not _looks_cjk(en_try)) else en_src
+            # Spanish from zh; if fails/CJK, try EN->ES; else empty
+            es_try = _translate_zh_to_es(zh_abs)
+            if (not es_try) or _looks_cjk(es_try):
+                es_from_en = _translate_en_to_es(en_abs)
+                es_abs = es_from_en if (es_from_en and not _looks_cjk(es_from_en)) else ""
+            else:
+                es_abs = es_try
+            it["summary_i18n"] = {"zh": zh_abs, "en": en_abs, "es": es_abs}
+            host = entries_map.get(u_norm, {}).get("host") or _hostname(paper)
+            it["host"] = host
+            if not it["links"].get("pdf") or it["links"]["pdf"] == "N/A":
+                it["links"]["pdf"] = _arxiv_pdf(paper)
+            it["ts"] = entries_map.get(u_norm, {}).get("ts") or j.get("generated_at")
+            it["has_code"] = bool(it["links"].get("code") and it["links"]["code"] != "N/A")
+            if "key_numbers_compact" not in it:
+                it["key_numbers_compact"] = _compact_key_numbers(it.get("key_numbers"))
+            try:
+                knc = [ (s or "").strip() for s in (it.get("key_numbers_compact") or []) if s and (s or "").strip().upper() != "N/A" ]
+                it["key_numbers_compact"] = knc[:3]
+            except Exception:
+                it["key_numbers_compact"] = it.get("key_numbers_compact") or []
+            try:
+                it["key_numbers_compact"] = [ _clean_badge_text(s) for s in it.get("key_numbers_compact", []) if _clean_badge_text(s) ]
+            except Exception:
+                pass
+            # Clean lists in fallback
+            def _clean_list(arr, limit=None):
+                out = []
+                for x in (arr or []):
+                    s = (x or "").strip()
+                    if not s or s.upper() == "N/A":
+                        continue
+                    out.append(s)
+                    if limit and len(out) >= limit:
+                        break
+                return out
+            it["reusability"] = _clean_list(it.get("reusability"), limit=3)
+            it["limitations"] = _clean_list(it.get("limitations"), limit=2)
+            it["tags"] = _clean_list(it.get("tags"))
+            _maybe_attach_source_link(it, title_map, base_entries)
+        return j
 
 
 
@@ -2486,21 +2108,10 @@ def main():
     # 0) load local env for API keys (won't be committed if .gitignore ignores .env*)
     _load_env_files()
     _debug_provider_keys_present()
-    # Daily enable flag: controlled via env DAILY_ENABLE (1/true/yes to enable)
-    daily_enable = _as_bool(os.getenv('DAILY_ENABLE'), False)
-    source_priority = [s.strip() for s in os.getenv('SCHOLARPUSH_SOURCE_PRIORITY', 'feeds').split(',') if s.strip()]
+    # Daily permanently disabled: we will not write blog HTML/RSS/sections or emails.
+    daily_enable = False
     # 1) 抓取
     entries = fetch_items(limit_per_feed=int(os.getenv("PER_FEED_LIMIT", "25")))
-    # If configured, try to seed entries from modelswatch daily archive (prefer modelswatch over feeds)
-    modelswatch_seed = []
-    try:
-        if 'modelswatch' in source_priority:
-            today = datetime.utcnow().strftime('%Y-%m-%d')
-            modelswatch_seed = load_modelswatch_daily(today)
-            if modelswatch_seed:
-                print(f"Loaded {len(modelswatch_seed)} modelswatch daily seed items for {today}")
-    except Exception as e:
-        print("modelswatch seed load failed:", e)
     min_items = int(os.getenv("MIN_ITEMS","6"))
     if len(entries) < min_items:
         print("Not enough entries today; skip.")
@@ -2508,19 +2119,7 @@ def main():
 
     # 2) 选题 & 成文（仍生成 Daily JSON 仅用于 ScholarPush 的中文摘要，不落盘）
     max_words = int(os.getenv("MAX_WORDS","1100"))
-    # If we have modelswatch seeds, merge them ahead of feed entries (de-duplicate by URL)
-    merged_entries = []
-    seen_urls = set()
-    for it in (modelswatch_seed or []):
-        u = (it.get('url') or '').strip()
-        if u and u not in seen_urls:
-            merged_entries.append(it); seen_urls.add(u)
-    for it in entries:
-        u = (it.get('url') or '').strip()
-        if u and u not in seen_urls:
-            merged_entries.append(it); seen_urls.add(u)
-
-    j = pick_and_write(merged_entries or entries, max_words=max_words)
+    j = pick_and_write(entries, max_words=max_words)
     # Skipping HTML/RSS/sections/Buttondown regardless of env
     print("Daily outputs disabled; only generating ScholarPush JSON.")
 
@@ -2536,7 +2135,7 @@ def main():
         except Exception:
             pass
         sp = make_scholarpush(
-            merged_entries or entries,
+            entries,
             n_items=int(os.getenv("SCHOLARPUSH_ITEMS","8")),
             daily=j,
         )
@@ -2562,27 +2161,20 @@ def main():
             day_path = os.path.join(base_dir, day_fname)
             with open(day_path, "w", encoding="utf-8") as f:
                 json.dump(sp, f, ensure_ascii=False, indent=2)
-            # update dates index by scanning existing archives (robust against prior overwrite)
+            # update dates index
             dates_path = os.path.join(base_dir, "dates.json")
             try:
-                all_files = os.listdir(base_dir)
+                with open(dates_path, "r", encoding="utf-8") as df:
+                    dates = json.load(df)
+                    if not isinstance(dates, list):
+                        dates = []
             except Exception:
-                all_files = []
-            # collect YYYY-MM-DD.json files
-            date_list = []
-            for fn in all_files:
-                try:
-                    if re.match(r"\d{4}-\d{2}-\d{2}\.json$", fn):
-                        date_list.append(fn[:-5])
-                except Exception:
-                    continue
-            # ensure today's date present
-            iso_day = d.isoformat()
-            if iso_day not in date_list:
-                date_list.append(iso_day)
-            date_list = sorted(set(date_list), reverse=True)
+                dates = []
+            if d.isoformat() not in dates:
+                dates.append(d.isoformat())
+                dates.sort(reverse=True)
             with open(dates_path, "w", encoding="utf-8") as df:
-                json.dump(date_list, df, ensure_ascii=False, indent=2)
+                json.dump(dates, df, ensure_ascii=False, indent=2)
             print("ScholarPush written:", sp_path, "and archived:", day_path)
         except Exception as arch_e:
             print("ScholarPush archive failed:", arch_e)
