@@ -3,7 +3,15 @@ from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 # Ensure project root on sys.path for importing tools.ai_llm and to find .env
-ROOT = Path(__file__).resolve().parents[3]
+_HERE = Path(__file__).resolve()
+ROOT = _HERE.parent
+for candidate in [_HERE.parent] + list(_HERE.parents):
+    if (candidate / 'tools' / 'ai_llm.py').exists():
+        ROOT = candidate
+        break
+else:
+    ROOT = _HERE.parents[2]  # fallback guess
+
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
