@@ -1,7 +1,7 @@
 name: AI Daily Blog
 'on':
   schedule:
-    - cron: "0 23 * * *"       # UTC 23:00 = 北京时间 07:00，每天一次
+    - cron: "0 0 * * *"        # UTC 00:00 = 北京时间 08:00，每天一次
   workflow_dispatch:
 
 jobs:
@@ -11,11 +11,6 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,28 +22,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y librsvg2-bin    # SVG→PNG 转换（生成OG图）
           pip install feedparser requests python-dateutil markdown2 beautifulsoup4
-
-      - name: Run Modelswatch Daily
-        env:
-          MODELSWATCH_DAILY_MIN_PICKS: '3'
-          MODELSWATCH_DAILY_MAX_PICKS: '8'
-          MODELSWATCH_DAILY_FALLBACK: 'true'
-          # Conservative snapshot/summarizer settings for CI to avoid long LLM runs
-          SNAPSHOT_USE_BATCH: '0'                   # disable Python batch summarizer in CI by default
-          SNAPSHOT_MAX_NEW: '12'                    # cap new summaries this run
-          SPEED_MODE: ${{ vars.SPEED_MODE || '1' }}                # tri_summarizer speed mode (if used)
-          TRI_ENABLE_REWRITE: ${{ vars.TRI_ENABLE_REWRITE || '1' }}
-          TRI_ENABLE_EXPAND: ${{ vars.TRI_ENABLE_EXPAND || '1' }}
-          BILINGUAL_MODE: ${{ vars.BILINGUAL_MODE || '0' }}
-          TRI_GROUP_JSON_SIZE: '2'                  # smaller groups if batch used
-          TRI_BATCH_CONCURRENCY: '3'                # modest concurrency
-          SNAPSHOT_BATCH_KILL_TIMEOUT: '300'        # kill long batch after 5 minutes
-          MODELSWATCH_DAILY_FAST_SUMMARY: '1'       # ensure daily uses fast (truncated/cached) summaries
-          MODELSWATCH_DAILY_RELAX_SELECTION: '1'    # allow relaxed selection fallback to meet min picks
-        run: |
-          # Run modelswatch to produce daily picks used as a seed for ScholarPush
-          node --version || true
-          node tools/modelswatch/daily.mjs
 
       - name: Generate AI Daily Blog
         env:
@@ -81,22 +54,19 @@ jobs:
           MIN_ITEMS:           6
           LANGS:               zh,en,es
           MAX_WORDS:           1100
-          DAILY_ENABLE:        '1'
-          SCHOLARPUSH_SOURCE_PRIORITY: 'modelswatch,feeds'
 
           BUTTONDOWN_API_KEY:  ${{ secrets.BUTTONDOWN_API_KEY }}
           BUTTONDOWN_STATUS:   draft
         run: |
-          python tools/scholarpush/ai_blog_pipeline.py
+          python tools/ai_blog_pipeline.py
 
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add blog/*.html data/ai/blog/* data/ai/scholarpush/* assets/og/* || true
           # Stage ScholarPush changes first (always present when pipeline runs)
           git add -A data/ai/scholarpush || true
-          # Stage modelswatch daily outputs if generated
-          if [ -d "data/ai/modelswatch/daily" ]; then git add -A data/ai/modelswatch/daily || true; fi
           # Stage blog HTML if generated (Daily may be disabled some days)
           if [ -d "blog" ]; then git add -A blog || true; fi
           # Stage blog data folder if present
