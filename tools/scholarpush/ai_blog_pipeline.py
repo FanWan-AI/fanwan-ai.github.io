@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, re, json, hashlib, subprocess, feedparser, requests, time
+import sys
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -8,6 +9,13 @@ from dateutil import tz as dttz
 from zoneinfo import ZoneInfo
 from markdown2 import markdown as md2html
 from bs4 import BeautifulSoup as BS
+
+# Ensure repository root is importable when running as a script (e.g., GitHub Actions)
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from tools.ai_llm import chat_once
 
 # ===== 基础路径 =====
@@ -176,14 +184,19 @@ def fetch_items(limit_per_feed=25):
             print(" -", u, c)
     except Exception:
         pass
-    # 可选的 arXiv API 回退：仅当显式开启 ARXIV_FALLBACK=1 且当前抓不到任何 arXiv 项
-    if os.getenv("ARXIV_FALLBACK", "0") in ("1", "true", "yes"):
-        if not any("arxiv.org" in (it.get("url","")) for it in items):
-            api_items = fetch_arxiv_api(per_cat=limit_per_feed)
-            if api_items:
-                print(f"arXiv API fallback used: {len(api_items)} items")
-                items.extend(api_items)
-    # 去重
+    # arXiv RSS 在周末或异常时可能返回空列表。默认启用自动回退：
+    # - ARXIV_FALLBACK=auto（默认） → 当 RSS 未抓到任何 arXiv 项时自动调用 API
+    # - ARXIV_FALLBACK=1/true/yes   → 总是额外调用 API
+    # - ARXIV_FALLBACK=0/false/no   → 禁用回退
+    fallback_mode = (os.getenv("ARXIV_FALLBACK", "auto") or "auto").strip().lower()
+    has_arxiv_items = any("arxiv.org" in (it.get("url", "")) for it in items)
+    force_fallback = fallback_mode in ("1", "true", "yes")
+    auto_fallback = fallback_mode in ("auto", "") and not has_arxiv_items
+    if force_fallback or auto_fallback:
+        api_items = fetch_arxiv_api(per_cat=limit_per_feed)
+        if api_items:
+            print(f"arXiv API fallback used: {len(api_items)} items")
+            items.extend(api_items)
     seen=set(); uniq=[]
     for it in items:
         h = hashlib.md5((it["title"]+it["url"]).encode("utf-8")).hexdigest()
