@@ -23,8 +23,14 @@ document.addEventListener('DOMContentLoaded', () => {
       wrap.className = 'counter';
       wrap.setAttribute('aria-live','polite');
       // Initial template with 0; will update after fetch
+      function formatCount(n){
+        if (n === '—') return '—';
+        const maybe = Number.parseInt(String(n), 10);
+        return (Number.isFinite(maybe) && maybe > 0) ? String(maybe) : '—';
+      }
+
       function line(n, lang){
-        const num = (n === '—') ? '—' : String(n || 0);
+        const num = formatCount(n);
         if (lang === 'en') return `Traveler <span class="counter-number" data-counter="uv">${num}</span>: your mark has been etched into this story, forever part of its journey. Thank you.`;
         if (lang === 'es') return `Viajero <span class="counter-number" data-counter="uv">${num}</span>: tu huella ha quedado grabada en esta historia, parte eterna de su camino. Gracias.`;
         return `旅行者 <span class="counter-number" data-counter="uv">${num}</span>：你的印记，已镌刻在此间的故事里。致谢。`;
@@ -39,29 +45,36 @@ document.addEventListener('DOMContentLoaded', () => {
           return (Number.isFinite(v) && v > 0) ? v : 0;
         } catch { return 0; }
       }
-      const hasCacheAtBoot = getCachedUV() > 0;
-      const isOfflineAtBoot = (navigator && 'onLine' in navigator) ? !navigator.onLine : false;
-      const initialVal = (isOfflineAtBoot && !hasCacheAtBoot) ? '—' : 0;
+  const cachedAtBoot = getCachedUV();
+  const hasCacheAtBoot = cachedAtBoot > 0;
+  const initialVal = hasCacheAtBoot ? cachedAtBoot : '—';
       wrap.innerHTML = `<span class="counter-item">${line(initialVal, getLang())}</span>`;
       footerBox.appendChild(wrap);
 
       // Minimal count-up animation for the number only
       function countUp(el, to){
         try {
-          const start = parseInt(el.textContent || '0', 10) || 0;
-          const end = Math.max(0, parseInt(String(to), 10) || 0);
-          if (start === end) return;
+          const target = parseInt(String(to), 10);
+          if (!Number.isFinite(target) || target <= 0) {
+            el.textContent = '—';
+            return;
+          }
+          const startRaw = parseInt(el.textContent || '0', 10);
+          const start = Number.isFinite(startRaw) && startRaw > 0 ? startRaw : 0;
+          if (start === target) return;
           const dur = 650; // slightly faster to feel snappier
           const t0 = performance.now();
           function easeOutCubic(x){ return 1 - Math.pow(1 - x, 3); }
           function step(now){
             const p = Math.min(1, (now - t0) / dur);
-            const val = Math.round(start + (end - start) * easeOutCubic(p));
+            const val = Math.round(start + (target - start) * easeOutCubic(p));
             el.textContent = String(val);
             if (p < 1) requestAnimationFrame(step);
           }
           requestAnimationFrame(step);
-        } catch { el.textContent = String(to||0); }
+        } catch {
+          el.textContent = formatCount(to);
+        }
       }
 
       // CountAPI/CounterAPI helpers
@@ -144,12 +157,17 @@ document.addEventListener('DOMContentLoaded', () => {
       async function getUV(){
         // 1) Fast path: race GET from both providers
         async function fastGet(){
-          const pick = async (p) => {
-            try { const j = await p; const v = j?.value ?? j?.count ?? j?.views; return Number.isFinite(v) ? v : 0; } catch { return 0; }
-          };
-          const p1 = pick(countapi('get', KEY_UV));
-          const p2 = pick(counterapi('get', KEY_UV));
-          return await Promise.race([p1, p2]);
+          const responses = await Promise.allSettled([
+            countapi('get', KEY_UV),
+            counterapi('get', KEY_UV)
+          ]);
+          const values = responses.map(r => {
+            if (r.status !== 'fulfilled') return 0;
+            const raw = r.value?.value ?? r.value?.count ?? r.value?.views;
+            return (Number.isFinite(raw) && raw > 0) ? raw : 0;
+          });
+          const best = values.filter(v => v > 0);
+          return best.length ? Math.max(...best) : 0;
         }
         // 2) If first visit on this browser, perform HIT in background to increment
         let shown = 0;
@@ -207,12 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
           const uv = await getUV();
           // Rebuild line in current language, then animate the number
       const lang = getLang();
-      const hasCacheNow = getCachedUV() > 0;
-      const offlineNow = (navigator && 'onLine' in navigator) ? !navigator.onLine : false;
-      const shouldDash = offlineNow && !hasCacheNow && (!Number.isFinite(uv) || uv <= 0);
-      wrap.innerHTML = `<span class="counter-item">${line(shouldDash ? '—' : uv, lang)}</span>`;
+      const cached = getCachedUV();
+      const sanitized = (Number.isFinite(uv) && uv > 0)
+        ? uv
+        : (cached > 0 ? cached : '—');
+      wrap.innerHTML = `<span class="counter-item">${line(sanitized, lang)}</span>`;
       const numEl = wrap.querySelector('[data-counter="uv"]');
-      if (numEl && !shouldDash) countUp(numEl, uv);
+      if (numEl && typeof sanitized === 'number') countUp(numEl, sanitized);
         } catch {
           wrap.style.display = 'none';
         }
