@@ -12,6 +12,27 @@
  * preference.
  */
 
+function safeStorageGet(key, fallback = null) {
+  try {
+    const value = window.localStorage.getItem(key);
+    return value === null ? fallback : value;
+  } catch {
+    return fallback;
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {}
+}
+
+function resolveLang(defaultLang = 'zh') {
+  const docLang = (document.documentElement && document.documentElement.lang) || defaultLang;
+  const stored = safeStorageGet('lang', null);
+  return (stored || docLang || defaultLang || '').toString();
+}
+
 const translations = {
   zh: {
     // Global
@@ -882,7 +903,7 @@ function translatePage(lang) {
   // Update theme toggle tooltip/title
   const toggleBtn = document.getElementById('theme-toggle');
   if (toggleBtn) {
-    const mode = localStorage.getItem('theme') || 'system';
+    const mode = safeStorageGet('theme', 'system');
     const modeText = mode === 'system' ? translations[lang].theme_mode_system
                      : mode === 'dark' ? translations[lang].theme_mode_dark
                      : translations[lang].theme_mode_light;
@@ -895,7 +916,7 @@ function translatePage(lang) {
   if (langBtn) {
     const map = { en: 'English', zh: '中文', es: 'Español' };
     const labelEl = langBtn.querySelector('.label');
-    const cur = localStorage.getItem('lang') || 'en';
+    const cur = resolveLang('en');
     if (labelEl) labelEl.textContent = `Language` + (map[cur] ? ` · ${map[cur]}` : '');
     else langBtn.textContent = `Language` + (map[cur] ? ` · ${map[cur]}` : '');
   }
@@ -907,7 +928,7 @@ function translatePage(lang) {
 document.addEventListener('DOMContentLoaded', () => {
   const langSelect = document.getElementById('lang-select');
   // Prefer user's saved choice, else the document's declared language, else zh
-  const defaultLang = localStorage.getItem('lang') || document.documentElement.lang || 'zh';
+  const defaultLang = resolveLang();
   // Expose for other scripts
   try { window.translations = translations; } catch {}
   translatePage(defaultLang);
@@ -915,7 +936,7 @@ document.addEventListener('DOMContentLoaded', () => {
     langSelect.value = defaultLang;
     langSelect.addEventListener('change', () => {
       const selected = langSelect.value;
-      localStorage.setItem('lang', selected);
+      safeStorageSet('lang', selected);
       translatePage(selected);
     });
   }

@@ -10,6 +10,26 @@
  *    animate them into place.
  */
 
+function safeLocalGet(key) {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeLocalSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {}
+}
+
+function resolveLang(defaultLang = 'zh') {
+  const docLang = (document.documentElement && document.documentElement.lang) || defaultLang;
+  const stored = safeLocalGet('lang');
+  return (stored || docLang || defaultLang || '').toString();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Footer traveler line: only UV, tri-lingual sentence; centered with ©
   (function setupTravelerLine(){
@@ -17,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const footerBox = document.querySelector('footer .container');
       if (!footerBox) return;
       if (document.getElementById('site-counter')) return;
-      const getLang = () => (localStorage.getItem('lang') || document.documentElement.lang || 'zh').slice(0,2);
+      const getLang = () => resolveLang().slice(0, 2);
       const wrap = document.createElement('div');
       wrap.id = 'site-counter';
       wrap.className = 'counter';
@@ -38,16 +58,16 @@ document.addEventListener('DOMContentLoaded', () => {
       // Decide initial display: if offline and no cache, show a dash instead of 0
       function getCachedUV(){
         try {
-          const raw = localStorage.getItem('site_uv_cache');
+          const raw = safeLocalGet('site_uv_cache');
           if (!raw) return 0;
           const obj = JSON.parse(raw);
           const v = parseInt(obj?.v, 10);
           return (Number.isFinite(v) && v > 0) ? v : 0;
         } catch { return 0; }
       }
-  const cachedAtBoot = getCachedUV();
-  const hasCacheAtBoot = cachedAtBoot > 0;
-  const initialVal = hasCacheAtBoot ? cachedAtBoot : '—';
+      const cachedAtBoot = getCachedUV();
+      const hasCacheAtBoot = cachedAtBoot > 0;
+      const initialVal = hasCacheAtBoot ? cachedAtBoot : '—';
       wrap.innerHTML = `<span class="counter-item">${line(initialVal, getLang())}</span>`;
       footerBox.appendChild(wrap);
 
@@ -80,8 +100,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // CountAPI/CounterAPI helpers
       const NS = 'fanwan-ai.github.io';
       const KEY_UV = 'site_uv';
-      const hasTagged = (()=>{ try { return !!localStorage.getItem('site_uv_tag'); } catch { return false; } })();
-      const tagVisitor = ()=>{ try { localStorage.setItem('site_uv_tag', '1'); } catch {} };
+      const hasTagged = !!safeLocalGet('site_uv_tag');
+      const tagVisitor = ()=>{ safeLocalSet('site_uv_tag', '1'); };
       // Basic fetch with timeout
       async function fetchJson(url, timeoutMs = 1400){
         const ctl = new AbortController();
@@ -143,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Show cached value immediately to avoid initial 0
       (function showCached(){
         try {
-          const raw = localStorage.getItem('site_uv_cache');
+          const raw = safeLocalGet('site_uv_cache');
           if (!raw) return;
           const obj = JSON.parse(raw);
           const v = parseInt(obj?.v, 10);
@@ -179,7 +199,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (numEl) countUp(numEl, shown); else {
               const lang = getLang(); wrap.innerHTML = `<span class="counter-item">${line(shown, lang)}</span>`;
             }
-            localStorage.setItem('site_uv_cache', JSON.stringify({ v: shown, t: Date.now() }));
+            safeLocalSet('site_uv_cache', JSON.stringify({ v: shown, t: Date.now() }));
           } catch {}
         }
         // 3) Increment once per visitor
@@ -196,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
               if (numEl) countUp(numEl, final); else {
                 const lang = getLang(); wrap.innerHTML = `<span class="counter-item">${line(final, lang)}</span>`;
               }
-              localStorage.setItem('site_uv_cache', JSON.stringify({ v: final, t: Date.now() }));
+              safeLocalSet('site_uv_cache', JSON.stringify({ v: final, t: Date.now() }));
             } catch {}
             tagVisitor();
             return final;
@@ -267,6 +287,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // This avoids 404s when the current page is inside a subfolder (e.g. /blog/foo.html)
   (function normalizeTopNavLinks(){
     try {
+      if (!/^https?:$/.test(location.protocol)) return;
       const allowed = new Set(['index.html','about.html','publications.html','blog.html','ai-lab.html','contact.html','subscribe.html']);
       document.querySelectorAll('.nav-links a[href]').forEach(a => {
         const href = a.getAttribute('href') || '';
@@ -360,10 +381,10 @@ document.addEventListener('DOMContentLoaded', () => {
         return path.replace(/\.(en|es)\.html$/, '.html');
       }
       // On load, prefer current page variant and persist it
-      try { localStorage.setItem('lang', pageLang); } catch {}
+      safeLocalSet('lang', pageLang);
       // On language change, redirect to the corresponding variant
       window.addEventListener('language-changed', (e) => {
-        const lang = (e && e.detail && e.detail.lang) || (localStorage.getItem('lang') || 'zh');
+        const lang = (e && e.detail && e.detail.lang) || resolveLang();
         if (lang !== pageLang) {
           const target = targetFor(lang);
           if (target && target !== path) location.href = target + location.search + location.hash;
@@ -371,7 +392,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     })();
     function getActiveLang(){
-      return localStorage.getItem('lang') || document.documentElement.lang || 'zh';
+      return resolveLang();
     }
     function updateTocLabel(){
       const tocWrap = document.querySelector('.toc');
@@ -411,9 +432,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const li = document.createElement('li');
         const a = document.createElement('a');
         a.href = `#${h.id}`;
-  // Remove any leading numbering like "1.", "2)", "(3)", or full-width variants to avoid double numbering in the OL
-  const raw = (h.textContent || '').replace(/\s+/g, ' ').trim();
-  const cleaned = raw.replace(/^\s*(?:\d+[\.\) 、]|[\(（]\d+[\)）])\s*/, '');
+    // Remove any leading numbering like "1.", "2)", "(3)", or full-width variants to avoid double numbering in the OL
+    const raw = (h.textContent || '').replace(/\s+/g, ' ').trim();
+    const cleaned = raw.replace(/^\s*(?:\d+[\.\) 、]|[\(（]\d+[\)）])\s*/, '');
         a.textContent = cleaned || raw;
         li.appendChild(a);
         toc.appendChild(li);
@@ -495,11 +516,11 @@ document.addEventListener('DOMContentLoaded', () => {
       syncPostHero();
     });
 
-  // Share feature: WeChat QR, WhatsApp, Copy link, Native share (Download cover removed)
+    // Share feature: WeChat QR, WhatsApp, Copy link, Native share (Download cover removed)
     (function initShare(){
       const bar = document.querySelector('.share-toolbar');
       if (!bar) return;
-      function activeLang(){ return localStorage.getItem('lang') || document.documentElement.lang || 'zh'; }
+      function activeLang(){ return resolveLang(); }
       function currentUrl(){ return location.href.split('#')[0]; }
       function whatsappHref(){
         const text = encodeURIComponent(document.title + ' ' + currentUrl());
@@ -557,13 +578,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const btnWeChat = bar.querySelector('[data-share="wechat"]');
       const btnWhats = bar.querySelector('[data-share="whatsapp"]');
       const btnCopy = bar.querySelector('[data-share="copy"]');
-  const btnDown = null; // removed
+      const btnDown = null; // removed
       const btnNative = bar.querySelector('[data-share="native"]');
       const modal = document.getElementById('share-modal');
       const modalClose = modal?.querySelector('[data-close]');
       const qr = document.getElementById('qr');
       if (btnWhats) btnWhats.setAttribute('href', whatsappHref());
-  // download feature removed
+      // download feature removed
       if (btnWeChat) btnWeChat.addEventListener('click', () => { openModal(); renderQR(qr, currentUrl()); });
       if (modalClose) modalClose.addEventListener('click', closeModal);
       if (modal) modal.addEventListener('click', (e)=>{ if (e.target===modal) closeModal(); });
@@ -697,15 +718,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const root = document.documentElement;
   const toggleBtn = document.getElementById('theme-toggle');
   function getEffectiveTheme() {
-    try {
-      const saved = localStorage.getItem(THEME_KEY);
-      if (saved === 'light' || saved === 'dark') return saved;
-    } catch {}
+    const saved = safeLocalGet(THEME_KEY);
+    if (saved === 'light' || saved === 'dark') return saved;
     // System-follow disabled: default to light if unset
     return 'light';
   }
   function currentLang() {
-    return localStorage.getItem('lang') || document.documentElement.lang || 'zh';
+    return resolveLang();
   }
   function t(key) {
     try { return (window.translations?.[currentLang()]?.[key]) || key; } catch { return key; }
@@ -724,7 +743,7 @@ document.addEventListener('DOMContentLoaded', () => {
       root.setAttribute('data-theme', 'light');
       root.setAttribute('data-theme-mode', 'light');
     }
-    try { localStorage.setItem(THEME_KEY, theme); } catch {}
+    safeLocalSet(THEME_KEY, theme);
   }
 
   // Initialize theme from storage or default to light (as requested)
@@ -764,7 +783,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!res.ok) throw new Error('failed');
       const items = await res.json();
       grid.innerHTML = '';
-  const lang = currentLang();
+      const lang = currentLang();
       items.filter(it => filter === 'all' || it.category === filter).forEach(it => {
         const article = document.createElement('article');
         article.className = 'card portfolio-item';
@@ -800,13 +819,13 @@ document.addEventListener('DOMContentLoaded', () => {
   function setLangLabel() {
     if (!langBtn) return;
     const map = { en: 'English', zh: '中文', es: 'Español' };
-    const cur = localStorage.getItem('lang') || 'en';
+    const cur = resolveLang('en');
     const labelEl = langBtn.querySelector('.label');
     if (labelEl) {
-  labelEl.textContent = map[cur] || '';
+      labelEl.textContent = map[cur] || '';
     } else {
-  // Fallback if no inner span exists (avoid removing the icon)
-  langBtn.textContent = map[cur] || '';
+      // Fallback if no inner span exists (avoid removing the icon)
+      langBtn.textContent = map[cur] || '';
     }
   }
   setLangLabel();
@@ -825,7 +844,7 @@ document.addEventListener('DOMContentLoaded', () => {
       item.addEventListener('click', () => {
         const code = item.getAttribute('data-lang');
         // Persist and apply language regardless of presence of <select>
-        try { localStorage.setItem('lang', code); } catch {}
+        safeLocalSet('lang', code);
         if (langSelect) { langSelect.value = code; }
         if (typeof translatePage === 'function') translatePage(code);
         setLangLabel();
@@ -846,12 +865,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Language-aware RSS/Email routing on blog pages and posts
   (function wireSubscriptionButtons(){
-    function activeLang(){ return localStorage.getItem('lang') || document.documentElement.lang || 'zh'; }
+    function activeLang(){ return resolveLang(); }
     function setHrefs(){
       const lang = activeLang();
-  const rss = document.getElementById('rss-button');
-  const email = document.getElementById('email-button');
-  const subscribeUnified = document.getElementById('subscribe-button');
+      const rss = document.getElementById('rss-button');
+      const email = document.getElementById('email-button');
+      const subscribeUnified = document.getElementById('subscribe-button');
       if (rss) {
         // Route RSS button to subscribe hub with language + #rss
         let href = 'subscribe.html';
@@ -912,10 +931,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const btn = document.getElementById('lang-button');
     if (btn) {
       const map = { en: 'English', zh: '中文', es: 'Español' };
-      const cur = localStorage.getItem('lang') || 'en';
+      const cur = resolveLang('en');
       const labelEl = btn.querySelector('.label');
-  if (labelEl) labelEl.textContent = map[cur] || '';
-  else btn.textContent = map[cur] || '';
+      if (labelEl) labelEl.textContent = map[cur] || '';
+      else btn.textContent = map[cur] || '';
     }
   });
 
@@ -924,7 +943,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('contact-form');
     if (!form) return;
     const status = document.getElementById('form-status');
-    const lang = localStorage.getItem('lang') || document.documentElement.lang || 'zh';
+    const lang = resolveLang();
     function t(k){ try { return (window.translations?.[lang]?.[k]) || ''; } catch { return ''; } }
     // Slider verification wiring
     let verified = false;
@@ -1022,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const isBlogList = location.pathname.endsWith('/blog.html') || document.querySelector('main .blog-posts');
     if (!isBlogList) return;
     function apply() {
-      const lang = localStorage.getItem('lang') || document.documentElement.lang || 'zh';
+      const lang = resolveLang();
       document.querySelectorAll('.post-card').forEach(card => {
         const link = card.querySelector('a.post-link');
         const img = card.querySelector('img.post-thumb');
@@ -1160,7 +1179,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Set dynamic title: PDF Viewer – <paper title>
         try {
           const h = btn.closest('.pub-item')?.querySelector('h3')?.textContent?.trim();
-          if (titleEl) titleEl.textContent = h ? `PDF Viewer – ${h}` : (window.translations?.[localStorage.getItem('lang')||'en']?.pdf_viewer_title || 'PDF Viewer');
+          const langPref = resolveLang('en');
+          if (titleEl) titleEl.textContent = h ? `PDF Viewer – ${h}` : (window.translations?.[langPref]?.pdf_viewer_title || 'PDF Viewer');
         } catch {}
         // On mobile devices, open the PDF directly in a new tab (native viewer)
         if (isMobile() && src) {
@@ -1189,7 +1209,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const root = document;
     const container = root.querySelector('.education .timeline');
     if (!container) return;
-    const lang = (localStorage.getItem('lang') || document.documentElement.lang || 'zh').slice(0,2);
+    const lang = resolveLang().slice(0, 2);
     /** @type {Record<string, Array<{name:string,url:string}>>} */
     const map = {
       zh: [
