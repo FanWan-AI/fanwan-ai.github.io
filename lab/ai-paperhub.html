@@ -817,9 +817,41 @@
               const collapseBtnEl = body.querySelector('.collapse-btn');
               if (collapseBtnEl) {
                 collapseBtnEl.addEventListener('click', () => {
+                  const card = btn.closest('.hub-card');
+                  if (!card) return;
                   body.classList.remove('active');
                   body.hidden = true;
                   btn.textContent = tr('paperhub_milestone_btn_expand', {}, '查看详情');
+
+                  requestAnimationFrame(() => {
+                    const docStyle = getComputedStyle(document.documentElement);
+                    const parsedPadding = parseFloat(docStyle.scrollPaddingTop || '0');
+                    const scrollPadding = Number.isNaN(parsedPadding) ? 0 : parsedPadding;
+                    let offset = scrollPadding;
+                    const header = document.querySelector('header');
+                    if (header) {
+                      const hs = getComputedStyle(header);
+                      if (hs.position === 'fixed' || hs.position === 'sticky') {
+                        offset = Math.max(offset, header.offsetHeight || 0);
+                      }
+                    }
+                    const desiredTop = offset + 12; // 让卡片顶部露出一些呼吸空间
+                    const endRect = card.getBoundingClientRect();
+                    const shift = endRect.top - desiredTop;
+                    if (Math.abs(shift) > 1) {
+                      window.scrollBy({ top: shift, behavior: 'auto' });
+                    }
+                    requestAnimationFrame(() => {
+                      const finalRect = card.getBoundingClientRect();
+                      const correction = finalRect.top - desiredTop;
+                      if (Math.abs(correction) > 1) {
+                        window.scrollBy({ top: correction, behavior: 'smooth' });
+                      }
+                      if (typeof btn.focus === 'function') {
+                        btn.focus({ preventScroll: true });
+                      }
+                    });
+                  });
                 });
               }
             } catch (error) {
