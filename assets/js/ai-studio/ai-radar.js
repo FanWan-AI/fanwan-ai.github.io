@@ -319,9 +319,12 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const PAGE = 40;
     let page = 1;
     function draw(){
-      // Exclude Top items from main list
+      // Exclude Top items from main list only when no filters are active
       const hasQuery = (qEl?.value||'').trim().length>0;
-      const deduped = hasQuery ? arr.slice() : arr.filter(it=>{
+      const hasSourceFilter = (srcEl?.value||'').trim().length>0;
+      const hasTagFilter = (tagEl?.value||'').trim().length>0;
+      const hasAnyFilter = hasQuery || hasSourceFilter || hasTagFilter;
+      const deduped = hasAnyFilter ? arr.slice() : arr.filter(it=>{
         const key = it.id || it.url || it.title;
         return !topKeys.has(key);
       });
@@ -368,9 +371,11 @@ async function renderAIRadar(containerId = 'ai-radar') {
   }
   function renderTop(){
     if(!topEl) return;
-    // Hide Top when searching
+    // Hide Top when searching or filtering
     const hasQuery = (document.getElementById('rad-q')?.value||'').trim().length>0;
-    if (hasQuery){ topEl.innerHTML=''; return; }
+    const hasSourceFilter = (document.getElementById('rad-source')?.value||'').trim().length>0;
+    const hasTagFilter = (document.getElementById('rad-tag')?.value||'').trim().length>0;
+    if (hasQuery || hasSourceFilter || hasTagFilter){ topEl.innerHTML=''; return; }
     // Use current date payload for Top 8 (not global)
     const arr = items.slice();
     const top = getTopItems(arr);
