@@ -659,10 +659,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const root = document.documentElement;
   const toggleBtn = document.getElementById('theme-toggle');
   function getEffectiveTheme() {
-    const saved = localStorage.getItem(THEME_KEY);
-  if (saved === 'light' || saved === 'dark') return saved;
-  // System-follow disabled: default to dark if unset
-  return 'dark';
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      if (saved === 'light' || saved === 'dark') return saved;
+    } catch {}
+    // System-follow disabled: default to light if unset
+    return 'light';
   }
   function currentLang() {
     return localStorage.getItem('lang') || document.documentElement.lang || 'zh';
@@ -679,21 +681,17 @@ document.addEventListener('DOMContentLoaded', () => {
       root.setAttribute('data-theme', 'dark');
       root.setAttribute('data-theme-mode', 'dark');
     } else {
-      // Fallback: force dark (system mode disabled)
-      theme = 'dark';
-      root.setAttribute('data-theme', 'dark');
-      root.setAttribute('data-theme-mode', 'dark');
+      // Fallback: force light (system mode disabled)
+      theme = 'light';
+      root.setAttribute('data-theme', 'light');
+      root.setAttribute('data-theme-mode', 'light');
     }
-    localStorage.setItem(THEME_KEY, theme);
+    try { localStorage.setItem(THEME_KEY, theme); } catch {}
   }
 
-  // Initialize theme from storage or default to dark (as requested)
-  const savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
+  // Initialize theme from storage or default to light (as requested)
+  const savedTheme = getEffectiveTheme();
   applyTheme(savedTheme);
-  if (!localStorage.getItem(THEME_KEY)) {
-    // reflect default in attribute for correct icon on first paint
-    root.setAttribute('data-theme-mode', 'dark');
-  }
   if (toggleBtn) {
     // Show tooltip as the action: switching to the other theme
     const nextInit = (savedTheme === 'dark') ? 'light' : 'dark';
@@ -704,16 +702,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
-      // Cycle through: dark -> light -> dark
-      const current = localStorage.getItem(THEME_KEY) || 'dark';
-      const order = ['dark','light'];
+      // Cycle through: light -> dark -> light
+      const current = getEffectiveTheme();
+      const order = ['light','dark'];
       const idx = order.indexOf(current);
       const next = order[(idx + 1) % order.length];
-  applyTheme(next);
-  // After switching, compute the next target again for tooltip
-  const nextTarget = next === 'dark' ? 'light' : 'dark';
-  const actionText2 = nextTarget === 'dark' ? t('theme_switch_to_dark') : t('theme_switch_to_light');
-  toggleBtn.title = actionText2;
+      applyTheme(next);
+      // After switching, compute the next target again for tooltip
+      const nextTarget = next === 'dark' ? 'light' : 'dark';
+      const actionText2 = nextTarget === 'dark' ? t('theme_switch_to_dark') : t('theme_switch_to_light');
+      toggleBtn.setAttribute('title', actionText2);
     });
   }
 
