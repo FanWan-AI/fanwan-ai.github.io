@@ -31,18 +31,18 @@ function i18nStr(key, lang){
 function guessBadges(it){
   const t = `${it.title||''} ${it.raw_excerpt||''}`.toLowerCase();
   const b=[];
-  if(/policy|regulat|eu ai act|govern|safety/.test(t)) b.push('🏛️ Policy');
-  if(/funding|raise|seed|series [abc]|acquire|acquisition/.test(t)) b.push('💰 Funding');
-  if(/state[- ]of[- ]the[- ]art|sota|breakthrough|trending|viral/.test(t)) b.push('🔥 Trending');
-  if(/\barxiv\b|preprint|paper|dataset|benchmark|peer[- ]review|research|study/.test(t)) b.push('🧪 Research');
+  if(/policy|regulat|eu ai act|govern|safety/.test(t)) b.push('Policy');
+  if(/funding|raise|seed|series [abc]|acquire|acquisition/.test(t)) b.push('Funding');
+  if(/state[- ]of[- ]the[- ]art|sota|breakthrough|trending|viral/.test(t)) b.push('Trending');
+  if(/\barxiv\b|preprint|paper|dataset|benchmark|peer[- ]review|research|study/.test(t)) b.push('Research');
   return b;
 }
 
 function badgeClass(label){
-  if(label.includes('Trending')) return 'badge-trending';
-  if(label.includes('Policy')) return 'badge-policy';
-  if(label.includes('Funding')) return 'badge-funding';
-  if(label.includes('Research')) return 'badge-research';
+  if(label === 'Trending') return 'badge-trending';
+  if(label === 'Policy') return 'badge-policy';
+  if(label === 'Funding') return 'badge-funding';
+  if(label === 'Research') return 'badge-research';
   return '';
 }
 
@@ -259,35 +259,16 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const lang = currentLang();
     const titleRaw = getTitle(it, lang);
     const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : '(无标题)';
-    const titleZh = pickLangText(it.title_i18n, 'zh', '');
-    const titleEn = pickLangText(it.title_i18n, 'en', it.title || '');
-    let secondaryTitle = '';
-    if (lang === 'zh') {
-      secondaryTitle = titleEn && titleEn.trim() && titleEn.trim() !== title ? titleEn.trim() : '';
-    } else if (lang === 'en') {
-      secondaryTitle = titleZh && titleZh.trim() && titleZh.trim() !== title ? titleZh.trim() : '';
-    } else {
-      secondaryTitle = titleEn && titleEn.trim() && titleEn.trim() !== title ? titleEn.trim() : '';
-    }
     const hostDisp = sourceDisplay(it) || '未知来源';
     const time = relTime(it.published_at);
-    const catBadges = (it.tags||[]).map(lbl=>{
+    const allTags = new Set([...(it.tags || []).map(String), ...guessBadges(it)]);
+    const badges = Array.from(allTags).map(lbl=>{
       const b = String(lbl);
       const cls = badgeClass(b) || '';
-      return `<span class="badge ${cls}">${b}</span>`;
+      const emoji = b === 'Research' ? '🧪' : b === 'Policy' ? '🏛️' : b === 'Funding' ? '💰' : b === 'Trending' ? '🔥' : '';
+      return `<span class="badge ${cls}">${emoji} ${b}</span>`;
     }).join(' ');
-    const badges = catBadges || guessBadges(it).map(b=>`<span class="badge ${badgeClass(b)}">${b}</span>`).join(' ');
     const excerptPrimary = cleanExcerpt(getExcerpt(it, lang));
-    const excerptZh = cleanExcerpt(pickLangText(it.excerpt_i18n, 'zh', ''));
-    const excerptEn = cleanExcerpt(pickLangText(it.excerpt_i18n, 'en', ''));
-    let excerptSecondary = '';
-    if (lang === 'zh') {
-      excerptSecondary = excerptEn && excerptEn !== excerptPrimary ? excerptEn : '';
-    } else if (lang === 'en') {
-      excerptSecondary = excerptZh && excerptZh !== excerptPrimary ? excerptZh : '';
-    } else {
-      excerptSecondary = excerptEn && excerptEn !== excerptPrimary ? excerptEn : '';
-    }
     const fallbackExcerpt = tr('radar_card_no_summary', '暂无摘要，点击“阅读原文”了解详情。');
     const originalLabel = tr('radar_card_original', '阅读原文');
     const originalBadgeLabel = tr('radar_badge_original', '原文');
@@ -307,7 +288,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (needsI18nBadge) badgeParts.push(`<span class="badge badge-translation">🌐 ${originalBadgeLabel}</span>`);
     const badgesBlock = badgeParts.length ? `<div class="rad-badges">${badgeParts.join('')}</div>` : '';
     const summaryBlock = excerptPrimary
-      ? `<p class="rad-excerpt">${excerptPrimary}</p>${excerptSecondary ? `<p class="rad-excerpt secondary">${excerptSecondary}</p>` : ''}`
+      ? `<p class="rad-excerpt">${excerptPrimary}</p>`
       : `<p class="rad-excerpt rad-excerpt--empty">${fallbackExcerpt}</p>`;
     return `
       <article class="card rad-card${topClass}" tabindex="0" aria-label="${aria}">
@@ -315,7 +296,6 @@ async function renderAIRadar(containerId = 'ai-radar') {
           ${badgesBlock}
           <div class="rad-card-title">
             <h3 class="rad-title"><a href="${it.url}" target="_blank" rel="noopener">${title}</a></h3>
-            ${secondaryTitle ? `<p class="rad-title-secondary">${secondaryTitle}</p>` : ''}
           </div>
         </div>
         <div class="rad-card-body">
