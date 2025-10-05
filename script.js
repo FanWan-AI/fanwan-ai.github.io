@@ -244,6 +244,25 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Normalize top-level navigation anchors to root-relative paths.
+  // This avoids 404s when the current page is inside a subfolder (e.g. /blog/foo.html)
+  (function normalizeTopNavLinks(){
+    try {
+      const allowed = new Set(['index.html','about.html','publications.html','blog.html','ai-lab.html','contact.html','subscribe.html']);
+      document.querySelectorAll('.nav-links a[href]').forEach(a => {
+        const href = a.getAttribute('href') || '';
+        if (!href) return;
+        // Leave absolute, hash, and external links alone
+        if (href.startsWith('/') || href.startsWith('#') || /^(https?:)?\/\//i.test(href)) return;
+        // Normalize segments like ../../foo.html or ../foo.html or foo.html -> /foo.html
+        const base = href.split('/').pop();
+        if (allowed.has(base)) {
+          a.setAttribute('href', '/' + base);
+        }
+      });
+    } catch (e) { /* silent */ }
+  })();
+
   // Close mobile nav on link tap to improve mobile UX
   (function autoCloseMobileNav(){
     const nav = document.querySelector('.nav-links');
