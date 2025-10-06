@@ -1247,98 +1247,38 @@ document.addEventListener('DOMContentLoaded', () => {
   enhanceEducationLinks();
   window.addEventListener('language-changed', enhanceEducationLinks);
 
-  // AI Lab: search + filter interactions for module cards
-  (function initAiLabFilters(){
+  // AI Lab: hydrate progress bars and stage soft card reveals
+  (function initAiLabExperience(){
     const labPage = document.body?.classList?.contains('lab-page');
     if (!labPage) return;
     const cards = Array.from(document.querySelectorAll('.lab-card'));
     if (!cards.length) return;
 
-    const searchInput = document.getElementById('lab-search');
-    const emptyState = document.getElementById('lab-empty-state');
-    let activeCategory = 'all';
-    let activeStatus = 'all';
-
-    const tokenise = (value) => (value || '').toString().toLowerCase().replace(/[\s\u3000]+/g, ' ').trim();
-
-    function hydrateProgress(){
-      cards.forEach(card => {
-        const progress = Number.parseInt(card.dataset.progress || '', 10);
-        if (!Number.isFinite(progress)) return;
-        const clamped = Math.max(0, Math.min(progress, 100));
-        const bar = card.querySelector('.lab-progress-bar span');
-        const value = card.querySelector('.lab-progress-value');
-        if (bar) bar.style.width = `${clamped}%`;
-        if (value) value.textContent = `${clamped}%`;
-      });
-    }
-
-    hydrateProgress();
-
-    function matchesSearch(card, query){
-      if (!query) return true;
-      const keywords = [
-        card.dataset.keywords || '',
-        card.querySelector('.lab-card-title')?.textContent || '',
-        card.querySelector('.lab-summary')?.textContent || '',
-        Array.from(card.querySelectorAll('.lab-highlights li')).map(li => li.textContent || '').join(' ')
-      ].join(' ');
-      return tokenise(keywords).includes(query);
-    }
-
-    function applyFilters(){
-      const query = tokenise(searchInput?.value || '');
-      let visibleCount = 0;
-      cards.forEach(card => {
-        const category = (card.dataset.category || 'all').toLowerCase();
-        const status = (card.dataset.status || 'building').toLowerCase();
-        const categoryMatch = activeCategory === 'all' || category === activeCategory;
-        const statusMatch = activeStatus === 'all' || status === activeStatus;
-        const searchMatch = matchesSearch(card, query);
-        const isVisible = categoryMatch && statusMatch && searchMatch;
-        card.hidden = !isVisible;
-        if (isVisible) visibleCount += 1;
-      });
-      if (emptyState) {
-        emptyState.hidden = visibleCount !== 0;
-      }
-    }
-
-    const updateChipState = (type, selected) => {
-      const chips = document.querySelectorAll(`.lab-chip[data-filter-type="${type}"]`);
-      chips.forEach(chip => {
-        const isActive = chip.dataset.filter === selected;
-        chip.classList.toggle('active', isActive);
-        chip.setAttribute('aria-pressed', String(isActive));
-      });
-    };
-
-    document.querySelectorAll('.lab-chip[data-filter-type]').forEach(chip => {
-      chip.addEventListener('click', () => {
-        const type = chip.dataset.filterType;
-        const value = (chip.dataset.filter || 'all').toLowerCase();
-        if (type === 'category') {
-          activeCategory = value;
-          updateChipState('category', value);
-        } else if (type === 'status') {
-          activeStatus = value;
-          updateChipState('status', value);
-        }
-        applyFilters();
-      });
+    cards.forEach(card => {
+      const progress = Number.parseInt(card.dataset.progress || '', 10);
+      if (!Number.isFinite(progress)) return;
+      const clamped = Math.max(0, Math.min(progress, 100));
+      const bar = card.querySelector('.lab-progress-bar span');
+      const value = card.querySelector('.lab-progress-value');
+      if (bar) bar.style.width = `${clamped}%`;
+      if (value) value.textContent = `${clamped}%`;
     });
 
-    if (searchInput) {
-      let searchRaf = 0;
-      searchInput.addEventListener('input', () => {
-        if (searchRaf) cancelAnimationFrame(searchRaf);
-        searchRaf = requestAnimationFrame(applyFilters);
-      });
-    }
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
 
-    updateChipState('category', activeCategory);
-    updateChipState('status', activeStatus);
-    window.addEventListener('language-changed', applyFilters);
-    applyFilters();
+    const observer = new IntersectionObserver((entries, obs) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('lab-card-visible');
+        obs.unobserve(entry.target);
+      });
+    }, { threshold: 0.25, rootMargin: '0px 0px -40px 0px' });
+
+    cards.forEach((card, idx) => {
+      card.style.setProperty('--lab-card-delay', `${Math.min(idx * 80, 320)}ms`);
+      card.classList.add('lab-card-animate');
+      observer.observe(card);
+    });
   })();
 });
