@@ -303,6 +303,18 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) { /* silent */ }
   })();
 
+  // Unify Chinese label for the contact link across pages (including nested paths)
+  (function updateContactNavLabel(){
+    try {
+      const zhLabel = '联系我';
+      document.querySelectorAll('a[href$="contact.html"] .i18n.l-zh').forEach(node => {
+        if (node && node.textContent.trim() !== zhLabel) {
+          node.textContent = zhLabel;
+        }
+      });
+    } catch { /* ignore */ }
+  })();
+
   // Close mobile nav on link tap to improve mobile UX
   (function autoCloseMobileNav(){
     const nav = document.querySelector('.nav-links');
@@ -1037,6 +1049,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const section = document.getElementById('connect-subscribe');
     if (!section) return;
 
+    let setActiveTab = null;
+    (function setupConnectTabs(){
+      const tabs = Array.from(document.querySelectorAll('.connect-tab'));
+      const panes = Array.from(document.querySelectorAll('[data-tab-panel]'));
+      if (!tabs.length || !panes.length) return;
+
+      const tabMap = new Map();
+      tabs.forEach(btn => {
+        const key = (btn.dataset.tab || '').trim();
+        if (key) tabMap.set(key, btn);
+      });
+
+      const paneMap = new Map();
+      panes.forEach(pane => {
+        const key = (pane.dataset.tabPanel || '').trim();
+        if (key) paneMap.set(key, pane);
+      });
+
+      const orderedTabs = tabs.filter(btn => paneMap.has((btn.dataset.tab || '').trim()))
+        .map(btn => {
+          const key = (btn.dataset.tab || '').trim();
+          btn.setAttribute('role', 'tab');
+          if (!btn.id) btn.id = `connect-tab-${key}`;
+          return btn;
+        });
+
+      if (!orderedTabs.length) return;
+
+      const updateHash = (target) => {
+        const anchor = target === 'subscribe' ? '#connect-subscribe' : '#connect-direct';
+        try {
+          history.replaceState(null, '', anchor);
+        } catch {}
+      };
+
+      const activate = (target, { focusButton = false, emitHash = false } = {}) => {
+        if (!tabMap.has(target) || !paneMap.has(target)) return;
+
+        tabMap.forEach((btn, key) => {
+          const selected = key === target;
+          btn.setAttribute('aria-selected', selected ? 'true' : 'false');
+          btn.classList.toggle('is-active', selected);
+          btn.tabIndex = selected ? 0 : -1;
+          if (selected && focusButton) {
+            setTimeout(() => { btn.focus(); }, 0);
+          }
+        });
+
+        paneMap.forEach((pane, key) => {
+          const active = key === target;
+          pane.classList.toggle('active', active);
+          pane.hidden = !active;
+          pane.setAttribute('aria-hidden', active ? 'false' : 'true');
+        });
+
+        if (emitHash) updateHash(target);
+      };
+
+      setActiveTab = (target, options) => activate(target, options);
+
+      const hash = (location.hash || '').toLowerCase();
+      let initial = (hash.includes('subscribe') || hash === '#rss' || hash === '#email') ? 'subscribe' : 'contact';
+      if (!paneMap.has(initial)) {
+        initial = (orderedTabs[0]?.dataset.tab || '').trim();
+      }
+      if (initial) {
+        activate(initial, { focusButton: false });
+      }
+
+      orderedTabs.forEach(btn => {
+        const key = (btn.dataset.tab || '').trim();
+        btn.addEventListener('click', () => {
+          activate(key, { emitHash: true });
+        });
+        btn.addEventListener('keydown', (event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const index = orderedTabs.indexOf(btn);
+          if (index === -1) return;
+          if (event.key === 'Home') {
+            const first = orderedTabs[0];
+            activate((first.dataset.tab || '').trim(), { focusButton: true, emitHash: true });
+            return;
+          }
+          if (event.key === 'End') {
+            const last = orderedTabs[orderedTabs.length - 1];
+            activate((last.dataset.tab || '').trim(), { focusButton: true, emitHash: true });
+            return;
+          }
+          const dir = event.key === 'ArrowRight' ? 1 : -1;
+          let nextIndex = (index + dir + orderedTabs.length) % orderedTabs.length;
+          const next = orderedTabs[nextIndex];
+          activate((next.dataset.tab || '').trim(), { focusButton: true, emitHash: true });
+        });
+      });
+
+      window.addEventListener('hashchange', () => {
+        const h = (location.hash || '').toLowerCase();
+        if (h.includes('subscribe') || h === '#rss' || h === '#email') {
+          activate('subscribe');
+        } else if (h === '#connect-direct' || h === '#connect') {
+          activate('contact');
+        }
+      });
+    })();
+
     const EMAIL_HANDLES = { zh: 'wan', en: 'wan', es: 'wan' };
     const rssCard = document.getElementById('rss-card');
     const rssRow = document.getElementById('rss-row');
@@ -1221,6 +1339,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const map = { '#rss': 'rss-card', '#email': 'email-card' };
       const id = map[h];
       if (!id) return;
+      if (typeof setActiveTab === 'function') {
+        setActiveTab('subscribe');
+      }
       const card = document.getElementById(id);
       if (card) {
         card.setAttribute('tabindex', '-1');
