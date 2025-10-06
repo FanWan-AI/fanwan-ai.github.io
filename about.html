@@ -35,6 +35,7 @@
   <link rel="me" href="https://github.com/FanWan-AI">
   <script defer src="lang.js"></script>
   <script defer src="script.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
   <!-- Performance: preconnect to analytics/counter providers -->
   <link rel="dns-prefetch" href="//api.countapi.xyz">
   <link rel="preconnect" href="https://api.countapi.xyz" crossorigin>
@@ -281,18 +282,10 @@
           <div class="timeline-item">
             <h3 data-i18n="edu_phd_title">杜伦大学 · 博士 (2020.10 – 2025.01)</h3>
             <p data-i18n="edu_phd_desc">计算机科学专业，研究方向涵盖计算机视觉、多模态算法和大语言模型。</p>
-            <p class="timeline-note">
-              <span class="timeline-chip">QS 2025 · 第 89 位</span>
-              <span class="timeline-chip">QS 2024 · 第 78 位</span>
-            </p>
           </div>
           <div class="timeline-item">
             <h3 data-i18n="edu_msc_title">纽卡斯尔大学 · 硕士 (2017.09 – 2018.08)</h3>
             <p data-i18n="edu_msc_desc">计算机科学专业，以优秀成绩毕业，主修编程、数据库和软件工程等课程。</p>
-            <p class="timeline-note">
-              <span class="timeline-chip">QS 2025 · 第 139 位</span>
-              <span class="timeline-chip">QS 2024 · 第 110 位</span>
-            </p>
           </div>
           <div class="timeline-item">
             <h3 data-i18n="edu_bsc_title">山西农业大学 · 学士 (2013.09 – 2017.07)</h3>
@@ -300,6 +293,14 @@
           </div>
         </div>
       </div>
+        <aside class="about-card edu-card education-chart">
+          <span id="qs-chart-title" class="sr-only">
+            <span class="i18n l-zh">杜伦大学与纽卡斯尔大学 2015-2025 年 QS 排名趋势图</span>
+            <span class="i18n l-en">QS rankings trend for Durham University and Newcastle University (2015-2025)</span>
+            <span class="i18n l-es">Tendencia del ranking QS de las universidades de Durham y Newcastle (2015-2025)</span>
+          </span>
+          <div id="qs-ranking-chart" class="qs-chart" role="img" aria-labelledby="qs-chart-title"></div>
+        </aside>
       <article class="about-card edu-card education-research">
         <h3>
           <span class="i18n l-zh">研究主轴</span>
@@ -408,6 +409,319 @@
       <p>© <span id="year"></span> Fan Wan</p>
     </div>
   </footer>
+  <script>
+  (function initQsRankings(){
+    const YEARS = [2015, 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025];
+    const DURHAM = [92, 61, 74, 78, 74, 78, 86, 82, 92, 78, 89];
+    const NEWCASTLE = [127, 162, 168, 161, 141, 146, 152, 134, 122, 110, 139];
+
+    const TEXT = {
+      zh: {
+        title: '杜伦大学与纽卡斯尔大学 2015-2025 年 QS 排名趋势图',
+        series: { durham: '杜伦大学', newcastle: '纽卡斯尔大学' },
+        tooltipYear: (y) => `${y} 年`,
+        tooltipRank: (label, value) => `${label}：第 ${value} 位`,
+        pointDurham: '2025 · 第 89 位',
+        pointNewcastle: '2025 · 第 139 位',
+        ariaLabel: '杜伦大学与纽卡斯尔大学 2015-2025 年 QS 排名折线图'
+      },
+      en: {
+        title: 'QS ranking trend for Durham & Newcastle Universities (2015-2025)',
+        series: { durham: 'Durham University', newcastle: 'Newcastle University' },
+        tooltipYear: (y) => `${y}`,
+        tooltipRank: (label, value) => `${label}: Rank ${value}`,
+        pointDurham: '2025 · Rank 89',
+        pointNewcastle: '2025 · Rank 139',
+        ariaLabel: 'QS ranking trend for Durham University and Newcastle University from 2015 to 2025'
+      },
+      es: {
+        title: 'Tendencia del ranking QS · Universidades de Durham y Newcastle (2015-2025)',
+        series: { durham: 'Universidad de Durham', newcastle: 'Universidad de Newcastle' },
+        tooltipYear: (y) => `${y}`,
+        tooltipRank: (label, value) => `${label}: Puesto ${value}`,
+        pointDurham: '2025 · Puesto 89',
+        pointNewcastle: '2025 · Puesto 139',
+        ariaLabel: 'Tendencia del ranking QS de Durham y Newcastle de 2015 a 2025'
+      }
+    };
+
+    const containerId = 'qs-ranking-chart';
+    let chart = null;
+    let themeObserver = null;
+    let themeQuery = null;
+    let listenersBound = false;
+
+    const prefersDark = () => window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    function currentLang(){
+      if (typeof resolveLang === 'function') {
+        const resolved = resolveLang();
+        if (resolved) {
+          const norm = resolved.toLowerCase();
+          if (norm.startsWith('zh')) return 'zh';
+          if (norm.startsWith('es')) return 'es';
+          return 'en';
+        }
+      }
+      const attr = (document.documentElement.getAttribute('data-lang') || document.documentElement.lang || 'en').toLowerCase();
+      if (attr.startsWith('zh')) return 'zh';
+      if (attr.startsWith('es')) return 'es';
+      return 'en';
+    }
+
+    function currentTheme(){
+      const attr = document.documentElement.getAttribute('data-theme');
+      if (attr === 'light' || attr === 'dark') return attr;
+      return prefersDark() ? 'dark' : 'light';
+    }
+
+    function palette(mode){
+      return mode === 'dark'
+        ? {
+            background: '#0b1020',
+            gridLine: 'rgba(82, 102, 148, 0.35)',
+            axisLine: 'rgba(148, 172, 255, 0.55)',
+            axisLabel: '#d7e0ff',
+            text: '#dde5ff',
+            legend: '#cdd7ff',
+            tooltip: 'rgba(18, 25, 46, 0.92)',
+            tooltipBorder: 'rgba(99, 121, 210, 0.45)',
+            durhamLine: ['#6C8BFF', '#A07EFF'],
+            durhamArea: ['rgba(108, 139, 255, 0.26)', 'rgba(108, 139, 255, 0.04)'],
+            newcastleLine: '#29D4DA',
+            newcastleArea: ['rgba(41, 212, 218, 0.24)', 'rgba(41, 212, 218, 0.03)'],
+            pointStroke: '#0b1020',
+            labelBg: 'rgba(20, 30, 54, 0.88)',
+            labelBorder: 'rgba(111, 134, 214, 0.35)'
+          }
+        : {
+            background: '#ffffff',
+            gridLine: 'rgba(203, 213, 225, 0.45)',
+            axisLine: 'rgba(148, 163, 184, 0.55)',
+            axisLabel: '#3b4a63',
+            text: '#1e293b',
+            legend: '#334155',
+            tooltip: 'rgba(248, 250, 252, 0.96)',
+            tooltipBorder: 'rgba(203, 213, 225, 0.65)',
+            durhamLine: ['#4F7BFF', '#8C5DFF'],
+            durhamArea: ['rgba(79, 123, 255, 0.18)', 'rgba(79, 123, 255, 0.03)'],
+            newcastleLine: '#00B8D9',
+            newcastleArea: ['rgba(0, 184, 217, 0.18)', 'rgba(0, 184, 217, 0.03)'],
+            pointStroke: '#ffffff',
+            labelBg: 'rgba(255, 255, 255, 0.94)',
+            labelBorder: 'rgba(148, 163, 184, 0.4)'
+          };
+    }
+
+    const onResize = () => {
+      if (chart) {
+        chart.resize();
+      }
+    };
+
+    const onVisibility = () => {
+      if (!document.hidden) {
+        onResize();
+      }
+    };
+
+    const rerender = () => {
+      if (!chart) return;
+      const lang = currentLang();
+      const dict = TEXT[lang] || TEXT.en;
+      const mode = currentTheme();
+      const colors = palette(mode);
+
+      const gradientDurham = {
+        type: 'linear',
+        x: 0,
+        y: 0,
+        x2: 1,
+        y2: 0,
+        colorStops: [
+          { offset: 0, color: colors.durhamLine[0] },
+          { offset: 1, color: colors.durhamLine[1] }
+        ]
+      };
+
+      const areaDurham = {
+        type: 'linear',
+        x: 0,
+        y: 0,
+        x2: 0,
+        y2: 1,
+        colorStops: [
+          { offset: 0, color: colors.durhamArea[0] },
+          { offset: 1, color: colors.durhamArea[1] }
+        ]
+      };
+
+      const areaNewcastle = {
+        type: 'linear',
+        x: 0,
+        y: 0,
+        x2: 0,
+        y2: 1,
+        colorStops: [
+          { offset: 0, color: colors.newcastleArea[0] },
+          { offset: 1, color: colors.newcastleArea[1] }
+        ]
+      };
+
+      const formatRank = (label, value) => typeof dict.tooltipRank === 'function'
+        ? dict.tooltipRank(label, value)
+        : `${label}: ${value}`;
+
+      chart.setOption({
+        backgroundColor: colors.background,
+        grid: { left: 52, right: 22, top: 32, bottom: 30 },
+        tooltip: {
+          trigger: 'axis',
+          backgroundColor: colors.tooltip,
+          borderColor: colors.tooltipBorder,
+          borderWidth: 1,
+          padding: [10, 12],
+          textStyle: { color: colors.text, fontWeight: 500 },
+          axisPointer: {
+            lineStyle: { color: colors.axisLine, width: 1.2 }
+          },
+          formatter(params){
+            if (!Array.isArray(params) || !params.length) return '';
+            const year = params[0].axisValue;
+            const lines = [dict.tooltipYear(year)];
+            params.forEach(item => {
+              lines.push(formatRank(item.seriesName, item.data));
+            });
+            return lines.join('<br/>');
+          }
+        },
+        legend: {
+          data: [dict.series.durham, dict.series.newcastle],
+          icon: 'roundRect',
+          itemWidth: 14,
+          itemHeight: 6,
+          right: 12,
+          top: 6,
+          textStyle: { color: colors.legend, fontSize: 12, fontWeight: 600 }
+        },
+        xAxis: {
+          type: 'category',
+          data: YEARS,
+          boundaryGap: false,
+          axisLine: { lineStyle: { color: colors.axisLine } },
+          axisTick: { show: false },
+          axisLabel: { color: colors.axisLabel, fontWeight: 500, padding: [8, 0, 0, 0] },
+          splitLine: { show: false }
+        },
+        yAxis: {
+          type: 'value',
+          inverse: true,
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: { color: colors.axisLabel },
+          splitLine: { lineStyle: { color: colors.gridLine, type: 'dashed' } }
+        },
+        series: [
+          {
+            name: dict.series.durham,
+            type: 'line',
+            data: DURHAM,
+            smooth: 0.32,
+            showSymbol: false,
+            symbol: 'circle',
+            symbolSize: 6,
+            lineStyle: { width: 3.2, color: gradientDurham },
+            itemStyle: { color: colors.durhamLine[1], borderColor: colors.pointStroke, borderWidth: 2 },
+            areaStyle: { color: areaDurham },
+            emphasis: { focus: 'series', lineStyle: { width: 3.6 } },
+            markPoint: {
+              symbol: 'circle',
+              symbolSize: 11,
+              label: { show: false },
+              itemStyle: { color: colors.durhamLine[1], borderColor: colors.pointStroke, borderWidth: 2 },
+              data: [{ coord: [YEARS.length - 1, DURHAM[DURHAM.length - 1]] }]
+            }
+          },
+          {
+            name: dict.series.newcastle,
+            type: 'line',
+            data: NEWCASTLE,
+            smooth: 0.32,
+            showSymbol: false,
+            symbol: 'circle',
+            symbolSize: 6,
+            lineStyle: { width: 3.1, color: colors.newcastleLine },
+            itemStyle: { color: colors.newcastleLine, borderColor: colors.pointStroke, borderWidth: 2 },
+            areaStyle: { color: areaNewcastle },
+            emphasis: { focus: 'series', lineStyle: { width: 3.4 } },
+            markPoint: {
+              symbol: 'circle',
+              symbolSize: 11,
+              label: { show: false },
+              itemStyle: { color: colors.newcastleLine, borderColor: colors.pointStroke, borderWidth: 2 },
+              data: [{ coord: [YEARS.length - 1, NEWCASTLE[NEWCASTLE.length - 1]] }]
+            }
+          }
+        ],
+        animationDuration: 600,
+        animationEasing: 'cubicOut'
+      }, true);
+
+      const dom = chart.getDom();
+      if (dom) {
+        dom.setAttribute('aria-label', dict.ariaLabel);
+      }
+    };
+
+    function bindListeners(){
+      if (listenersBound) return;
+      listenersBound = true;
+      window.addEventListener('resize', onResize);
+      document.addEventListener('visibilitychange', onVisibility);
+      window.addEventListener('language-changed', rerender);
+
+      themeObserver = new MutationObserver((mutations) => {
+        if (mutations.some((m) => m.attributeName === 'data-theme')) {
+          rerender();
+        }
+      });
+      themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+      if (window.matchMedia) {
+        themeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        if (themeQuery.addEventListener) {
+          themeQuery.addEventListener('change', rerender);
+        } else if (themeQuery.addListener) {
+          themeQuery.addListener(rerender);
+        }
+      }
+    }
+
+    function mount(){
+      if (chart) {
+        rerender();
+        return;
+      }
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      if (typeof window === 'undefined' || !window.echarts) {
+        setTimeout(mount, 120);
+        return;
+      }
+      chart = window.echarts.getInstanceByDom(container) || window.echarts.init(container, null, { renderer: 'canvas' });
+      bindListeners();
+      rerender();
+      // Ensure proper sizing after fonts settle
+      setTimeout(onResize, 160);
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', mount, { once: true });
+    } else {
+      mount();
+    }
+  })();
+  </script>
   <script>
   // Hydrate About content from assets/data/profile.json and update on language changes
   (function(){
