@@ -34,9 +34,6 @@
       --hub-shadow: 0 20px 42px -28px rgba(46,106,242,0.28);
       --hub-card-bg: #ffffff;
       --hub-card-bg-soft: #f7f9ff;
-      --hub-card-border: color-mix(in oklab, rgba(46,106,242,0.22), var(--hub-border) 65%);
-      --hub-card-shadow: 0 24px 44px -30px rgba(46,106,242,0.25);
-      --hub-text-strong: color-mix(in oklab, var(--text, #0f172a), #000 6%);
       --hub-text-body: color-mix(in oklab, var(--text, #0f172a), #1f2937 14%);
       --hub-text-muted: color-mix(in oklab, var(--muted, #64748b), #0f172a 8%);
       --hub-link: var(--hub-primary);
@@ -188,30 +185,28 @@
     /* Responsive: reduce left offset on narrow screens */
     @media (max-width: 720px) {
       /* reduce the left gutter on mobile so content isn't pushed too far right */
-      .milestone-list { margin-left: 44px; }
+      .milestone-list { margin-left: 36px; }
       /* phase segment and marker x position on mobile */
-      .milestone-phase::before { left: 24px; top: 20px; }
-      .milestone-phase h4 { padding-left: 44px; }
-      .milestone-phase h4::before { left: 24px; }
-      /* extra-segment for mobile: compute left relative to .milestone-list so it aligns with the marker
-         left = segmentX - listMargin = 24px - 44px = -20px */
-      .milestone-phase:last-of-type .milestone-list::before { left: -20px; top: 8px; }
+      .milestone-phase::before { left: 22px; top: 18px; }
+      .milestone-phase h4 { padding-left: 40px; }
+      .milestone-phase h4::before { left: 22px; }
     }
 
-    /* For the final phase (survey), draw a vertical segment alongside the cards
-       so there's a tail under the "综述" heading that matches the card column height. */
-    .milestone-phase:last-of-type .milestone-list::before {
-      content: '';
+    /* For the final phase (survey), we use a real DOM element (.segment-tail)
+       which will be sized and positioned by JS so it aligns exactly with the
+       circular marker and the list height on all screen sizes. */
+    .milestone-phase .segment-tail {
       position: absolute;
-      left: -46px; /* aligns to same x as other segments: margin-left(84) - 46 = 38 */
-      top: 8px; /* start a little below the heading */
-      bottom: 12px; /* end a bit above the bottom for breathing room */
       width: 3px;
       border-radius: 2px;
       background: linear-gradient(180deg, color-mix(in oklab, var(--hub-primary), transparent 10%) 0%, color-mix(in oklab, var(--hub-primary-soft), transparent 60%) 40%, color-mix(in oklab, var(--hub-primary), transparent 10%) 100%);
       box-shadow: 0 8px 20px -14px color-mix(in oklab, var(--hub-primary), rgba(0,0,0,0.08));
       z-index: 2;
       pointer-events: none;
+      left: 38px; /* default; precise left/top/height set by JS */
+      top: 0;
+      height: 0;
+      display: none; /* shown when JS sizes it */
     }
     .milestone-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
     .milestone-tag { padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--hub-tag-bg); color: color-mix(in oklab, var(--hub-primary), var(--hub-text-strong) 45%); border: 1px solid var(--hub-tag-border); }
@@ -873,6 +868,8 @@
             if (expanded) {
               body.classList.remove('active');
               body.hidden = true;
+              // remove any positioned tail when collapsed
+              body.querySelectorAll('.segment-tail').forEach((el) => el.remove());
               btn.textContent = tr('paperhub_milestone_btn_expand', {}, '查看详情');
               return;
             }
@@ -883,6 +880,12 @@
               body.innerHTML = renderMilestoneDetail(data);
               body.classList.add('active');
               body.hidden = false;
+              // position the final-phase tail after the DOM has rendered
+              requestAnimationFrame(() => {
+                positionFinalPhaseTail();
+                // a second pass to ensure sizes after webfonts/paint
+                setTimeout(positionFinalPhaseTail, 120);
+              });
               btn.textContent = tr('paperhub_milestone_btn_collapse', {}, '收起');
               const collapseBtnEl = body.querySelector('.collapse-btn');
               if (collapseBtnEl) {
@@ -891,6 +894,8 @@
                   if (!card) return;
                   body.classList.remove('active');
                   body.hidden = true;
+                  // remove any positioned tail when collapsed
+                  body.querySelectorAll('.segment-tail').forEach((el) => el.remove());
                   btn.textContent = tr('paperhub_milestone_btn_expand', {}, '查看详情');
 
                   requestAnimationFrame(() => {
@@ -1065,6 +1070,76 @@
 
       init();
 
+      // --- helper: position the final phase segment-tail precisely ---
+      function positionFinalPhaseTail() {
+        try {
+          // find the last milestone-phase that has a list
+          const phases = document.querySelectorAll('.milestone-body .milestone-phase');
+          if (!phases || !phases.length) return;
+          const last = phases[phases.length - 1];
+          if (!last) return;
+          const list = last.querySelector('.milestone-list');
+          if (!list) return;
+
+          // ensure a tail element exists
+          let tail = last.querySelector('.segment-tail');
+          if (!tail) {
+            tail = document.createElement('div');
+            tail.className = 'segment-tail';
+            last.appendChild(tail);
+          }
+
+          // compute x position: marker center relative to the last element's left
+          const marker = last.querySelector('h4::before');
+          // since pseudo-element can't be measured, compute from known offsets
+          const phaseBefore = getComputedStyle(last).getPropertyValue('--phase-left');
+
+          // compute marker offset used in CSS: desktop 38px, mobile 22px
+          const viewport = Math.max(document.documentElement.clientWidth || 0, window.innerWidth || 0);
+          const markerOffset = viewport <= 720 ? 22 : 38;
+          const listStyle = getComputedStyle(list);
+          const listMarginLeft = parseFloat(listStyle.marginLeft) || 0;
+
+          // position tail so it visually aligns with marker: compute marker center in page coords
+          const phaseRect = last.getBoundingClientRect();
+          const listRect = list.getBoundingClientRect();
+          const h4 = last.querySelector('h4');
+          const headingRect = h4 ? h4.getBoundingClientRect() : phaseRect;
+
+          // absolute marker center x relative to phase: heading.left - phase.left + markerOffset
+          const markerCenterX = (headingRect.left - phaseRect.left) + markerOffset;
+          const tailWidth = parseFloat(getComputedStyle(tail).width) || 3;
+          let leftRelativeToPhase = markerCenterX - (tailWidth / 2);
+          if (!Number.isFinite(leftRelativeToPhase)) leftRelativeToPhase = markerOffset - listMarginLeft || 38;
+
+          // compute top: start slightly below the visual center of the marker
+          const top = (headingRect.top - phaseRect.top) + (headingRect.height / 2) + 8;
+
+          // compute height: from top down to bottom of list
+          const bottomOfList = listRect.bottom - phaseRect.top - 12; // breathing room
+          let height = Math.max(12, bottomOfList - top);
+          if (!Number.isFinite(height) || height < 12) {
+            height = Math.max(40, (listRect.height || 120) - 24);
+          }
+
+          // commit styles
+          tail.style.display = 'block';
+          tail.style.left = `${Math.round(leftRelativeToPhase)}px`;
+          tail.style.top = `${Math.round(top)}px`;
+          tail.style.height = `${Math.round(height)}px`;
+        } catch (e) {
+          // silently ignore in older browsers
+        }
+      }
+
+      // run on resize to keep alignment
+      let tailResizeTimer = null;
+      window.addEventListener('resize', () => {
+        clearTimeout(tailResizeTimer);
+        tailResizeTimer = setTimeout(positionFinalPhaseTail, 120);
+      });
+
+      // run after details are rendered by calling positionFinalPhaseTail from where renderMilestoneDetail()
       window.addEventListener('language-changed', () => {
         syncStaticText();
         if (state.hasHighlightData) {
