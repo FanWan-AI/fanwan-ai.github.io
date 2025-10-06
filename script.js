@@ -949,30 +949,27 @@ document.addEventListener('DOMContentLoaded', () => {
     let verified = false;
     const slider = document.getElementById('slider-verify');
     if (slider) {
-      const thumb = slider.querySelector('.slider-thumb');
-      const track = slider;
+      const thumb = slider.querySelector('.verify-thumb');
+  const track = slider.querySelector('.verify-track');
+      if (!thumb || !track) return;
       let dragging = false;
       let startX = 0;
       let startLeft = 0;
-      const max = () => track.clientWidth - thumb.clientWidth;
+  const max = () => slider.clientWidth - thumb.clientWidth;
       function setLeft(px){ thumb.style.left = Math.max(0, Math.min(max(), px)) + 'px'; }
       function complete(){
         verified = true;
         slider.classList.add('done');
-        // lock thumb to end
         setLeft(max());
         thumb.style.cursor = 'default';
-        thumb.style.background = 'color-mix(in oklab, var(--success) 20%, var(--surface))';
-        slider.querySelector('.slider-track span')?.remove();
+        const span = track.querySelector('span');
+        if (span) span.remove();
         const check = document.createElement('span');
         check.textContent = '✓';
-        check.style.color = 'var(--success)';
         check.style.fontWeight = '700';
         check.style.fontSize = '1rem';
-        const center = document.createElement('div');
-        center.style.cssText = 'position:absolute;inset:0;display:grid;place-items:center;color:var(--success)';
-        center.appendChild(check);
-        slider.appendChild(center);
+        check.style.color = 'var(--success)';
+        track.appendChild(check);
       }
       function onDown(e){ dragging = true; startX = (e.touches?e.touches[0].clientX:e.clientX); startLeft = parseFloat(thumb.style.left||'0'); thumb.style.cursor='grabbing'; e.preventDefault(); }
       function onMove(e){ if(!dragging) return; const x=(e.touches?e.touches[0].clientX:e.clientX); const dx=x-startX; setLeft(startLeft+dx); }
@@ -1034,6 +1031,210 @@ document.addEventListener('DOMContentLoaded', () => {
         if (btn){ btn.disabled = false; btn.style.opacity = 1; }
       }
     });
+  })();
+
+  (function enhanceConnectSubscribe(){
+    const section = document.getElementById('connect-subscribe');
+    if (!section) return;
+
+    const EMAIL_HANDLES = { zh: 'wan', en: 'wan', es: 'wan' };
+    const rssCard = document.getElementById('rss-card');
+    const rssRow = document.getElementById('rss-row');
+    const rssButton = document.getElementById('rss-button');
+    const form = section.querySelector('form.embeddable-buttondown-form');
+    const success = document.getElementById('bd-success');
+
+    const rssTexts = {
+      zh: {
+        tipIOS: '如果点开后只有纯文本，说明浏览器没有内置 RSS 阅读器。先安装 Reeder 或 NetNewsWire，再使用上方按钮或下面的一键订阅。',
+        tipAndroid: '如果浏览器直接显示文本，请使用 Feedly 或 Inoreader 订阅，或复制链接到你喜欢的阅读器。',
+        tipOther: '浏览器可能不会自动订阅 RSS。可以使用下面的一键订阅按钮，或复制 RSS 链接到阅读器。',
+        copy: '复制 RSS 链接',
+        copied: '已复制',
+        quick: '一键订阅：',
+        more: '如果希望在浏览器里直接预览 RSS，可安装扩展（如 Feedbro/Feeder）或使用桌面阅读器（Reeder、NetNewsWire 等）。',
+        feedly: '若 Feedly 显示“Feed not found”，请复制上方 RSS 链接到 Feedly 手动添加或稍后重试。'
+      },
+      en: {
+        tipIOS: 'If you only see plain text, your browser lacks a built-in RSS reader. Install Reeder or NetNewsWire, then use the button above or the quick links below.',
+        tipAndroid: 'If the browser shows raw text, subscribe with Feedly or Inoreader, or copy the feed URL into your reader.',
+        tipOther: 'Your browser might not subscribe directly. Use the quick links below or copy the RSS link into your reader.',
+        copy: 'Copy RSS link',
+        copied: 'Copied',
+        quick: 'Quick subscribe:',
+        more: 'To preview RSS inside the browser, install an extension (Feedbro/Feeder) or use a desktop reader (Reeder, NetNewsWire, etc.).',
+        feedly: 'If Feedly shows “Feed not found”, copy the RSS link above and add it manually in Feedly or try again later.'
+      },
+      es: {
+        tipIOS: 'Si solo ves texto plano, tu navegador no trae lector RSS integrado. Instala Reeder o NetNewsWire y usa el botón o los accesos rápidos abajo.',
+        tipAndroid: 'Si el navegador muestra texto en crudo, usa Feedly o Inoreader, o copia el enlace del feed a tu lector.',
+        tipOther: 'Puede que tu navegador no suscriba directamente. Usa los accesos rápidos o copia el enlace RSS a tu lector.',
+        copy: 'Copiar enlace RSS',
+        copied: 'Copiado',
+        quick: 'Suscripción rápida:',
+        more: 'Para ver RSS en el navegador, instala una extensión (Feedbro/Feeder) o usa un lector de escritorio (Reeder, NetNewsWire, etc.).',
+        feedly: 'Si Feedly muestra “Feed not found”, copia el enlace RSS y añádelo manualmente o inténtalo más tarde.'
+      }
+    };
+
+    function currentLang(){
+      const raw = (resolveLang('zh') || 'zh').slice(0, 2);
+      return raw === 'en' || raw === 'es' ? raw : 'zh';
+    }
+
+    function feedFor(lang){
+      if (lang === 'en') return 'rss-en.xml';
+      if (lang === 'es') return 'rss-es.xml';
+      return 'rss.xml';
+    }
+
+    function setRssButton(lang){
+      if (!rssButton) return;
+      rssButton.setAttribute('href', feedFor(lang));
+      rssButton.setAttribute('title', 'RSS');
+      rssButton.setAttribute('aria-label', 'RSS');
+    }
+
+    function buildRssHelp(lang){
+      if (!rssCard || !rssRow) return;
+      rssCard.querySelectorAll('[data-rss-help]').forEach(node => node.remove());
+      const text = rssTexts[lang] || rssTexts.zh;
+
+      const feedHref = rssButton?.getAttribute('href') || 'rss.xml';
+      const PROD_ORIGIN = 'https://fanwan-ai.github.io/';
+      const isLocal = location.protocol === 'file:' || /^(?:https?:\/\/)?(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(location.origin);
+      const feedUrl = new URL(feedHref, isLocal ? PROD_ORIGIN : `${location.origin}/`).toString();
+
+      const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+      const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+      const isSafari = /Safari/i.test(ua) && !/Chrome|CriOS|Android/i.test(ua);
+      const isIOSSafari = isIOS && isSafari;
+      const isAndroid = /Android/i.test(ua);
+
+      const tip = document.createElement('p');
+      tip.className = 'rss-tip';
+      tip.dataset.rssHelp = '';
+      tip.textContent = isIOSSafari ? text.tipIOS : (isAndroid ? text.tipAndroid : text.tipOther);
+      rssCard.appendChild(tip);
+
+      const actions = document.createElement('div');
+      actions.className = 'rss-actions';
+      actions.dataset.rssHelp = '';
+
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.id = 'copy-rss';
+      copyBtn.className = 'btn outline';
+      copyBtn.textContent = text.copy;
+      copyBtn.addEventListener('click', async () => {
+        try {
+          if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(feedUrl);
+          } else {
+            const ta = document.createElement('textarea');
+            ta.value = feedUrl;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          copyBtn.textContent = text.copied;
+          setTimeout(() => { copyBtn.textContent = text.copy; }, 1300);
+        } catch {}
+      });
+      actions.appendChild(copyBtn);
+
+      const quick = document.createElement('span');
+      quick.className = 'rss-note-small';
+      quick.textContent = text.quick;
+      actions.appendChild(quick);
+
+      const link = (href, label) => {
+        const a = document.createElement('a');
+        a.className = 'btn outline';
+        a.href = href;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.textContent = label;
+        return a;
+      };
+
+      actions.appendChild(link(`https://feedly.com/i/subscription/feed/${feedUrl}`, 'Feedly'));
+      actions.appendChild(link(`https://www.inoreader.com/?add_feed=${encodeURIComponent(feedUrl)}`, 'Inoreader'));
+      if (isIOS) {
+        actions.appendChild(link(`netnewswire://subscribe?url=${encodeURIComponent(feedUrl)}`, 'NetNewsWire'));
+        actions.appendChild(link(`reeder://x-callback-url/subscribe?feed=${encodeURIComponent(feedUrl)}`, 'Reeder'));
+      }
+      rssCard.appendChild(actions);
+
+      const more = document.createElement('p');
+      more.className = 'rss-note-small';
+      more.dataset.rssHelp = '';
+      more.textContent = text.more;
+      rssCard.appendChild(more);
+
+      const feedlyNote = document.createElement('p');
+      feedlyNote.className = 'rss-note-small';
+      feedlyNote.dataset.rssHelp = '';
+      feedlyNote.textContent = text.feedly;
+      rssCard.appendChild(feedlyNote);
+    }
+
+    function updateEmailForm(lang){
+      if (!form) return;
+      const handle = EMAIL_HANDLES[lang] || EMAIL_HANDLES.zh;
+      if (handle && !/YOUR_HANDLE/.test(handle)) {
+        form.setAttribute('action', `https://buttondown.com/api/emails/embed-subscribe/${handle}`);
+      }
+    }
+
+    if (form && success) {
+      form.addEventListener('submit', () => {
+        const lang = currentLang();
+        const msg = translations?.[lang]?.contact_subscribe_email_success;
+        if (msg) {
+          success.textContent = msg;
+          success.hidden = false;
+        }
+      });
+    }
+
+    function refresh(lang){
+      setRssButton(lang);
+      buildRssHelp(lang);
+      updateEmailForm(lang);
+      if (success && !success.hidden) {
+        const msg = translations?.[lang]?.contact_subscribe_email_success;
+        if (msg) success.textContent = msg;
+      }
+    }
+
+    refresh(currentLang());
+
+    window.addEventListener('language-changed', (e) => {
+      const lang = (e?.detail?.lang || currentLang()).slice(0,2);
+      refresh(lang === 'en' || lang === 'es' ? lang : 'zh');
+    });
+
+    (function focusHash(){
+      const h = (location.hash || '').toLowerCase();
+      const map = { '#rss': 'rss-card', '#email': 'email-card' };
+      const id = map[h];
+      if (!id) return;
+      const card = document.getElementById(id);
+      if (card) {
+        card.setAttribute('tabindex', '-1');
+        card.style.outline = '2px solid var(--primary)';
+        card.style.outlineOffset = '3px';
+        card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setTimeout(() => { card.focus(); }, 60);
+        setTimeout(() => {
+          card.style.outline = '';
+          card.style.outlineOffset = '';
+          card.removeAttribute('tabindex');
+        }, 1600);
+      }
+    })();
   })();
 
   // Blog list page: switch card link and thumbnail per language
