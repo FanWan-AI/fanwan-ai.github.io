@@ -252,8 +252,8 @@
     .mw-card-entry:hover { transform: translateY(-6px); box-shadow: 0 36px 72px -30px color-mix(in oklab, var(--mw-card-accent, var(--mw-primary)), rgba(15,23,42,0.08) 40%); border-color: color-mix(in oklab, var(--mw-card-outline, var(--mw-card-border)), var(--mw-card-accent, var(--mw-primary)) 45%); }
     .mw-card-entry:hover::before { opacity: .8; }
     .mw-card-entry:hover::after { opacity: .12; }
-    .mw-card-entry .mw-title { font-size: 1.16rem; font-weight: 700; margin: 0; color: inherit; line-height: 1.35; }
-    .mw-card-entry .mw-title a { color: inherit; text-decoration: none; }
+  .mw-card-entry .mw-title { font-size: 1.16rem; font-weight: 700; margin: 0; color: inherit; line-height: 1.35; overflow-wrap: anywhere; word-break: break-word; }
+  .mw-card-entry .mw-title a { color: inherit; text-decoration: none; display: inline; }
     .mw-card-entry .mw-title a:hover { text-decoration: underline; }
     .mw-card-head { display: flex; flex-direction: column; gap: 10px; padding: 18px 20px; border-radius: 18px; background: var(--mw-card-head-bg, linear-gradient(145deg, rgba(59,130,246,0.16), rgba(59,130,246,0.28))); color: var(--mw-card-head-text, var(--mw-text-strong)); border: 1px solid color-mix(in oklab, var(--mw-card-head-bg, rgba(59,130,246,0.18)), white 70%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.28); }
     .mw-card-source { align-self: flex-start; display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; border-radius: 999px; padding: 5px 14px; background: color-mix(in oklab, var(--mw-card-head-text, #0b1120), transparent 78%); color: color-mix(in oklab, var(--mw-card-head-text, #0b1120), white 14%); box-shadow: 0 8px 16px -12px rgba(15,23,42,0.35); }
@@ -659,6 +659,7 @@
       en: { chat:'Chat', multimodal:'Multimodal', retrieval:'Retrieval', code:'Code', speech:'Speech', video:'Video', vision:'Vision', planning:'Planning', safety:'Safety', compression:'Compression', distillation:'Distillation', devex:'DevEx', education:'Education', research:'Research', search:'Search', content:'Content Gen', productization:'Productization', robotics:'Robotics', data:'Data', training:'Training', evaluation:'Evaluation', deployment:'Deployment', inference:'Inference', monitoring:'Monitoring' },
       es: { chat:'Conversación', multimodal:'Multimodal', retrieval:'Recuperación', code:'Código', speech:'Voz', video:'Vídeo', vision:'Visión', planning:'Planificación', safety:'Seguridad', compression:'Compresión', distillation:'Destilación', devex:'DevEx', education:'Educación', research:'Investigación', search:'Búsqueda', content:'Generación de contenido', productization:'Productización', robotics:'Robótica', data:'Datos', training:'Entrenamiento', evaluation:'Evaluación', deployment:'Despliegue', inference:'Inferencia', monitoring:'Monitorización' }
     };
+    let PROJECT_CATEGORY_LABELS = {};
 
     // Build reverse map from any label to canonical key (kept for deriving categories)
     let LABEL_TO_KEY = {};
@@ -681,6 +682,23 @@
     }
     window.getLang = getLang; // expose
     const tagLabel = (key)=> TAG_LABELS[getLang()]?.[key] || key;
+    function projectCategoryLabel(key, lang){
+      try{
+        const meta = PROJECT_CATEGORY_LABELS?.[key];
+        if(!meta) return null;
+        const order = [lang, getLang(), 'zh', 'en', 'es'];
+        const seen = new Set();
+        for(const L of order){
+          if(typeof L !== 'string') continue;
+          if(seen.has(L)) continue;
+          seen.add(L);
+          const val = meta[L];
+          if(val) return val;
+        }
+        const first = Object.values(meta).find(Boolean);
+        return first || null;
+      }catch{return null;}
+    }
     const toKey = (s)=> LABEL_TO_KEY[String(s||'').trim()] || null;
   function string(s){ return String(s); }
 
@@ -1441,7 +1459,21 @@
           const bucket = {};
           for(const it of arr){ const g=it.__group||'other'; if(!bucket[g]){ bucket[g]=[]; order.push(g);} bucket[g].push(it); }
           const lang2 = getLang();
-          function labelForGroup(k){ return TAG_LABELS?.[lang2]?.[k] || k; }
+          function labelForGroup(k){
+            if(grouping === 'projects'){
+              const lbl = projectCategoryLabel(k, lang2);
+              if(lbl) return lbl;
+            }
+            const taskMeta = TASK_LABELS_BY_KEY?.[k];
+            if(taskMeta){
+              const taskLabel = taskMeta[lang2] || taskMeta.en || taskMeta.zh || taskMeta.es;
+              if(taskLabel) return taskLabel;
+            }
+            const tagLbl = TAG_LABELS?.[lang2]?.[k];
+            if(tagLbl) return tagLbl;
+            const fallback = projectCategoryLabel(k, lang2);
+            return fallback || k;
+          }
           const sections = [];
           for(const k of order){
             let list = filterSort(bucket[k]);
@@ -1480,6 +1512,24 @@
         try{ updateTriggerLabel(); }catch{}
       }catch{}
     })();
+
+    async function loadProjectCategoryLabels(){
+      try{
+        const data = await fetch('../data/ai/modelswatch/project_categories.json',{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null);
+        if(data?.categories){
+          const map = {};
+          for(const entry of data.categories){
+            if(!entry || !entry.key) continue;
+            map[entry.key] = {
+              zh: entry.zh || entry.key,
+              en: entry.en || entry.key,
+              es: entry.es || entry.key
+            };
+          }
+          PROJECT_CATEGORY_LABELS = map;
+        }
+      }catch(e){ console.warn('[mw] loadProjectCategoryLabels failed', e); }
+    }
 
     async function loadCategories(){
       try{
@@ -1843,8 +1893,9 @@
     }
 
     async function init(){
-  await loadCategories();
-    await loadTaskMap();
+      await loadCategories();
+      await loadProjectCategoryLabels();
+      await loadTaskMap();
       // Load date list for daily archives
   try{ availableDates = await fetch('../data/ai/modelswatch/daily/dates.json', {cache:'no-store'}).then(r=>r.json()); if(!Array.isArray(availableDates)) availableDates = []; }catch{ availableDates = []; }
           // set bounds for native calendar (if we have dates)
