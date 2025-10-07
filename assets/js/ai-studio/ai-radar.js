@@ -350,7 +350,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
   }
 
   function getTopItems(arr){
-    const N = 8;
+  const N = 6;
     const res = [];
     const seen = new Set();
     // prefer marked
@@ -385,9 +385,9 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const heading = document.createElement('div');
     heading.className = 'rad-top-heading';
     const titleEl = document.createElement('h3');
-    titleEl.textContent = tr('radar_top_label', 'Top 8');
+  titleEl.textContent = tr('radar_top_label', 'Top 6 热度榜');
     const subtitle = document.createElement('span');
-    subtitle.textContent = tr('radar_top_caption', '今日关注度最高的 8 条资讯');
+  subtitle.textContent = tr('radar_top_caption', '今日关注度最高的 6 条资讯');
     heading.appendChild(titleEl);
     heading.appendChild(subtitle);
     wrap.appendChild(heading);
