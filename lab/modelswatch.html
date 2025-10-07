@@ -69,6 +69,11 @@
   /* Selected inline chips: larger, simpler label only (no close button) */
   #mw-cas-inline-selected .mw-cas-v2-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;font-size:.9rem;font-weight:600;background:color-mix(in oklab,var(--mw-primary-soft,#eef4ff),white 25%);border:1px solid color-mix(in oklab,var(--primary,#2563eb),white 55%);line-height:1.1;}
   :root[data-theme=dark] #mw-cas-inline-selected .mw-cas-v2-chip{background:color-mix(in oklab,#1e293b,#2563eb 25%);border-color:color-mix(in oklab,#2563eb,#1e293b 40%);} 
+  /* prefix text style for inline selected chips */
+  .mw-cas-inline-prefix{font-weight:700;color:var(--mw-text-strong);margin-right:6px}
+  /* Clear control: make it a subtle text button (no boxed outline) */
+  #mw-cas-clear{background:transparent;border:0;padding:8px 10px;border-radius:8px;cursor:pointer;font-weight:600;color:var(--mw-text-body);box-shadow:none}
+  #mw-cas-clear:hover{background:color-mix(in oklab,var(--mw-input-bg,#fff),var(--primary) 6%);color:var(--mw-text-strong)}
 
     .mw-cas-dd{position:fixed;inset:0;z-index:9300;display:none;}
     .mw-cas-dd[hidden]{display:none!important;}
@@ -525,11 +530,13 @@
               <span class="i18n l-es">Explorar modelos por tarea</span>
             </button>
             <!-- Selected tasks prefix + chips -->
-            <div id="mw-cas-inline-selected" aria-live="polite" style="margin-left:12px;display:flex;align-items:center;gap:8px"></div>
+            <div id="mw-cas-inline-selected" aria-live="polite"></div>
             <!-- Clear button moved here (keep original id) -->
-            <div style="margin-left:12px;">
-              <button class="btn outline small" id="mw-cas-clear"><span class="i18n l-zh">清空筛选</span><span class="i18n l-en">Clear</span><span class="i18n l-es">Limpiar</span></button>
-            </div>
+            <button id="mw-cas-clear" type="button" class="btn small">
+              <span class="i18n l-zh">清空筛选</span>
+              <span class="i18n l-en">Clear</span>
+              <span class="i18n l-es">Limpiar</span>
+            </button>
           </div>
         </div>
 
@@ -2757,9 +2764,7 @@
         .mw-cas-v2-head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;padding:14px 20px;border-bottom:1px solid color-mix(in oklab,var(--border,#cbd5e1),var(--primary,#2563eb) 22%);background:linear-gradient(135deg,color-mix(in oklab,var(--primary,#2563eb),white 85%),color-mix(in oklab,var(--primary,#2563eb),white 92%));}
         :root[data-theme=dark] .mw-cas-v2-head{background:linear-gradient(135deg,rgba(37,99,235,0.28),rgba(37,99,235,0.12));}
         .mw-cas-v2-title{margin:0;font-size:1rem;font-weight:700;display:flex;gap:8px;align-items:center;}
-        .mw-cas-v2-search{flex:1 1 280px;display:flex;align-items:center;gap:6px;min-width:220px;}
-        .mw-cas-v2-search input{flex:1 1 auto;padding:6px 12px;border-radius:14px;border:1px solid color-mix(in oklab,var(--mw-input-border,var(--border,#cbd5e1)),var(--primary,#2563eb) 30%);background:var(--mw-input-bg,#fff);font-size:.8rem;}
-        .mw-cas-v2-search input:focus{outline:none;border-color:var(--mw-primary,#2563eb);box-shadow:0 0 0 2px color-mix(in oklab,var(--mw-primary,#2563eb),transparent 70%);}
+  /* search input removed per user preference; kept head layout flexible */
         .mw-cas-v2-head-actions{display:flex;align-items:center;gap:6px;}
   .mw-cas-v2-head-actions .btn[data-action="close"]{color:#0f172a;font-weight:800;text-shadow:0 1px 0 rgba(255,255,255,0.4);}
   :root[data-theme=dark] .mw-cas-v2-head-actions .btn[data-action="close"]{color:#f1f5f9;text-shadow:0 1px 0 rgba(0,0,0,0.6);}
@@ -2826,9 +2831,7 @@
               <span class="i18n l-en">Browse models by task</span>
               <span class="i18n l-es">Explorar modelos por tarea</span>
             </h2>
-            <div class="mw-cas-v2-search" role="search">
-              <input id="mw-cas-v2-filter" type="text" placeholder="搜索任务 / Search tasks" aria-label="Filter tasks" />
-            </div>
+            <!-- search box intentionally removed -->
             <div class="mw-cas-v2-head-actions">
               <button type="button" class="btn ghost small" data-action="clear" title="Clear / 清空">⟲</button>
               <button type="button" class="btn ghost small" data-action="close" aria-label="Close">✕</button>
@@ -2860,12 +2863,12 @@
 
         // Action buttons
         panel.querySelectorAll('[data-action="close"]').forEach(btn=> btn.addEventListener('click', ()=> closeDropdown()));
-  panel.querySelector('[data-action="clear"]').addEventListener('click', ()=>{
+        panel.querySelector('[data-action="clear"]').addEventListener('click', ()=>{
     selectedTasks.clear();
     level2Key = null;
     level2PinnedKey = null;
     filterQuery='';
-    try{ const fi=dd.querySelector('#mw-cas-v2-filter'); if(fi) fi.value=''; }catch{}
+    // search box removed — nothing to clear here
     persistSelection();
     renderAll();
     try{updateTriggerLabel(); updateClearButtonVisibility();}catch{}
@@ -3131,7 +3134,7 @@
           document.body.appendChild(dd); // portalize
         }
       }catch{}
-      function bindFilterInput(){ const inp=dd.querySelector('#mw-cas-v2-filter'); if(!inp || inp._mw_bound) return; inp._mw_bound=true; inp.addEventListener('input', e=>{ filterQuery=(e.target.value||'').trim(); renderAll(); }); inp.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(filterQuery){ filterQuery=''; inp.value=''; renderAll(); e.stopPropagation(); } } }); }
+  // bindFilterInput removed: search input was removed per user preference
 
       // Override legacy open/close & commit with scroll preservation
       window.openDropdown = function(){
@@ -3142,7 +3145,7 @@
         __prevScrollY = window.scrollY || 0;
         dd.hidden = false; document.body.classList.add('mw-cas-open'); trigger.setAttribute('aria-expanded','true');
         loadCategories(false);
-        bindFilterInput();
+  // no filter input to bind
         // After rendering & potential focus, restore scroll to where user was.
         // Multiple frames to counter any late focus-induced scroll.
         requestAnimationFrame(()=>{
@@ -3406,7 +3409,7 @@
       });
       // prefix text before chips
       const prefixText = (L==='en' ? 'Selected Tasks: ' : L==='es' ? 'Selected Tasks: ' : '已选任务: ');
-      wrap.innerHTML = `<span class="mw-cas-inline-prefix" style="font-weight:600;opacity:.85;margin-right:6px;">${esc(prefixText)}</span>` + chips.join('');
+  wrap.innerHTML = `<span class="mw-cas-inline-prefix">${esc(prefixText)}</span>` + chips.join('');
       // chips are display-only here; removal is via cascader dialog / Clear button
     }
 
@@ -3415,9 +3418,10 @@
       const mode = modeOverride || window.__mw_mode_current || MODE || 'daily';
       const filtered = selectedTasks.size>0;
   const shouldShow = (mode === 'hf') && filtered;
-      const wrapper = clearBtn.closest('.mw-control');
-      if(wrapper) wrapper.style.display = shouldShow ? '' : 'none';
-      clearBtn.style.display = shouldShow ? '' : 'none';
+  // Do not hide arbitrary wrappers (clearBtn lives inside .mw-filter-launch now)
+  const inlineWrap = document.getElementById('mw-cas-inline-selected');
+  if(inlineWrap) inlineWrap.style.display = shouldShow ? '' : 'none';
+  clearBtn.style.display = shouldShow ? '' : 'none';
       try{ clearBtn.disabled = !shouldShow; }catch{}
     }
 
