@@ -888,6 +888,80 @@
       }catch{ return String((it && (it.id||it.url||it.name))||'').toLowerCase(); }
     }
 
+    function shallowNormalize(raw){
+      if(!raw || typeof raw !== 'object') return {};
+      const out = { ...raw };
+      const rawId = raw.id || raw.repo_id || raw.url || raw.name || '';
+      const id = String(rawId || '').trim();
+      out.id = id;
+      // Source normalization
+      const src = (raw.source || '').toString().trim().toLowerCase();
+      if(src==='github' || src==='gh'){ out.source = 'github'; }
+      else if(src==='hf' || src==='huggingface' || src==='hugging_face'){ out.source = 'hf'; }
+      else if(id.startsWith('github.com/')){ out.source = 'github'; }
+      else out.source = 'hf';
+
+      // Name fallback
+      out.name = raw.name || (id && id.includes('/') ? id.split('/').pop() : id) || '';
+
+      // URL fallback based on normalized source
+      if(!raw.url){
+        if(out.source === 'github' && id && !id.startsWith('http')) out.url = `https://github.com/${id}`;
+        else if(out.source === 'hf' && id && !id.startsWith('http')) out.url = `https://huggingface.co/${id}`;
+        else out.url = raw.url || '';
+      }
+
+      // Ensure arrays
+      out.tags = Array.isArray(raw.tags) ? raw.tags.filter(Boolean) : [];
+      out.task_keys = Array.isArray(raw.task_keys) ? raw.task_keys.filter(Boolean) : (raw.task_keys ? [raw.task_keys] : []);
+
+      // Normalize summaries per locale so downstream renders never see undefined
+      out.summary = raw.summary || raw.description || '';
+      out.summary_en = raw.summary_en || '';
+      out.summary_zh = raw.summary_zh || '';
+      out.summary_es = raw.summary_es || '';
+
+      // Normalize stats object and coerce number-like fields
+      const stats = (raw.stats && typeof raw.stats === 'object') ? { ...raw.stats } : {};
+      const numFields = ['stars','stars_7d','forks_7d','downloads_total','downloads_7d','hf_downloads_total','hf_downloads_7d','likes_total','likes_7d'];
+      numFields.forEach(key=>{
+        if(key in stats){
+          const num = Number(stats[key]);
+          stats[key] = Number.isFinite(num) ? num : 0;
+        }
+      });
+      // Backfill common aliases
+      if(!stats.downloads_total && Number.isFinite(Number(raw.downloads_total))) stats.downloads_total = Number(raw.downloads_total);
+      if(!stats.downloads_7d && Number.isFinite(Number(raw.downloads_7d))) stats.downloads_7d = Number(raw.downloads_7d);
+      if(!stats.likes_total && Number.isFinite(Number(raw.likes_total))) stats.likes_total = Number(raw.likes_total);
+      out.stats = stats;
+
+      // Scores
+      const scoreFields = ['score','score_model','score_engineering'];
+      scoreFields.forEach(key=>{
+        if(key in raw){
+          const num = Number(raw[key]);
+          out[key] = Number.isFinite(num) ? num : 0;
+        }
+      });
+
+      // Metadata fallbacks
+      out.license = raw.license || '';
+      out.lang = raw.lang || raw.language || '';
+      out.reason_label = raw.reason_label || '';
+      out.reason_text = raw.reason_text || '';
+      out.updated_at = raw.updated_at || raw.last_activity || raw.stats?.updated_at || '';
+
+      // Preserve lightweight timeline arrays
+      out.timeline = {
+        t: Array.isArray(raw.timeline?.t) ? raw.timeline.t : Array.isArray(raw.t) ? raw.t : [],
+        stars: Array.isArray(raw.timeline?.stars) ? raw.timeline.stars : Array.isArray(raw.stars_timeline) ? raw.stars_timeline : [],
+        downloads: Array.isArray(raw.timeline?.downloads) ? raw.timeline.downloads : Array.isArray(raw.downloads_timeline) ? raw.downloads_timeline : []
+      };
+
+      return out;
+    }
+
     // Collect normalized ids for the recent window (non-blocking). Returns a Set.
     async function getRecentIdSet(days){
       try{
