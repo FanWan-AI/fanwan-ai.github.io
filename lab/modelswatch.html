@@ -135,6 +135,16 @@
       .mw-cas-foot-right{width:100%;}
       #mw-cas-apply{width:100%;justify-content:center;}
     }
+    /* Mobile card improvements: single column, reduced chrome, touch-friendly spacing */
+    @media (max-width:800px){
+      .mw-grid{grid-template-columns:1fr !important;gap:12px}
+      .mw-card{border-radius:14px;padding:16px;box-shadow:0 10px 22px -12px rgba(2,6,23,0.28);}
+      .mw-card .mw-title{font-size:1.02rem}
+      .mw-card-summary{font-size:0.95rem}
+      .mw-card-actions{margin-top:8px}
+      .mw-toolbar{padding:18px 16px}
+      .mw-control .input{height:40px;padding:8px 10px}
+    }
     @keyframes mwFadeIn{from{opacity:0;}to{opacity:1;}}
     .mw-title{font-size:1.05rem;margin:0 0 4px 0;line-height:1.35}
   .mw-title a{color:var(--primary);text-decoration:none}
@@ -2913,15 +2923,18 @@
       }
 
       function computeCounts(){
-        const counts = window.__mw_task_counts || {}; // if provided
-        if(Object.keys(counts).length>0) return counts;
-        // fallback: derive from visible items dataset
+        // Prefer precomputed counts if available. On mobile avoid scanning full data set to keep UI snappy.
+        const pre = window.__mw_task_counts || {};
+        if(Object.keys(pre).length>0) return pre;
         try{
           const out = {};
-          (currentTree()||[]).forEach(c=> (c.subcategories||[]).forEach(sub=> (sub.tasks||[]).forEach(t=>{ out[t.key] = out[t.key]||0; }))); // initialize
-          // If global filtered array exists use arr else items
-          const pool = (typeof arr!=='undefined' && Array.isArray(arr))? arr : (Array.isArray(items)? items: []);
-          pool.forEach(it=>{ (it.tasks||[]).forEach(k=>{ if(out.hasOwnProperty(k)) out[k]++; }); });
+          // Initialize keys from currentTree (cheap)
+          (currentTree()||[]).forEach(c=> (c.subcategories||[]).forEach(sub=> (sub.tasks||[]).forEach(t=>{ out[t.key] = 0; })));
+          // Attempt a lightweight sample pass: use items (if small) else skip counting to avoid blocking mobile
+          try{
+            const pool = (Array.isArray(items) && items.length < 2000) ? items : (Array.isArray(arr) && arr.length < 2000 ? arr : null);
+            if(pool){ pool.forEach(it=>{ (it.task_keys||it.tasks||[]).forEach(k=>{ if(out.hasOwnProperty(k)) out[k]++; }); }); }
+          }catch{}
           return out;
         }catch{ return {}; }
       }
@@ -2966,18 +2979,27 @@
         const level = Number(el.dataset.level);
         if(level===1){
           level1Key = el.dataset.key;
+          // reset lower levels when changing top-level explicitly
           level2Key = null;
           level2PinnedKey = null;
           renderLevel2();
-          renderLevel3();
-          if(isMobile()) dd.querySelector('.mw-cas-v2-body').dataset.stage='l2';
+          // On mobile, navigate to second-level view explicitly so user sees the subcategories
+          if(isMobile()){
+            const body = dd.querySelector('.mw-cas-v2-body'); if(body) body.dataset.stage='l2';
+            // only render third column when user selects a subcategory
+            const col3 = dd.querySelector('[data-col="3"]'); if(col3) col3.innerHTML = '<div class="mw-cas-v2-empty" style="opacity:.7;padding:12px">请选择子类以查看具体能力 / Select a subcategory to view capabilities</div>';
+          }else{
+            renderLevel3();
+          }
         }
         else if(level===2){
           level2Key = el.dataset.key;
           level2PinnedKey = level2Key;
           renderLevel2();
           renderLevel3();
-          if(isMobile()) dd.querySelector('.mw-cas-v2-body').dataset.stage='l3';
+          if(isMobile()){
+            const body = dd.querySelector('.mw-cas-v2-body'); if(body) body.dataset.stage='l3';
+          }
         }
         else if(level===3){
           const k = el.dataset.key;
@@ -3043,36 +3065,18 @@
         const subs = (cat?.subcategories)||[];
         col.innerHTML = '';
         col.appendChild(buildList(subs,2));
-        if(!selectedTasks || selectedTasks.size===0){ level2PinnedKey = null; }
-        if(level2PinnedKey){
-          const pinnedSub = subs.find(s=> s.key===level2PinnedKey);
-          if(!pinnedSub || !subHasSelection(pinnedSub)) level2PinnedKey = null;
-        }
+        // do not auto-select first subcategory; preserve existing level2Key if set
         if(!subs.length){ level2Key = null; return; }
-        let currentSub = level2Key ? subs.find(s=> s.key===level2Key) : null;
-        if(!currentSub){
-          const withSelection = subs.find(subHasSelection);
-          if(withSelection){
-            level2Key = withSelection.key;
-            currentSub = withSelection;
-            if(!level2PinnedKey) level2PinnedKey = withSelection.key;
-          }else{
-            level2Key = subs[0].key;
-            currentSub = subs[0];
-          }
-        }else if(selectedTasks && selectedTasks.size>0 && !subHasSelection(currentSub)){
-          const withSelection = subs.find(subHasSelection);
-          if(withSelection){
-            level2Key = withSelection.key;
-            currentSub = withSelection;
-            if(!level2PinnedKey) level2PinnedKey = withSelection.key;
-          }
+        if(level2Key){
+          // keep the explicit selection if still available
+          const still = subs.find(s=> s.key===level2Key);
+          if(!still) level2Key = null;
         }
-        const highlightKey = level2PinnedKey && subs.some(s=> s.key===level2PinnedKey) ? level2PinnedKey : null;
+        // mark active if pinned or if any descendant selected
         col.querySelectorAll('.mw-cas-v2-item').forEach(li=>{
           const sub = subs.find(s=> s.key===li.dataset.key);
           const hasSelected = subHasSelection(sub);
-          const isActive = highlightKey ? (li.dataset.key===highlightKey) : hasSelected;
+          const isActive = (level2PinnedKey && li.dataset.key===level2PinnedKey) || hasSelected || (li.dataset.key===level2Key);
           li.classList.toggle('active', !!isActive);
           li.setAttribute('aria-selected', isActive ? 'true':'false');
         });
@@ -3080,6 +3084,11 @@
       function renderLevel3(){
         const col = dd.querySelector('[data-col="3"]'); if(!col) return;
         const cat = findCat(level1Key); const sub = findSub(cat, level2Key);
+        // If no subcategory selected, show placeholder instruction on mobile
+        if(!sub){
+          col.innerHTML = '<div class="mw-cas-v2-empty" style="opacity:.8;padding:12px">请选择上方子类以查看具体能力 / Please choose a subcategory above to see tasks</div>';
+          return;
+        }
         const tasks = (sub?.tasks)||[];
         const counts = computeCounts();
         col.innerHTML = '';
