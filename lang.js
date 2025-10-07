@@ -287,6 +287,7 @@ const translations = {
   hero_btn_cv: '下载简历',
     // Home – About summary
     about_title: '关于我',
+    about_subtitle: '把研究积累转化为可信赖的 AI 能力',
     about_p1: '我是一名专注于大语言模型产业化的研究者，获英国纽卡斯尔大学硕士、杜伦大学计算机科学博士（2025），曾任杜伦大学 HI-Lab 实验室主管。我的目标是把研究做成可运行的系统：让模型理解企业知识、保护隐私，并给出可验证答案。',
     about_p2: '当前在一家中央企业从事 AI 研发，与产品和业务团队协作，将前沿方法打磨为稳定、可运维的能力。我的方法论是 可复现、可评测、可维护。近期工作聚焦于知识增强型 LLM、联邦学习、以及 LLM 微调与下游任务，并通过复盘与开源持续推进迭代。',
     // Research summary
@@ -662,6 +663,7 @@ const translations = {
   hero_btn_selected: 'Selected Work',
   hero_btn_cv: 'Download CV',
     about_title: 'About Me',
+    about_subtitle: 'Turning research progress into trustworthy AI capabilities',
     about_p1: "I obtained my Master’s degree in Computer Science from Newcastle University in 2018 (with distinction) and completed my Ph.D. in Computer Science at Durham University in January 2025. I currently work as a researcher at Tongfang Knowledge Network Digital Technology Co., Ltd., part of China National Nuclear Corporation.",
     about_p2: 'My research focuses on applying large language models (LLMs) in real-world nuclear industry scenarios. I am passionate about machine learning, computer vision, multimedia analysis and developing LLM-based agents and downstream tasks.',
     research_title: 'Research Publications',
@@ -1030,6 +1032,7 @@ const translations = {
   hero_btn_selected: 'Trabajos destacados',
   hero_btn_cv: 'Descargar CV',
     about_title: 'Sobre mí',
+    about_subtitle: 'Transformar el avance de la investigación en capacidades de IA confiables',
     about_p1: 'Obtuve mi maestría en Ciencias de la Computación en la Universidad de Newcastle en 2018 (con distinción) y completé mi doctorado en Ciencias de la Computación en la Universidad de Durham en enero de 2025. Actualmente trabajo como investigador en Tongfang Knowledge Network Digital Technology Co., Ltd., parte de la Corporación Nacional Nuclear de China.',
     about_p2: 'Mi investigación se centra en aplicar modelos de lenguaje grandes (LLM) en escenarios reales de la industria nuclear. Me apasionan el aprendizaje automático, la visión por computadora, el análisis multimedia y el desarrollo de agentes basados en LLM y tareas posteriores.',
     research_title: 'Publicaciones de investigación',
