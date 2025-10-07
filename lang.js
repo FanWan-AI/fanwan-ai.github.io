@@ -260,8 +260,8 @@ const translations = {
   // Model Watch modes
   // Updated mode labels
   mw_mode_daily: '今日灵感',
-  mw_mode_gh_top: '工程热榜',
-  mw_mode_hf_top: '模型实验场',
+  mw_mode_gh_top: 'GitHub 工程榜',
+  mw_mode_hf_top: 'Hugging Face 模型榜',
   mw_section_gh: 'GitHub 开源项目',
   mw_section_hf: 'Hugging Face 开源模型',
   visit_label: '访问',
@@ -637,8 +637,8 @@ const translations = {
   // Model Watch modes
   // Updated mode labels
   mw_mode_daily: 'Inspiration Today',
-  mw_mode_gh_top: 'Engineering Hotlist',
-  mw_mode_hf_top: 'Model Lab',
+  mw_mode_gh_top: 'GitHub Engineering Trends',
+  mw_mode_hf_top: 'Hugging Face Model Trends',
   mw_section_gh: 'GitHub open-source projects',
   mw_section_hf: 'Hugging Face open-source models',
   visit_label: 'Visit',
@@ -1008,8 +1008,8 @@ const translations = {
   // Model Watch modes
   // Updated mode labels
   mw_mode_daily: 'Inspiración Hoy',
-  mw_mode_gh_top: 'Ranking Ingeniería',
-  mw_mode_hf_top: 'Laboratorio de Modelos',
+  mw_mode_gh_top: 'Tendencias de Ingeniería en GitHub',
+  mw_mode_hf_top: 'Tendencias de Modelos en Hugging Face',
   // AI Radar toolbar
   radar_search_placeholder: 'Búsqueda global…',
   radar_filter_source_all: 'Todas las fuentes',
