@@ -38,6 +38,14 @@
   .mw-control[data-toolbar-key="search"]{flex:2 1 320px;min-width:280px}
   .mw-control[data-toolbar-key="date"],
   .mw-control[data-toolbar-key="clear"]{flex:0 0 auto;min-width:max-content}
+  /* Ensure date controls render inline (prev - date - next) and align with other toolbar items */
+  .mw-control[data-toolbar-key="date"]{ /* override column layout for date only */
+    display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:8px;
+  }
+  #mw-datewrap{display:flex;align-items:center;gap:8px}
+  /* override the generic full-width rule for the date buttons/inputs so they sit inline */
+  #mw-datewrap .btn{width:auto;min-width:36px;height:var(--mw-ctrl-h);padding:6px 8px;display:inline-flex;align-items:center;justify-content:center}
+  #mw-datewrap .input{width:auto;min-width:120px;height:var(--mw-ctrl-h);padding:6px 10px}
   .mw-control[data-toolbar-key="clear"]{align-items:flex-end;margin-left:clamp(10px,1.6vw,26px)}
   .mw-control[data-toolbar-key="sort"] select{min-width:200px}
   .mw-control input,
@@ -47,7 +55,7 @@
   #mw-date{height:var(--mw-ctrl-h);padding:0 10px;font-size:.95rem;text-align:center}
   /* Responsive fallback */
     /* 三级任务筛选：独立抽屉样式 */
-  .mw-filter-launch{display:flex;justify-content:flex-start;margin:16px 0 0;}
+  .mw-filter-launch{display:flex;justify-content:flex-start;margin:0;}
     #mw-cas-trigger{display:inline-flex;align-items:center;gap:10px;padding:10px 18px;border-radius:999px;font-weight:600;border:1px solid color-mix(in oklab,var(--border),var(--primary) 25%);background:color-mix(in oklab,var(--surface-2),white 6%);box-shadow:0 12px 28px -18px rgba(15,23,42,0.24);transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;min-width:220px;justify-content:center;}
     #mw-cas-trigger:hover{transform:translateY(-1px);box-shadow:0 16px 36px -20px rgba(37,99,235,0.25);border-color:color-mix(in oklab,var(--primary),var(--border) 60%);} 
     #mw-cas-trigger.active{background:linear-gradient(135deg,var(--primary) 0%,var(--primary-600) 100%);color:#fff;border-color:color-mix(in oklab,var(--primary-600),white 10%);box-shadow:0 18px 40px -22px rgba(37,99,235,0.35);} 
@@ -56,7 +64,7 @@
     :root[data-theme="dark"] #mw-cas-trigger{background:color-mix(in oklab,#0f172a,#1e293b 36%);border-color:color-mix(in oklab,var(--mw-input-border,#334155),#64748b 25%);box-shadow:0 14px 32px -20px rgba(2,6,23,0.8);color:color-mix(in oklab,#e2e8f0,#f8fafc 10%);} 
   :root[data-theme="dark"] #mw-cas-trigger:hover{box-shadow:0 18px 40px -20px rgba(59,130,246,0.38);} 
   /* Inline selected task chips (outside overlay) */
-  .mw-filter-launch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;}
+  .mw-filter-launch{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0}
   #mw-cas-inline-selected{display:flex;flex-wrap:wrap;align-items:center;gap:6px;max-width:640px;}
   /* Selected inline chips: larger, simpler label only (no close button) */
   #mw-cas-inline-selected .mw-cas-v2-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;font-size:.9rem;font-weight:600;background:color-mix(in oklab,var(--mw-primary-soft,#eef4ff),white 25%);border:1px solid color-mix(in oklab,var(--primary,#2563eb),white 55%);line-height:1.1;}
@@ -148,6 +156,10 @@
     .mw-chiprow{display:flex;gap:6px;flex-wrap:wrap}
     /* Compact toolbar wrapping */
     .mw-toolbar{gap:8px}
+    /* Enforce uniform vertical spacing between the three toolbar rows
+      (modes, controls, filter-launch). Adjust --mw-toolbar-row-gap to taste. */
+    .mw-toolbar{ --mw-toolbar-row-gap: 16px; gap: var(--mw-toolbar-row-gap) !important; }
+    .mw-toolbar .mw-modes, .mw-toolbar .mw-controls, .mw-toolbar .mw-filter-launch { margin: 0 !important; }
     .mw-toolbar .input{min-width:160px}
     @media (max-width:800px){ .mw-toolbar .input{flex:1 1 220px} }
     .mw-modal[hidden]{display:none!important}
@@ -2046,8 +2058,8 @@
         }
         selectedDate = latest;
       }
-  // keep date controls visible so archives can be browsed from any mode
-      dateWrap.hidden = false;
+  // Show date controls only for daily mode (hide for gh/hf)
+    dateWrap.hidden = (MODE !== 'daily');
       await loadDaily(selectedDate);
       render();
       sortEl.onchange = async ()=>{
@@ -2174,11 +2186,11 @@
       }); }
     }
 
-      // Toolbar control ordering adapts per mode; cascader emphasized in HF view
+      // Toolbar control ordering adapts per mode; keep date control only in daily
       const toolbarOrderByMode = {
         daily: ['search','sort','date','clear'],
-        gh: ['search','sort','date','clear'],
-        hf: ['search','sort','date','clear']
+        gh: ['search','sort','clear'],
+        hf: ['search','sort','clear']
       };
       function applyToolbarOrder(mode){
         if(!controlsEl) return;
@@ -2200,6 +2212,11 @@
         }
         applyToolbarOrder(mode);
         updateClearButtonVisibility(mode);
+        // Ensure the date control is visible only in daily mode
+        try{
+          const dateCtrl = controlRegistry.get('date');
+          if(dateCtrl) dateCtrl.style.display = (mode === 'daily') ? '' : 'none';
+        }catch(e){}
       }
       applyToolbarOrder(MODE);
       updateClearButtonVisibility(MODE);
