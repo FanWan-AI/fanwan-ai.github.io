@@ -131,9 +131,15 @@
     .hub-panel { display: none; }
     .hub-panel.active { display: block; }
 
-  .hub-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
+    .hub-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 20px; }
   .hub-toolbar .input { min-width: 240px; height: 40px; padding: 8px 12px; border-radius: 12px; border: 1px solid var(--hub-input-border); background: var(--hub-input-bg); color: var(--hub-text-body); box-shadow: 0 14px 32px -26px rgba(46,106,242,0.22); transition: border-color 0.18s ease, box-shadow 0.18s ease; }
   .hub-toolbar .input:focus-visible { border-color: var(--hub-primary); box-shadow: 0 0 0 3px color-mix(in oklab, var(--hub-primary), transparent 55%); outline: none; }
+
+  /* Date picker inside hub toolbar to choose which day's highlights to show */
+  .hub-date-nav { margin-left: auto; display: flex; align-items: center; gap: 8px; padding-left: 8px; border-left: 1px solid color-mix(in oklab, var(--hub-border), rgba(255,255,255,0.12) 24%); }
+  .hub-date-nav .btn { width: 40px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; font-weight: 700; color: var(--hub-button-text); border: 1px solid color-mix(in oklab, var(--hub-card-border), var(--hub-link) 20%); background: linear-gradient(135deg, color-mix(in oklab, rgba(76,111,247,0.12), rgba(47,219,255,0.06) 50%), rgba(255,255,255,0.02)); cursor: pointer; }
+  .hub-date-nav .btn:hover { transform: translateY(-1px); box-shadow: 0 10px 20px -14px rgba(32, 74, 220, 0.24); }
+  .hub-date-nav .input { min-width: 160px; height: 36px; padding: 6px 10px; border-radius: 10px; border: 1px solid var(--hub-input-border); background: var(--hub-input-bg); color: var(--hub-text-body); }
   .hub-chiprow { display: flex; gap: 8px; flex-wrap: wrap; }
   .hub-chip { position: relative; border: 1px solid var(--hub-chip-border); border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; background: linear-gradient(135deg, color-mix(in oklab, var(--hub-chip-bg), rgba(47,219,255,0.18) 35%) 0%, color-mix(in oklab, var(--hub-chip-bg), rgba(76,111,247,0.12) 70%) 100%); color: color-mix(in oklab, var(--hub-text-muted), rgba(47,219,255,0.28) 20%); cursor: pointer; transition: all 0.2s ease; display: inline-flex; align-items: center; gap: 8px; line-height: 1.2; letter-spacing: 0.04em; text-transform: uppercase; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); backdrop-filter: blur(calc(var(--hub-glass-blur) * 0.25)); }
   .hub-chip:hover { background: linear-gradient(135deg, color-mix(in oklab, var(--hub-chip-bg), rgba(47,219,255,0.28) 45%) 0%, color-mix(in oklab, var(--hub-chip-bg), rgba(76,111,247,0.24) 70%) 100%); color: color-mix(in oklab, var(--hub-text-strong), rgba(47,219,255,0.25) 30%); box-shadow: 0 12px 26px -18px rgba(35, 98, 255, 0.45); transform: translateY(-1px); }
@@ -378,6 +384,11 @@
           <div class="hub-toolbar">
             <input id="highlight-search" class="input" type="search" placeholder="搜索标题、标签或摘要" aria-label="搜索最新论文" data-i18n-placeholder="paperhub_search_highlight_placeholder" />
             <div id="highlight-chips" class="hub-chiprow" aria-label="快速筛选"></div>
+            <div class="hub-date-nav" aria-label="选择日期">
+              <button id="highlight-prev" class="btn outline small" title="Prev day" aria-label="Previous day">◀</button>
+              <input type="date" id="highlight-date" class="input" aria-label="选择日期" />
+              <button id="highlight-next" class="btn outline small" title="Next day" aria-label="Next day">▶</button>
+            </div>
           </div>
           <div id="highlight-stats" class="hub-stats" aria-live="polite"></div>
           <div id="highlight-list" aria-live="polite"></div>
@@ -406,13 +417,17 @@
       const DATA_BASE = '..';
       const HIGHLIGHTS_URL = `${DATA_BASE}/data/ai/scholarpush/index.json`;
       const TAG_ALIAS_URL = `${DATA_BASE}/data/ai/scholarpush/tag_aliases.json`;
+  const DATES_URL = `${DATA_BASE}/data/ai/scholarpush/dates.json`;
       const MILESTONE_INDEX_URL = `${DATA_BASE}/data/ai/scholarpush/milestones/index.json`;
 
-      const highlightSearch = document.getElementById('highlight-search');
+  const highlightSearch = document.getElementById('highlight-search');
       const highlightList = document.getElementById('highlight-list');
       const highlightStats = document.getElementById('highlight-stats');
       const highlightEmpty = document.getElementById('highlight-empty');
       const highlightChips = document.getElementById('highlight-chips');
+  const highlightDateInput = document.getElementById('highlight-date');
+  const highlightPrevBtn = document.getElementById('highlight-prev');
+  const highlightNextBtn = document.getElementById('highlight-next');
 
       const milestoneSearch = document.getElementById('milestone-search');
       const milestoneTags = document.getElementById('milestone-tags');
@@ -477,6 +492,9 @@
       const state = {
         aliasMap: new Map(),
         highlights: [],
+        dateCache: new Map(),
+        showingPerDay: null,
+        availableDates: new Set(),
         highlightFilters: new Set(),
         milestonesIndex: [],
         milestoneFilters: new Set(),
@@ -517,6 +535,24 @@
         const date = new Date(iso);
         if (Number.isNaN(date.getTime())) return '';
         return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+      }
+
+      // format a Date object as local yyyy-mm-dd (for input[type=date] value)
+      function toLocalYYYYMMDD(d) {
+        if (!d) return '';
+        const yyyy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        const dd = String(d.getDate()).padStart(2, '0');
+        return `${yyyy}-${mm}-${dd}`;
+      }
+
+      // parse yyyy-mm-dd from input into a Date (local timezone)
+      function fromInputDate(value) {
+        if (!value) return null;
+        const parts = value.split('-').map(Number);
+        if (parts.length !== 3) return null;
+        // create Date in local timezone
+        return new Date(parts[0], parts[1] - 1, parts[2]);
       }
 
       function buildAliasMap(entries) {
@@ -709,6 +745,112 @@
         });
       }
 
+      // initialize date picker to the newest highlight date or today
+      function initSelectedDate() {
+        if (!highlightDateInput) return;
+        // If dates.json is available, pick the latest date listed there (strings are ISO yyyy-mm-dd so lexicographic max works)
+        const avail = Array.from(state.availableDates || []);
+        if (avail.length) {
+          avail.sort();
+          const latestKey = avail[avail.length - 1];
+          highlightDateInput.value = latestKey;
+          return;
+        }
+        // fallback: choose latest ts from loaded highlights (UTC) and convert to local date
+        const dates = state.highlights
+          .map((it) => it.ts || it.date || it.generated_at)
+          .map((s) => s ? new Date(s) : null)
+          .filter(Boolean)
+          .map((d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+        const latest = dates.length ? new Date(Math.max(...dates.map((d) => d.getTime()))) : new Date();
+        highlightDateInput.value = toLocalYYYYMMDD(latest);
+      }
+
+      // produce yyyy-mm-dd string from Date or input value
+      function normalizeDateValue(valueOrDate) {
+        if (!valueOrDate) return null;
+        if (valueOrDate instanceof Date) return toLocalYYYYMMDD(valueOrDate);
+        // assume string like yyyy-mm-dd
+        return String(valueOrDate).slice(0, 10);
+      }
+
+      // load per-day highlights JSON file (e.g. /data/ai/scholarpush/2025-10-06.json)
+      async function loadHighlightsForDate(valueOrDate) {
+        if (!highlightDateInput) return;
+        const dateKey = normalizeDateValue(valueOrDate || highlightDateInput.value);
+        if (!dateKey) {
+          state.highlights = [];
+          renderHighlightChips(state.highlights);
+          renderHighlights();
+          return;
+        }
+        // cached?
+        if (state.dateCache.has(dateKey)) {
+            state.highlights = state.dateCache.get(dateKey) || [];
+            // mark that we're showing a per-day dataset (even if empty)
+            state.showingPerDay = dateKey;
+            // clear any active chip filters so the per-day view shows its full set
+            state.highlightFilters.clear();
+            renderHighlightChips(state.highlights);
+            renderHighlights();
+          return;
+        }
+        // fetch per-day file under DATA_BASE/data/ai/scholarpush/${dateKey}.json
+        const url = `${DATA_BASE}/data/ai/scholarpush/${dateKey}.json`;
+        try {
+          const data = await fetchJSON(url);
+          const items = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
+          state.dateCache.set(dateKey, items);
+          state.highlights = items;
+          // mark that we are now displaying a per-day dataset
+          state.showingPerDay = dateKey;
+          // clear any active chip filters so the per-day view shows its full set
+          state.highlightFilters.clear();
+          renderHighlightChips(state.highlights);
+          renderHighlights();
+        } catch (err) {
+          // treat missing/404 as empty for that date; show friendly message
+          state.dateCache.set(dateKey, []);
+          state.highlights = [];
+          state.showingPerDay = dateKey;
+          state.highlightFilters.clear();
+          renderHighlightChips(state.highlights);
+          renderHighlights();
+        }
+      }
+
+      function shiftSelectedDate(days) {
+        if (!highlightDateInput) return;
+
+        const cur = fromInputDate(highlightDateInput.value) || new Date();
+        cur.setDate(cur.getDate() + days);
+        highlightDateInput.value = toLocalYYYYMMDD(cur);
+        // load per-day file for the new date
+        loadHighlightsForDate(cur);
+      }
+
+      if (highlightPrevBtn) {
+        highlightPrevBtn.addEventListener('click', () => {
+          if (highlightDateInput) highlightDateInput.dataset.userSelected = 'true';
+          shiftSelectedDate(-1);
+        });
+      }
+      if (highlightNextBtn) {
+        highlightNextBtn.addEventListener('click', () => {
+          if (highlightDateInput) highlightDateInput.dataset.userSelected = 'true';
+          shiftSelectedDate(1);
+        });
+      }
+      if (highlightDateInput) {
+        // only mark as user-selected when the user interacts with the control
+        highlightDateInput.addEventListener('change', () => {
+          highlightDateInput.dataset.userSelected = 'true';
+          loadHighlightsForDate(highlightDateInput.value);
+        });
+        // ensure default flag is false on initial load
+        highlightDateInput.dataset.userSelected = 'false';
+      }
+
       function formatBadge(item) {
         const badges = [];
         if (item.impact_score) {
@@ -741,12 +883,27 @@
         }
         const query = (highlightSearch?.value || '').trim().toLowerCase();
         const tags = Array.from(state.highlightFilters);
+        const selectedDate = highlightDateInput ? fromInputDate(highlightDateInput.value) : null;
+        const selectedIsoDay = selectedDate ? toLocalYYYYMMDD(selectedDate) : null;
+
         const filtered = state.highlights.filter((item) => {
           if (tags.length) {
             const itemTags = new Set((item.tags || []).map(canonicalize));
             if (item.task) itemTags.add(canonicalize(item.task));
             const hasAll = tags.every((tag) => itemTags.has(tag));
             if (!hasAll) return false;
+          }
+          // Only perform per-item date filtering when the user explicitly selected a date
+          // AND we are NOT displaying a per-day dataset. If a per-day JSON file was
+          // loaded (state.showingPerDay), treat that file as authoritative and display
+          // its items as-is — do not re-filter them by their internal timestamps.
+          const userSelected = highlightDateInput && highlightDateInput.dataset.userSelected === 'true';
+          if (!state.showingPerDay && userSelected && selectedIsoDay) {
+            const ts = item.ts || item.date || item.generated_at || '';
+            const d = ts ? new Date(ts) : null;
+            if (!d) return false;
+            const itemLocal = toLocalYYYYMMDD(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
+            if (itemLocal !== selectedIsoDay) return false;
           }
           if (!query) return true;
           const blob = [highlightTitle(item), highlightSummary(item), (item.tags || []).join(' '), item.task || '', item.type || '']
@@ -1096,19 +1253,31 @@
         state.loadingHighlights = true;
         state.loadingMilestones = true;
         try {
-          const [alias, highlights, milestoneIndex] = await Promise.all([
+          const [alias, highlights, datesIndex, milestoneIndex] = await Promise.all([
             fetchJSON(TAG_ALIAS_URL).catch(() => []),
-            fetchJSON(HIGHLIGHTS_URL),
-            fetchJSON(MILESTONE_INDEX_URL)
+            fetchJSON(HIGHLIGHTS_URL).catch(() => ({ items: [] })),
+            fetchJSON(DATES_URL).catch(() => ({ dates: [] })),
+            fetchJSON(MILESTONE_INDEX_URL).catch(() => ({ tasks: [] }))
           ]);
           state.aliasMap = buildAliasMap(alias);
+          // keep index.json items as a fallback but primary per-day loading will be used
           state.highlights = Array.isArray(highlights.items) ? highlights.items : [];
+          // available dates list (expect dates.json to be { dates: ['2025-10-06','2025-10-07', ...] })
+          // dates.json might be either an array (['2025-10-07', ...]) or an object { dates: [...] }
+          let dateList = [];
+          if (Array.isArray(datesIndex)) dateList = datesIndex;
+          else if (Array.isArray(datesIndex.dates)) dateList = datesIndex.dates;
+          state.availableDates = new Set(dateList);
           state.milestonesIndex = Array.isArray(milestoneIndex.tasks) ? milestoneIndex.tasks : [];
           state.loadingHighlights = false;
           state.loadingMilestones = false;
           state.hasHighlightData = true;
           state.hasMilestoneData = true;
           renderHighlightChips(state.highlights);
+          // initialize date input to latest date from dates.json (if available) or fallback
+          initSelectedDate();
+          // Default view: render index.json (latest aggregated) on page load.
+          // Per-day files are only loaded when the user interacts with the calendar.
           renderHighlights();
           renderMilestoneFilters(state.milestonesIndex);
           renderMilestones();
