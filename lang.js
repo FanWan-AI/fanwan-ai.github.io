@@ -662,7 +662,7 @@ const translations = {
   hero_btn_contact: 'Contact me',
   hero_btn_selected: 'Selected Work',
   hero_btn_cv: 'Download CV',
-    about_title: 'About Me',
+    about_title: 'About',
     about_subtitle: 'Turning research progress into trustworthy AI capabilities',
     about_p1: "I obtained my Master’s degree in Computer Science from Newcastle University in 2018 (with distinction) and completed my Ph.D. in Computer Science at Durham University in January 2025. I currently work as a researcher at Tongfang Knowledge Network Digital Technology Co., Ltd., part of China National Nuclear Corporation.",
     about_p2: 'My research focuses on applying large language models (LLMs) in real-world nuclear industry scenarios. I am passionate about machine learning, computer vision, multimedia analysis and developing LLM-based agents and downstream tasks.',
