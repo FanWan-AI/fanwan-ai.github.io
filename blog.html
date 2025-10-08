@@ -1216,8 +1216,14 @@
           });
         };
 
+        // applyFilters is intentionally defined as a delegator so language-aware
+        // filtering can replace it later. Default fallback uses full-text match.
         const applyFilters = () => {
           const query = (searchInput?.value || '').trim().toLowerCase();
+          // If language-aware function exists, prefer it (it will read current lang)
+          if (typeof languageAwareApplyFilters === 'function') {
+            return languageAwareApplyFilters();
+          }
           posts.forEach(post => {
             const matchesSearch = !query || post.textContent.toLowerCase().includes(query);
             const matchesTopic = !activeTopic || post.dataset.topic === activeTopic;
@@ -1324,15 +1330,58 @@
         if (searchInput) {
           const syncPlaceholder = () => {
             const lang = getCurrentLang();
-            const override = searchInput.dataset[`placeholder${lang.toUpperCase()}`];
+            // dataset keys from data-placeholder-<code> become placeholderEn/placeholderZh/placeholderEs
+            const cap = lang.charAt(0).toUpperCase() + lang.slice(1);
+            const key = `placeholder${cap}`;
+            const override = searchInput.dataset[key];
             if (override) searchInput.placeholder = override;
           };
+
+          const getVisibleTextForLang = (root, lang) => {
+            if (!root) return '';
+            // Prefer explicit i18n spans for the requested language
+            const nodes = root.querySelectorAll(`.i18n.l-${lang}`);
+            if (nodes && nodes.length) {
+              return Array.from(nodes).map(n => n.textContent.trim()).join(' ');
+            }
+            // Fallback: clone and strip other-language i18n nodes
+            try {
+              const clone = root.cloneNode(true);
+              clone.querySelectorAll('.i18n').forEach(n => {
+                if (!n.classList.contains(`l-${lang}`)) n.remove();
+              });
+              return (clone.textContent || '').trim();
+            } catch (e) {
+              return (root.textContent || '').trim();
+            }
+          };
+
+          // update applyFilters to match visible-language text
+          const origApplyFilters = applyFilters;
+          const languageAwareApplyFilters = () => {
+            const query = (searchInput?.value || '').trim().toLowerCase();
+            const lang = getCurrentLang();
+            posts.forEach(post => {
+              const hay = getVisibleTextForLang(post, lang).toLowerCase();
+              const matchesSearch = !query || hay.includes(query);
+              const matchesTopic = !activeTopic || post.dataset.topic === activeTopic;
+              const visible = matchesSearch && matchesTopic;
+              post.classList.toggle('is-hidden', !visible);
+            });
+          };
+
+          // wire up
           syncPlaceholder();
           searchInput.addEventListener('input', () => {
-            applyFilters();
+            languageAwareApplyFilters();
             rebuildMeta();
           });
-          window.addEventListener('language-changed', syncPlaceholder);
+          window.addEventListener('language-changed', () => {
+            syncPlaceholder();
+            // re-run filters in new language
+            languageAwareApplyFilters();
+            rebuildMeta();
+          });
         }
 
         window.addEventListener('language-changed', () => {
