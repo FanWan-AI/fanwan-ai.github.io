@@ -24,6 +24,12 @@ function safeLocalSet(key, value) {
   } catch {}
 }
 
+function safeLocalRemove(key) {
+  try {
+    window.localStorage.removeItem(key);
+  } catch {}
+}
+
 function resolveLang(defaultLang = 'zh') {
   const docLang = (document.documentElement && document.documentElement.lang) || defaultLang;
   const stored = safeLocalGet('lang');
@@ -724,67 +730,119 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
   })();
 
-  // Theme toggle: manual light/dark override with localStorage persistence
-  // Note: 'system' mode temporarily disabled per request.
-  const THEME_KEY = 'theme'; // 'light' | 'dark'
+  // Theme toggle: default follows system; manual overrides persist via localStorage.
+  const THEME_KEY = 'theme'; // stores manual override ('light' | 'dark')
   const root = document.documentElement;
   const toggleBtn = document.getElementById('theme-toggle');
-  function getEffectiveTheme() {
+  const mediaQuery = (typeof window.matchMedia === 'function') ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  let releaseSystemWatcher = null;
+
+  function systemPrefersDark() {
+    if (mediaQuery) return mediaQuery.matches;
+    try {
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    } catch {
+      return false;
+    }
+  }
+
+  function getStoredTheme() {
     const saved = safeLocalGet(THEME_KEY);
     if (saved === 'light' || saved === 'dark') return saved;
-    // System-follow disabled: default to light if unset
-    return 'light';
+    if (saved) safeLocalRemove(THEME_KEY);
+    return null;
   }
+
+  function getEffectiveTheme() {
+    const stored = getStoredTheme();
+    if (stored) return stored;
+    return systemPrefersDark() ? 'dark' : 'light';
+  }
+
+  function setThemeAttributes(theme, source) {
+    const mode = source === 'system' ? `system-${theme}` : theme;
+    root.setAttribute('data-theme', theme);
+    root.setAttribute('data-theme-mode', mode);
+    root.setAttribute('data-theme-source', source);
+  }
+
+  function applyTheme(theme, options = {}) {
+    const { source = 'user', persist = true } = options;
+    setThemeAttributes(theme, source);
+    if (persist) {
+      if (source === 'user') {
+        safeLocalSet(THEME_KEY, theme);
+      } else {
+        safeLocalRemove(THEME_KEY);
+      }
+    }
+  }
+
   function currentLang() {
     return resolveLang();
   }
+
   function t(key) {
     try { return (window.translations?.[currentLang()]?.[key]) || key; } catch { return key; }
   }
 
-  function applyTheme(theme) {
-    if (theme === 'light') {
-      root.setAttribute('data-theme', 'light');
-      root.setAttribute('data-theme-mode', 'light');
-    } else if (theme === 'dark') {
-      root.setAttribute('data-theme', 'dark');
-      root.setAttribute('data-theme-mode', 'dark');
-    } else {
-      // Fallback: force light (system mode disabled)
-      theme = 'light';
-      root.setAttribute('data-theme', 'light');
-      root.setAttribute('data-theme-mode', 'light');
-    }
-    safeLocalSet(THEME_KEY, theme);
-  }
-
-  // Initialize theme from storage or default to light (as requested)
-  const savedTheme = getEffectiveTheme();
-  applyTheme(savedTheme);
-  if (toggleBtn) {
-    // Show tooltip as the action: switching to the other theme
-    const nextInit = (savedTheme === 'dark') ? 'light' : 'dark';
-    const actionText = nextInit === 'dark' ? t('theme_switch_to_dark') : t('theme_switch_to_light');
+  function refreshToggleTooltip() {
+    if (!toggleBtn) return;
+    const current = getEffectiveTheme();
+    const next = current === 'dark' ? 'light' : 'dark';
+    const actionText = next === 'dark' ? t('theme_switch_to_dark') : t('theme_switch_to_light');
     toggleBtn.setAttribute('aria-label', t('theme_toggle_label'));
     toggleBtn.setAttribute('title', actionText);
   }
 
+  function stopSystemWatcher() {
+    if (releaseSystemWatcher) {
+      releaseSystemWatcher();
+      releaseSystemWatcher = null;
+    }
+  }
+
+  function ensureSystemWatcher() {
+    if (!mediaQuery || releaseSystemWatcher) return;
+    const listener = (event) => {
+      if (getStoredTheme()) {
+        stopSystemWatcher();
+        return;
+      }
+      const next = event.matches ? 'dark' : 'light';
+      applyTheme(next, { source: 'system', persist: false });
+      refreshToggleTooltip();
+    };
+    if (typeof mediaQuery.addEventListener === 'function') {
+      mediaQuery.addEventListener('change', listener);
+      releaseSystemWatcher = () => mediaQuery.removeEventListener('change', listener);
+    } else if (typeof mediaQuery.addListener === 'function') {
+      mediaQuery.addListener(listener);
+      releaseSystemWatcher = () => mediaQuery.removeListener(listener);
+    }
+  }
+
+  const storedTheme = getStoredTheme();
+  if (storedTheme) {
+    applyTheme(storedTheme, { source: 'user', persist: true });
+  } else {
+    const initial = systemPrefersDark() ? 'dark' : 'light';
+    applyTheme(initial, { source: 'system', persist: false });
+    ensureSystemWatcher();
+  }
+  refreshToggleTooltip();
+
   if (toggleBtn) {
     toggleBtn.addEventListener('click', () => {
-      // Cycle through: light -> dark -> light
       const current = getEffectiveTheme();
-      const order = ['light','dark'];
-      const idx = order.indexOf(current);
-      const next = order[(idx + 1) % order.length];
-      applyTheme(next);
-      // After switching, compute the next target again for tooltip
-      const nextTarget = next === 'dark' ? 'light' : 'dark';
-      const actionText2 = nextTarget === 'dark' ? t('theme_switch_to_dark') : t('theme_switch_to_light');
-      toggleBtn.setAttribute('title', actionText2);
+      const next = current === 'dark' ? 'light' : 'dark';
+      stopSystemWatcher();
+      applyTheme(next, { source: 'user', persist: true });
+      refreshToggleTooltip();
     });
   }
 
-  // Removed time-based 'auto' theme mode per request
+  window.addEventListener('language-changed', refreshToggleTooltip);
 
   // Render portfolio from JSON
   async function renderPortfolio(filter = 'all') {
