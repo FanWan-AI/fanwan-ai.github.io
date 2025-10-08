@@ -224,7 +224,7 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   // Prefer PNG/JPEG for OG for better compatibility (some platforms ignore SVG)
   const ogType = ogImage.endsWith('.png') ? 'image/png' : (ogImage.endsWith('.jpg') || ogImage.endsWith('.jpeg')) ? 'image/jpeg' : 'image/png';
   return `<!doctype html>
-<html lang="${lang}">
+<html lang="${lang}" data-force-lang="${lang}">
 <head>
   <meta charset="utf-8">
   <title>${escapeHtml(title)}</title>
@@ -254,6 +254,25 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   <meta name="twitter:image" content="${ogImage}">
   <meta name="theme-color" content="#0f172a">
   <link rel="icon" href="../assets/logo.svg" type="image/svg+xml">
+  <script src="../lang-preload.js"></script>
+  <script>
+    (function(){
+      try {
+        var saved = null;
+        try { saved = localStorage.getItem('theme'); } catch (e) { saved = null; }
+        if (saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.documentElement.setAttribute('data-theme-mode', 'dark');
+        } else {
+          document.documentElement.setAttribute('data-theme', 'light');
+          document.documentElement.setAttribute('data-theme-mode', 'light');
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <style>
+    html[data-lang-loading="true"] body { visibility: hidden; }
+  </style>
   <link rel="stylesheet" href="../style.css">
   <!-- Code highlight (Highlight.js) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
@@ -262,7 +281,6 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
-  <script>try{var L='${lang}';localStorage.setItem('lang',L);document.documentElement.setAttribute('lang',L);}catch(e){}</script>
   <script defer src="../lang.js"></script>
   <script defer src="../script.js"></script>
   <!-- QR library will be loaded on demand by script.js when user opens WeChat share -->

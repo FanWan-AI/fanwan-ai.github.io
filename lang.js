@@ -1222,19 +1222,42 @@ function translatePage(lang) {
   try { window.dispatchEvent(new CustomEvent('language-changed', { detail: { lang } })); } catch {}
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function markLanguageReady() {
+  const doc = document.documentElement;
+  doc.setAttribute('data-lang-ready', 'true');
+  doc.removeAttribute('data-lang-loading');
+  doc.removeAttribute('data-lang-timeout');
+  if (typeof window !== 'undefined' && window.__langReadyFallback) {
+    try {
+      window.clearTimeout(window.__langReadyFallback);
+    } catch {}
+    window.__langReadyFallback = null;
+  }
+}
+
+function initializeLanguage() {
   const langSelect = document.getElementById('lang-select');
-  // Prefer user's saved choice, else the document's declared language, else zh
   const defaultLang = resolveLang();
-  // Expose for other scripts
+
   try { window.translations = translations; } catch {}
+
   translatePage(defaultLang);
+
   if (langSelect) {
     langSelect.value = defaultLang;
     langSelect.addEventListener('change', () => {
       const selected = langSelect.value;
       safeStorageSet('lang', selected);
       translatePage(selected);
+      markLanguageReady();
     });
   }
-});
+
+  markLanguageReady();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeLanguage, { once: true });
+} else {
+  initializeLanguage();
+}
