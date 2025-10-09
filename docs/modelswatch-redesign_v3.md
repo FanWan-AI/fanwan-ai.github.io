@@ -176,3 +176,101 @@ node tests/fast_summary.test.js
 3) 你/团队 review 后合并并上线（若 main 受保护，PR 合并后 workflow 可自动在 CI 中运行 dry-run 以验证）。
 
 请确认我现在开始实现方案 A（我会在实现后提交 PR 并在此处报告 smoke test 结果）。
+
+---
+
+## 回应你的 6 点反馈与改进（详细实现级别）
+下面把你列出的 6 个反馈点逐条展开为实施细则与可直接执行的配置/数据契约，方便我在实现时直接落地。
+
+1) 前端页面与后端 JSON 的精确对应（每日灵感 / GH 热榜 / HF 热榜 / 点击任务详情）
+   - 每日灵感（前端页面：`daily.html` 或前端组件）
+     - 数据源：`data/ai/modelswatch/daily/<YYYY-MM-DD>.json`（主档）和 `data/ai/modelswatch/daily_github.json`、`data/ai/modelswatch/daily_hf.json`（兼容旧结构）
+     - 每条展示字段（最低）：{ id, source, name, owner, summary_zh, summary_en, summary_es, reason_label, reason_text, tags, url }
+     - 点击条目：前端进一步请求 `data/ai/modelswatch/corpus.json` 或 `snapshots/<date>/*_summaries.json` 中对应 id 的完整条目（详情页/弹窗展示更多 meta、stats、readme 摘要、links）
+
+   - GitHub 工程热榜（前端页面/模块：`projects_hotlist` / 热榜组件）
+     - 数据源：`data/ai/modelswatch/models_hotlist.json`
+     - 展示字段（最低）：{ id (github:owner/repo), name, owner, stars, stars_7d, summary_zh, summary_en, summary_es, last_seen }
+     - 点击“按任务查看模型”：前端调用 `corpus.json`，过滤条件：category、owner、tag、time-range
+
+   - HuggingFace 模型热榜（前端模块：`hf_hotlist`）
+     - 数据源：`data/ai/modelswatch/daily_hf.json`（当日）与 `data/ai/modelswatch/build_all_hf.json` / `data/ai/modelswatch/corpus.json` 中 source=='hf'
+     - 展示字段（最低）：{ id (hf:<model-id>), name, likes, downloads_7d, summary_short, pipeline_tag }
+
+   - 任务视图（按 `daily_tasklist.json` 展示）
+     - 数据源：`data/ai/modelswatch/daily_tasklist.json`
+     - 前端显示任务卡片：{ category, desired_count, filled_count, priority, source_preference }
+     - 点击任务：展开候选列表，数据来自 `corpus.json`（按 category/priority/last_seen 筛选），每项可点进 snapshot sidecar 或 daily archive 查看 enriched summary
+
+2) 推荐流水线顺序（取代 v3 中的顺序）：
+   - 我建议采用：Daily → tri_worker → Corpus builder → Publish
+   - 理由：你要求 tri_worker 批量富化后再分析并生成任务清单（corpus builder 需看到 enriched summaries 才能做更准确的分类/覆盖率统计与下一步任务优先级），因此 tri_worker 应该在 corpus builder 之前运行。这样的顺序也便于最终 publish 使用已富化内容。
+   - 与此同时，daily 应产出 draft（快速首发草稿）并立即触发 tri_worker；tri_worker 完成并将 staging summary 写出后，corpus builder 读取这些 enriched sidecars 做分析并写出 `daily_tasklist.json`；最后 publish 将 snapshot 指针原子化更新。
+
+3) 自动化审查（单人项目，无人工审查）
+   - 按你说明，流程将完全自动化：合并器的 `--dry --audit` 步骤改为自动阈值判断。默认自动策略示例：
+     - 若 enriched 覆盖率 >= COVERAGE_THRESHOLD（例如 70%），自动执行 `--backup --write` 合并并 publish；否则使用 `ENABLE_FAST_FIRST` 回退到 fast summaries 并 publish。
+   - 所有 audit artifacts（tri_cache diagnostics、summaries_diagnostics.json）仍然写入 artifact 目录并保留供事后稽核，但不会阻塞发布。
+
+4) 统一且可回退的 id 方案（保证一致性与可追溯）
+   - canonical_id 字段（必须存在于所有主要 JSON）：格式为 `<source>:<canonical>`
+     - GitHub repo: `github:owner/repo`（例如 `github:apache/arrow`）
+     - HF model: `hf:namespace/model`（保留 HF 原始 id，包含 owner/namespace）
+     - 本地生成条目/临时项：`local:<uuid>`（若确实需要）
+   - 额外索引字段：
+     - `snapshot_date`（当条目来自某 snapshot sidecar 时填入），
+     - `promptHash`（用于摘要去重/标识），
+     - `summary_version`（数字或 timestamp，便于回退），
+     - `origin_keys`（array，包含可能的 alternate ids，如 `['apache/arrow','github:apache/arrow']`）
+   - 回退策略：合并时保存旧的 `summary_cache.json.bak.<timestamp>`，`latest_snapshot.json` 保存上一个稳定 snapshot 引用，用 canonical_id 可一键回退和查找对应条目。
+
+5) 流程中会产出的 JSON 列表（路径、字段摘要与用途）
+   - data/ai/modelswatch/corpus.json
+     - 用途：统一语料库视图，供前端详情页与分析使用；也是 tasklist 填充备选池。关键字段：{ canonical_id, source, name, owner, url, tags, description, stats, categories:[{name,confidence,source}], summary_en, summary_zh, summary_short, first_seen, last_seen, last_fetched_at }
+
+   - data/ai/modelswatch/daily/<YYYY-MM-DD>.github.draft.json
+     - 用途：daily 生成的 GH 草稿（草稿不会直接上站，供 tri_worker 与 staging 使用）。关键字段：{ canonical_id, summary_short, minimal meta }
+
+   - data/ai/modelswatch/daily/<YYYY-MM-DD>.hf.draft.json
+     - 同上，HF 草稿。
+
+   - data/ai/modelswatch/pending_summaries.json
+     - 用途：tri_worker 的输入队列（包含需要 LLM 丰富的 canonical_id、promptHash、source、created_at、priority）
+
+   - data/ai/modelswatch/tri_cache.staging.json
+     - 用途：tri_worker 的 staging 输出，包含详尽的富化结果与元数据（provider, elapsed, warnings）
+
+   - data/ai/modelswatch/summary_cache.json (.bak timestamps)
+     - 用途：最终合并后的生产摘要缓存，供 daily/corpus/frontend 读取
+
+   - data/ai/modelswatch/snapshots/<YYYY-MM-DD>/{hf_summaries.json, gh_summaries.json}
+     - 用途：按日期的 sidecar，用于前端展示历史与回溯；字段同 summary_cache，但附带 snapshot metadata
+
+   - data/ai/modelswatch/daily_tasklist.json
+     - 用途：corpus builder 输出的每日任务清单，供 next daily 优先采集使用。关键字段：{ date, tasks:[{ category, desired_count, source_preference, min_filters, priority }] }
+
+   - data/ai/modelswatch/coverage.json / summaries_coverage.json / classification_stats.json
+     - 用途：覆盖率与质量指标，供调优、dashboard 与 CI 检查使用
+
+   - data/ai/modelswatch/models_hotlist.json / projects_hotlist.json
+     - 用途：前端 hotlist 直接消费（通常由 publish 阶段生成/更新）
+
+6) 调度与时间建议（保证 tri_worker 在 ≤1 小时内完成）
+   - 约束：你要求整个流程（Daily+tri_worker+Corpus builder+Publish）在一小时内完成。要做到这点，tri_worker 必须受限：限制每次 LLM 调用数量、并发、并采用快速占位策略。
+   - 初始保守配置（建议在 workflow vars 中设置）以保证 <1 小时：
+     - SNAPSHOT_MAX_NEW = 40  (新条目上限，过大可能超时)
+     - SUMMARY_CONCURRENCY = 4 (并发 LLM 调用上限)
+     - TRI_BATCH_CONCURRENCY = 4 (tri_worker 内部并发分组数)
+     - BILINGUAL_CAP = 20 (单次 run 尝试的 LLM 双语生成上限)
+     - SNAPSHOT_BATCH_KILL_TIMEOUT = 3300 (秒) —— 约 55 分钟，CI job 超时时间略短于一小时，保证 worker 不会无限运行
+   - 运行模式与回退：
+     - tri_worker 在接近超时阈值时应停止继续生成新的 LLM 请求并把剩余项留在 `pending_summaries.json`，此时触发 ENABLE_FAST_FIRST=true 回退并进行 publish（使用 draft/fast summaries）
+     - 推荐把 tri_worker 的并发与单次批量大小作成可调 repository variables，以便在需要时向上或向下调节
+
+---
+
+如果你确认以上细化（尤其是 pipeline 顺序改为 Daily → tri_worker → Corpus builder → Publish，以及自动化发布策略），我将：
+- 在 `docs/` 中把上述条目合并回 `modelswatch-redesign_v3.md`（已追加）；
+- 立刻在分支上实现方案 A：新增 `tools/modelswatch/fast_summary.mjs` 并小改 `daily.mjs` 产出 draft + pending；并以上述保守变量运行 tri_worker 本地 smoke test，验证在限额下能完成并产出 staging tri_cache。
+
+请确认是否同意上述最终细化与参数建议（或调整 SNAPSHOT_MAX_NEW / 并发上限），我将据此开工并提交 PR。 
