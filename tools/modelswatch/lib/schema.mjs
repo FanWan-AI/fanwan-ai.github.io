@@ -19,7 +19,8 @@ const SCHEMA_FILES = {
   projects_by_category_index: 'projects_by_category.schema.json',
   models_hotlist: 'models_hotlist.schema.json',
   projects_hotlist: 'projects_hotlist.schema.json',
-  publish_audit: 'publish_audit.schema.json'
+  publish_audit: 'publish_audit.schema.json',
+  audit_summary: 'audit_summary.schema.json'
 };
 
 let ajvInstancePromise = null;

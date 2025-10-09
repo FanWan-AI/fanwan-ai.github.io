@@ -47,6 +47,7 @@ export async function writeState(partial, { runId } = {}) {
     updated_at: nowUtcISOString()
   };
   await validateArtifact('state', payload);
-  await atomicWriteJson(STATE_FILE, payload, { pretty: true });
+  const skipSync = process.platform === 'win32';
+  await atomicWriteJson(STATE_FILE, payload, { pretty: true, skipSync });
   return payload;
 }

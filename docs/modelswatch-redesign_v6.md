@@ -248,19 +248,24 @@ CI 验收：
 ---
 
 16. 运维与回退（Runbook）
-- 查看失败：tools/modelswatch/audit/<date>_runlog.json
-- 手工回退：挑选 summary_cache.json.bak.<ts>.gz → 还原 → 重新执行 publish
+
+- 查看失败：tools/modelswatch/audit/{date}_runlog.json
+- 手工回退：挑选 summary_cache.json.bak.{timestamp}.gz → 还原 → 重新执行 publish
 - 清理策略：备份 N=10，staging/archive 7-30 天，runlog ≥60 天
+- 审计维护脚本：`node tools/modelswatch/maintain_audit.mjs [--dry-run]`（自动归档超期 runlog/publish_audit，并写入 audit/summary.json + state.notes.audit_summary）
+- 历史数据归档：`node tools/modelswatch/archive_data.mjs [--include-audit]`（将 data/ai/modelswatch 下现有数据搬迁至 previous_data/{timestamp}/，便于零数据重启）
 
 ---
 
 17. 安全与合规
+
 - 日志脱敏，不记录密钥与敏感上下文
 - 可配置 why/what/how 的保留级别（隐私优先）
 
 ---
 
 18. 术语与缩写
+
 - tri：LLM 富化
 - staging：待合并临时缓存
 - cache：生产摘要缓存
