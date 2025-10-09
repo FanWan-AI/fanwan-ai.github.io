@@ -56,7 +56,7 @@ export function normalizeGithubItem(raw, nowIso = new Date().toISOString()) {
 }
 
 export function normalizeHFItem(raw, nowIso = new Date().toISOString()) {
-  const doc = normalizeCommon(raw, 'hf', nowIso);
+  const doc = normalizeCommon(raw, 'huggingface', nowIso);
   doc.repo_id = raw.id;
   return doc;
 }
