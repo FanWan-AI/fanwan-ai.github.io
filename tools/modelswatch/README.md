@@ -1,12 +1,31 @@
-# 更新 corpus + snapshots + hotlists
-node tools/modelswatch/weekly.mjs
-# 生成当日灵感
-node tools/modelswatch/daily.mjs
-# 启动本地静态服务
-npm run serve
-# 浏览器访问
+# ModelSwatch v6 quickstart
 
-访问本地服务（示例）： `http://127.0.0.1:8000/lab/modelswatch.html`
+## 分阶段执行（推荐）
+
+1. **Stage A · Fetch & Drafts**  
+  `node tools/modelswatch/daily.mjs`
+2. **Stage B · TRI 富化**  
+  `node tools/modelswatch/tri_worker.mjs` → `node tools/modelswatch/apply_tri_to_summary.mjs`
+3. **Stage C · 分析发布 & 审计**  
+  `node tools/modelswatch/data_analysis.mjs` → `node tools/modelswatch/qualify_publish.mjs` → `node tools/modelswatch/maintain_audit.mjs`
+
+辅助命令：
+
+- 数据归档（零数据重启）：`node tools/modelswatch/archive_data.mjs [--include-audit]`
+- 审计保洁（可 dry-run）：`node tools/modelswatch/maintain_audit.mjs [--dry-run]`
+
+## 本地调试入口
+
+- 启动本地静态服务：`npm run serve`
+- 访问示例：`http://127.0.0.1:8000/lab/modelswatch.html`
+
+## Legacy / 旧版脚本
+
+所有 v4/v5 时代的 pipeline 辅助脚本已迁移至 `tools/modelswatch/previous_js/`，如需查看历史实现或回滚，可从该目录运行：
+
+```bash
+node tools/modelswatch/previous_js/weekly.mjs
+```
 
 ## Model Watch Scripts - Logging
 
@@ -31,6 +50,7 @@ Example:
 In CI you can omit MODELSWATCH_DEBUG to keep logs concise.
 
 ## Schema Migration (Phase 1)
+
 Canonical cumulative fields for HF models are now:
   stats.downloads_total
   stats.likes_total
@@ -46,15 +66,5 @@ These previously held cumulative totals but were ambiguously named. They are no 
 Schema versioning:
   See schema.js (SCHEMA_VERSION=1). Hotlists and daily files embed { version } and front-end warns on mismatch.
 
-Recommended pipeline order (first run / maintenance):
 
-1. node tools/modelswatch/weekly.mjs  (refresh corpus & tops)
-2. node tools/modelswatch/build_snapshots.mjs
-3. node tools/modelswatch/update_model_hotlist.mjs
-4. node tools/modelswatch/update_project_hotlist.mjs
-
-(Optional) node tools/modelswatch/seed_hotlists.mjs for first-time seeding before updates.
-
-Daily picks (LLM summaries + reasons):
-  node tools/modelswatch/daily.mjs
 
