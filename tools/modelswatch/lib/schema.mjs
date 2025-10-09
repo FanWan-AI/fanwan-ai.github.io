@@ -14,8 +14,12 @@ const SCHEMA_FILES = {
   runlog: 'runlog.schema.json',
   state: 'state.schema.json',
   daily_release: 'daily_release.schema.json',
+  daily_legacy: 'daily_legacy.schema.json',
   models_by_task_index: 'models_by_task.schema.json',
-  projects_by_category_index: 'projects_by_category.schema.json'
+  projects_by_category_index: 'projects_by_category.schema.json',
+  models_hotlist: 'models_hotlist.schema.json',
+  projects_hotlist: 'projects_hotlist.schema.json',
+  publish_audit: 'publish_audit.schema.json'
 };
 
 let ajvInstancePromise = null;

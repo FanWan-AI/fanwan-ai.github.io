@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
-import { resolveDataPath } from './lib/paths.mjs';
+import { resolveDataPath, resolveAuditPath, ROOT_DIR } from './lib/paths.mjs';
 import { atomicWriteJson } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
 import { PipelineLock } from './lib/lock.mjs';
@@ -11,6 +11,7 @@ import { generateRunId } from './lib/run_id.mjs';
 import { RunlogWriter } from './lib/runlog.mjs';
 import { nowUtcISOString, formatDateKey } from './lib/time.mjs';
 import { readState, writeState } from './lib/state.mjs';
+import { computeSha256 } from './lib/hash.mjs';
 
 const TASK_THRESHOLD = Number(process.env.MODELSWATCH_TASK_THRESHOLD || '0.7');
 const TASK_TOP_K = Number(process.env.MODELSWATCH_TASK_TOP_K || '3');
@@ -18,6 +19,7 @@ const TASK_INDEX_LIMIT = Number(process.env.MODELSWATCH_TASK_INDEX_LIMIT || '500
 const CATEGORY_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_LIMIT || '3');
 const CATEGORY_INDEX_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_INDEX_LIMIT || '500');
 const MAX_DATES = Number(process.env.MODELSWATCH_MAX_DATES || '120');
+const HOTLIST_LIMIT = Number(process.env.MODELSWATCH_HOTLIST_LIMIT || '50');
 
 const PROJECT_CATEGORY_RULES = {
   framework_core: ['framework', 'trainer', 'engine', 'torch', 'jax', 'core'],
@@ -255,6 +257,175 @@ function buildSummaryCacheMap(summaryCache) {
     }
   }
   return map;
+}
+
+function canonicalIdToSlug(canonicalId, fallbackSource) {
+  if (!canonicalId) return '';
+  const parts = String(canonicalId).split(':');
+  if (parts.length > 1) {
+    return parts.slice(1).join(':');
+  }
+  if (fallbackSource && canonicalId.startsWith(`${fallbackSource}:`)) {
+    return canonicalId.slice(fallbackSource.length + 1);
+  }
+  return parts[0];
+}
+
+function extractSummaries(item) {
+  const summaries = item?.summaries && typeof item.summaries === 'object' ? item.summaries : {};
+  const short = item?.summary_short && typeof item.summary_short === 'object' ? item.summary_short : {};
+  const zh = sanitizeText(summaries.zh) || sanitizeText(short.zh) || '';
+  const en = sanitizeText(summaries.en) || sanitizeText(short.en) || '';
+  const es = sanitizeText(summaries.es) || sanitizeText(short.es) || '';
+  return { zh, en, es, short: { zh: short.zh || zh, en: short.en || en, es: short.es || es } };
+}
+
+function buildLegacyDailyPayload(allItems, dateKey, generatedAt, { taskScores, categoryScores }) {
+  const items = allItems.map((item) => {
+    const { zh, en, es, short } = extractSummaries(item);
+    const popScore = computePopularityScore(item.stats);
+    const taskScore = taskScores.get(item.canonical_id) || 0;
+    const categoryScore = categoryScores.get(item.canonical_id) || 0;
+    const legacy = {
+      id: canonicalIdToSlug(item.canonical_id, item.source),
+      canonical_id: item.canonical_id,
+      source: item.source,
+      status: item.status,
+      name: item.name,
+      url: item.url,
+      tags: Array.isArray(item.tags) ? item.tags : [],
+      stats: item.stats || {},
+      summary: zh || en || es || '',
+      summary_en: en,
+      summary_zh: zh,
+      summary_es: es,
+      summary_short: short,
+      tasks: Array.isArray(item.tasks) ? item.tasks : [],
+      project_categories: Array.isArray(item.project_categories) ? item.project_categories : [],
+      first_seen: item.first_seen || null,
+      last_seen: item.last_seen || null,
+      created_at: item.created_at || null,
+      updated_at: item.updated_at || generatedAt,
+      score: popScore
+    };
+    if (item.source === 'github') {
+      legacy.score_engineering = popScore;
+      if (categoryScore) legacy.score_category = categoryScore;
+    } else if (item.source === 'huggingface') {
+      legacy.score_model = popScore;
+      if (taskScore) legacy.score_task = taskScore;
+    }
+    legacy.reason_label = item.status === 'qualified' ? 'tri' : 'passonce';
+    legacy.reason_text = item.status === 'qualified'
+      ? 'LLM-qualified summary'
+      : 'Fast summary candidate';
+    return legacy;
+  });
+
+  return {
+    version: 1,
+    schema_version: SCHEMA_VERSION,
+    pipeline_version: PIPELINE_VERSION,
+    date: dateKey,
+    generated_at: generatedAt,
+    updated_at: generatedAt,
+    items
+  };
+}
+
+function formatHotlistItem(item, score, { generatedAt, dateKey, bucketType }) {
+  const { zh, en, es, short } = extractSummaries(item);
+  const baseScore = computePopularityScore(item.stats);
+  const payload = {
+    id: canonicalIdToSlug(item.canonical_id, item.source),
+    canonical_id: item.canonical_id,
+    source: item.source,
+    name: item.name,
+    url: item.url,
+    tags: Array.isArray(item.tags) ? item.tags : [],
+    stats: item.stats || {},
+    summary: zh || en || es || '',
+    summary_en: en,
+    summary_zh: zh,
+    summary_es: es,
+    summary_short: short,
+    tasks: Array.isArray(item.tasks) ? item.tasks : [],
+    task_keys: Array.isArray(item.tasks) ? item.tasks : [],
+    project_categories: Array.isArray(item.project_categories) ? item.project_categories : [],
+    score,
+    score_model: bucketType === 'models' ? score : undefined,
+    score_engineering: bucketType === 'projects' ? score : undefined,
+    popularity_score: baseScore,
+    added_at: item.first_seen || dateKey,
+    updated_at: item.updated_at || generatedAt
+  };
+  if (payload.score_model === undefined) delete payload.score_model;
+  if (payload.score_engineering === undefined) delete payload.score_engineering;
+  return payload;
+}
+
+function buildHotlists(taskBuckets, categoryBuckets, generatedAt, dateKey) {
+  const modelsHotlist = {
+    schema_version: SCHEMA_VERSION,
+    pipeline_version: PIPELINE_VERSION,
+    version: 1,
+    date: dateKey,
+    generated_at: generatedAt,
+    updated_at: generatedAt,
+    by_category: {}
+  };
+  const projectsHotlist = {
+    schema_version: SCHEMA_VERSION,
+    pipeline_version: PIPELINE_VERSION,
+    version: 1,
+    date: dateKey,
+    generated_at: generatedAt,
+    updated_at: generatedAt,
+    by_category: {}
+  };
+
+  for (const [key, entries] of taskBuckets.entries()) {
+    const sorted = entries
+      .slice()
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const popDiff = computePopularityScore(b.item.stats) - computePopularityScore(a.item.stats);
+        if (popDiff !== 0) return popDiff;
+        return (a.item.name || '').localeCompare(b.item.name || '', 'en', { sensitivity: 'base' });
+      })
+      .slice(0, HOTLIST_LIMIT)
+      .map(({ item, score }) => formatHotlistItem(item, score, { generatedAt, dateKey, bucketType: 'models' }));
+    if (sorted.length) {
+      modelsHotlist.by_category[key] = sorted;
+    }
+  }
+
+  for (const [key, entries] of categoryBuckets.entries()) {
+    const sorted = entries
+      .slice()
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const popDiff = computePopularityScore(b.item.stats) - computePopularityScore(a.item.stats);
+        if (popDiff !== 0) return popDiff;
+        return (a.item.name || '').localeCompare(b.item.name || '', 'en', { sensitivity: 'base' });
+      })
+      .slice(0, HOTLIST_LIMIT)
+      .map(({ item, score }) => formatHotlistItem(item, score, { generatedAt, dateKey, bucketType: 'projects' }));
+    if (sorted.length) {
+      projectsHotlist.by_category[key] = sorted;
+    }
+  }
+
+  return { modelsHotlist, projectsHotlist };
+}
+
+async function computeFileChecksum(filePath) {
+  const data = await fs.readFile(filePath);
+  return `sha256:${computeSha256(data)}`;
+}
+
+function relativeFromRoot(filePath) {
+  return path.relative(ROOT_DIR, filePath).replace(/\\/g, '/');
 }
 
 function buildFinalItem(raw, { status, summaryCacheMap, generatedAt }) {
@@ -693,9 +864,23 @@ async function main() {
     const categoryContext = await buildCategoryContext();
 
     const artifacts = [];
+    const artifactGroups = {
+      daily: [],
+      daily_aliases: [],
+      indexes: [],
+      hotlists: [],
+      legacy: [],
+      legacy_aliases: [],
+      dates: [],
+      state: [],
+      audit: []
+    };
+    const checksumMap = new Map();
     const perSourceResults = [];
     const taskBuckets = new Map();
     const categoryBuckets = new Map();
+    const taskScores = new Map();
+    const categoryScores = new Map();
     const classificationMetrics = {
       tasksAssigned: 0,
       itemsWithTasks: 0,
@@ -703,6 +888,24 @@ async function main() {
       itemsWithCategories: 0
     };
     const allItems = [];
+    let totalPublished = 0;
+    let totalQualified = 0;
+
+    async function recordArtifact(group, filePath) {
+      const rel = relativeFromRoot(filePath);
+      if (group && artifactGroups[group]) {
+        artifactGroups[group].push(rel);
+      }
+      artifacts.push(rel);
+      if (!dryRun) {
+        const checksum = await computeFileChecksum(filePath);
+        checksumMap.set(rel, checksum);
+      }
+      return rel;
+    }
+
+    const snapshotArtifactGroups = () =>
+      Object.fromEntries(Object.entries(artifactGroups).map(([key, list]) => [key, [...list]]));
 
     for (const source of sources) {
       const suffix = resolveSourceSuffix(source);
@@ -741,6 +944,13 @@ async function main() {
           }
           taskBuckets.get(assignment.key).push({ item, score: assignment.score });
         }
+        if (item.canonical_id && taskAssignments.length) {
+          const bestTaskScore = taskAssignments.reduce((max, entry) => (entry.score > max ? entry.score : max), 0);
+          const prev = taskScores.get(item.canonical_id) || 0;
+          if (bestTaskScore > prev) {
+            taskScores.set(item.canonical_id, bestTaskScore);
+          }
+        }
 
         const categoryAssignments = classifyCategories(item, categoryContext, classificationMetrics);
         if (item.source === 'github') {
@@ -751,6 +961,13 @@ async function main() {
             categoryBuckets.set(assignment.key, []);
           }
           categoryBuckets.get(assignment.key).push({ item, score: assignment.score });
+        }
+        if (item.canonical_id && categoryAssignments.length) {
+          const bestCategoryScore = categoryAssignments.reduce((max, entry) => (entry.score > max ? entry.score : max), 0);
+          const prev = categoryScores.get(item.canonical_id) || 0;
+          if (bestCategoryScore > prev) {
+            categoryScores.set(item.canonical_id, bestCategoryScore);
+          }
         }
 
         allItems.push(item);
@@ -777,6 +994,9 @@ async function main() {
         items: mergedItems
       };
 
+      totalPublished += stats.published_total;
+      totalQualified += stats.published_qualified;
+
       const releasePath = resolveDataPath('daily', `${dateKey}.${source}.json`);
       const aliasPath = resolveDataPath(source === 'github' ? 'daily_github.json' : 'daily_hf.json');
 
@@ -784,8 +1004,8 @@ async function main() {
       const wroteAlias = await writeJsonArtifact('daily_release', aliasPath, payload, { dryRun, logLabel: path.basename(aliasPath) });
 
       if (!dryRun) {
-        if (wroteRelease) artifacts.push(path.relative(process.cwd(), releasePath));
-        if (wroteAlias) artifacts.push(path.relative(process.cwd(), aliasPath));
+        if (wroteRelease) await recordArtifact('daily', releasePath);
+        if (wroteAlias) await recordArtifact('daily_aliases', aliasPath);
       }
 
       perSourceResults.push({
@@ -818,7 +1038,7 @@ async function main() {
         logLabel: 'models_by_task.json'
       });
       if (!dryRun && wrote) {
-        artifacts.push(path.relative(process.cwd(), taskIndexPath));
+        await recordArtifact('indexes', taskIndexPath);
       }
     }
 
@@ -830,8 +1050,62 @@ async function main() {
         logLabel: 'projects_by_category.json'
       });
       if (!dryRun && wrote) {
-        artifacts.push(path.relative(process.cwd(), categoryIndexPath));
+        await recordArtifact('indexes', categoryIndexPath);
       }
+    }
+
+    const legacyPayload = buildLegacyDailyPayload(allItems, dateKey, generatedAt, {
+      taskScores,
+      categoryScores
+    });
+    const legacyItemsCount = legacyPayload.items.length;
+
+    const { modelsHotlist, projectsHotlist } = buildHotlists(taskBuckets, categoryBuckets, generatedAt, dateKey);
+    const hotlistStats = {
+      models: {
+        categories: Object.keys(modelsHotlist.by_category || {}).length,
+        items: Object.values(modelsHotlist.by_category || {}).reduce((sum, entries) => sum + entries.length, 0)
+      },
+      projects: {
+        categories: Object.keys(projectsHotlist.by_category || {}).length,
+        items: Object.values(projectsHotlist.by_category || {}).reduce((sum, entries) => sum + entries.length, 0)
+      }
+    };
+
+    const modelsHotlistPath = resolveDataPath('models_hotlist.json');
+    const wroteModelsHotlist = await writeJsonArtifact('models_hotlist', modelsHotlistPath, modelsHotlist, {
+      dryRun,
+      logLabel: 'models_hotlist.json'
+    });
+    if (!dryRun && wroteModelsHotlist) {
+      await recordArtifact('hotlists', modelsHotlistPath);
+    }
+
+    const projectsHotlistPath = resolveDataPath('projects_hotlist.json');
+    const wroteProjectsHotlist = await writeJsonArtifact('projects_hotlist', projectsHotlistPath, projectsHotlist, {
+      dryRun,
+      logLabel: 'projects_hotlist.json'
+    });
+    if (!dryRun && wroteProjectsHotlist) {
+      await recordArtifact('hotlists', projectsHotlistPath);
+    }
+
+    const legacyPath = resolveDataPath('daily', `${dateKey}.legacy.json`);
+    const wroteLegacy = await writeJsonArtifact('daily_legacy', legacyPath, legacyPayload, {
+      dryRun,
+      logLabel: `${dateKey}.legacy.json`
+    });
+    if (!dryRun && wroteLegacy) {
+      await recordArtifact('legacy', legacyPath);
+    }
+
+    const legacyAliasPath = resolveDataPath('daily_legacy.json');
+    const wroteLegacyAlias = await writeJsonArtifact('daily_legacy', legacyAliasPath, legacyPayload, {
+      dryRun,
+      logLabel: 'daily_legacy.json'
+    });
+    if (!dryRun && wroteLegacyAlias) {
+      await recordArtifact('legacy_aliases', legacyAliasPath);
     }
 
     let isNewDate = false;
@@ -844,9 +1118,89 @@ async function main() {
         info(`[qualify_publish] dry-run: would update daily/dates.json with ${dateKey}`);
       } else {
         await atomicWriteJson(datesPath, dates, { pretty: true });
-        artifacts.push(path.relative(process.cwd(), datesPath));
+        await recordArtifact('dates', datesPath);
       }
     }
+
+    const taskAssignmentsTotal = Array.from(taskBuckets.values()).reduce((acc, entries) => acc + entries.length, 0);
+    const categoryAssignmentsTotal = Array.from(categoryBuckets.values()).reduce((acc, entries) => acc + entries.length, 0);
+    const githubItemsTotal = allItems.reduce((acc, item) => (item.source === 'github' ? acc + 1 : acc), 0);
+
+    const taskCoveragePct = taskContext.tasks.length
+      ? Number((taskBuckets.size / taskContext.tasks.length).toFixed(4))
+      : 0;
+    const categoryCoveragePct = categoryContext.labels.size
+      ? Number((categoryBuckets.size / categoryContext.labels.size).toFixed(4))
+      : 0;
+
+    const classificationAudit = {
+      tasks: {
+        taxonomy_total: taskContext.tasks.length,
+        buckets_covered: taskBuckets.size,
+        coverage_pct: taskCoveragePct,
+        assignments: taskAssignmentsTotal,
+        items_with_assignments: classificationMetrics.itemsWithTasks,
+        items_without_assignments: Math.max(allItems.length - classificationMetrics.itemsWithTasks, 0)
+      },
+      categories: {
+        taxonomy_total: categoryContext.labels.size,
+        buckets_covered: categoryBuckets.size,
+        coverage_pct: categoryCoveragePct,
+        assignments: categoryAssignmentsTotal,
+        items_with_assignments: classificationMetrics.itemsWithCategories,
+        items_without_assignments: Math.max(githubItemsTotal - classificationMetrics.itemsWithCategories, 0)
+      }
+    };
+
+    const checksumsForAudit = Object.fromEntries(checksumMap);
+    const artifactGroupsForAudit = snapshotArtifactGroups();
+    const sourcesAudit = perSourceResults.reduce((acc, entry) => {
+      acc[entry.source] = {
+        published: entry.published,
+        qualified: entry.qualified,
+        passonce: entry.passonce,
+        coverage_pct: entry.coverage_pct,
+        duplicates: entry.duplicates,
+        inputs: entry.inputs
+      };
+      return acc;
+    }, {});
+
+    const totalsAudit = {
+      items: allItems.length,
+      coverage_pct: totalPublished ? Number((totalQualified / totalPublished).toFixed(4)) : 0,
+      sources: perSourceResults.map((entry) => entry.source)
+    };
+
+    const auditPayload = {
+      schema_version: SCHEMA_VERSION,
+      pipeline_version: PIPELINE_VERSION,
+      date: dateKey,
+      generated_at: generatedAt,
+      run_id: runId,
+      sources: sourcesAudit,
+      totals: totalsAudit,
+      classification: classificationAudit,
+      checksums: checksumsForAudit,
+      artifacts: artifactGroupsForAudit,
+      notes: {
+        legacy_items: legacyItemsCount,
+        hotlists: hotlistStats
+      }
+    };
+
+    const auditFileName = `${dateKey}_publish_audit.json`;
+    const auditPath = resolveAuditPath(auditFileName);
+    const wroteAudit = await writeJsonArtifact('publish_audit', auditPath, auditPayload, {
+      dryRun,
+      logLabel: auditFileName
+    });
+    if (!dryRun && wroteAudit) {
+      await recordArtifact('audit', auditPath);
+    }
+
+    const artifactGroupsForState = snapshotArtifactGroups();
+    const checksumsForStateNotes = Object.fromEntries(checksumMap);
 
     if (!dryRun) {
       const state = await readState();
@@ -876,15 +1230,26 @@ async function main() {
         last_publish_totals: {
           items: allItems.length,
           task_buckets: taskBuckets.size,
-          category_buckets: categoryBuckets.size
+          category_buckets: categoryBuckets.size,
+          legacy_items: legacyItemsCount,
+          hotlist_models_categories: hotlistStats.models.categories,
+          hotlist_models_items: hotlistStats.models.items,
+          hotlist_projects_categories: hotlistStats.projects.categories,
+          hotlist_projects_items: hotlistStats.projects.items
         },
-        last_classification_metrics: classificationMetrics
+        last_classification_metrics: classificationMetrics,
+        last_classification_audit: classificationAudit,
+        last_publish_checksums: checksumsForStateNotes,
+        last_publish_artifacts: artifactGroupsForState,
+        last_hotlist_stats: hotlistStats
       };
       await writeState({ counters, notes }, { runId });
-      artifacts.push(path.relative(process.cwd(), resolveDataPath('state.json')));
+      await recordArtifact('state', resolveDataPath('state.json'));
     }
 
     if (!dryRun && runlog) {
+      const finalChecksums = Object.fromEntries(checksumMap);
+      const finalArtifactGroups = snapshotArtifactGroups();
       await runlog.append('success', {
         summary: 'qualify_publish completed',
         metrics: {
@@ -893,7 +1258,12 @@ async function main() {
           sources: perSourceResults,
           task_buckets: taskBuckets.size,
           category_buckets: categoryBuckets.size,
-          classification: classificationMetrics
+          hotlists: hotlistStats,
+          legacy_items: legacyItemsCount,
+          classification_counts: classificationMetrics,
+          classification_audit: classificationAudit,
+          checksums: finalChecksums,
+          artifact_groups: finalArtifactGroups
         },
         artifacts
       });
