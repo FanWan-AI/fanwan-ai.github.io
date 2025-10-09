@@ -1,0 +1,135 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ModelSwatch Tri Cache Staging",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pipeline_version",
+    "run_id",
+    "date",
+    "generated_at",
+    "items",
+    "stats"
+  ],
+  "properties": {
+    "schema_version": { "type": "integer", "minimum": 1 },
+    "pipeline_version": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "date": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "window_ms": { "type": "integer", "minimum": 0 },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/stagingItem" }
+    },
+    "stats": {
+      "type": "object",
+      "required": ["attempted", "succeeded", "failed", "skipped"],
+      "additionalProperties": true,
+      "properties": {
+        "pending_before": { "type": "integer", "minimum": 0 },
+        "pending_after": { "type": "integer", "minimum": 0 },
+        "attempted": { "type": "integer", "minimum": 0 },
+        "succeeded": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "definitions": {
+    "summarySections": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "why": { "type": "string" },
+        "what": { "type": "string" },
+        "how": { "type": "string" }
+      }
+    },
+    "summaryLocales": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "en": { "type": "string" },
+        "zh": { "type": "string" },
+        "es": { "type": "string" },
+        "sections": { "$ref": "#/definitions/summarySections" }
+      }
+    },
+    "qualityInfo": {
+      "type": "object",
+      "required": ["score", "fallback"],
+      "additionalProperties": true,
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "fallback": { "type": "boolean" },
+        "length": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "en": { "type": "integer", "minimum": 0 },
+            "zh": { "type": "integer", "minimum": 0 },
+            "es": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "timingInfo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "elapsed_ms": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "stagingItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_id",
+        "promptHash",
+        "status",
+        "locales",
+        "provider",
+        "summaries",
+        "quality",
+        "timings"
+      ],
+      "properties": {
+        "canonical_id": { "type": "string" },
+        "promptHash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "type": "string", "enum": ["ok", "skipped", "failed"] },
+        "locales": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "provider": {
+          "type": "object",
+          "required": ["name"],
+          "additionalProperties": true,
+          "properties": {
+            "name": { "type": "string" },
+            "version": { "type": "string" },
+            "mode": { "type": "string" }
+          }
+        },
+        "summaries": { "$ref": "#/definitions/summaryLocales" },
+        "quality": { "$ref": "#/definitions/qualityInfo" },
+        "timings": { "$ref": "#/definitions/timingInfo" },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "error": { "type": "string" },
+        "metadata": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

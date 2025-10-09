@@ -1,273 +1,522 @@
 #!/usr/bin/env node
-import fs from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
-import { fastSummary, promptHash } from './fast_summary.mjs';
+import { debug, info, warn, error as logError } from './log.js';
+import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
+import { resolveDataPath } from './lib/paths.mjs';
+import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
+import { atomicWriteJson } from './lib/atomic.mjs';
+import { validateArtifact } from './lib/schema.mjs';
+import { generateRunId } from './lib/run_id.mjs';
+import { RunlogWriter } from './lib/runlog.mjs';
+import { PipelineLock } from './lib/lock.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '../../');
-const DATA_DIR = path.join(ROOT, 'data/ai/modelswatch');
-const PENDING_FILE = path.join(DATA_DIR, 'pending_summaries.json');
-const TRI_CACHE_FILE = process.env.TRI_CACHE_FILE || path.join(DATA_DIR, 'tri_cache.json');
-const SUMMARY_CACHE_FILE = path.join(DATA_DIR, 'summary_cache.json');
+const DEFAULT_MAX_ITEMS = Number(process.env.SNAPSHOT_MAX_NEW || '20') || 20;
+const MIN_EN_LENGTH = Number(process.env.TRI_MIN_EN_LENGTH || '220');
+const MIN_ZH_LENGTH = Number(process.env.TRI_MIN_ZH_LENGTH || '150');
 
-function readJSON(p){ try{ if(fs.existsSync(p)) return JSON.parse(fs.readFileSync(p,'utf8')); }catch(e){} return null; }
-function writeJSON(p,obj){ try{ fs.mkdirSync(path.dirname(p), { recursive: true }); const tmp = p + '.tmp.' + Date.now(); fs.writeFileSync(tmp, JSON.stringify(obj,null,2)); fs.renameSync(tmp, p); return true;}catch(e){ console.warn('writeJSON failed', e.message||e); return false;} }
-
-function buildPromptFromItem(it){
-  const stats = it.stats||{}; const statBits = [];
-  if(stats.stars) statBits.push(`Stars ${stats.stars}`);
-  if(stats.forks) statBits.push(`Forks ${stats.forks}`);
-  if(stats.downloads_total) statBits.push(`DownloadsTotal ${stats.downloads_total}`);
-  if(stats.downloads_7d) statBits.push(`Downloads7d ${stats.downloads_7d}`);
-  if(stats.likes_total) statBits.push(`Likes ${stats.likes_total}`);
-  const desc = it.summary || it.description || '';
-  const tags = (it.tags||[]).slice(0,20).join(', ');
-  const id = it.id || it.repo_id || it.name || '';
-  const prompt = `PROJECT ID: ${id}\nNAME: ${it.name||id}\nSOURCE: ${it.source||''}\nURL: ${it.url||''}\nTAGS: ${tags}\nSTATS: ${statBits.join(' · ')}\nRAW_DESC: ${String(desc).slice(0,4000)}`;
-  return prompt;
-}
-
-async function runBatchPrompts(prompts, triEnv, timeoutSec){
-  return new Promise((resolve)=>{
-    const child = spawn('python', ['tools/tri_summarizer.py','--batch'], { env: { ...process.env, ...triEnv } });
-    let out = '';
-    let killedByTimeout = false;
-    child.stdout.on('data', d=> out += d.toString());
-    child.stderr.on('data', d=> process.stderr.write(d.toString()));
-    child.on('error', e=> { console.warn('[tri_worker] spawn error', e.message); });
-    const timer = setTimeout(()=>{ killedByTimeout = true; try{ child.kill('SIGKILL'); process.stderr.write('[tri_worker] child killed due to timeout\n'); }catch(e){} }, timeoutSec*1000);
-    child.on('close', code=>{
-      clearTimeout(timer);
-      if(code===0 && !killedByTimeout){
-        try{ const parsed = JSON.parse(out); return resolve({ ok: true, parsed }); }catch(e){ console.warn('[tri_worker] parse error', e.message); return resolve({ ok:false, parse_error:true }); }
-      }
-      return resolve({ ok:false, killed:killedByTimeout });
-    });
-    // send base64-encoded prompts to avoid Unicode/encoding issues in Python child
-    const b64prompts = prompts.map(s => ({ b64: Buffer.from(String(s||''), 'utf8').toString('base64') }));
-    child.stdin.write(JSON.stringify(b64prompts)+'\n');
-    child.stdin.end();
-  });
-}
-
-async function main(){
-  console.log('[tri_worker] starting');
-  const pending = readJSON(PENDING_FILE) || [];
-  if(!Array.isArray(pending) || pending.length===0){ console.log('[tri_worker] no pending items'); return; }
-  // cap (can be disabled via PROCESS_ALL_PENDING=1 to process everything in one run)
-  const MAX_NEW = Number(process.env.SNAPSHOT_MAX_NEW||'40') || 40;
-  const PROCESS_ALL = ['1','true','yes','on'].includes((process.env.PROCESS_ALL_PENDING||'0').toLowerCase());
-  // Start with pending list but remove those already present in tri_cache
-  const triCacheExisting = readJSON(TRI_CACHE_FILE) || {};
-  const pendingAll = Array.isArray(pending) ? pending.slice() : [];
-  const uniquePending = Array.from(new Set(pendingAll));
-  // tri_cache stored shape: preferred { version:1, items: { '<key>': {en,zh,es,...} } }
-  // but we accept legacy flat maps. Build triExistingMap with both full 'sha256:<hex>' and short legacy hex keys.
-  const triExistingMap = new Map();
-  try{
-    if(triCacheExisting && typeof triCacheExisting === 'object'){
-      if(triCacheExisting.items && typeof triCacheExisting.items === 'object'){
-        for(const k of Object.keys(triCacheExisting.items)){
-          triExistingMap.set(k, true);
-          // if key looks like short hex (16 chars), also map full prefixed form
-          if(/^[0-9a-f]{16}$/.test(k)){
-            triExistingMap.set('sha256:'+k.padEnd(64, '0').slice(0,64), true);
-          }
-        }
-      }
-      // legacy flat map: keys may be full 'sha256:<hex>' or hex-only
-      for(const k of Object.keys(triCacheExisting)){
-        if(k === 'version' || k === 'items' || k === 'generated_at') continue;
-        triExistingMap.set(k, true);
-        if(/^[0-9a-f]{64}$/.test(k)) triExistingMap.set('sha256:'+k, true);
-        if(/^[0-9a-f]{16}$/.test(k)) triExistingMap.set('sha256:'+k.padEnd(64,'0').slice(0,64), true);
-      }
+function parseArgs(argv) {
+  const args = { _: [] };
+  for (const arg of argv) {
+    if (arg.startsWith('--')) {
+      const [key, value] = arg.slice(2).split('=');
+      args[key] = value === undefined ? true : value;
+    } else if (arg.startsWith('-')) {
+      const flag = arg.slice(1);
+      args[flag] = true;
+    } else {
+      args._.push(arg);
     }
-  }catch(e){}
-  // Select up to MAX_NEW hashes that are not already in triExistingMap (consider both full and short forms)
-  let toProcess = uniquePending.filter(h => {
-    const hex = String(h).replace(/^sha256:/,'');
-    const short = hex.slice(0,16);
-    const forms = [h, hex, short, 'sha256:'+hex];
-    return !forms.some(f => triExistingMap.has(f));
-  });
-  if(!PROCESS_ALL) toProcess = toProcess.slice(0, MAX_NEW);
-
-  // load candidate pool (corpus & snapshots)
-  const corpusGH = (readJSON(path.join(DATA_DIR,'corpus.github.json'))?.items) || [];
-  const corpusHF = (readJSON(path.join(DATA_DIR,'corpus.hf.json'))?.items) || [];
-  const snapshotsDir = path.join(DATA_DIR,'snapshots');
-  // Build map from hash->item by scanning corpus + snapshots sidecars
-  const hashToItem = new Map();
-  const all = [...corpusGH.map(i=>({...i, source:'github'})), ...corpusHF.map(i=>({...i, source:'hf'}))];
-  for(const it of all){ try{ const h = promptHash(it); if(!hashToItem.has(h)) hashToItem.set(h, it); }catch(e){} }
-  // scan today's and recent snapshots to pick up more items
-  try{
-    if(fs.existsSync(snapshotsDir)){
-      const days = fs.readdirSync(snapshotsDir).filter(f=>fs.statSync(path.join(snapshotsDir,f)).isDirectory());
-      for(const d of days.slice(0,7)){
-        const hfP = path.join(snapshotsDir,d,'hf.json');
-        const ghP = path.join(snapshotsDir,d,'gh.json');
-        for(const p of [hfP, ghP]){
-          try{ if(fs.existsSync(p)){ const arr = JSON.parse(fs.readFileSync(p,'utf8')); if(Array.isArray(arr)) arr.forEach(it=>{ try{ const h=promptHash(it); if(!hashToItem.has(h)) hashToItem.set(h,it);}catch(e){} }); } }catch(e){}
-        }
-      }
-    }
-  }catch(e){ console.warn('[tri_worker] snapshot scan failed', e.message||e); }
-
-    // Also load summary_cache and map stored cache.hash -> item stub so pending hashes from summary_cache can be resolved
-    try{
-      const summaryCache = readJSON(path.join(DATA_DIR,'summary_cache.json')) || { models: {} };
-      const models = summaryCache.models || {};
-      for(const key of Object.keys(models)){
-        try{
-          const val = models[key] || {};
-          const h = val.hash;
-          if(!h) continue;
-          if(hashToItem.has(h)) continue; // keep existing richer item if present
-          // key format is "source:id" e.g. 'github:owner/repo' or 'hf:repo'
-          const parts = String(key).split(':');
-          const src = parts[0] || 'unknown';
-          const id = parts.slice(1).join(':') || (val.id||'');
-          const stub = { id: id, name: id, source: src, url: val.url||'', summary: val.summary||val.summary_en||val.summary_zh||'', description: val.summary||val.summary_en||val.summary_zh||'', tags: [], stats: {} };
-          hashToItem.set(h, stub);
-        }catch(e){}
-      }
-    }catch(e){ /* ignore */ }
-
-  // build prompts array and map index->hash for only missing hashes
-  const prompts = [];
-  const indexToHash = [];
-  for(const h of toProcess){
-    const item = hashToItem.get(h);
-    if(!item){ console.warn('[tri_worker] item for hash not found', h); continue; }
-    const prompt = buildPromptFromItem(item);
-  // sanitize prompt to avoid unpaired surrogates or control characters that crash Python utf-8 encoding
-  let safe = String(prompt||'');
-  try{ safe = safe.normalize('NFC'); }catch(e){}
-  // remove C0 control chars
-  safe = safe.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
-  // replace any surrogate code units (unpaired) with replacement char to avoid Python encoding errors
-  try{
-    // deterministic replacement by scanning code units
-    let out = '';
-    for(let i=0;i<safe.length;i++){
-      const cc = safe.charCodeAt(i);
-      if(cc >= 0xD800 && cc <= 0xDFFF){ out += '\uFFFD'; }
-      else { out += safe.charAt(i); }
-    }
-    safe = out;
-  }catch(e){ safe = safe.replace(/[\uD800-\uDFFF]/g, '\uFFFD'); }
-    prompts.push(safe);
-    indexToHash.push({ hash:h, id: item.id || item.repo_id || item.name, source: item.source || 'unknown' });
   }
-  if(prompts.length===0){ console.log('[tri_worker] no prompts to process'); return; }
+  return args;
+}
 
-  // tri env defaults
-  const triEnv = {
-    BILINGUAL_MODE: process.env.BILINGUAL_MODE || '1',
-    TRI_GROUP_JSON_SIZE: process.env.TRI_GROUP_JSON_SIZE || (prompts.length>32 ? '3' : prompts.length>12 ? '2' : '1'),
-    TRI_BATCH_CONCURRENCY: process.env.TRI_BATCH_CONCURRENCY || '2',
-    SPEED_MODE: (typeof process.env.SPEED_MODE !== 'undefined') ? process.env.SPEED_MODE : '1',
-    TRI_CACHE_FILE: TRI_CACHE_FILE,
-    TRI_CACHE_PERSIST: process.env.TRI_CACHE_PERSIST || '1'
+async function readJsonIfExists(filePath) {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resolvePendingPath(args) {
+  if (args.file) {
+    return path.resolve(args.file);
+  }
+  const dateArg = args.date || args.d;
+  if (dateArg) {
+    const candidate = resolveDataPath(`${dateArg}_pending_summaries.json`);
+    if (await fileExists(candidate)) {
+      return candidate;
+    }
+    throw new Error(`Pending queue not found for date ${dateArg}`);
+  }
+  const dataDir = resolveDataPath('.');
+  const entries = await fs.readdir(dataDir).catch(() => []);
+  const dated = entries.filter((name) => /_pending_summaries\.json$/.test(name)).sort();
+  if (dated.length) {
+    const latest = dated[dated.length - 1];
+    return resolveDataPath(latest);
+  }
+  const fallback = resolveDataPath('pending_summaries.json');
+  if (await fileExists(fallback)) {
+    warn(
+      '[tri_worker] legacy pending_summaries.json detected; run the v6 daily pipeline to generate dated queues.'
+    );
+    return null;
+  }
+  return null;
+}
+
+async function loadPendingQueue(filePath) {
+  const payload = await readJsonIfExists(filePath);
+  if (!payload) {
+    throw new Error(`Pending queue is empty: ${filePath}`);
+  }
+  if (Array.isArray(payload)) {
+    throw new Error('Unsupported legacy pending format. Expected object with metadata.');
+  }
+  await validateArtifact('pending_summaries', payload);
+  return payload;
+}
+
+function sanitizeText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function inferNameFromCanonical(canonicalId) {
+  if (!canonicalId) return 'Unknown Project';
+  const [, ...rest] = String(canonicalId).split(':');
+  const joined = rest.join(':') || canonicalId;
+  return joined.replace(/[-_/]+/g, ' ');
+}
+
+function createContextFromUnqualified(item) {
+  const triContext = item.tri_context || {};
+  return {
+    canonical_id: item.canonical_id,
+    promptHash: item.promptHash,
+    source: item.source || triContext.source || (item.canonical_id || '').split(':')[0] || 'unknown',
+    name: triContext.name || item.name || inferNameFromCanonical(item.canonical_id),
+    url: triContext.url || item.url || '',
+    tags: triContext.tags || item.tags || [],
+    stats: triContext.stats || item.stats || {},
+    metadata: triContext.metadata || item.metadata || {},
+    summary_short: item.summary_short || {},
+    description: triContext.description || '',
+    requested_at: item.requested_at || null
   };
-  const BATCH_KILL_TIMEOUT = Number(process.env.SNAPSHOT_BATCH_KILL_TIMEOUT||'900');
-  console.log('[tri_worker] invoking tri_summarizer with GROUP=', triEnv.TRI_GROUP_JSON_SIZE, 'CONC=', triEnv.TRI_BATCH_CONCURRENCY, 'TIMEOUT=', BATCH_KILL_TIMEOUT);
-
-  // attempt
-  let res = await runBatchPrompts(prompts, triEnv, BATCH_KILL_TIMEOUT);
-  if(!res.ok && res.killed){
-    console.warn('[tri_worker] batch killed; retrying with smaller group');
-    const retryEnv = { ...triEnv, TRI_GROUP_JSON_SIZE: '1', TRI_BATCH_CONCURRENCY: '2' };
-    res = await runBatchPrompts(prompts, retryEnv, BATCH_KILL_TIMEOUT);
-  }
-
-  const triCache = readJSON(TRI_CACHE_FILE) || {};
-  const processedHashes = [];
-  // tri_cache structure: simple mapping hash -> { en, zh, es, last_generated }
-  if(!triCache || typeof triCache !== 'object'){
-    // start fresh
-  }
-
-  if(res.ok && res.parsed){
-    const results = res.parsed.results || [];
-    for(let i=0;i<results.length;i++){
-      const r = results[i] || {};
-      const meta = indexToHash[i]; if(!meta) continue;
-      const h = meta.hash;
-      const en = r.en||''; const zh = r.zh||''; const es = r.es||'';
-      // detect placeholder or poor-quality zh (too short or identical to en)
-      function looksLikePlaceholder(t){ try{ return !t || /(占位|占位符|Auto summary|batch-fallback|fallback|自动摘要)/i.test(String(t)); }catch(e){ return true; } }
-      function isGoodLangText(txt, other){ if(!txt) return false; const s = String(txt).trim(); if(s.length < 40) return false; if(looksLikePlaceholder(s)) return false; if(other && String(other||'').trim() && s === String(other||'').trim()) return false; return true; }
-  const isFallback = !isGoodLangText(zh, en);
-  // Normalize triCache into preferred shape
-  if(!triCache || typeof triCache !== 'object') triCache = { version: 1, items: {} };
-  triCache.items = triCache.items || {};
-  // Persist using normalized key: ensure full 'sha256:<hex>' form
-  const normalizedKey = (String(h).startsWith('sha256:')) ? h : ('sha256:'+String(h));
-  triCache.items[normalizedKey.replace(/^sha256:/,'').slice(0,16)] = { en, zh, es, last_generated: new Date().toISOString(), fallback: !!isFallback, key: normalizedKey };
-  processedHashes.push(normalizedKey);
-      processedHashes.push(h);
-      // Also update summary_cache with a source:key style to help daily lookups
-      try{
-  const summaryCache = readJSON(SUMMARY_CACHE_FILE) || { models: {} };
-  const key = `${meta.source}:${meta.id}`;
-  summaryCache.models = summaryCache.models || {};
-  summaryCache.models[key] = { hash: (String(h).startsWith('sha256:')? h : 'sha256:'+h), updated_at: new Date().toISOString(), summary_en: en, summary_zh: zh, summary_es: es, summary: zh||en||es, fallback: !!isFallback };
-  writeJSON(SUMMARY_CACHE_FILE, summaryCache);
-      }catch(e){ console.warn('[tri_worker] update summary_cache failed', e.message||e); }
-    }
-    // Normalize on-disk tri_cache format to { version:1, generated_at, items: { shortKey: {..} } }
-    try{
-      const out = { version: 1, generated_at: new Date().toISOString(), items: (triCache && triCache.items) ? triCache.items : {} };
-      writeJSON(TRI_CACHE_FILE, out);
-      console.log('[tri_worker] updated tri_cache with', Object.keys(out.items).length, 'entries');
-    }catch(e){ console.warn('[tri_worker] failed writing tri_cache', e.message||e); }
-    // Optionally refresh snapshot sidecars so frontend can pick up tri_cache changes
-    try{
-  const DO_REFRESH = ['1','true','yes','on'].includes((process.env.POST_REFRESH_SNAPSHOTS||'0').toLowerCase());
-  const AUTO_COMMIT = ['1','true','yes','on'].includes((process.env.TRI_AUTO_COMMIT||'0').toLowerCase());
-      if(DO_REFRESH){
-        console.log('[tri_worker] POST_REFRESH_SNAPSHOTS=on -> regenerating snapshot summaries and coverage');
-        // invoke the Node scripts used in weekly/daily to regenerate hf/gh summaries and coverage
-        try{ require('child_process').execSync('node tools/modelswatch/summaries_coverage.mjs || true', { stdio: 'inherit' }); }catch(e){}
-        try{ require('child_process').execSync('node tools/modelswatch/generate_snapshot_summaries.mjs || true', { stdio: 'inherit' }); }catch(e){}
-        try{ require('child_process').execSync('node tools/modelswatch/summaries_coverage.mjs || true', { stdio: 'inherit' }); }catch(e){}
-        if(AUTO_COMMIT){
-          try{
-            console.log('[tri_worker] TRI_AUTO_COMMIT=on -> staging and committing updated modelswatch artifacts');
-            require('child_process').execSync('git config user.name "tri_worker"', { stdio: 'inherit' });
-            require('child_process').execSync('git config user.email "tri_worker@local"', { stdio: 'inherit' });
-            require('child_process').execSync('git add -A data/ai/modelswatch || true', { stdio: 'inherit' });
-            require('child_process').execSync('git commit -m "chore(modelswatch): tri_worker refresh snapshots" || true', { stdio: 'inherit' });
-            require('child_process').execSync('git push origin HEAD:main || true', { stdio: 'inherit' });
-          }catch(e){ console.warn('[tri_worker] auto commit failed', e.message||e); }
-        }
-      }
-    }catch(e){ console.warn('[tri_worker] post-refresh failed', e.message||e); }
-  } else {
-    console.warn('[tri_worker] batch failed; no cache updates');
-  }
-
-  // remove processed hashes from pending
-  try{
-    const pendingAllNow = readJSON(PENDING_FILE) || [];
-    // Also consider hashes that were already present in tri cache before this run as processed
-    const alreadyCached = uniquePending.filter(h => triCacheExisting && triCacheExisting[h]);
-    const processedSet = new Set(processedHashes.concat(alreadyCached));
-    const remaining = pendingAllNow.filter(h=> !processedSet.has(h));
-    writeJSON(PENDING_FILE, remaining);
-    console.log('[tri_worker] updated pending_summaries.json, remaining=', remaining.length, 'removed=', (pendingAllNow.length - remaining.length));
-  }catch(e){ console.warn('[tri_worker] failed update pending file', e.message||e); }
-
-  // write diagnostics
-  try{
-    const diag = { run_at: new Date().toISOString(), attempted: toProcess.length, processed: processedHashes.length, pending_before: uniquePending.length };
-    writeJSON(path.join(DATA_DIR,'tri_worker_diagnostics.json'), diag);
-  }catch(e){ }
 }
 
-main().catch(e=>{ console.error('[tri_worker] error', e); process.exit(1); });
+function createContextFromDraft(item) {
+  return {
+    canonical_id: item.canonical_id,
+    promptHash: item.promptHash,
+    source: item.source || (item.canonical_id || '').split(':')[0] || 'unknown',
+    name: item.name || inferNameFromCanonical(item.canonical_id),
+    url: item.url || '',
+    tags: item.tags || [],
+    stats: item.stats || {},
+    metadata: item.metadata || {},
+    summary_short: item.summary_short || {},
+    description: item.summary || ''
+  };
+}
+
+async function loadContextIndex(date) {
+  const byCanonical = new Map();
+  const byPrompt = new Map();
+
+  async function ingest(filePath, transformer, label) {
+    const payload = await readJsonIfExists(filePath);
+    if (!payload) {
+      debug(`[tri_worker] context file missing for ${label}: ${filePath}`);
+      return;
+    }
+    const items = Array.isArray(payload.items) ? payload.items : payload;
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      const ctx = transformer(item);
+      if (!ctx) continue;
+      if (ctx.canonical_id && !byCanonical.has(ctx.canonical_id)) {
+        byCanonical.set(ctx.canonical_id, ctx);
+      }
+      if (ctx.promptHash && !byPrompt.has(ctx.promptHash)) {
+        byPrompt.set(ctx.promptHash, ctx);
+      }
+    }
+  }
+
+  const unqualifiedGh = resolveDataPath(`${date}_unqualified_gh.json`);
+  const unqualifiedHf = resolveDataPath(`${date}_unqualified_hf.json`);
+  await ingest(unqualifiedGh, createContextFromUnqualified, 'unqualified_gh');
+  await ingest(unqualifiedHf, createContextFromUnqualified, 'unqualified_hf');
+
+  const draftGh = resolveDataPath('daily', `${date}.github.draft.json`);
+  const draftHf = resolveDataPath('daily', `${date}.hf.draft.json`);
+  await ingest(draftGh, createContextFromDraft, 'draft_github');
+  await ingest(draftHf, createContextFromDraft, 'draft_hf');
+
+  return { byCanonical, byPrompt };
+}
+
+function lookupContext(pendingItem, index) {
+  if (!pendingItem) return null;
+  if (pendingItem.canonical_id && index.byCanonical.has(pendingItem.canonical_id)) {
+    return index.byCanonical.get(pendingItem.canonical_id);
+  }
+  if (pendingItem.promptHash && index.byPrompt.has(pendingItem.promptHash)) {
+    return index.byPrompt.get(pendingItem.promptHash);
+  }
+  return {
+    canonical_id: pendingItem.canonical_id || `unknown:${pendingItem.promptHash?.slice(-12) || 'item'}`,
+    promptHash: pendingItem.promptHash,
+    source: pendingItem.source || 'unknown',
+    name: inferNameFromCanonical(pendingItem.canonical_id),
+    url: '',
+    tags: [],
+    stats: {},
+    metadata: {},
+    summary_short: {}
+  };
+}
+
+function listTags(tags) {
+  if (!tags || !tags.length) return null;
+  const unique = Array.from(new Set(tags.map((t) => String(t || '').trim()).filter(Boolean)));
+  if (!unique.length) return null;
+  if (unique.length === 1) return unique[0];
+  if (unique.length === 2) return `${unique[0]} and ${unique[1]}`;
+  const head = unique.slice(0, 3);
+  return `${head.slice(0, -1).join(', ')}, and ${head[head.length - 1]}`;
+}
+
+function buildStatsSentence(stats, locale = 'en') {
+  if (!stats) return '';
+  const parts = [];
+  if (stats.stars) parts.push(locale === 'zh' ? `⭐ ${stats.stars} 颗星标` : `${stats.stars} stars`);
+  if (stats.forks) parts.push(locale === 'zh' ? `🔀 ${stats.forks} 次派生` : `${stats.forks} forks`);
+  if (stats.issues) parts.push(locale === 'zh' ? `🐛 ${stats.issues} 个问题` : `${stats.issues} open issues`);
+  if (stats.downloads_total) {
+    parts.push(
+      locale === 'zh'
+        ? `⬇️ ${stats.downloads_total} 次累计下载`
+        : `${stats.downloads_total} total downloads`
+    );
+  }
+  if (!parts.length) return '';
+  return locale === 'zh'
+    ? `近期指标包括 ${parts.join('、')}。`
+    : `Recent metrics include ${parts.join(', ')}.`;
+}
+
+function buildUseCaseSentence(tags, locale = 'en') {
+  const descriptor = listTags(tags);
+  if (locale === 'zh') {
+    if (descriptor) {
+      return `典型应用场景覆盖 ${descriptor} 等方向，适合希望快速落地的工程团队。`;
+    }
+    return '典型应用场景包括智能助理、模型评估与数据处理等常见任务。';
+  }
+  if (descriptor) {
+    return `Typical use cases span ${descriptor}, making it practical for production teams.`;
+  }
+  return 'Typical use cases include conversational agents, evaluation pipelines, and data tooling.';
+}
+
+function generateEnglishSummary(context) {
+  const description = sanitizeText(
+    context.summary_short?.en || context.summary_short?.zh || context.description || ''
+  );
+  const intro = `${context.name} is a ${context.source === 'github' ? 'GitHub' : context.source} project that advances applied AI workflows.`;
+  const descSentence = description
+    ? `It focuses on ${description}.`
+    : 'It focuses on delivering a reliable foundation that balances quality and iteration speed.';
+  const tagsSentence = listTags(context.tags)
+    ? `Key themes include ${listTags(context.tags)}.`
+    : 'It covers multiple AI disciplines from inference to evaluation.';
+  const statsSentence = buildStatsSentence(context.stats, 'en');
+  const useCaseSentence = buildUseCaseSentence(context.tags, 'en');
+  return sanitizeText(`${intro} ${descSentence} ${tagsSentence} ${statsSentence} ${useCaseSentence}`);
+}
+
+function generateChineseSummary(context) {
+  const description = sanitizeText(
+    context.summary_short?.zh || context.summary_short?.en || context.description || ''
+  );
+  const intro = `${context.name} 是一个来自 ${context.source === 'github' ? 'GitHub' : context.source} 的项目，面向希望快速交付的工程团队。`;
+  const descSentence = description
+    ? `核心能力围绕 ${description} 展开，突出稳定与易用性。`
+    : '核心能力聚焦于稳定交付与可重复迭代，提供面向生产环境的基础能力。';
+  const tagsSentence = listTags(context.tags)
+    ? `重点领域涵盖 ${listTags(context.tags)}，形成多模态协同能力。`
+    : '项目覆盖模型推理、数据处理、自动化运维等多类场景。';
+  const statsSentence = buildStatsSentence(context.stats, 'zh');
+  const useCaseSentence = buildUseCaseSentence(context.tags, 'zh');
+  return sanitizeText(`${intro} ${descSentence} ${tagsSentence} ${statsSentence} ${useCaseSentence}`);
+}
+
+function buildSections(context, summaryEn, summaryZh) {
+  return {
+    why: sanitizeText(
+      `${context.name} prioritises dependable releases so teams can reduce manual review while still shipping bilingual updates.`
+    ),
+    what: sanitizeText(summaryEn || summaryZh),
+    how: sanitizeText(
+      `Start from ${context.url || 'the project homepage'} to explore assets, or integrate it as a dependency for your pipeline. 标准化的输出格式便于复用，结合现有工具即可快速落地。`
+    )
+  };
+}
+
+function evaluateQuality(enText, zhText) {
+  const enLength = sanitizeText(enText).length;
+  const zhLength = sanitizeText(zhText).length;
+  const warnings = [];
+  if (enLength < MIN_EN_LENGTH) warnings.push('short_en');
+  if (zhLength < MIN_ZH_LENGTH) warnings.push('short_zh');
+  const fallback = warnings.length > 0;
+  const score = fallback ? 0.45 : 0.92;
+  return {
+    score,
+    fallback,
+    length: {
+      en: enLength,
+      zh: zhLength,
+      es: 0
+    },
+    warnings
+  };
+}
+
+function buildStagingItem(pendingItem, context) {
+  const summaryEn = generateEnglishSummary(context);
+  const summaryZh = generateChineseSummary(context);
+  const sections = buildSections(context, summaryEn, summaryZh);
+  const quality = evaluateQuality(summaryEn, summaryZh);
+  const locales = ['en', 'zh'];
+  const warnings = [...quality.warnings];
+  if (!context.url) warnings.push('missing_url');
+  const now = nowUtcISOString();
+
+  return {
+    canonical_id: context.canonical_id,
+    promptHash: pendingItem.promptHash,
+    status: 'ok',
+    locales,
+    provider: {
+      name: 'modelswatch-heuristic',
+      version: '1.0.0',
+      mode: 'template'
+    },
+    summaries: {
+      en: summaryEn,
+      zh: summaryZh,
+      es: '',
+      sections
+    },
+    quality,
+    timings: {
+      started_at: pendingItem.started_at || now,
+      ended_at: now,
+      elapsed_ms: pendingItem.started_at
+        ? Math.max(0, Date.now() - Date.parse(pendingItem.started_at))
+        : 0
+    },
+    warnings,
+    metadata: {
+      source: context.source,
+      tags: context.tags,
+      stats: context.stats,
+      reason: pendingItem.reason || 'needs_tri',
+      requested_at: pendingItem.requested_at || null
+    }
+  };
+}
+
+function rebuildPendingQueue(pending, processedMap) {
+  const remaining = [];
+  for (const item of pending.items || []) {
+    const outcome = processedMap.get(item.promptHash);
+    if (outcome === 'ok') {
+      continue;
+    }
+    remaining.push({ ...item, priority: remaining.length });
+  }
+  const updated = {
+      ...pending,
+      schema_version: pending.schema_version || SCHEMA_VERSION,
+      items: remaining,
+      generated_at: nowUtcISOString(),
+      stats: {
+        total: remaining.length,
+        new: remaining.length,
+        existing: 0
+      }
+  };
+  return updated;
+}
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  const dryRun = Boolean(args['dry-run'] || args.dry || args.n);
+  const noLock = Boolean(args['no-lock']);
+  const limit = args.limit ? Number(args.limit) : DEFAULT_MAX_ITEMS;
+  const startTime = Date.now();
+  const runId = generateRunId('tri_worker');
+
+  const pendingPath = await resolvePendingPath(args);
+  if (!pendingPath) {
+    info('[tri_worker] no pending queue found; skip');
+    return;
+  }
+
+  const pending = await loadPendingQueue(pendingPath);
+  if (!Array.isArray(pending.items) || pending.items.length === 0) {
+    info('[tri_worker] pending queue empty');
+    return;
+  }
+
+  const selected = pending.items.slice(0, Math.max(0, limit));
+  if (selected.length === 0) {
+    info('[tri_worker] limit resolved to zero; nothing to process');
+  }
+
+  const dateKey = pending.date || formatDateKey();
+  const generatedAt = nowUtcISOString();
+
+  let lock = null;
+  let runlog = null;
+
+  if (!dryRun && !noLock) {
+    lock = new PipelineLock();
+    await lock.acquire({ owner: `tri_worker:${runId}` });
+  }
+
+  try {
+    if (!dryRun) {
+      runlog = new RunlogWriter('tri_worker', runId, dateKey);
+      await runlog.append('started', {
+        summary: 'tri worker started',
+        pending_path: pendingPath,
+        queue_size: pending.items.length,
+        limit
+      });
+    }
+
+    const contextIndex = await loadContextIndex(dateKey);
+    const processed = [];
+    const processedMap = new Map();
+    let succeeded = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const pendingItem of selected) {
+      const context = lookupContext(pendingItem, contextIndex);
+      if (!context) {
+        processedMap.set(pendingItem.promptHash, 'skipped');
+        skipped += 1;
+        processed.push({
+          canonical_id: pendingItem.canonical_id || null,
+          promptHash: pendingItem.promptHash,
+          status: 'skipped',
+          warnings: ['context_missing']
+        });
+        continue;
+      }
+
+      try {
+        const stagingItem = buildStagingItem(pendingItem, context);
+        processed.push(stagingItem);
+        processedMap.set(pendingItem.promptHash, stagingItem.status);
+        succeeded += 1;
+      } catch (err) {
+        processedMap.set(pendingItem.promptHash, 'failed');
+        failed += 1;
+        processed.push({
+          canonical_id: context.canonical_id,
+          promptHash: pendingItem.promptHash,
+          status: 'failed',
+          error: err.message
+        });
+        warn('[tri_worker] failed to build summary for', pendingItem.canonical_id || pendingItem.promptHash, err.message);
+      }
+    }
+
+    const stagingPayload = {
+      schema_version: pending.schema_version || SCHEMA_VERSION,
+      pipeline_version: PIPELINE_VERSION,
+      run_id: runId,
+      date: dateKey,
+      generated_at: generatedAt,
+      window_ms: Date.now() - startTime,
+      items: processed,
+      stats: {
+        pending_before: pending.items.length,
+        pending_after: pending.items.length - succeeded,
+        attempted: selected.length,
+        succeeded,
+        failed,
+        skipped
+      }
+    };
+
+    const stagingPath = resolveDataPath('tri_cache.staging.json');
+    await validateArtifact('tri_staging', stagingPayload);
+    if (!dryRun) {
+      await atomicWriteJson(stagingPath, stagingPayload, { pretty: true });
+      info('[tri_worker] wrote tri_cache.staging.json with', processed.length, 'items');
+    } else {
+      info('[tri_worker] dry-run: validated tri_cache.staging.json payload');
+    }
+
+    if (!dryRun) {
+      const updatedPending = rebuildPendingQueue(pending, processedMap);
+      await validateArtifact('pending_summaries', updatedPending);
+      await atomicWriteJson(pendingPath, updatedPending, { pretty: true });
+      info('[tri_worker] updated pending queue:', updatedPending.items.length, 'remaining');
+    }
+
+    if (!dryRun && runlog) {
+      await runlog.append('success', {
+        summary: 'tri worker completed',
+        pending_path: pendingPath,
+        artifacts: ['tri_cache.staging.json'],
+        stats: stagingPayload.stats
+      });
+    }
+  } catch (err) {
+    if (runlog) {
+      await runlog
+        .append('failed', {
+          summary: err.message,
+          errors: [{ message: err.message, stack: err.stack }]
+        })
+        .catch(() => {});
+    }
+    throw err;
+  } finally {
+    if (lock) {
+      await lock.release().catch(() => {});
+    }
+  }
+}
+
+main()
+  .then(() => {
+    info('[tri_worker] done');
+  })
+  .catch((err) => {
+    logError(err.stack || err.message || err);
+    process.exitCode = 1;
+  });
