@@ -5,7 +5,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '../../..');
 export const MODEL_SWATCH_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch');
 export const AUDIT_DIR = path.join(ROOT_DIR, 'tools/modelswatch/audit');
-export const SCHEMA_DIR = path.join(ROOT_DIR, 'docs/schemas/modelswatch');
+export const SCHEMA_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch/schemas');
 
 export function resolveDataPath(...segments) {
   return path.join(MODEL_SWATCH_DIR, ...segments);

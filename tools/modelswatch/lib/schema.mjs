@@ -12,7 +12,10 @@ const SCHEMA_FILES = {
   qualified: 'qualified.schema.json',
   daily_tasklist: 'daily_tasklist.schema.json',
   runlog: 'runlog.schema.json',
-  state: 'state.schema.json'
+  state: 'state.schema.json',
+  daily_release: 'daily_release.schema.json',
+  models_by_task_index: 'models_by_task.schema.json',
+  projects_by_category_index: 'projects_by_category.schema.json'
 };
 
 let ajvInstancePromise = null;
