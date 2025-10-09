@@ -119,7 +119,7 @@ const translations = {
   module_ai_career_name: '💼 AI 求职助手 · AI Career Coach · Coach de Carrera IA',
   // Finance mentor
   module_ai_finance_title: 'AI 理财助手',
-  module_ai_finance_desc: '让AI为您的财富增值',
+  module_ai_finance_desc: '让AI为您的财富增值。',
   // New modules
   module_ai_trends_title: 'AI 前沿要闻',
   module_ai_trends_desc: '精选全球AI领域最重要、最前沿的动态与资讯。',
