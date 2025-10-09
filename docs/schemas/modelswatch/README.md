@@ -8,6 +8,9 @@ This directory contains JSON Schema definitions for the v6 ModelSwatch pipeline.
 - `pending_summaries.schema.json` – tri_worker queue keeping pending prompt hashes and priority metadata.
 - `tri_cache_staging.schema.json` – transient LLM output staged before merging into the production cache.
 - `summary_cache.schema.json` – durable bilingual summary cache consumed by downstream analysis and publishing steps.
+- `passonce.schema.json` – pass-once collection generated during data analysis for fast-first releases.
+- `qualified.schema.json` – qualified summary collection aligned with the production cache after tri merges.
+- `daily_tasklist.schema.json` – prioritized recommendations that guide the next daily fetch run.
 - `runlog.schema.json` – audit log entries written per run in `tools/modelswatch/audit/`.
 - `state.schema.json` – pipeline state snapshot containing lock metadata and rolling counters.
 

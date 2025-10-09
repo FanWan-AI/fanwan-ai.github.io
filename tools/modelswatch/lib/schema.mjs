@@ -8,6 +8,9 @@ const SCHEMA_FILES = {
   pending_summaries: 'pending_summaries.schema.json',
   tri_staging: 'tri_cache_staging.schema.json',
   summary_cache: 'summary_cache.schema.json',
+  passonce: 'passonce.schema.json',
+  qualified: 'qualified.schema.json',
+  daily_tasklist: 'daily_tasklist.schema.json',
   runlog: 'runlog.schema.json',
   state: 'state.schema.json'
 };
