@@ -225,12 +225,12 @@ Step E qualify + publish：合并与发布
 ---
 
 14. 实施计划（PR 切分）
-- PR-0 基础设施：utils（atomic/hash/schema/lock/log）+ schemas + CI 校验
-- PR-1 fast_summary + daily 改造（raw/draft/unqualified/pending）
-- PR-2 合并器（备份/冲突/质量阈值）
-- PR-3 data_analysis（合格判定、corpus 分片、tasklist）
-- PR-4 qualify_publish（完整性校验、热榜、分类索引生成）
-- PR-5 归档/清理策略与监控（可选）
+- PR-0：抽象公共工具（atomic 写、锁、schema 校验、哈希）与 JSON Schema；补 runlog/state 基建。
+- PR-1：重写 daily.mjs 以产出 raw_corpus.*、draft、pending/unqualified，内建 fast_summary、Schema 校验、runlog 片段。
+- PR-2：新增 tri_worker.mjs 和 apply_tri_to_summary.mjs，实现 staging→cache 合并、备份与质量阈值。
+- PR-3：实现 data_analysis.mjs（语料追加、分类、tasklist）并写 passonce/unqualified。
+- PR-4：实现 qualify_publish.mjs，合并 passonce+qualified，生成热榜与分类索引、更新 state.json。
+- PR-5：补充审计、清理与监控工具，更新旧脚本或弃用。
 
 ---
 
