@@ -131,6 +131,51 @@
 
 13) state.json
 - 流水线状态：{ pipeline_version, schema_version, last_run, last_tri_merge, last_published, last_daily_date, counters, warnings }
+ - 流水线状态：{ pipeline_version, schema_version, last_run, last_tri_merge, last_published, last_daily_date, counters, warnings }
+
+14) index/models_by_task.json（模型“按任务”视图索引）
+- 供前端 modelswatch.html 的“按任务查看模型”使用（基于 ai_categories.json）
+- 结构（建议）：
+  {
+    "schema_version": 1,
+    "pipeline_version": "v5",
+    "taxonomy": "data/ai/ai_categories.json#v1",
+    "updated_at": "2025-10-09T05:20:00Z",
+    "tasks": {
+      "image_classification": {
+        "label": {"zh":"图像分类","en":"Image Classification","es":"Clasificación de Imágenes"},
+        "count": 123,
+        "items": [
+          {"canonical_id":"hf:namespace/model","name":"…","url":"…","summary_short":{"zh":"…","en":"…"},"tags":["…"],"stats":{"stars":123}}
+        ]
+      },
+      "object_detection": { … }
+    }
+  }
+- 可选：按日快照 index/daily_tasks/<YYYY-MM-DD>.json（便于时序回看）
+
+15) index/projects_by_category.json（项目“按分类”视图索引）
+- 供前端 modelswatch.html 的“按分类查看项目”使用（基于 modelswatch/project_categories.json）
+- 结构（建议）：
+  {
+    "schema_version": 1,
+    "pipeline_version": "v5",
+    "taxonomy": "data/ai/modelswatch/project_categories.json#v1",
+    "updated_at": "2025-10-09T05:20:00Z",
+    "categories": {
+      "framework_core": {
+        "label": {"zh":"训练与推理框架","en":"Framework/Core","es":"Framework/Núcleo"},
+        "count": 45,
+        "items": [
+          {"canonical_id":"github:owner/repo","name":"…","url":"…","summary_short":{"zh":"…","en":"…"},"tags":["…"],"stats":{"stars":9999}}
+        ]
+      },
+      "deployment_serving": { … }
+    }
+  }
+- 可选：按日快照 index/daily_projects/<YYYY-MM-DD>.json
+
+注意：以上索引文件写入遵循原子写与 Schema 校验，并保持字段最小、排序稳定（items 按 stars 或 name 排序）。
 
 ---
 
@@ -366,11 +411,87 @@ state.json（示意）
   2) tri_worker: node tools/modelswatch/tri_worker.mjs --window MAX_WORKER_WINDOW → tri_cache.staging.json
   3) apply_tri_to_summary: node tools/modelswatch/apply_tri_to_summary.mjs → summary_cache（bak+merge）
   4) data_analysis: node tools/modelswatch/data_analysis.mjs → corpus append + tasklist + passonce
-  5) qualify_publish: node tools/modelswatch/qualify_publish.mjs → daily final + state.json + 热榜
+  5) qualify_publish: node tools/modelswatch/qualify_publish.mjs → daily final + state.json + 热榜 + 分类索引（models_by_task.json、projects_by_category.json）
 - 每步结束：
   - 写 runlog 片段；
   - Schema 验证；
   - 关键产物作为 CI artifact（可选）
+
+说明：分类索引推荐在 publish 步骤生成，避免前端在运行时做重分类，提升加载速度与一致性。
+
+---
+
+二十三、前端分类视图支持（模型任务与项目类别）
+目的
+- 支持 modelswatch.html 的两类导航：
+  1) 按任务查看模型（以 ai_categories.json 为权威任务体系）
+  2) 按分类查看项目（以 modelswatch/project_categories.json 为项目类别体系）
+
+数据来源
+- 任务体系：data/ai/ai_categories.json（层级：category → subcategory → tasks[]，task.key 例如 image_classification）
+- 任务别名：data/ai/modelswatch/task_aliases.json（提供 task.key 的同义词、缩写等；脚本可自动扩展变体）
+- 项目类别：data/ai/modelswatch/project_categories.json（categories[].key 例如 framework_core）
+
+实现原则
+- 预计算索引：在 publish 步骤生成轻量索引文件，前端直接请求使用；避免前端扫描大文件
+- 稳定键：严格使用 task.key 与 category.key 作为索引键，保持与 taxonomy 文件一致
+- 幂等：同一日期重跑索引一致；items 排序稳定（优先 stars 降序，其次 name 升序）
+- 原子写与校验：索引写入遵守 atomic + fsync，产出后做 JSON Schema 校验
+
+模型→任务分类（适配 HF 模型等）
+步骤（在 data_analysis 或 publish 前置阶段执行）：
+1) 准备别名表：读取 task_aliases.json，按 key 汇总 synonyms；自动生成 hyphen/underscore/连写/首字母缩略词变体，全部小写去重
+2) 构建候选词袋：
+   - 基于条目 tags[]、name、repo topics、summary_short 文本关键词（可选，开关控制），全部归一化
+3) 匹配与得分：
+   - 精确命中（与别名完全一致，或词边界匹配）得分 1.0；
+   - 文本子串匹配或相近词（如 plural/singular）得分 0.6-0.8；
+   - 可配置最小阈值 ≥0.7 作为入选门槛；
+4) 选 Top-K（默认 K=3）任务挂载到条目字段 tasks: [task_key…]；写入到 daily 与 corpus 追加（可选）
+5) 构建索引：
+   - 依据 ai_categories.json 中的 tasks 列表，按 task.key 汇聚 items 简要信息（canonical_id、name、url、summary_short、tags、stats）
+   - 写 data/ai/modelswatch/index/models_by_task.json（atomic）
+
+项目→类别分类（适配 GitHub 工程等）
+规则（初始启发式，后续可升级 ML 分类）：
+- framework_core：framework, trainer, engine, torch, jax, core
+- deployment_serving：serve, serving, inference-server, gateway, api, vllm, tensorrt-llm
+- optimization_compilers：compiler, onnx, mlir, tvm, graph-opt, quantize（若以优化为核心）
+- data_tooling：dataset, data, evaluation, benchmark, leaderboard
+- agents_workflows：agent, workflow, orchestrator, langchain, autogen, crew
+- security_safety：safety, moderation, redteam, guardrail, policy
+- mlops_monitoring：mlops, monitoring, observability, tracing, drift
+- edge_embedded：edge, embedded, mobile, on-device, tiny, micro
+- ui_devex：ui, devtool, playground, notebook, extension
+
+步骤：
+1) 从条目的 tags、topics、description、summary_short 收集候选关键词，归一化
+2) 匹配上述规则（可外化为 data/ai/modelswatch/project_category_aliases.json 以便维护）
+3) 允许多类别（最多 2-3 个）；记入 item.project_categories[]
+4) 聚合生成 index/projects_by_category.json，items 字段包含最小展示集（同上）
+
+Schema 与契约
+- 索引文件 Schema（示意）：
+  - models_by_task.json: { schema_version, pipeline_version, taxonomy, updated_at, tasks: { [task_key]: { label:{zh,en,es}, count, items:[…] } } }
+  - projects_by_category.json: { schema_version, pipeline_version, taxonomy, updated_at, categories: { [category_key]: { label:{zh,en,es}, count, items:[…] } } }
+- 语言标签直接来源于 taxonomy 文件（ai_categories.json、project_categories.json）
+
+端到端接线
+- 生成时机：qualify_publish 步骤生成或更新上述两个索引
+- 前端读取：modelswatch.html 仅请求 index/models_by_task.json 与 index/projects_by_category.json；不再在浏览器端做全文扫描
+- 回退策略：如索引缺失或校验失败，前端可回退到按 stars/top N 的通用列表（后端会在下一轮重建索引）
+
+质量与审计
+- 在 runlog 记录索引生成耗时、任务/类别覆盖率（覆盖任务数 / taxonomy 任务总数）
+- 对未分类样本计数，输出到 audit（协助完善别名或规则）
+
+性能建议
+- 限制每个 task/category 的 items 上限（如 500-1000）并提供分页/截断说明；
+- 仅输出最小展示字段，避免索引过大；必要时按字母或 stars 分段索引
+
+与 UTC/幂等的关系
+- 所有时间戳与 daily 仍以 UTC 管理；索引的 updated_at 以 publish 结束时间为准
+- 同一内容重跑不改变 checksum；排序、字段与小数位保持稳定
 
 ---
 
