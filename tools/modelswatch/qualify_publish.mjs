@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
-import { resolveDataPath, resolveAuditPath, ROOT_DIR } from './lib/paths.mjs';
+import { resolveDataPath, resolveTempDataPath, resolveAuditPath, ROOT_DIR } from './lib/paths.mjs';
 import { atomicWriteJson } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
 import { PipelineLock } from './lib/lock.mjs';
@@ -1250,8 +1250,8 @@ async function main() {
 
     for (const source of sources) {
       const suffix = resolveSourceSuffix(source);
-      const passoncePath = resolveDataPath('daily', `${dateKey}.passonce_${suffix}.json`);
-      const qualifiedPath = resolveDataPath(`${dateKey}_qualified_${suffix}.json`);
+  const passoncePath = resolveDataPath('daily', `${dateKey}.passonce_${suffix}.json`);
+  const qualifiedPath = resolveTempDataPath(`${dateKey}_qualified_${suffix}.json`);
 
       const passonceData = await readJsonIfExists(passoncePath);
       const qualifiedData = await readJsonIfExists(qualifiedPath);
