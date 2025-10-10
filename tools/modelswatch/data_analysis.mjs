@@ -533,16 +533,21 @@ async function main() {
       for (const item of pendingQueue.items) {
         if (!item || !item.promptHash) continue;
         if (usedPromptHashes.has(item.promptHash)) continue;
-        tasklistItems.push({
+        const taskEntry = {
           canonical_id: item.canonical_id || null,
           promptHash: item.promptHash,
           source: normalizeSource(item.source) || 'github',
           priority: tasklistItems.length,
           reason: item.reason || 'tri_pending',
-          status: 'pending',
-          notes: item.notes || null,
-          requested_at: item.requested_at || null
-        });
+          status: 'pending'
+        };
+        if (typeof item.notes === 'string' && item.notes.trim()) {
+          taskEntry.notes = item.notes;
+        }
+        if (typeof item.requested_at === 'string' && item.requested_at.trim()) {
+          taskEntry.requested_at = item.requested_at;
+        }
+        tasklistItems.push(taskEntry);
       }
     }
 
@@ -559,16 +564,19 @@ async function main() {
         if (!payload || !Array.isArray(payload.items)) continue;
         for (const item of payload.items) {
           if (!item.promptHash || usedPromptHashes.has(item.promptHash)) continue;
-          tasklistItems.push({
+          const taskEntry = {
             canonical_id: item.canonical_id,
             promptHash: item.promptHash,
             source,
             priority: tasklistItems.length,
             reason: 'analysis_unqualified',
             status: item.status,
-            notes: null,
             requested_at: nowUtcISOString()
-          });
+          };
+          if (typeof item.notes === 'string' && item.notes.trim()) {
+            taskEntry.notes = item.notes;
+          }
+          tasklistItems.push(taskEntry);
           usedPromptHashes.add(item.promptHash);
         }
       }
