@@ -407,7 +407,8 @@ async function main() {
 
     for (const source of sources) {
       const suffix = resolveSourceSuffix(source);
-      const draftPath = resolveDataPath('daily', `${dateKey}.${source}.draft.json`);
+      const draftId = source === 'huggingface' ? 'hf' : source;
+      const draftPath = resolveDataPath('daily', `${dateKey}.${draftId}.draft.json`);
       const unqualifiedPath = resolveDataPath(`${dateKey}_unqualified_${suffix}.json`);
       const passoncePath = resolveDataPath(`daily/${dateKey}.passonce_${suffix}.json`);
       const qualifiedPath = resolveDataPath(`${dateKey}_qualified_${suffix}.json`);

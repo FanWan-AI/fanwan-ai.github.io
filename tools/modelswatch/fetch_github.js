@@ -7,11 +7,18 @@ import { debug, info } from './log.js';
 const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data', 'ai', 'modelswatch');
 
-const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || ''; 
-// Configurable per-page value (can be set via GitHub repository Variables)
-const GH_PER_PAGE = parseInt(process.env.MODELSWATCH_GH_PER_PAGE || '140', 10) || 140;
-// GitHub API enforces a maximum per_page of 100; clamp to avoid errors
-const GH_PER_PAGE_CLAMPED = Math.min(GH_PER_PAGE, 100);
+const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
+// Total number of repositories to fetch (defaults to 40)
+const GH_TOTAL_LIMIT = parseInt(
+  process.env.MODELSWATCH_GH_LIMIT || process.env.MODELSWATCH_GH_PER_PAGE || '40',
+  10
+) || 40;
+// Page size can be customised separately; fall back to total limit when unset
+const GH_PAGE_SIZE_RAW = parseInt(
+  process.env.MODELSWATCH_GH_PAGE_SIZE || process.env.MODELSWATCH_GH_PER_PAGE || String(GH_TOTAL_LIMIT),
+  10
+);
+const GH_PER_PAGE = Math.max(1, Math.min(GH_PAGE_SIZE_RAW || GH_TOTAL_LIMIT, 100));
 
 function iso(d) { return new Date(d).toISOString(); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -47,8 +54,8 @@ export async function fetchGithubTop(){
   // Simpler query to avoid 422: remove license OR filters
   const q1 = encodeURIComponent(`stars:>500 pushed:>=${since}`);
   // Support requesting more than 100 items by paginating when MODELSWATCH_GH_PER_PAGE > 100
-  const desired = GH_PER_PAGE;
-  const perPage = GH_PER_PAGE_CLAMPED; // <= 100
+  const desired = GH_TOTAL_LIMIT;
+  const perPage = GH_PER_PAGE; // <= 100
   const pages = Math.max(1, Math.ceil(desired / perPage));
   // GitHub Search API only returns up to the first 1000 results (10 pages of 100)
   const MAX_GH_PAGES = 10;
@@ -97,7 +104,10 @@ export async function fetchGithubTop(){
     if (p < pages) await sleep(500);
   }
 
-  const items = (allItems||[]).filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION').map(r=>({
+  const items = (allItems||[])
+    .filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION')
+    .slice(0, desired)
+    .map(r=>({
     id: r.full_name,
     source: 'github',
     name: r.name,

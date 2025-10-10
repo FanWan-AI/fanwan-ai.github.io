@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { promises as fs } from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
+import { Buffer } from 'node:buffer';
 import { debug, info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
 import { resolveDataPath } from './lib/paths.mjs';
@@ -11,7 +13,9 @@ import { generateRunId } from './lib/run_id.mjs';
 import { RunlogWriter } from './lib/runlog.mjs';
 import { PipelineLock } from './lib/lock.mjs';
 
-const DEFAULT_MAX_ITEMS = Number(process.env.SNAPSHOT_MAX_NEW || '20') || 20;
+const DEFAULT_MAX_ITEMS = Number(
+  process.env.MODELSWATCH_TRI_LIMIT || process.env.SNAPSHOT_MAX_NEW || '20'
+) || 20;
 const MIN_EN_LENGTH = Number(process.env.TRI_MIN_EN_LENGTH || '220');
 const MIN_ZH_LENGTH = Number(process.env.TRI_MIN_ZH_LENGTH || '150');
 
@@ -130,7 +134,7 @@ function createContextFromDraft(item) {
     stats: item.stats || {},
     metadata: item.metadata || {},
     summary_short: item.summary_short || {},
-    description: item.summary || ''
+    description: item.description || item.summary || ''
   };
 }
 
@@ -188,7 +192,8 @@ function lookupContext(pendingItem, index) {
     tags: [],
     stats: {},
     metadata: {},
-    summary_short: {}
+    summary_short: {},
+    description: ''
   };
 }
 
@@ -202,86 +207,80 @@ function listTags(tags) {
   return `${head.slice(0, -1).join(', ')}, and ${head[head.length - 1]}`;
 }
 
-function buildStatsSentence(stats, locale = 'en') {
+function formatStats(stats) {
   if (!stats) return '';
   const parts = [];
-  if (stats.stars) parts.push(locale === 'zh' ? `⭐ ${stats.stars} 颗星标` : `${stats.stars} stars`);
-  if (stats.forks) parts.push(locale === 'zh' ? `🔀 ${stats.forks} 次派生` : `${stats.forks} forks`);
-  if (stats.issues) parts.push(locale === 'zh' ? `🐛 ${stats.issues} 个问题` : `${stats.issues} open issues`);
-  if (stats.downloads_total) {
-    parts.push(
-      locale === 'zh'
-        ? `⬇️ ${stats.downloads_total} 次累计下载`
-        : `${stats.downloads_total} total downloads`
-    );
-  }
-  if (!parts.length) return '';
-  return locale === 'zh'
-    ? `近期指标包括 ${parts.join('、')}。`
-    : `Recent metrics include ${parts.join(', ')}.`;
+  if (stats.stars) parts.push(`${stats.stars} stars`);
+  if (stats.forks) parts.push(`${stats.forks} forks`);
+  if (stats.issues) parts.push(`${stats.issues} open issues`);
+  if (stats.downloads_total) parts.push(`${stats.downloads_total} downloads`);
+  if (stats.likes_total) parts.push(`${stats.likes_total} likes`);
+  return parts.join(', ');
 }
 
-function buildUseCaseSentence(tags, locale = 'en') {
-  const descriptor = listTags(tags);
-  if (locale === 'zh') {
-    if (descriptor) {
-      return `典型应用场景覆盖 ${descriptor} 等方向，适合希望快速落地的工程团队。`;
+function buildPrompt(context) {
+  const lines = [];
+  lines.push(`Project name: ${context.name}`);
+  lines.push(
+    `Source: ${context.source === 'huggingface' ? 'Hugging Face model hub' : 'GitHub repository'}`
+  );
+  if (context.url) lines.push(`URL: ${context.url}`);
+  const statsLine = formatStats(context.stats);
+  if (statsLine) lines.push(`Key metrics: ${statsLine}`);
+  const license = context.metadata?.license;
+  if (license && license !== 'N/A') {
+    lines.push(`License: ${license}`);
+  }
+  const lang = context.metadata?.lang;
+  if (lang && lang !== 'N/A') {
+    lines.push(`Primary language or framework: ${lang}`);
+  }
+  if (context.tags && context.tags.length) {
+    const tagSlice = context.tags.slice(0, 12).map((t) => sanitizeText(t)).filter(Boolean);
+    if (tagSlice.length) {
+      lines.push(`Notable tags: ${tagSlice.join(', ')}`);
     }
-    return '典型应用场景包括智能助理、模型评估与数据处理等常见任务。';
   }
-  if (descriptor) {
-    return `Typical use cases span ${descriptor}, making it practical for production teams.`;
+  const shortEn = sanitizeText(context.summary_short?.en);
+  const shortZh = sanitizeText(context.summary_short?.zh);
+  if (shortEn || shortZh) {
+    lines.push(`Existing tagline: ${shortEn || shortZh}`);
   }
-  return 'Typical use cases include conversational agents, evaluation pipelines, and data tooling.';
-}
+  const desc = sanitizeText(context.description);
+  if (desc) {
+    lines.push(`Detailed description: ${desc}`);
+  }
 
-function generateEnglishSummary(context) {
-  const description = sanitizeText(
-    context.summary_short?.en || context.summary_short?.zh || context.description || ''
-  );
-  const intro = `${context.name} is a ${context.source === 'github' ? 'GitHub' : context.source} project that advances applied AI workflows.`;
-  const descSentence = description
-    ? `It focuses on ${description}.`
-    : 'It focuses on delivering a reliable foundation that balances quality and iteration speed.';
-  const tagsSentence = listTags(context.tags)
-    ? `Key themes include ${listTags(context.tags)}.`
-    : 'It covers multiple AI disciplines from inference to evaluation.';
-  const statsSentence = buildStatsSentence(context.stats, 'en');
-  const useCaseSentence = buildUseCaseSentence(context.tags, 'en');
-  return sanitizeText(`${intro} ${descSentence} ${tagsSentence} ${statsSentence} ${useCaseSentence}`);
-}
+  return `You are an elite bilingual analyst helping technical decision makers assess open-source AI assets. Deliver compact, information-dense summaries with zero fluff.
 
-function generateChineseSummary(context) {
-  const description = sanitizeText(
-    context.summary_short?.zh || context.summary_short?.en || context.description || ''
-  );
-  const intro = `${context.name} 是一个来自 ${context.source === 'github' ? 'GitHub' : context.source} 的项目，面向希望快速交付的工程团队。`;
-  const descSentence = description
-    ? `核心能力围绕 ${description} 展开，突出稳定与易用性。`
-    : '核心能力聚焦于稳定交付与可重复迭代，提供面向生产环境的基础能力。';
-  const tagsSentence = listTags(context.tags)
-    ? `重点领域涵盖 ${listTags(context.tags)}，形成多模态协同能力。`
-    : '项目覆盖模型推理、数据处理、自动化运维等多类场景。';
-  const statsSentence = buildStatsSentence(context.stats, 'zh');
-  const useCaseSentence = buildUseCaseSentence(context.tags, 'zh');
-  return sanitizeText(`${intro} ${descSentence} ${tagsSentence} ${statsSentence} ${useCaseSentence}`);
+Strict requirements:
+1. Summaries must cover four pillars in order: (a) concise purpose/positioning, (b) core mechanics or standout capabilities, (c) concrete production-fit signals (benchmarks, metrics, architecture choices, governance, performance, community strength), (d) actionable adoption guidance (best-fit scenarios, integration tips, onboarding steps).
+2. summary_en: 80-90 words split into 3-4 sentences. First sentence = positioning, second = technical differentiators, third = validation/metrics/community, final sentence = hands-on adoption advice.
+3. summary_zh: 120-160 汉字，按“定位→技术优势→成熟度信号→落地建议”自然分句，使用专业书面语，避免中式英语和营销语。
+4. Mention key metrics/tags only when they reinforce credibility. Prefer specifics (e.g., “supports LoRA fine-tuning with 10× memory savings”) over generic claims.
+5. Never invent facts; if context lacks data, acknowledge constraints briefly and focus on confirmed strengths.
+
+Context:
+${lines.join('\n')}`;
 }
 
 function buildSections(context, summaryEn, summaryZh) {
+  const whyDetail = listTags(context.tags)
+    ? `${context.name} stands out for ${listTags(context.tags)} in real-world workflows.`
+    : `${context.name} gives teams a dependable path to production-ready AI tooling.`;
   return {
-    why: sanitizeText(
-      `${context.name} prioritises dependable releases so teams can reduce manual review while still shipping bilingual updates.`
-    ),
+    why: sanitizeText(whyDetail),
     what: sanitizeText(summaryEn || summaryZh),
     how: sanitizeText(
-      `Start from ${context.url || 'the project homepage'} to explore assets, or integrate it as a dependency for your pipeline. 标准化的输出格式便于复用，结合现有工具即可快速落地。`
+      `Review ${context.url || 'the project homepage'} for docs, run starter examples, and integrate with your pipeline or evaluation stack.`
     )
   };
 }
 
-function evaluateQuality(enText, zhText) {
+function evaluateQuality(enText, zhText, esText) {
   const enLength = sanitizeText(enText).length;
   const zhLength = sanitizeText(zhText).length;
+  const esLength = sanitizeText(esText).length;
   const warnings = [];
   if (enLength < MIN_EN_LENGTH) warnings.push('short_en');
   if (zhLength < MIN_ZH_LENGTH) warnings.push('short_zh');
@@ -293,21 +292,27 @@ function evaluateQuality(enText, zhText) {
     length: {
       en: enLength,
       zh: zhLength,
-      es: 0
+      es: esLength
     },
     warnings
   };
 }
 
-function buildStagingItem(pendingItem, context) {
-  const summaryEn = generateEnglishSummary(context);
-  const summaryZh = generateChineseSummary(context);
+function buildSuccessItem({ pendingItem, context, result }) {
+  const meta = result?.meta || {};
+  const summaryEn = sanitizeText(result?.en || '');
+  const summaryZh = sanitizeText(result?.zh || '');
+  const summaryEs = sanitizeText(result?.es || '') || summaryEn;
+  const quality = evaluateQuality(summaryEn, summaryZh, summaryEs);
   const sections = buildSections(context, summaryEn, summaryZh);
-  const quality = evaluateQuality(summaryEn, summaryZh);
   const locales = ['en', 'zh'];
-  const warnings = [...quality.warnings];
-  if (!context.url) warnings.push('missing_url');
+  if (sanitizeText(summaryEs)) {
+    locales.push('es');
+  }
   const now = nowUtcISOString();
+  const metaWarnings = Array.isArray(meta.warnings) ? meta.warnings.map(String) : [];
+  const allWarnings = Array.from(new Set([...quality.warnings, ...metaWarnings]));
+  const elapsedMs = meta.elapsed_sec ? Math.max(0, Math.round(meta.elapsed_sec * 1000)) : 0;
 
   return {
     canonical_id: context.canonical_id,
@@ -315,33 +320,136 @@ function buildStagingItem(pendingItem, context) {
     status: 'ok',
     locales,
     provider: {
-      name: 'modelswatch-heuristic',
+      name: meta.cache_hit ? 'tri-summarizer-cache' : 'deepseek-tri',
       version: '1.0.0',
-      mode: 'template'
+      mode: meta.path || 'json'
     },
     summaries: {
       en: summaryEn,
       zh: summaryZh,
-      es: '',
+      es: summaryEs,
       sections
     },
-    quality,
+    quality: {
+      ...quality,
+      warnings: allWarnings
+    },
     timings: {
       started_at: pendingItem.started_at || now,
       ended_at: now,
-      elapsed_ms: pendingItem.started_at
-        ? Math.max(0, Date.now() - Date.parse(pendingItem.started_at))
-        : 0
+      elapsed_ms: elapsedMs
     },
-    warnings,
+    warnings: allWarnings,
     metadata: {
       source: context.source,
       tags: context.tags,
       stats: context.stats,
+      license: context.metadata?.license || null,
+      lang: context.metadata?.lang || null,
       reason: pendingItem.reason || 'needs_tri',
+      requested_at: pendingItem.requested_at || null,
+      tri_meta: meta
+    }
+  };
+}
+
+function buildErrorItem({ pendingItem, context, status, reason }) {
+  const now = nowUtcISOString();
+  const warnings = [reason].filter(Boolean);
+  const baseContext = context || {
+    canonical_id: pendingItem.canonical_id || null,
+    source: pendingItem.source || 'unknown',
+    tags: [],
+    stats: {}
+  };
+  return {
+    canonical_id: baseContext.canonical_id,
+    promptHash: pendingItem.promptHash,
+    status,
+    locales: pendingItem.locales || ['en', 'zh'],
+    provider: {
+      name: 'deepseek-tri',
+      version: '1.0.0',
+      mode: status
+    },
+    summaries: {
+      en: '',
+      zh: '',
+      es: '',
+      sections: {
+        why: '',
+        what: '',
+        how: ''
+      }
+    },
+    quality: {
+      score: 0,
+      fallback: true,
+      length: { en: 0, zh: 0, es: 0 },
+      warnings
+    },
+    timings: {
+      started_at: pendingItem.started_at || now,
+      ended_at: now,
+      elapsed_ms: 0
+    },
+    warnings,
+    error: status === 'failed' ? reason : undefined,
+    metadata: {
+      source: baseContext.source,
+      tags: baseContext.tags || [],
+      stats: baseContext.stats || {},
+      reason,
       requested_at: pendingItem.requested_at || null
     }
   };
+}
+
+async function callTriSummarizer(prompts) {
+  if (!prompts.length) {
+    return { results: [], diagnostics: null };
+  }
+  const encoded = prompts.map((prompt) => ({ b64: Buffer.from(prompt, 'utf8').toString('base64') }));
+  return new Promise((resolve, reject) => {
+    const child = spawn('python', ['tools/tri_summarizer.py', '--batch'], {
+      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      stdio: ['pipe', 'pipe', 'inherit'],
+      cwd: process.cwd()
+    });
+
+    let stdout = '';
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.on('error', (err) => reject(err));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`tri_summarizer exited with code ${code}`));
+      }
+      try {
+        const trimmed = stdout.trim();
+        if (!trimmed) {
+          return resolve({ results: [], diagnostics: null });
+        }
+        const parsed = JSON.parse(trimmed);
+        if (parsed && typeof parsed === 'object') {
+          resolve({
+            results: Array.isArray(parsed.results) ? parsed.results : [],
+            diagnostics: parsed.diagnostics || null
+          });
+        } else if (Array.isArray(parsed)) {
+          resolve({ results: parsed, diagnostics: null });
+        } else {
+          reject(new Error('Unexpected tri_summarizer output format'));
+        }
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    child.stdin.write(JSON.stringify(encoded));
+    child.stdin.end();
+  });
 }
 
 function rebuildPendingQueue(pending, processedMap) {
@@ -415,41 +523,118 @@ async function main() {
     }
 
     const contextIndex = await loadContextIndex(dateKey);
+    const entries = selected.map((pendingItem) => ({ pendingItem, context: lookupContext(pendingItem, contextIndex) }));
+
+    const prompts = [];
+    for (const entry of entries) {
+      if (!entry.context) continue;
+      try {
+        entry.promptIndex = prompts.length;
+        entry.prompt = buildPrompt(entry.context);
+        prompts.push(entry.prompt);
+      } catch (err) {
+        entry.promptError = err;
+      }
+    }
+
+    let triResults = [];
+    let triDiagnostics = null;
+    let triError = null;
+    if (prompts.length) {
+      try {
+        const bundle = await callTriSummarizer(prompts);
+        triResults = bundle.results || [];
+        triDiagnostics = bundle.diagnostics || null;
+        if (triDiagnostics) {
+          info(
+            '[tri_worker] tri_summarizer diagnostics ok=%s cache_hits=%s warnings=%s errors=%s elapsed=%ss',
+            triDiagnostics.ok_count ?? triResults.length,
+            triDiagnostics.cache_hits ?? 0,
+            triDiagnostics.warnings_total ?? 0,
+            triDiagnostics.errors_total ?? 0,
+            triDiagnostics.elapsed_sec ?? 'n/a'
+          );
+        }
+      } catch (err) {
+        triError = err;
+        warn('[tri_worker] tri_summarizer batch failed:', err.message);
+      }
+    }
+
+    if (!triError && triResults.length !== prompts.length) {
+      warn(
+        '[tri_worker] tri_summarizer result mismatch: expected %d got %d',
+        prompts.length,
+        triResults.length
+      );
+    }
+
+    for (const entry of entries) {
+      if (entry.promptIndex !== undefined && triResults[entry.promptIndex]) {
+        entry.result = triResults[entry.promptIndex];
+      }
+    }
+
     const processed = [];
     const processedMap = new Map();
     let succeeded = 0;
     let skipped = 0;
     let failed = 0;
 
-    for (const pendingItem of selected) {
-      const context = lookupContext(pendingItem, contextIndex);
+    for (const entry of entries) {
+      const { pendingItem, context } = entry;
       if (!context) {
         processedMap.set(pendingItem.promptHash, 'skipped');
         skipped += 1;
-        processed.push({
-          canonical_id: pendingItem.canonical_id || null,
-          promptHash: pendingItem.promptHash,
-          status: 'skipped',
-          warnings: ['context_missing']
-        });
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'skipped', reason: 'context_missing' })
+        );
+        continue;
+      }
+
+      if (entry.promptError) {
+        processedMap.set(pendingItem.promptHash, 'failed');
+        failed += 1;
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'failed', reason: 'prompt_build_failed' })
+        );
+        continue;
+      }
+
+      if (triError) {
+        processedMap.set(pendingItem.promptHash, 'failed');
+        failed += 1;
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'failed', reason: `tri_batch_failed:${triError.message}` })
+        );
+        continue;
+      }
+
+      const result = entry.result;
+      const summaryEn = sanitizeText(result?.en || '');
+      const summaryZh = sanitizeText(result?.zh || '');
+      if (!result || !result.meta || (!summaryEn && !summaryZh) || result.meta.ok === false) {
+        const metaErrors = result?.meta?.errors || [];
+        const reason = metaErrors.length ? `llm_empty:${metaErrors[0]}` : 'llm_empty';
+        processedMap.set(pendingItem.promptHash, 'failed');
+        failed += 1;
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'failed', reason })
+        );
         continue;
       }
 
       try {
-        const stagingItem = buildStagingItem(pendingItem, context);
+        const stagingItem = buildSuccessItem({ pendingItem, context, result });
         processed.push(stagingItem);
-        processedMap.set(pendingItem.promptHash, stagingItem.status);
+        processedMap.set(pendingItem.promptHash, 'ok');
         succeeded += 1;
       } catch (err) {
         processedMap.set(pendingItem.promptHash, 'failed');
         failed += 1;
-        processed.push({
-          canonical_id: context.canonical_id,
-          promptHash: pendingItem.promptHash,
-          status: 'failed',
-          error: err.message
-        });
-        warn('[tri_worker] failed to build summary for', pendingItem.canonical_id || pendingItem.promptHash, err.message);
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'failed', reason: `staging_error:${err.message}` })
+        );
       }
     }
 
@@ -488,12 +673,16 @@ async function main() {
     }
 
     if (!dryRun && runlog) {
-      await runlog.append('success', {
+      const successPayload = {
         summary: 'tri worker completed',
         pending_path: pendingPath,
         artifacts: ['tri_cache.staging.json'],
         stats: stagingPayload.stats
-      });
+      };
+      if (triDiagnostics) {
+        successPayload.tri_diagnostics = triDiagnostics;
+      }
+      await runlog.append('success', successPayload);
     }
   } catch (err) {
     if (runlog) {

@@ -109,7 +109,8 @@ function buildUnqualified(items, source, dateKey, runId, generatedAt) {
         url: item.url,
         tags: item.tags,
         stats: item.stats,
-        metadata: item.metadata
+        metadata: item.metadata,
+        description: item.description || ''
       },
       created_at: item.created_at,
       updated_at: item.updated_at

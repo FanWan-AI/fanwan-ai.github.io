@@ -12,8 +12,8 @@ function ensureDirs(){ fs.mkdirSync(DATA_DIR, {recursive:true}); fs.mkdirSync(IT
 function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n', 'utf8'); }
 
 const HF_TOKEN = process.env.HF_TOKEN || '';
-// Configurable HF fetch limit via repository Variables; default to 140 to surface more models
-const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '140', 10) || 140;
+// Configurable HF fetch limit via repository Variables; default trimmed to 40 for faster iterations
+const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '40', 10) || 40;
 async function hfList(){
   // Public browse endpoint (documented): sort=downloads, limit
   // Increase HF fetch limit to include more top models for the hotlist (was 60)

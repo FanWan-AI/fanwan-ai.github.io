@@ -32,6 +32,7 @@ function normalizeCommon(raw, source, nowIso) {
     source,
     name: raw.name || raw.id,
     url: raw.url,
+    description: raw.summary || raw.description || '',
     tags: raw.tags || [],
     summary_short: summaryMeta.summary_short,
     summary_flags: buildSummaryFlags(summaryMeta),
