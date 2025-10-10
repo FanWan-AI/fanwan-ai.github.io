@@ -1,0 +1,241 @@
+name: ModelSwatch Daily · Full Pipeline
+
+on:
+  schedule:
+    - cron: '30 2 * * *' # Daily at 02:30 UTC (avoids ai-blog 00:00, modelswatch-tag 18:15, ai-radar 23:10)
+  workflow_dispatch: {}
+
+concurrency:
+  group: modelswatch-daily-full-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  stage-a:
+    name: Stage A · Fetch & Drafts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stage A · Fetch & Drafts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          MODELSWATCH_GH_PER_PAGE: ${{ vars.MODELSWATCH_GH_PER_PAGE || '20' }}
+          MODELSWATCH_HF_LIMIT: ${{ vars.MODELSWATCH_HF_LIMIT || '20' }}
+        run: |
+          echo "[stage-a] Node version:" $(node -v)
+          echo "[stage-a] npm version:" $(npm -v)
+          node tools/modelswatch/daily.mjs
+
+      - name: Commit Stage A artifacts
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git status --short
+          git add data/ai/modelswatch || true
+          git add tools/modelswatch/audit || true
+          if git diff --cached --quiet; then
+            echo "[stage-a] No changes produced; skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="${GITHUB_REF#refs/heads/}"
+          fi
+          echo "[stage-a] using target branch $TARGET_BRANCH"
+          PROT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.luke-cage-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/${TARGET_BRANCH}/protection") || true
+          if [ "$PROT_STATUS" = "200" ]; then
+            echo "Branch '${TARGET_BRANCH}' appears protected; aborting commit to avoid failure."
+            exit 1
+          fi
+          git commit -m "chore(modelswatch): stage A fetch & drafts"
+          git fetch origin $TARGET_BRANCH || true
+          if git rebase --autostash origin/$TARGET_BRANCH; then
+            git push origin HEAD:$TARGET_BRANCH
+          else
+            git rebase --abort || true
+            if git merge --no-edit origin/$TARGET_BRANCH; then
+              git push origin HEAD:$TARGET_BRANCH || git push --force-with-lease origin HEAD:$TARGET_BRANCH
+            else
+              echo "[stage-a] Merge failed; aborting"
+              exit 1
+            fi
+          fi
+
+  stage-b:
+    name: Stage B · TRI Enrichment
+    needs: stage-a
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests
+
+      - name: Stage B · TRI enrichment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
+          DEEPSEEK_MODEL: ${{ secrets.DEEPSEEK_MODEL }}
+          LLM_CONN_TIMEOUT: ${{ secrets.LLM_CONN_TIMEOUT }}
+          LLM_READ_TIMEOUT: ${{ secrets.LLM_READ_TIMEOUT }}
+          MODELSWATCH_TRI_LIMIT: ${{ vars.MODELSWATCH_TRI_LIMIT || '20' }}
+          SNAPSHOT_MAX_NEW: ${{ vars.MODELSWATCH_TRI_LIMIT || '20' }}
+          TRI_CACHE_FILE: data/ai/modelswatch/tri_cache.json
+          TRI_CACHE_PERSIST: 1
+          BILINGUAL_MODE: 1
+          TRI_JSON_FIRST: '1'
+          TRI_ENABLE_REWRITE: ${{ vars.TRI_ENABLE_REWRITE || '1' }}
+          TRI_ENABLE_EXPAND: ${{ vars.TRI_ENABLE_EXPAND || '0' }}
+          SPEED_MODE: ${{ vars.SPEED_MODE || '0' }}
+          TRI_BATCH_CONCURRENCY: ${{ vars.TRI_BATCH_CONCURRENCY || '2' }}
+          TRI_GROUP_JSON_SIZE: ${{ vars.TRI_GROUP_JSON_SIZE || '1' }}
+        run: |
+          node tools/modelswatch/tri_worker.mjs
+          node tools/modelswatch/apply_tri_to_summary.mjs
+
+      - name: Commit Stage B artifacts
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git status --short
+          git add data/ai/modelswatch/summary_cache.json || true
+          git add data/ai/modelswatch/tri_cache.staging.json || true
+          git add data/ai/modelswatch/tri_cache.archive || true
+          git add tools/modelswatch/audit || true
+          if git diff --cached --quiet; then
+            echo "[stage-b] No changes produced; skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="${GITHUB_REF#refs/heads/}"
+          fi
+          echo "[stage-b] using target branch $TARGET_BRANCH"
+          PROT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.luke-cage-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/${TARGET_BRANCH}/protection") || true
+          if [ "$PROT_STATUS" = "200" ]; then
+            echo "Branch '${TARGET_BRANCH}' appears protected; aborting commit to avoid failure."
+            exit 1
+          fi
+          git commit -m "chore(modelswatch): stage B tri enrichment"
+          git fetch origin $TARGET_BRANCH || true
+          if git rebase --autostash origin/$TARGET_BRANCH; then
+            git push origin HEAD:$TARGET_BRANCH
+          else
+            git rebase --abort || true
+            if git merge --no-edit origin/$TARGET_BRANCH; then
+              git push origin HEAD:$TARGET_BRANCH || git push --force-with-lease origin HEAD:$TARGET_BRANCH
+            else
+              echo "[stage-b] Merge failed; aborting"
+              exit 1
+            fi
+          fi
+
+  stage-c:
+    name: Stage C · Analysis & Publish
+    needs: stage-b
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stage C · Analysis & Publish
+        run: |
+          node tools/modelswatch/data_analysis.mjs
+          node tools/modelswatch/qualify_publish.mjs
+          node tools/modelswatch/maintain_audit.mjs
+
+      - name: Commit Stage C artifacts
+        env:
+          TARGET_BRANCH: ${{ github.ref_name }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git status --short
+          git add data/ai/modelswatch || true
+          git add tools/modelswatch/audit || true
+          if git diff --cached --quiet; then
+            echo "[stage-c] No changes produced; skipping commit"
+            exit 0
+          fi
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          if [ -z "$TARGET_BRANCH" ]; then
+            TARGET_BRANCH="${GITHUB_REF#refs/heads/}"
+          fi
+          echo "[stage-c] using target branch $TARGET_BRANCH"
+          PROT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${GITHUB_TOKEN}" -H "Accept: application/vnd.github.luke-cage-preview+json" "https://api.github.com/repos/${GITHUB_REPOSITORY}/branches/${TARGET_BRANCH}/protection") || true
+          if [ "$PROT_STATUS" = "200" ]; then
+            echo "Branch '${TARGET_BRANCH}' appears protected; aborting commit to avoid failure."
+            exit 1
+          fi
+          git commit -m "chore(modelswatch): stage C publish"
+          git fetch origin $TARGET_BRANCH || true
+          if git rebase --autostash origin/$TARGET_BRANCH; then
+            git push origin HEAD:$TARGET_BRANCH
+          else
+            git rebase --abort || true
+            if git merge --no-edit origin/$TARGET_BRANCH; then
+              git push origin HEAD:$TARGET_BRANCH || git push --force-with-lease origin HEAD:$TARGET_BRANCH
+            else
+              echo "[stage-c] Merge failed; aborting"
+              exit 1
+            fi
+          fi
