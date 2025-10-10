@@ -918,14 +918,17 @@ async function main() {
       const passonceItems = Array.isArray(passonceData?.items) ? passonceData.items : [];
       const qualifiedItems = Array.isArray(qualifiedData?.items) ? qualifiedData.items : [];
 
-      if (!passonceItems.length && !qualifiedItems.length) {
+      const inputsMissing = !passonceData && !qualifiedData;
+      if (!passonceItems.length && !qualifiedItems.length && inputsMissing) {
         const message = `[qualify_publish] no passonce/qualified items for ${source} on ${dateKey} (expected ${path.basename(passoncePath)} & ${path.basename(qualifiedPath)})`;
-        const filesMissing = !passonceData && !qualifiedData;
-        if (allowMissing || filesMissing) {
+        if (allowMissing) {
           warn(message);
           continue;
         }
         throw new Error(message);
+      }
+      if (!passonceItems.length && !qualifiedItems.length) {
+        warn(`[qualify_publish] ${source} has zero publishable items on ${dateKey}; writing empty daily release`);
       }
 
       const { items: mergedItems, stats } = mergeSourceCollections({

@@ -475,11 +475,62 @@ function rebuildPendingQueue(pending, processedMap) {
   return updated;
 }
 
+function selectPendingItems(items, limit) {
+  if (!Array.isArray(items) || !items.length) return [];
+  const max = Math.max(0, Math.floor(Number.isFinite(limit) ? limit : items.length));
+  if (max === 0) return [];
+  if (items.length <= max) return items.slice(0, max);
+
+  const buckets = new Map();
+  const order = [];
+  for (const item of items) {
+    const src = (item?.source || '').toString().trim().toLowerCase() || 'unknown';
+    if (!buckets.has(src)) {
+      buckets.set(src, []);
+      order.push(src);
+    }
+    buckets.get(src).push(item);
+  }
+
+  if (order.length <= 1) {
+    return items.slice(0, max);
+  }
+
+  const selection = [];
+  const seen = new Set();
+  while (selection.length < max) {
+    let advanced = false;
+    for (const key of order) {
+      const bucket = buckets.get(key);
+      if (!bucket || !bucket.length) continue;
+      const candidate = bucket.shift();
+      if (seen.has(candidate)) continue;
+      selection.push(candidate);
+      seen.add(candidate);
+      advanced = true;
+      if (selection.length === max) break;
+    }
+    if (!advanced) break;
+  }
+
+  if (selection.length < max) {
+    for (const item of items) {
+      if (seen.has(item)) continue;
+      selection.push(item);
+      seen.add(item);
+      if (selection.length === max) break;
+    }
+  }
+
+  return selection.slice(0, max);
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const dryRun = Boolean(args['dry-run'] || args.dry || args.n);
   const noLock = Boolean(args['no-lock']);
-  const limit = args.limit ? Number(args.limit) : DEFAULT_MAX_ITEMS;
+  const limitRaw = args.limit ? Number(args.limit) : DEFAULT_MAX_ITEMS;
+  const limit = Number.isFinite(limitRaw) ? limitRaw : DEFAULT_MAX_ITEMS;
   const startTime = Date.now();
   const runId = generateRunId('tri_worker');
 
@@ -495,7 +546,7 @@ async function main() {
     return;
   }
 
-  const selected = pending.items.slice(0, Math.max(0, limit));
+  const selected = selectPendingItems(pending.items, Math.max(0, limit));
   if (selected.length === 0) {
     info('[tri_worker] limit resolved to zero; nothing to process');
   }

@@ -1026,35 +1026,52 @@
     function shallowNormalize(raw){
       if(!raw || typeof raw !== 'object') return {};
       const out = { ...raw };
-      const rawId = raw.id || raw.repo_id || raw.url || raw.name || '';
+      const canonicalId = typeof raw.canonical_id === 'string' ? raw.canonical_id : '';
+      if(canonicalId) out.canonical_id = canonicalId;
+      const canonicalSlug = canonicalId && canonicalId.includes(':') ? canonicalId.split(':').slice(1).join(':') : canonicalId;
+      const rawId = raw.id || raw.repo_id || canonicalSlug || raw.url || raw.name || '';
       const id = String(rawId || '').trim();
-      out.id = id;
+      out.id = id || canonicalSlug || '';
       // Source normalization
-      const src = (raw.source || '').toString().trim().toLowerCase();
+      let src = (raw.source || '').toString().trim().toLowerCase();
+      if(!src && canonicalId){
+        src = canonicalId.split(':')[0]?.toLowerCase() || '';
+      }
       if(src==='github' || src==='gh'){ out.source = 'github'; }
       else if(src==='hf' || src==='huggingface' || src==='hugging_face'){ out.source = 'hf'; }
-      else if(id.startsWith('github.com/')){ out.source = 'github'; }
-      else out.source = 'hf';
+      else if(out.id.startsWith('github.com/')){ out.source = 'github'; }
+      else if(src){ out.source = src; }
+      else out.source = canonicalId.startsWith('github:') ? 'github' : 'hf';
 
       // Name fallback
-      out.name = raw.name || (id && id.includes('/') ? id.split('/').pop() : id) || '';
+      const nameFallbackSrc = out.id || canonicalSlug || '';
+      out.name = raw.name || (nameFallbackSrc && nameFallbackSrc.includes('/') ? nameFallbackSrc.split('/').pop() : nameFallbackSrc) || '';
 
       // URL fallback based on normalized source
       if(!raw.url){
-        if(out.source === 'github' && id && !id.startsWith('http')) out.url = `https://github.com/${id}`;
-        else if(out.source === 'hf' && id && !id.startsWith('http')) out.url = `https://huggingface.co/${id}`;
+        if(out.source === 'github' && out.id && !out.id.startsWith('http')) out.url = `https://github.com/${out.id}`;
+        else if(out.source === 'hf' && out.id && !out.id.startsWith('http')) out.url = `https://huggingface.co/${out.id}`;
         else out.url = raw.url || '';
       }
 
       // Ensure arrays
       out.tags = Array.isArray(raw.tags) ? raw.tags.filter(Boolean) : [];
       out.task_keys = Array.isArray(raw.task_keys) ? raw.task_keys.filter(Boolean) : (raw.task_keys ? [raw.task_keys] : []);
+      if((!out.task_keys || out.task_keys.length===0) && Array.isArray(raw.tasks)){
+        out.task_keys = raw.tasks.filter(Boolean);
+      }
+      out.project_categories = Array.isArray(raw.project_categories) ? raw.project_categories.filter(Boolean) : [];
 
       // Normalize summaries per locale so downstream renders never see undefined
-      out.summary = raw.summary || raw.description || '';
-      out.summary_en = raw.summary_en || '';
-      out.summary_zh = raw.summary_zh || '';
-      out.summary_es = raw.summary_es || '';
+      const summaryShort = (raw.summary_short && typeof raw.summary_short === 'object') ? raw.summary_short : null;
+      const summaries = (raw.summaries && typeof raw.summaries === 'object') ? raw.summaries : null;
+      if(summaryShort) out.summary_short = summaryShort;
+      if(summaries) out.summaries = summaries;
+      const fallbackSummary = raw.summary || raw.description || '';
+      out.summary_en = (summaries && summaries.en) || raw.summary_en || (summaryShort && summaryShort.en) || '';
+      out.summary_zh = (summaries && summaries.zh) || raw.summary_zh || (summaryShort && summaryShort.zh) || '';
+      out.summary_es = (summaries && summaries.es) || raw.summary_es || (summaryShort && summaryShort.es) || '';
+      out.summary = out.summary_en || fallbackSummary || out.summary_zh || out.summary_es || '';
 
       // Normalize stats object and coerce number-like fields
       const stats = (raw.stats && typeof raw.stats === 'object') ? { ...raw.stats } : {};
@@ -1086,6 +1103,7 @@
       out.reason_label = raw.reason_label || '';
       out.reason_text = raw.reason_text || '';
       out.updated_at = raw.updated_at || raw.last_activity || raw.stats?.updated_at || '';
+      if(!out.updated_at && typeof raw.updated_at === 'string') out.updated_at = raw.updated_at;
 
       // Preserve lightweight timeline arrays
       out.timeline = {
@@ -1095,6 +1113,19 @@
       };
 
       return out;
+    }
+
+    async function fetchDailySource(date, source){
+      if(!date || !source) return null;
+      const suffix = source === 'github' ? 'github' : 'huggingface';
+      const path = `../data/ai/modelswatch/daily/${date}.${suffix}.json`;
+      try{
+        const res = await fetch(path, { cache:'no-store' });
+        if(!res.ok) return null;
+        return await res.json();
+      }catch{
+        return null;
+      }
     }
 
     // Collect normalized ids for the recent window (non-blocking). Returns a Set.
@@ -1111,10 +1142,23 @@
         const chunk = 8;
         for(let i=0;i<dates.length;i+=chunk){
           const batch = dates.slice(i, i+chunk);
-    const res = await Promise.allSettled(batch.map(d=> fetch(`../data/ai/modelswatch/daily/${d}.json`, {cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null)));
+          const res = await Promise.allSettled(batch.map(async d=>{
+            const [gh, hf] = await Promise.all([
+              fetchDailySource(d, 'github').catch(()=>null),
+              fetchDailySource(d, 'huggingface').catch(()=>null)
+            ]);
+            const collected = [];
+            if(gh && Array.isArray(gh.items)) collected.push(...gh.items);
+            if(hf && Array.isArray(hf.items)) collected.push(...hf.items);
+            return collected;
+          }));
           for(const r of res){
-            if(r.status==='fulfilled' && r.value && Array.isArray(r.value.items)){
-              for(const it of r.value.items){ const k = normalizeKey(it); if(k) _recentIdSet.add(k); }
+            if(r.status==='fulfilled' && Array.isArray(r.value)){
+              for(const rawItem of r.value){
+                const norm = shallowNormalize(rawItem);
+                const k = normalizeKey(norm);
+                if(k) _recentIdSet.add(k);
+              }
             }
           }
         }
@@ -1375,10 +1419,12 @@
       const lang = getLang();
       // Prefer language-specific summary, but gracefully fall back to any available summary
       if(!it) return '';
-      if(lang==='zh') return it.summary_zh || it.summary || it.summary_en || it.summary_es || '';
-      if(lang==='es') return it.summary_es || it.summary || it.summary_en || it.summary_zh || '';
+      const summaries = (it.summaries && typeof it.summaries === 'object') ? it.summaries : null;
+      const short = (it.summary_short && typeof it.summary_short === 'object') ? it.summary_short : null;
+      if(lang==='zh') return (summaries && summaries.zh) || it.summary_zh || (short && short.zh) || it.summary || it.summary_en || it.summary_es || '';
+      if(lang==='es') return (summaries && summaries.es) || it.summary_es || (short && short.es) || it.summary || it.summary_en || it.summary_zh || '';
       // en
-      return it.summary_en || it.summary || it.summary_zh || it.summary_es || '';
+      return (summaries && summaries.en) || it.summary_en || (short && short.en) || it.summary || it.summary_zh || it.summary_es || '';
     }
 
     const METRIC_LABELS = {
@@ -1867,11 +1913,24 @@
         }
         if(targetDate){
           try{
-            const d = await fetch(`../data/ai/modelswatch/daily/${targetDate}.json`,{cache:'no-store'}).then(r=> r.ok? r.json(): null);
-            if(d && Array.isArray(d.items)){
-              const arr = d.items.map(shallowNormalize);
-              items = arr;
-              window.__mw_updated_at = computeUpdatedAt(d.updated_at, arr, targetDate);
+            const [ghData, hfData] = await Promise.all([
+              fetchDailySource(targetDate, 'github'),
+              fetchDailySource(targetDate, 'huggingface')
+            ]);
+            const gi = (ghData?.items || []).map(shallowNormalize);
+            const hi = (hfData?.items || []).map(shallowNormalize);
+            const seen = new Set(); const merged = [];
+            for(const it of [...gi, ...hi]){
+              const nk = normalizeKey(it);
+              const key = nk ? `norm::${nk}` : `${it.source||''}::${it.id||it.url||it.name||''}`;
+              if(seen.has(key)) continue;
+              seen.add(key);
+              merged.push(it);
+            }
+            if(merged.length){
+              items = merged;
+              const metaCandidate = ghData?.updated_at || hfData?.updated_at || ghData?.published_at || hfData?.published_at || ghData?.generated_at || hfData?.generated_at || '';
+              window.__mw_updated_at = computeUpdatedAt(metaCandidate, merged, targetDate);
               try{ setDataSourceLabel('Daily', targetDate); }catch{}
               return;
             }
@@ -2114,11 +2173,26 @@
         const total = availableDates.length || 0;
         for(let i=0;i<availableDates.length;i+=chunk){
           const batch = availableDates.slice(i,i+chunk);
-          const res = await Promise.allSettled(batch.map(d=> fetch(`../data/ai/modelswatch/daily/${d}.json`,{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null)));
+          const res = await Promise.allSettled(batch.map(async d=>{
+            const [gh, hf] = await Promise.all([
+              fetchDailySource(d, 'github').catch(()=>null),
+              fetchDailySource(d, 'huggingface').catch(()=>null)
+            ]);
+            return { gh, hf };
+          }));
           for(const r of res){
             if(r.status==='fulfilled' && r.value){
-              const arr = (r.value?.items||[]).map(shallowNormalize);
-              for(const it of arr){ const nk = normalizeKey(it); const k = nk ? `norm::${nk}` : `${it.source||''}::${it.id||it.url||it.name||''}`; if(seen.has(k)) continue; seen.add(k); merged.push(it); }
+              const parts = [];
+              if(r.value.gh && Array.isArray(r.value.gh.items)) parts.push(...r.value.gh.items);
+              if(r.value.hf && Array.isArray(r.value.hf.items)) parts.push(...r.value.hf.items);
+              for(const rawItem of parts){
+                const it = shallowNormalize(rawItem);
+                const nk = normalizeKey(it);
+                const k = nk ? `norm::${nk}` : `${it.source||''}::${it.id||it.url||it.name||''}`;
+                if(seen.has(k)) continue;
+                seen.add(k);
+                merged.push(it);
+              }
             }
             loadedCount++;
             try{ if(typeof progressCb === 'function') progressCb(loadedCount, total); }catch{}
