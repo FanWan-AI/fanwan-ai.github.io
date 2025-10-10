@@ -18,20 +18,151 @@ const TASK_TOP_K = Number(process.env.MODELSWATCH_TASK_TOP_K || '3');
 const TASK_INDEX_LIMIT = Number(process.env.MODELSWATCH_TASK_INDEX_LIMIT || '500');
 const CATEGORY_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_LIMIT || '3');
 const CATEGORY_INDEX_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_INDEX_LIMIT || '500');
+const CATEGORY_BASE_SCORE = Number(process.env.MODELSWATCH_CATEGORY_BASE_SCORE || '0.35');
+const CATEGORY_MIN_SCORE = Number(process.env.MODELSWATCH_CATEGORY_MIN_SCORE || '0.65');
 const MAX_DATES = Number(process.env.MODELSWATCH_MAX_DATES || '120');
 const HOTLIST_LIMIT = Number(process.env.MODELSWATCH_HOTLIST_LIMIT || '50');
 const CORPUS_LIMIT = Number(process.env.MODELSWATCH_CORPUS_LIMIT || '1000');
 
 const PROJECT_CATEGORY_RULES = {
-  framework_core: ['framework', 'trainer', 'engine', 'torch', 'jax', 'core'],
-  deployment_serving: ['serve', 'serving', 'inference-server', 'gateway', 'api', 'vllm', 'tensorrt-llm'],
-  optimization_compilers: ['compiler', 'onnx', 'mlir', 'tvm', 'graph-opt', 'quantize'],
-  data_tooling: ['dataset', 'data', 'evaluation', 'benchmark', 'leaderboard'],
-  agents_workflows: ['agent', 'workflow', 'orchestrator', 'langchain', 'autogen', 'crew'],
-  security_safety: ['safety', 'moderation', 'redteam', 'guardrail', 'policy'],
-  mlops_monitoring: ['mlops', 'monitoring', 'observability', 'tracing', 'drift'],
-  edge_embedded: ['edge', 'embedded', 'mobile', 'on-device', 'tiny', 'micro'],
-  ui_devex: ['ui', 'devtool', 'playground', 'notebook', 'extension']
+  framework_core: [
+    { term: 'framework', weight: 1 },
+    { term: 'trainer', weight: 1 },
+    { term: 'engine', weight: 1 },
+    { term: 'sdk', weight: 0.95 },
+    { term: 'toolkit', weight: 0.9 },
+    { term: 'library', weight: 0.9 },
+    { term: 'runtime', weight: 0.85 },
+    { term: 'torch', weight: 0.85 },
+    { term: 'jax', weight: 0.85 },
+    { term: 'core', weight: 0.7 },
+    { term: 'platform', weight: 0.7 }
+  ],
+  deployment_serving: [
+    { term: 'serve', weight: 0.95 },
+    { term: 'serving', weight: 0.95 },
+    { term: 'model server', weight: 1 },
+    { term: 'inference server', weight: 1 },
+    { term: 'inference-server', weight: 1 },
+    { term: 'inference', weight: 0.85 },
+    { term: 'deployment', weight: 0.85 },
+    { term: 'deploy', weight: 0.8 },
+    { term: 'endpoint', weight: 0.8 },
+    { term: 'gateway', weight: 0.75 },
+    { term: 'api gateway', weight: 1 },
+    { term: 'vllm', weight: 1 },
+    { term: 'tensorrt-llm', weight: 1 },
+    { term: 'gpu serving', weight: 1 },
+    { term: 'kubernetes operator', weight: 0.85 }
+  ],
+  optimization_compilers: [
+    { term: 'compiler', weight: 1 },
+    { term: 'onnx', weight: 1 },
+    { term: 'mlir', weight: 1 },
+    { term: 'tvm', weight: 1 },
+    { term: 'graph-opt', weight: 1 },
+    { term: 'graph optimization', weight: 1 },
+    { term: 'quantize', weight: 1 },
+    { term: 'quantization', weight: 1 },
+    { term: 'pruning', weight: 0.9 },
+    { term: 'compression', weight: 0.85 },
+    { term: 'optimization', weight: 0.7 },
+    { term: 'acceleration', weight: 0.75 },
+    { term: 'cuda', weight: 0.7 },
+    { term: 'kernel fusion', weight: 0.85 }
+  ],
+  data_tooling: [
+    { term: 'dataset', weight: 1 },
+    { term: 'datasets', weight: 1 },
+    { term: 'data catalog', weight: 1 },
+    { term: 'catalog', weight: 0.9 },
+    { term: 'directory', weight: 0.85 },
+    { term: 'registry', weight: 0.85 },
+    { term: 'data pipeline', weight: 0.85 },
+    { term: 'benchmark', weight: 1 },
+    { term: 'benchmarks', weight: 1 },
+    { term: 'leaderboard', weight: 1 },
+    { term: 'annotation', weight: 0.9 },
+    { term: 'labeling', weight: 0.9 },
+    { term: 'curation', weight: 0.85 },
+    { term: 'analytics', weight: 0.85 },
+    { term: 'knowledge base', weight: 0.85 },
+    { term: 'awesome list', weight: 0.9 },
+    { term: 'data hub', weight: 0.9 },
+    { term: 'semantic search', weight: 0.8 }
+  ],
+  agents_workflows: [
+    { term: 'agent', weight: 1 },
+    { term: 'agents', weight: 1 },
+    { term: 'workflow', weight: 0.95 },
+    { term: 'workflows', weight: 0.95 },
+    { term: 'automation', weight: 0.9 },
+    { term: 'orchestrator', weight: 1 },
+    { term: 'orchestration', weight: 1 },
+    { term: 'langchain', weight: 1 },
+    { term: 'autogen', weight: 1 },
+    { term: 'crew', weight: 0.9 },
+    { term: 'planner', weight: 0.85 },
+    { term: 'multi-agent', weight: 1 },
+    { term: 'agentic', weight: 0.9 },
+    { term: 'task graph', weight: 0.85 }
+  ],
+  security_safety: [
+    { term: 'safety', weight: 1 },
+    { term: 'moderation', weight: 1 },
+    { term: 'redteam', weight: 1 },
+    { term: 'red teaming', weight: 1 },
+    { term: 'guardrail', weight: 1 },
+    { term: 'policy', weight: 0.85 },
+    { term: 'compliance', weight: 0.9 },
+    { term: 'security', weight: 0.95 },
+    { term: 'privacy', weight: 0.9 },
+    { term: 'risk', weight: 0.8 },
+    { term: 'governance', weight: 0.85 },
+    { term: 'audit', weight: 0.75 }
+  ],
+  mlops_monitoring: [
+    { term: 'mlops', weight: 1 },
+    { term: 'monitoring', weight: 1 },
+    { term: 'observability', weight: 1 },
+    { term: 'tracing', weight: 0.9 },
+    { term: 'drift', weight: 0.9 },
+    { term: 'alerting', weight: 0.85 },
+    { term: 'governance', weight: 0.75 },
+    { term: 'evaluation', weight: 0.7 },
+    { term: 'reporting', weight: 0.7 },
+    { term: 'quality gates', weight: 0.85 }
+  ],
+  edge_embedded: [
+    { term: 'edge', weight: 1 },
+    { term: 'embedded', weight: 1 },
+    { term: 'mobile', weight: 0.95 },
+    { term: 'on-device', weight: 1 },
+    { term: 'on device', weight: 1 },
+    { term: 'tiny', weight: 0.75 },
+    { term: 'micro', weight: 0.75 },
+    { term: 'raspberry', weight: 0.75 },
+    { term: 'jetson', weight: 0.75 },
+    { term: 'arm', weight: 0.7 }
+  ],
+  ui_devex: [
+    { term: 'ui', weight: 1 },
+    { term: 'ux', weight: 0.9 },
+    { term: 'devtool', weight: 1 },
+    { term: 'developer tool', weight: 1 },
+    { term: 'playground', weight: 0.95 },
+    { term: 'notebook', weight: 0.95 },
+    { term: 'extension', weight: 0.95 },
+    { term: 'dashboard', weight: 0.9 },
+    { term: 'studio', weight: 0.9 },
+    { term: 'editor', weight: 0.9 },
+    { term: 'ide', weight: 0.9 },
+    { term: 'portal', weight: 0.85 },
+    { term: 'tutorial', weight: 0.8 },
+    { term: 'curriculum', weight: 0.85 },
+    { term: 'education', weight: 0.75 },
+    { term: 'documentation', weight: 0.75 }
+  ]
 };
 
 function parseArgs(argv) {
@@ -178,6 +309,15 @@ function buildTextContext(item) {
   }
   if (meta.description) push(meta.description);
   if (meta.card_desc) push(meta.card_desc);
+  if (meta.categories && typeof meta.categories === 'object') {
+    for (const value of Object.values(meta.categories)) {
+      if (Array.isArray(value)) {
+        value.forEach(push);
+      } else if (value && typeof value === 'string') {
+        push(value);
+      }
+    }
+  }
 
   const combined = segments.join(' ').trim();
   const tokens = new Set();
@@ -558,7 +698,6 @@ function expandAliasVariants(alias) {
     variants.add(tokens.join('-'));
     variants.add(tokens.join('_'));
     variants.add(tokens.join(''));
-    variants.add(tokens.map((t) => t[0]).join(''));
   }
   variants.add(normalized.replace(/[_\s]+/g, '-'));
   variants.add(normalized.replace(/[_\s]+/g, ' '));
@@ -567,10 +706,35 @@ function expandAliasVariants(alias) {
 }
 
 async function buildTaskContext() {
-  const taxonomyPath = resolveDataPath('../ai_categories.json');
   const aliasPath = resolveDataPath('task_aliases.json');
-  const taxonomy = await readJsonIfExists(taxonomyPath);
   const aliases = (await readJsonIfExists(aliasPath)) || {};
+
+  const taxonomyCandidates = [
+    { segments: ['models_categories.json'], refBase: 'data/ai/modelswatch/models_categories.json' },
+    { segments: ['..', 'ai_categories.json'], refBase: 'data/ai/ai_categories.json' }
+  ];
+
+  let taxonomy = null;
+  let taxonomyRefBase = taxonomyCandidates[0].refBase;
+  let taxonomyVersion = null;
+
+  for (const candidate of taxonomyCandidates) {
+    try {
+      const payload = await readJsonIfExists(resolveDataPath(...candidate.segments));
+      if (payload && Array.isArray(payload.categories)) {
+        taxonomy = payload;
+        taxonomyRefBase = candidate.refBase;
+        taxonomyVersion = payload.version || payload._meta?.version || payload.pipeline_version || null;
+        break;
+      }
+    } catch (err) {
+      // ignore and continue to next candidate
+    }
+  }
+
+  if (!taxonomy) {
+    taxonomy = { categories: [] };
+  }
 
   const tasks = [];
   const labels = new Map();
@@ -587,6 +751,7 @@ async function buildTaskContext() {
             if (!value) return;
             const lower = sanitizeText(value).toLowerCase();
             if (!lower) return;
+            if (lower.length <= 2) return;
             const existing = variants.get(lower);
             if (!existing || existing.weight < weight) {
               variants.set(lower, { value: lower, weight });
@@ -621,10 +786,9 @@ async function buildTaskContext() {
     }
   }
 
-  const taxonomyVersion = taxonomy?.version || taxonomy?._meta?.version;
   const taxonomyRef = taxonomyVersion
-    ? `data/ai/ai_categories.json#v${taxonomyVersion}`
-    : 'data/ai/ai_categories.json';
+    ? `${taxonomyRefBase}#v${taxonomyVersion}`
+    : taxonomyRefBase;
 
   return { tasks, labels, taxonomyRef };
 }
@@ -694,20 +858,26 @@ function classifyCategories(item, context, metrics) {
   const assignments = [];
   for (const [key, keywords] of Object.entries(PROJECT_CATEGORY_RULES)) {
     if (!context.labels.has(key)) continue;
+    let weightSum = 0;
     let hits = 0;
-    for (const keyword of keywords) {
-      const normalized = keyword.toLowerCase();
-      if (textCtx.tokens.has(normalized)) {
-        hits += 1;
-        continue;
-      }
-      if (textCtx.combined.includes(normalized)) {
+    const matched = new Set();
+    for (const raw of keywords) {
+      const term = typeof raw === 'string' ? raw : raw.term;
+      if (!term) continue;
+      const normalized = sanitizeText(term).toLowerCase();
+      if (!normalized || matched.has(normalized)) continue;
+      const weight = typeof raw === 'string' ? 1 : raw.weight ?? 1;
+      const matchScore = computeVariantScore(normalized, textCtx);
+      if (matchScore > 0) {
+        matched.add(normalized);
+        weightSum += weight * matchScore;
         hits += 1;
       }
     }
-    if (hits > 0) {
-      const score = Math.min(1, 0.6 + hits * 0.2);
-      assignments.push({ key, score: Number(score.toFixed(4)) });
+    if (weightSum <= 0) continue;
+    const score = Math.min(1, CATEGORY_BASE_SCORE + weightSum);
+    if (score >= CATEGORY_MIN_SCORE) {
+      assignments.push({ key, score: Number(score.toFixed(4)), hits });
     }
   }
   assignments.sort((a, b) => b.score - a.score || a.key.localeCompare(b.key));
