@@ -837,7 +837,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const dryRun = Boolean(args['dry-run'] || args.d);
   const noLock = Boolean(args['no-lock']);
-  const allowMissing = Boolean(args['allow-missing']);
+  const allowMissing = args['allow-missing'] === undefined ? true : Boolean(args['allow-missing']);
   const sources = selectSources(args);
 
   const resolvedLatest = await resolveLatestDate();
@@ -920,7 +920,8 @@ async function main() {
 
       if (!passonceItems.length && !qualifiedItems.length) {
         const message = `[qualify_publish] no passonce/qualified items for ${source} on ${dateKey} (expected ${path.basename(passoncePath)} & ${path.basename(qualifiedPath)})`;
-        if (allowMissing) {
+        const filesMissing = !passonceData && !qualifiedData;
+        if (allowMissing || filesMissing) {
           warn(message);
           continue;
         }
