@@ -275,6 +275,41 @@ async function main() {
   }
   const dedupeStats = {};
 
+  // Pre-filter any targeted repos/models from the fetch plan against the
+  // existing summary cache so we don't request items that are already
+  // qualified and stored in `summary_cache.json`.
+  const originalPlannedGithubTargets = Array.isArray(planAdjustments.github.targetedRepos)
+    ? planAdjustments.github.targetedRepos.slice()
+    : [];
+  const originalPlannedHfTargets = Array.isArray(planAdjustments.huggingface.targetedModels)
+    ? planAdjustments.huggingface.targetedModels.slice()
+    : [];
+  const filteredGithubTargets = originalPlannedGithubTargets.filter((slug) => {
+    if (!slug) return false;
+    const canonical = `github:${slug}`;
+    return !summaryModels[canonical];
+  });
+  const filteredHfTargets = originalPlannedHfTargets.filter((id) => {
+    if (!id) return false;
+    const canonical = `huggingface:${id}`;
+    return !summaryModels[canonical] && !summaryModels[`hf:${id}`];
+  });
+
+  if (originalPlannedGithubTargets.length !== filteredGithubTargets.length) {
+    info('[daily] prefilter: removed %d github targets already in summary_cache (kept %d/%d)',
+      originalPlannedGithubTargets.length - filteredGithubTargets.length,
+      filteredGithubTargets.length,
+      originalPlannedGithubTargets.length
+    );
+  }
+  if (originalPlannedHfTargets.length !== filteredHfTargets.length) {
+    info('[daily] prefilter: removed %d huggingface targets already in summary_cache (kept %d/%d)',
+      originalPlannedHfTargets.length - filteredHfTargets.length,
+      filteredHfTargets.length,
+      originalPlannedHfTargets.length
+    );
+  }
+
   let lock = null;
   let runlog = null;
   if (!dryRun && !noLock) {
@@ -292,7 +327,8 @@ async function main() {
       fetchJobs.push(
         fetchGithubTop({
           limitMultiplier: planAdjustments.github.limitMultiplier,
-          targetedRepos: planAdjustments.github.targetedRepos,
+          // use the filtered list so we skip already-qualified repos
+          targetedRepos: filteredGithubTargets,
           targetedLimit: 12
         }).then((items) => ({ source: 'github', items }))
       );
@@ -301,7 +337,8 @@ async function main() {
       fetchJobs.push(
         fetchHFTop({
           limitMultiplier: planAdjustments.huggingface.limitMultiplier,
-          targetedModels: planAdjustments.huggingface.targetedModels,
+          // use the filtered list so we skip already-qualified models
+          targetedModels: filteredHfTargets,
           targetedLimit: 20
         }).then((items) => ({ source: 'hf', items }))
       );
@@ -348,9 +385,9 @@ async function main() {
       hf_removed_qualified: hfRemovedQualified,
       hf_removed_duplicates: hfRemovedDuplicates,
       plan_github_multiplier: planAdjustments.github.limitMultiplier,
-      plan_github_targets: planAdjustments.github.targetedRepos.length,
+      plan_github_targets: filteredGithubTargets.length,
       plan_hf_multiplier: planAdjustments.huggingface.limitMultiplier,
-      plan_hf_targets: planAdjustments.huggingface.targetedModels.length
+      plan_hf_targets: filteredHfTargets.length
     };
 
     const rawCorpusGh = buildRawCorpus(githubNormalized, 'github', runId, generatedAt);
