@@ -20,7 +20,8 @@ const SCHEMA_FILES = {
   models_hotlist: 'models_hotlist.schema.json',
   projects_hotlist: 'projects_hotlist.schema.json',
   publish_audit: 'publish_audit.schema.json',
-  audit_summary: 'audit_summary.schema.json'
+  audit_summary: 'audit_summary.schema.json',
+  fetch_priorities: 'fetch_priorities.schema.json'
 };
 
 let ajvInstancePromise = null;

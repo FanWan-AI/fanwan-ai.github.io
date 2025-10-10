@@ -71,7 +71,7 @@ async function resolvePendingPath(args) {
   const dated = entries.filter((name) => /_pending_summaries\.json$/.test(name)).sort();
   if (dated.length) {
     const latest = dated[dated.length - 1];
-    return resolveDataPath(latest);
+    return resolveTempDataPath(latest);
   }
   const fallback = resolveTempDataPath('pending_summaries.json');
   if (await fileExists(fallback)) {

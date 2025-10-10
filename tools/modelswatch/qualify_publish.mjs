@@ -23,6 +23,9 @@ const CATEGORY_MIN_SCORE = Number(process.env.MODELSWATCH_CATEGORY_MIN_SCORE || 
 const MAX_DATES = Number(process.env.MODELSWATCH_MAX_DATES || '120');
 const HOTLIST_LIMIT = Number(process.env.MODELSWATCH_HOTLIST_LIMIT || '50');
 const CORPUS_LIMIT = Number(process.env.MODELSWATCH_CORPUS_LIMIT || '1000');
+const CATEGORY_TARGET = Number(process.env.MODELSWATCH_CATEGORY_TARGET || '12');
+const TASK_TARGET = Number(process.env.MODELSWATCH_TASK_TARGET || '18');
+const FETCH_RECOMMEND_LIMIT = Number(process.env.MODELSWATCH_FETCH_RECOMMEND_LIMIT || '8');
 
 const PROJECT_CATEGORY_RULES = {
   framework_core: [
@@ -889,6 +892,163 @@ function classifyCategories(item, context, metrics) {
   return top;
 }
 
+function selectTopExamples(bucket, limit = 3) {
+  return bucket
+    .filter((entry) => entry?.item && entry.item.status !== 'qualified')
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map((entry) => ({
+      canonical_id: entry.item.canonical_id,
+      name: entry.item.name,
+      source: entry.item.source,
+      status: entry.item.status,
+      score: entry.score
+    }));
+}
+
+function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, categoryContext, generatedAt }) {
+  const categories = [];
+  for (const [key, label] of categoryContext.labels.entries()) {
+    const bucket = categoryBuckets.get(key) || [];
+    let qualified = 0;
+    let passonce = 0;
+    let backlog = 0;
+    for (const entry of bucket) {
+      if (!entry?.item) continue;
+      if (entry.item.status === 'qualified') qualified += 1;
+      else if (entry.item.status === 'passonce') passonce += 1;
+      else backlog += 1;
+    }
+    const deficit = Math.max(0, CATEGORY_TARGET - qualified);
+    const coverageRatio = Number((qualified / Math.max(1, CATEGORY_TARGET)).toFixed(4));
+    categories.push({
+      key,
+      label,
+      qualified,
+      passonce,
+      backlog,
+      deficit,
+      coverage_ratio: coverageRatio,
+      top_examples: selectTopExamples(bucket)
+    });
+  }
+
+  const deficitCategories = categories
+    .filter((entry) => entry.deficit > 0)
+    .sort((a, b) => b.deficit - a.deficit || a.coverage_ratio - b.coverage_ratio || a.key.localeCompare(b.key))
+    .slice(0, FETCH_RECOMMEND_LIMIT);
+
+  const tasks = [];
+  for (const task of taskContext.tasks) {
+    const bucket = taskBuckets.get(task.key) || [];
+    let qualified = 0;
+    let passonce = 0;
+    let backlog = 0;
+    const sourceBreakdown = {
+      github: { qualified: 0, passonce: 0, backlog: 0 },
+      huggingface: { qualified: 0, passonce: 0, backlog: 0 }
+    };
+    for (const entry of bucket) {
+      if (!entry?.item) continue;
+      const stage = entry.item.status === 'qualified' ? 'qualified' : entry.item.status === 'passonce' ? 'passonce' : 'backlog';
+      if (stage === 'qualified') qualified += 1;
+      else if (stage === 'passonce') passonce += 1;
+      else backlog += 1;
+      const source = (entry.item.source || '').toLowerCase();
+      if (sourceBreakdown[source]) {
+        sourceBreakdown[source][stage] += 1;
+      }
+    }
+    const deficit = Math.max(0, TASK_TARGET - qualified);
+    const coverageRatio = Number((qualified / Math.max(1, TASK_TARGET)).toFixed(4));
+    const label = taskContext.labels.get(task.key) || task.label;
+    tasks.push({
+      key: task.key,
+      label,
+      qualified,
+      passonce,
+      backlog,
+      deficit,
+      coverage_ratio: coverageRatio,
+      source_breakdown: sourceBreakdown
+    });
+  }
+
+  const deficitTasks = tasks
+    .filter((entry) => entry.deficit > 0)
+    .sort((a, b) => b.deficit - a.deficit || a.coverage_ratio - b.coverage_ratio || a.key.localeCompare(b.key))
+    .slice(0, FETCH_RECOMMEND_LIMIT);
+
+  const githubRecommendations = deficitCategories.map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    deficit: entry.deficit,
+    qualified: entry.qualified,
+    passonce: entry.passonce,
+    backlog: entry.backlog,
+    coverage_ratio: entry.coverage_ratio,
+    top_examples: entry.top_examples
+  }));
+
+  const huggingfaceRecommendations = deficitTasks.map((entry) => ({
+    key: entry.key,
+    label: entry.label,
+    deficit: entry.deficit,
+    qualified: entry.qualified,
+    passonce: entry.passonce,
+    backlog: entry.backlog,
+    coverage_ratio: entry.coverage_ratio,
+    source_breakdown: entry.source_breakdown
+  }));
+
+  const sourceRecommendations = {
+    github: {
+      focus_categories: githubRecommendations,
+      suggested_actions: githubRecommendations.length
+        ? ['increase_github_fetch_window']
+        : []
+    },
+    huggingface: {
+      focus_tasks: huggingfaceRecommendations,
+      suggested_actions: huggingfaceRecommendations.length
+        ? ['increase_huggingface_fetch_window']
+        : []
+    }
+  };
+
+  const notes = [];
+  if (githubRecommendations.length) {
+    notes.push(
+      `GitHub categories needing coverage: ${githubRecommendations
+        .map((entry) => entry.key)
+        .join(', ')}`
+    );
+  }
+  if (huggingfaceRecommendations.length) {
+    notes.push(
+      `Hugging Face task gaps: ${huggingfaceRecommendations
+        .map((entry) => entry.key)
+        .join(', ')}`
+    );
+  }
+
+  return {
+    schema_version: SCHEMA_VERSION,
+    pipeline_version: PIPELINE_VERSION,
+    generated_at: generatedAt,
+    category_target: CATEGORY_TARGET,
+    task_target: TASK_TARGET,
+    deficit_categories: deficitCategories,
+    deficit_tasks: deficitTasks,
+    source_recommendations: sourceRecommendations,
+    taxonomy_refs: {
+      tasks: taskContext.taxonomyRef,
+      categories: categoryContext.taxonomyRef
+    },
+    notes
+  };
+}
+
 function buildTaskIndex(taskBuckets, context, generatedAt) {
   if (!taskBuckets.size) return null;
   const tasks = {};
@@ -1044,7 +1204,8 @@ async function main() {
       legacy_aliases: [],
       dates: [],
       state: [],
-      audit: []
+      audit: [],
+      planning: []
     };
     const checksumMap = new Map();
     const perSourceResults = [];
@@ -1186,16 +1347,41 @@ async function main() {
       // Build and write per-source corpus files with only qualified (LLM) items.
       // Also ensure summaries.es falls back to summaries.en when missing.
       try {
-        const qualifiedOnly = mergedItems.filter((it) => it.status === 'qualified').slice(0, CORPUS_LIMIT);
-        const corpusItems = qualifiedOnly.map((it) => {
+        const qualifiedOnly = mergedItems.filter((it) => it.status === 'qualified');
+        const corpusCandidates = qualifiedOnly.map((it) => {
           const copy = { ...it };
-          if (copy.summaries && typeof copy.summaries === 'object') {
-            if (!copy.summaries.es && copy.summaries.en) {
-              copy.summaries.es = copy.summaries.en;
-            }
+          if (copy.summaries && typeof copy.summaries === 'object' && copy.summaries.en) {
+            copy.summaries.es = copy.summaries.es || copy.summaries.en;
           }
           return copy;
         });
+        const corpusFile = resolveDataPath(source === 'github' ? 'corpus.gh.json' : 'corpus.hf.json');
+        const existingCorpus = (await readJsonIfExists(corpusFile)) || {};
+        const existingItems = Array.isArray(existingCorpus.items) ? existingCorpus.items : [];
+        const existingCanonicals = new Set(existingItems.map((item) => item?.canonical_id).filter(Boolean));
+        const newCanonicals = new Set(corpusCandidates.map((item) => item?.canonical_id).filter(Boolean));
+
+        const mergedOrdered = [];
+        const seenCanonicals = new Set();
+
+        for (const item of corpusCandidates) {
+          if (!item?.canonical_id) continue;
+          if (seenCanonicals.has(item.canonical_id)) continue;
+          seenCanonicals.add(item.canonical_id);
+          mergedOrdered.push(item);
+        }
+        for (const item of existingItems) {
+          if (!item?.canonical_id) continue;
+          if (seenCanonicals.has(item.canonical_id)) continue;
+          seenCanonicals.add(item.canonical_id);
+          mergedOrdered.push(item);
+        }
+
+        const pruned = Math.max(0, mergedOrdered.length - CORPUS_LIMIT);
+        const mergedItemsLimited = mergedOrdered.slice(0, CORPUS_LIMIT);
+        const newItemsCount = corpusCandidates.filter((item) => item?.canonical_id && !existingCanonicals.has(item.canonical_id)).length;
+        const replacedCount = corpusCandidates.length - newItemsCount;
+
         const corpusPayload = {
           schema_version: SCHEMA_VERSION,
           pipeline_version: PIPELINE_VERSION,
@@ -1204,15 +1390,35 @@ async function main() {
           source,
           generated_at: generatedAt,
           updated_at: generatedAt,
-          stats: { total: corpusItems.length },
-          items: corpusItems
+          stats: {
+            total: mergedItemsLimited.length,
+            new_items: newItemsCount,
+            replaced_items: replacedCount,
+            previous_total: existingItems.length,
+            pruned
+          },
+          items: mergedItemsLimited
         };
-        const corpusFile = resolveDataPath(source === 'github' ? 'corpus.gh.json' : 'corpus.hf.json');
+
         if (dryRun) {
-          info(`[qualify_publish] dry-run: would write ${relativeFromRoot(corpusFile)} with ${corpusItems.length} qualified items`);
+          info(
+            '[qualify_publish] dry-run: would merge %d qualified entries into %s (new=%d, replaced=%d, pruned=%d)',
+            corpusCandidates.length,
+            relativeFromRoot(corpusFile),
+            newItemsCount,
+            replacedCount,
+            pruned
+          );
         } else {
           await atomicWriteJson(corpusFile, corpusPayload, { pretty: true });
-          info(`[qualify_publish] wrote ${relativeFromRoot(corpusFile)} (qualified corpus)`);
+          info(
+            '[qualify_publish] merged %d qualified entries into %s (total=%d, new=%d, pruned=%d)',
+            corpusCandidates.length,
+            relativeFromRoot(corpusFile),
+            mergedItemsLimited.length,
+            newItemsCount,
+            pruned
+          );
         }
       } catch (e) {
         warn(`[qualify_publish] failed to write corpus for ${source}: ${e?.message || e}`);
@@ -1262,6 +1468,22 @@ async function main() {
       if (!dryRun && wrote) {
         await recordArtifact('indexes', categoryIndexPath);
       }
+    }
+
+    const coveragePlan = buildCoveragePriorities({
+      taskBuckets,
+      taskContext,
+      categoryBuckets,
+      categoryContext,
+      generatedAt
+    });
+    const coveragePlanPath = resolveDataPath('fetch_priorities.json');
+    const wroteCoveragePlan = await writeJsonArtifact('fetch_priorities', coveragePlanPath, coveragePlan, {
+      dryRun,
+      logLabel: 'fetch_priorities.json'
+    });
+    if (!dryRun && wroteCoveragePlan) {
+      await recordArtifact('planning', coveragePlanPath);
     }
 
     const legacyPayload = buildLegacyDailyPayload(allItems, dateKey, generatedAt, {
@@ -1451,7 +1673,21 @@ async function main() {
         last_classification_audit: classificationAudit,
         last_publish_checksums: checksumsForStateNotes,
         last_publish_artifacts: artifactGroupsForState,
-        last_hotlist_stats: hotlistStats
+        last_hotlist_stats: hotlistStats,
+        last_fetch_priorities_summary: {
+          categories: (coveragePlan?.deficit_categories || []).map((entry) => ({
+            key: entry.key,
+            deficit: entry.deficit,
+            qualified: entry.qualified,
+            passonce: entry.passonce
+          })),
+          tasks: (coveragePlan?.deficit_tasks || []).map((entry) => ({
+            key: entry.key,
+            deficit: entry.deficit,
+            qualified: entry.qualified,
+            passonce: entry.passonce
+          }))
+        }
       };
       await writeState({ counters, notes }, { runId });
       await recordArtifact('state', resolveDataPath('state.json'));
@@ -1472,6 +1708,13 @@ async function main() {
           legacy_items: legacyItemsCount,
           classification_counts: classificationMetrics,
           classification_audit: classificationAudit,
+          coverage_priorities: coveragePlan
+            ? {
+                categories: coveragePlan.deficit_categories.length,
+                tasks: coveragePlan.deficit_tasks.length,
+                recommended_actions: coveragePlan.source_recommendations
+              }
+            : null,
           checksums: finalChecksums,
           artifact_groups: finalArtifactGroups
         },

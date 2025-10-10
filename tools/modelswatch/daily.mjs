@@ -17,6 +17,70 @@ import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
 import { normalizeGithubItem, normalizeHFItem } from './lib/normalize.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const QUALIFIED_MIN_EN = Number(process.env.TRI_ACCEPT_MIN_EN || '220');
+const QUALIFIED_MIN_ZH = Number(process.env.TRI_ACCEPT_MIN_ZH || '150');
+
+function sanitizeText(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+async function readJsonIfExists(filePath) {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') return null;
+    throw err;
+  }
+}
+
+function isCacheEntryQualified(entry, pendingItem) {
+  if (!entry || entry.quality?.fallback) return false;
+  const summaries = entry.summaries || {
+    en: entry.summary_en || '',
+    zh: entry.summary_zh || ''
+  };
+  const enLen = sanitizeText(summaries.en).length;
+  const zhLen = sanitizeText(summaries.zh).length;
+  if (enLen < QUALIFIED_MIN_EN && zhLen < QUALIFIED_MIN_ZH) return false;
+  if (pendingItem?.promptHash && entry.promptHash && entry.promptHash !== pendingItem.promptHash) {
+    return false;
+  }
+  return true;
+}
+
+function filterNewItems(items, summaryModels, sourceLabel, stats) {
+  if (!Array.isArray(items) || !items.length) {
+    return { filtered: [], removedQualified: 0, removedDuplicates: 0 };
+  }
+  const seen = new Set();
+  const filtered = [];
+  let removedQualified = 0;
+  let removedDuplicates = 0;
+  for (const item of items) {
+    if (!item || !item.canonical_id) continue;
+    if (seen.has(item.canonical_id)) {
+      removedDuplicates += 1;
+      continue;
+    }
+    seen.add(item.canonical_id);
+    const cacheEntry = summaryModels[item.canonical_id];
+    if (isCacheEntryQualified(cacheEntry, item)) {
+      removedQualified += 1;
+      continue;
+    }
+    filtered.push(item);
+  }
+  if (stats) {
+    stats[sourceLabel] = {
+      removedQualified,
+      removedDuplicates,
+      kept: filtered.length,
+      original: items.length
+    };
+  }
+  return { filtered, removedQualified, removedDuplicates };
+}
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -178,6 +242,25 @@ async function main() {
   }
 
   await ensureDirectories();
+  const summaryCacheRaw = await readJsonIfExists(resolveDataPath('summary_cache.json'));
+  const summaryModels =
+    summaryCacheRaw && typeof summaryCacheRaw === 'object' && summaryCacheRaw.models && typeof summaryCacheRaw.models === 'object'
+      ? summaryCacheRaw.models
+      : {};
+  for (const key of Object.keys(summaryModels)) {
+    if (key.startsWith('huggingface:')) {
+      const alt = `hf:${key.slice(12)}`;
+      if (!summaryModels[alt]) {
+        summaryModels[alt] = summaryModels[key];
+      }
+    } else if (key.startsWith('hf:')) {
+      const alt = `huggingface:${key.slice(3)}`;
+      if (!summaryModels[alt]) {
+        summaryModels[alt] = summaryModels[key];
+      }
+    }
+  }
+  const dedupeStats = {};
 
   let lock = null;
   let runlog = null;
@@ -203,14 +286,42 @@ async function main() {
     const githubItemsRaw = results.find((r) => r.source === 'github')?.items || [];
     const hfItemsRaw = results.find((r) => r.source === 'hf')?.items || [];
 
-    const githubNormalized = githubItemsRaw.map((item) => normalizeGithubItem(item, generatedAt));
-    const hfNormalized = hfItemsRaw.map((item) => normalizeHFItem(item, generatedAt));
+    const githubNormalizedRaw = githubItemsRaw.map((item) => normalizeGithubItem(item, generatedAt));
+    const hfNormalizedRaw = hfItemsRaw.map((item) => normalizeHFItem(item, generatedAt));
+
+    const { filtered: githubNormalized, removedQualified: ghRemovedQualified, removedDuplicates: ghRemovedDuplicates } =
+      filterNewItems(githubNormalizedRaw, summaryModels, 'github', dedupeStats);
+    const { filtered: hfNormalized, removedQualified: hfRemovedQualified, removedDuplicates: hfRemovedDuplicates } =
+      filterNewItems(hfNormalizedRaw, summaryModels, 'huggingface', dedupeStats);
+
+    if (ghRemovedQualified || ghRemovedDuplicates) {
+      info(
+        '[daily] github dedupe removed %d qualified & %d duplicate entries (kept %d/%d)',
+        ghRemovedQualified,
+        ghRemovedDuplicates,
+        githubNormalized.length,
+        githubNormalizedRaw.length
+      );
+    }
+    if (hfRemovedQualified || hfRemovedDuplicates) {
+      info(
+        '[daily] huggingface dedupe removed %d qualified & %d duplicate entries (kept %d/%d)',
+        hfRemovedQualified,
+        hfRemovedDuplicates,
+        hfNormalized.length,
+        hfNormalizedRaw.length
+      );
+    }
 
     const metrics = {
       github_total: githubNormalized.length,
       github_pending: githubNormalized.filter((i) => i.status === 'pending').length,
+      github_removed_qualified: ghRemovedQualified,
+      github_removed_duplicates: ghRemovedDuplicates,
       hf_total: hfNormalized.length,
-      hf_pending: hfNormalized.filter((i) => i.status === 'pending').length
+      hf_pending: hfNormalized.filter((i) => i.status === 'pending').length,
+      hf_removed_qualified: hfRemovedQualified,
+      hf_removed_duplicates: hfRemovedDuplicates
     };
 
     const rawCorpusGh = buildRawCorpus(githubNormalized, 'github', runId, generatedAt);
@@ -246,7 +357,8 @@ async function main() {
         ...currentState.notes,
         last_daily_date: dateKey,
         last_daily_run_id: runId,
-        last_daily_generated_at: generatedAt
+        last_daily_generated_at: generatedAt,
+        last_daily_dedupe: dedupeStats
       };
       await writeState({ counters, notes }, { runId });
       await runlog.append('success', {
