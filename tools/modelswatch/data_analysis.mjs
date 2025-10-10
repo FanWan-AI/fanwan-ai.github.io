@@ -3,7 +3,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
-import { resolveDataPath } from './lib/paths.mjs';
+import { resolveDataPath, resolveTempDataPath } from './lib/paths.mjs';
 import { atomicWriteJson, atomicWriteFile } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
 import { PipelineLock } from './lib/lock.mjs';
@@ -68,7 +68,7 @@ async function readJsonIfExists(filePath) {
 }
 
 async function listDataFiles() {
-  const dataDir = resolveDataPath('.');
+  const dataDir = resolveTempDataPath();
   try {
     return await fs.readdir(dataDir);
   } catch {
@@ -378,7 +378,7 @@ async function main() {
   }
 
   try {
-    const pendingPath = resolveDataPath(`${dateKey}_pending_summaries.json`);
+    const pendingPath = resolveTempDataPath(`${dateKey}_pending_summaries.json`);
     const pendingQueue = (await readJsonIfExists(pendingPath)) || { items: [] };
     const pendingMap = new Map();
     if (Array.isArray(pendingQueue.items)) {
@@ -409,9 +409,9 @@ async function main() {
       const suffix = resolveSourceSuffix(source);
       const draftId = source === 'huggingface' ? 'hf' : source;
       const draftPath = resolveDataPath('daily', `${dateKey}.${draftId}.draft.json`);
-      const unqualifiedPath = resolveDataPath(`${dateKey}_unqualified_${suffix}.json`);
-      const passoncePath = resolveDataPath(`daily/${dateKey}.passonce_${suffix}.json`);
-      const qualifiedPath = resolveDataPath(`${dateKey}_qualified_${suffix}.json`);
+      const unqualifiedPath = resolveTempDataPath(`${dateKey}_unqualified_${suffix}.json`);
+      const passoncePath = resolveDataPath('daily', `${dateKey}.passonce_${suffix}.json`);
+      const qualifiedPath = resolveTempDataPath(`${dateKey}_qualified_${suffix}.json`);
 
       const draftData = await readJsonIfExists(draftPath);
       if (!draftData || !Array.isArray(draftData.items)) {
@@ -560,7 +560,7 @@ async function main() {
     if (sources.length) {
       for (const source of sources) {
         const suffix = resolveSourceSuffix(source);
-        const unqualifiedPath = resolveDataPath(`${dateKey}_unqualified_${suffix}.json`);
+        const unqualifiedPath = resolveTempDataPath(`${dateKey}_unqualified_${suffix}.json`);
         const payload = await readJsonIfExists(unqualifiedPath);
         if (!payload || !Array.isArray(payload.items)) continue;
         for (const item of payload.items) {
@@ -637,8 +637,9 @@ async function main() {
         },
         artifacts: [
           'daily_tasklist.json',
-          ...sourceResults.map((result) => `daily/${dateKey}.passonce_${resolveSourceSuffix(result.source)}.json`),
-          ...sourceResults.map((result) => `${dateKey}_qualified_${resolveSourceSuffix(result.source)}.json`),
+          ...sourceResults.map((result) => path.join('daily', `${dateKey}.passonce_${resolveSourceSuffix(result.source)}.json`)),
+          ...sourceResults.map((result) => path.join('daily_temp_data', `${dateKey}_qualified_${resolveSourceSuffix(result.source)}.json`)),
+          ...sourceResults.map((result) => path.join('daily_temp_data', `${dateKey}_unqualified_${resolveSourceSuffix(result.source)}.json`)),
           ...corpusWrites
         ]
       });

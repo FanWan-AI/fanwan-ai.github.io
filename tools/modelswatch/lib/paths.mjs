@@ -6,9 +6,14 @@ export const ROOT_DIR = path.resolve(__dirname, '../../..');
 export const MODEL_SWATCH_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch');
 export const AUDIT_DIR = path.join(ROOT_DIR, 'tools/modelswatch/audit');
 export const SCHEMA_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch/schemas');
+export const DAILY_TEMP_DIR = path.join(MODEL_SWATCH_DIR, 'daily_temp_data');
 
 export function resolveDataPath(...segments) {
   return path.join(MODEL_SWATCH_DIR, ...segments);
+}
+
+export function resolveTempDataPath(...segments) {
+  return path.join(DAILY_TEMP_DIR, ...segments);
 }
 
 export function resolveAuditPath(...segments) {

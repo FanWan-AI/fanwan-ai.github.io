@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 import { Buffer } from 'node:buffer';
 import { debug, info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
-import { resolveDataPath } from './lib/paths.mjs';
+import { resolveDataPath, resolveTempDataPath } from './lib/paths.mjs';
 import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
 import { atomicWriteJson } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
@@ -60,20 +60,20 @@ async function resolvePendingPath(args) {
   }
   const dateArg = args.date || args.d;
   if (dateArg) {
-    const candidate = resolveDataPath(`${dateArg}_pending_summaries.json`);
+  const candidate = resolveTempDataPath(`${dateArg}_pending_summaries.json`);
     if (await fileExists(candidate)) {
       return candidate;
     }
     throw new Error(`Pending queue not found for date ${dateArg}`);
   }
-  const dataDir = resolveDataPath('.');
-  const entries = await fs.readdir(dataDir).catch(() => []);
+  const tempDir = resolveTempDataPath();
+  const entries = await fs.readdir(tempDir).catch(() => []);
   const dated = entries.filter((name) => /_pending_summaries\.json$/.test(name)).sort();
   if (dated.length) {
     const latest = dated[dated.length - 1];
     return resolveDataPath(latest);
   }
-  const fallback = resolveDataPath('pending_summaries.json');
+  const fallback = resolveTempDataPath('pending_summaries.json');
   if (await fileExists(fallback)) {
     warn(
       '[tri_worker] legacy pending_summaries.json detected; run the v6 daily pipeline to generate dated queues.'
@@ -162,8 +162,8 @@ async function loadContextIndex(date) {
     }
   }
 
-  const unqualifiedGh = resolveDataPath(`${date}_unqualified_gh.json`);
-  const unqualifiedHf = resolveDataPath(`${date}_unqualified_hf.json`);
+  const unqualifiedGh = resolveTempDataPath(`${date}_unqualified_gh.json`);
+  const unqualifiedHf = resolveTempDataPath(`${date}_unqualified_hf.json`);
   await ingest(unqualifiedGh, createContextFromUnqualified, 'unqualified_gh');
   await ingest(unqualifiedHf, createContextFromUnqualified, 'unqualified_hf');
 

@@ -12,7 +12,7 @@ import { RunlogWriter } from './lib/runlog.mjs';
 import { readState, writeState } from './lib/state.mjs';
 import { atomicWriteJson } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
-import { resolveDataPath } from './lib/paths.mjs';
+import { resolveDataPath, resolveTempDataPath } from './lib/paths.mjs';
 import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
 import { normalizeGithubItem, normalizeHFItem } from './lib/normalize.mjs';
 
@@ -46,6 +46,7 @@ function selectSources(args) {
 async function ensureDirectories() {
   await fs.mkdir(resolveDataPath('daily'), { recursive: true });
   await fs.mkdir(resolveDataPath('index'), { recursive: true });
+  await fs.mkdir(resolveTempDataPath(), { recursive: true }).catch(() => {});
   await fs.mkdir(path.join(__dirname, 'audit'), { recursive: true }).catch(() => {});
 }
 
@@ -229,9 +230,9 @@ async function main() {
     await writeArtifact('raw_corpus', resolveDataPath('raw_corpus.hf.json'), rawCorpusHf, { dryRun });
     await writeArtifact('daily_draft', resolveDataPath('daily', `${dateKey}.github.draft.json`), draftGh, { dryRun });
     await writeArtifact('daily_draft', resolveDataPath('daily', `${dateKey}.hf.draft.json`), draftHf, { dryRun });
-    await writeArtifact('unqualified', resolveDataPath(`${dateKey}_unqualified_gh.json`), unqualifiedGh, { dryRun });
-    await writeArtifact('unqualified', resolveDataPath(`${dateKey}_unqualified_hf.json`), unqualifiedHf, { dryRun });
-    await writeArtifact('pending_summaries', resolveDataPath(`${dateKey}_pending_summaries.json`), pending, { dryRun });
+  await writeArtifact('unqualified', resolveTempDataPath(`${dateKey}_unqualified_gh.json`), unqualifiedGh, { dryRun });
+  await writeArtifact('unqualified', resolveTempDataPath(`${dateKey}_unqualified_hf.json`), unqualifiedHf, { dryRun });
+  await writeArtifact('pending_summaries', resolveTempDataPath(`${dateKey}_pending_summaries.json`), pending, { dryRun });
 
     if (!dryRun) {
       const currentState = await readState();
@@ -256,9 +257,9 @@ async function main() {
           'raw_corpus.hf.json',
           `${dateKey}.github.draft.json`,
           `${dateKey}.hf.draft.json`,
-          `${dateKey}_unqualified_gh.json`,
-          `${dateKey}_unqualified_hf.json`,
-          `${dateKey}_pending_summaries.json`
+          path.join('daily_temp_data', `${dateKey}_unqualified_gh.json`),
+          path.join('daily_temp_data', `${dateKey}_unqualified_hf.json`),
+          path.join('daily_temp_data', `${dateKey}_pending_summaries.json`)
         ]
       });
     } else {
