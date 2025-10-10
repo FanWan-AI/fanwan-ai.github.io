@@ -14,17 +14,27 @@ function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '
 const HF_TOKEN = process.env.HF_TOKEN || '';
 // Configurable HF fetch limit via repository Variables; default trimmed to 40 for faster iterations
 const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '40', 10) || 40;
+
+let headerLogged = false;
+function buildHeaders({ log = true } = {}) {
+  const headers = { 'User-Agent': 'modelswatch/1.0' };
+  if (HF_TOKEN) {
+    headers.Authorization = `Bearer ${HF_TOKEN}`;
+    if (log && !headerLogged) {
+      debug('Using HF_TOKEN for authenticated request');
+    }
+  } else if (log && !headerLogged) {
+    debug('No HF_TOKEN provided; using anonymous request');
+  }
+  if (log) headerLogged = true;
+  return headers;
+}
+
 async function hfList(){
   // Public browse endpoint (documented): sort=downloads, limit
   // Increase HF fetch limit to include more top models for the hotlist (was 60)
   const url = `https://huggingface.co/api/models?sort=downloads&direction=-1&limit=${HF_FETCH_LIMIT}`;
-  const headers = { 'User-Agent': 'modelswatch/1.0' };
-  if (HF_TOKEN) {
-    headers.Authorization = `Bearer ${HF_TOKEN}`;
-    debug('Using HF_TOKEN for authenticated request');
-  } else {
-    debug('No HF_TOKEN provided; using anonymous request');
-  }
+  const headers = buildHeaders({ log: true });
   let res;
   try {
     res = await fetch(url, { headers });
@@ -71,7 +81,26 @@ function scoreModel(it){
   return dl*0.002 + likes*0.5;
 }
 
-export async function fetchHFTop(){
+async function fetchTargetModel(id) {
+  const headers = buildHeaders({ log: false });
+  try {
+    const res = await fetch(`https://huggingface.co/api/models/${encodeURIComponent(id)}`, { headers });
+    if (!res.ok) {
+      warn('HF targeted fetch failed status %s for %s', res.status, id);
+      return null;
+    }
+    const data = await res.json();
+    if (!data || data.gated) {
+      return null;
+    }
+    return mapModel(data);
+  } catch (err) {
+    warn('HF targeted fetch error for %s: %s', id, err?.message || err);
+    return null;
+  }
+}
+
+export async function fetchHFTop(options = {}){
   ensureDirs();
   let arr = [];
   try { arr = await hfList(); }
@@ -80,7 +109,36 @@ export async function fetchHFTop(){
     try{ const prev = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'top_hf.json'),'utf8')); if(prev && Array.isArray(prev.items)) return prev.items; }catch{}
     return [];
   }
-  const items = (arr||[]).filter(m => !m.gated).map(mapModel);
+  const baseLimit = HF_FETCH_LIMIT;
+  let desired = baseLimit;
+  if (Number.isFinite(options.limit)) {
+    desired = Math.max(1, Math.round(options.limit));
+  } else if (Number.isFinite(options.limitMultiplier)) {
+    desired = Math.max(1, Math.round(baseLimit * options.limitMultiplier));
+  }
+  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : 200);
+  desired = Math.max(baseLimit, desired);
+
+  const items = (arr||[])
+    .filter(m => !m.gated)
+    .slice(0, desired)
+    .map(mapModel)
+    .filter(Boolean);
+
+  const seen = new Set(items.map((it) => it.id));
+  const targeted = Array.isArray(options.targetedModels) ? options.targetedModels : [];
+  if (targeted.length) {
+    const limitedTargets = targeted.slice(0, options.targetedLimit || 20);
+    for (const modelId of limitedTargets) {
+      if (!modelId || seen.has(modelId)) continue;
+      const model = await fetchTargetModel(modelId);
+      if (model) {
+        seen.add(model.id);
+        items.push(model);
+      }
+    }
+  }
+
   items.forEach(it=>{ it.score = scoreModel(it); });
   return items;
 }

@@ -15,6 +15,7 @@ import { validateArtifact } from './lib/schema.mjs';
 import { resolveDataPath, resolveTempDataPath } from './lib/paths.mjs';
 import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
 import { normalizeGithubItem, normalizeHFItem } from './lib/normalize.mjs';
+import { loadFetchPlan, computeFetchAdjustments, summarizeAdjustments } from './lib/plan.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUALIFIED_MIN_EN = Number(process.env.TRI_ACCEPT_MIN_EN || '220');
@@ -242,6 +243,18 @@ async function main() {
   }
 
   await ensureDirectories();
+  const fetchPlan = await loadFetchPlan();
+  const planAdjustments = computeFetchAdjustments(fetchPlan);
+  const planSummary = summarizeAdjustments(planAdjustments);
+  if (planSummary) {
+    info(
+      '[daily] fetch priorities applied: github deficit=%d targets=%d, hf deficit=%d targets=%d',
+      planSummary.github.deficit,
+      planSummary.github.targeted,
+      planSummary.huggingface.deficit,
+      planSummary.huggingface.targeted
+    );
+  }
   const summaryCacheRaw = await readJsonIfExists(resolveDataPath('summary_cache.json'));
   const summaryModels =
     summaryCacheRaw && typeof summaryCacheRaw === 'object' && summaryCacheRaw.models && typeof summaryCacheRaw.models === 'object'
@@ -276,10 +289,22 @@ async function main() {
   try {
     const fetchJobs = [];
     if (sources.includes('github')) {
-      fetchJobs.push(fetchGithubTop().then((items) => ({ source: 'github', items })));
+      fetchJobs.push(
+        fetchGithubTop({
+          limitMultiplier: planAdjustments.github.limitMultiplier,
+          targetedRepos: planAdjustments.github.targetedRepos,
+          targetedLimit: 12
+        }).then((items) => ({ source: 'github', items }))
+      );
     }
     if (sources.includes('hf')) {
-      fetchJobs.push(fetchHFTop().then((items) => ({ source: 'hf', items })));
+      fetchJobs.push(
+        fetchHFTop({
+          limitMultiplier: planAdjustments.huggingface.limitMultiplier,
+          targetedModels: planAdjustments.huggingface.targetedModels,
+          targetedLimit: 20
+        }).then((items) => ({ source: 'hf', items }))
+      );
     }
     const results = await Promise.all(fetchJobs);
 
@@ -321,7 +346,11 @@ async function main() {
       hf_total: hfNormalized.length,
       hf_pending: hfNormalized.filter((i) => i.status === 'pending').length,
       hf_removed_qualified: hfRemovedQualified,
-      hf_removed_duplicates: hfRemovedDuplicates
+      hf_removed_duplicates: hfRemovedDuplicates,
+      plan_github_multiplier: planAdjustments.github.limitMultiplier,
+      plan_github_targets: planAdjustments.github.targetedRepos.length,
+      plan_hf_multiplier: planAdjustments.huggingface.limitMultiplier,
+      plan_hf_targets: planAdjustments.huggingface.targetedModels.length
     };
 
     const rawCorpusGh = buildRawCorpus(githubNormalized, 'github', runId, generatedAt);
@@ -358,7 +387,8 @@ async function main() {
         last_daily_date: dateKey,
         last_daily_run_id: runId,
         last_daily_generated_at: generatedAt,
-        last_daily_dedupe: dedupeStats
+        last_daily_dedupe: dedupeStats,
+        last_daily_fetch_plan: planSummary || null
       };
       await writeState({ counters, notes }, { runId });
       await runlog.append('success', {
@@ -372,7 +402,8 @@ async function main() {
           path.join('daily_temp_data', `${dateKey}_unqualified_gh.json`),
           path.join('daily_temp_data', `${dateKey}_unqualified_hf.json`),
           path.join('daily_temp_data', `${dateKey}_pending_summaries.json`)
-        ]
+        ],
+        plan_summary: planSummary || undefined
       });
     } else {
       info('[daily] dry-run completed');

@@ -892,9 +892,14 @@ function classifyCategories(item, context, metrics) {
   return top;
 }
 
-function selectTopExamples(bucket, limit = 3) {
+function selectTopExamples(bucket, { limit = 3, allowedSources = null } = {}) {
   return bucket
     .filter((entry) => entry?.item && entry.item.status !== 'qualified')
+    .filter((entry) => {
+      if (!allowedSources || !allowedSources.length) return true;
+      const src = (entry.item.source || '').toLowerCase();
+      return allowedSources.includes(src);
+    })
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map((entry) => ({
@@ -921,6 +926,7 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     }
     const deficit = Math.max(0, CATEGORY_TARGET - qualified);
     const coverageRatio = Number((qualified / Math.max(1, CATEGORY_TARGET)).toFixed(4));
+    const topExamples = selectTopExamples(bucket, { allowedSources: ['github'] });
     categories.push({
       key,
       label,
@@ -929,7 +935,7 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
       backlog,
       deficit,
       coverage_ratio: coverageRatio,
-      top_examples: selectTopExamples(bucket)
+      top_examples: topExamples
     });
   }
 
@@ -962,6 +968,7 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     const deficit = Math.max(0, TASK_TARGET - qualified);
     const coverageRatio = Number((qualified / Math.max(1, TASK_TARGET)).toFixed(4));
     const label = taskContext.labels.get(task.key) || task.label;
+    const topExamples = selectTopExamples(bucket, { allowedSources: ['huggingface'] });
     tasks.push({
       key: task.key,
       label,
@@ -970,7 +977,8 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
       backlog,
       deficit,
       coverage_ratio: coverageRatio,
-      source_breakdown: sourceBreakdown
+      source_breakdown: sourceBreakdown,
+      top_examples: topExamples
     });
   }
 
@@ -998,7 +1006,8 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     passonce: entry.passonce,
     backlog: entry.backlog,
     coverage_ratio: entry.coverage_ratio,
-    source_breakdown: entry.source_breakdown
+    source_breakdown: entry.source_breakdown,
+    top_examples: entry.top_examples
   }));
 
   const sourceRecommendations = {

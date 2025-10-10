@@ -2,7 +2,7 @@
 /* Fetch trending/open-source GitHub repos and return normalized items. */
 import fs from 'fs';
 import path from 'path';
-import { debug, info } from './log.js';
+import { debug, info, warn } from './log.js';
 
 const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data', 'ai', 'modelswatch');
@@ -47,14 +47,66 @@ function scoreRepo(r){
   return stars*1 + forks*0.2 + recency*100;
 }
 
-export async function fetchGithubTop(){
+function mapGithubRepo(r){
+  if (!r || !r.full_name) return null;
+  return {
+    id: r.full_name,
+    source: 'github',
+    name: r.name,
+    url: r.html_url,
+    license: (r.license && r.license.spdx_id && r.license.spdx_id !== 'NOASSERTION') ? r.license.spdx_id : 'N/A',
+    lang: r.language || 'N/A',
+    tags: Array.isArray(r.topics) ? r.topics : [],
+    categories: { capabilities: [], scenes: [], lifecycle: [] },
+    stats: {
+      stars: r.stargazers_count || 0,
+      forks: r.forks_count || 0,
+      issues: r.open_issues_count || 0
+    },
+    score: 0,
+    timeline: { t: [], stars: [], downloads: [] },
+    summary: r.description || '',
+    updated_at: r.updated_at || r.pushed_at || r.created_at || iso(Date.now()),
+  };
+}
+
+function coerceRepoSlug(value) {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('github:')) {
+    return trimmed.slice('github:'.length);
+  }
+  return trimmed;
+}
+
+async function fetchTargetRepo(slug) {
+  try {
+    const res = await gh(`https://api.github.com/repos/${slug}`);
+    if (!res || res.status !== 200 || !res.data) return null;
+    return mapGithubRepo(res.data);
+  } catch (err) {
+    warn('GitHub targeted fetch failed for %s: %s', slug, err?.message || err);
+    return null;
+  }
+}
+
+export async function fetchGithubTop(options = {}){
   ensureDirs();
   // Search top repos updated in last 365 days, with license, many stars
   const since = (new Date(Date.now()-365*86400000)).toISOString().slice(0,10);
   // Simpler query to avoid 422: remove license OR filters
   const q1 = encodeURIComponent(`stars:>500 pushed:>=${since}`);
   // Support requesting more than 100 items by paginating when MODELSWATCH_GH_PER_PAGE > 100
-  const desired = GH_TOTAL_LIMIT;
+  const baseLimit = GH_TOTAL_LIMIT;
+  let desired = baseLimit;
+  if (Number.isFinite(options.limit)) {
+    desired = Math.max(1, Math.round(options.limit));
+  } else if (Number.isFinite(options.limitMultiplier)) {
+    desired = Math.max(1, Math.round(baseLimit * options.limitMultiplier));
+  }
+  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : 200);
+  desired = Math.max(baseLimit, desired);
   const perPage = GH_PER_PAGE; // <= 100
   const pages = Math.max(1, Math.ceil(desired / perPage));
   // GitHub Search API only returns up to the first 1000 results (10 pages of 100)
@@ -107,28 +159,32 @@ export async function fetchGithubTop(){
   const items = (allItems||[])
     .filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION')
     .slice(0, desired)
-    .map(r=>({
-    id: r.full_name,
-    source: 'github',
-    name: r.name,
-    url: r.html_url,
-    license: (r.license&&r.license.spdx_id)||'N/A',
-    lang: r.language||'N/A',
-    tags: r.topics||[],
-    categories: { capabilities: [], scenes: [], lifecycle: [] },
-    stats: {
-      stars: r.stargazers_count||0,
-      forks: r.forks_count||0,
-      issues: r.open_issues_count||0
-    },
-    score: 0,
-    timeline: { t: [], stars: [], downloads: [] },
-    summary: r.description||'',
-    updated_at: r.updated_at||r.pushed_at||r.created_at||iso(Date.now()),
-  }));
+    .map(mapGithubRepo)
+    .filter(Boolean);
 
-  // Score baseline now; 7d delta filled later by score.js using snapshots
-  items.forEach(it=>{ it.score = scoreRepo({ stargazers_count: it.stats.stars, forks_count: it.stats.forks, pushed_at: it.updated_at }); });
+  const repoIdSet = new Set(items.map((it) => it.id));
+  const targeted = Array.isArray(options.targetedRepos) ? options.targetedRepos : [];
+  if (targeted.length) {
+    const limitedTargets = targeted.slice(0, options.targetedLimit || 12);
+    for (const target of limitedTargets) {
+      const slug = coerceRepoSlug(target);
+      if (!slug || repoIdSet.has(slug)) continue;
+      const repo = await fetchTargetRepo(slug);
+      if (repo && repo.license && repo.license !== 'N/A') {
+        repoIdSet.add(repo.id);
+        items.push(repo);
+        await sleep(200);
+      }
+    }
+  }
+
+  items.forEach((it)=>{
+    it.score = scoreRepo({
+      stargazers_count: it.stats.stars,
+      forks_count: it.stats.forks,
+      pushed_at: it.updated_at
+    });
+  });
 
   return items;
 }
