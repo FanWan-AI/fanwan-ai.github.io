@@ -20,6 +20,7 @@ const CATEGORY_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_LIMIT || '3');
 const CATEGORY_INDEX_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_INDEX_LIMIT || '500');
 const MAX_DATES = Number(process.env.MODELSWATCH_MAX_DATES || '120');
 const HOTLIST_LIMIT = Number(process.env.MODELSWATCH_HOTLIST_LIMIT || '50');
+const CORPUS_LIMIT = Number(process.env.MODELSWATCH_CORPUS_LIMIT || '1000');
 
 const PROJECT_CATEGORY_RULES = {
   framework_core: ['framework', 'trainer', 'engine', 'torch', 'jax', 'core'],
@@ -1010,6 +1011,41 @@ async function main() {
       if (!dryRun) {
         if (wroteRelease) await recordArtifact('daily', releasePath);
         if (wroteAlias) await recordArtifact('daily_aliases', aliasPath);
+      }
+
+      // Build and write per-source corpus files with only qualified (LLM) items.
+      // Also ensure summaries.es falls back to summaries.en when missing.
+      try {
+        const qualifiedOnly = mergedItems.filter((it) => it.status === 'qualified').slice(0, CORPUS_LIMIT);
+        const corpusItems = qualifiedOnly.map((it) => {
+          const copy = { ...it };
+          if (copy.summaries && typeof copy.summaries === 'object') {
+            if (!copy.summaries.es && copy.summaries.en) {
+              copy.summaries.es = copy.summaries.en;
+            }
+          }
+          return copy;
+        });
+        const corpusPayload = {
+          schema_version: SCHEMA_VERSION,
+          pipeline_version: PIPELINE_VERSION,
+          version: 1,
+          date: dateKey,
+          source,
+          generated_at: generatedAt,
+          updated_at: generatedAt,
+          stats: { total: corpusItems.length },
+          items: corpusItems
+        };
+        const corpusFile = resolveDataPath(source === 'github' ? 'corpus.gh.json' : 'corpus.hf.json');
+        if (dryRun) {
+          info(`[qualify_publish] dry-run: would write ${relativeFromRoot(corpusFile)} with ${corpusItems.length} qualified items`);
+        } else {
+          await atomicWriteJson(corpusFile, corpusPayload, { pretty: true });
+          info(`[qualify_publish] wrote ${relativeFromRoot(corpusFile)} (qualified corpus)`);
+        }
+      } catch (e) {
+        warn(`[qualify_publish] failed to write corpus for ${source}: ${e?.message || e}`);
       }
 
       perSourceResults.push({

@@ -1986,47 +1986,22 @@
     }
 
     async function loadTopGH(){
-      // Use snapshot sidecar as authoritative source when available (B option)
+      // Primary: corpus.gh.json (qualified, high-quality bilingual summaries)
       try{
-        const snapDate = await latestSnapshotDate();
-        if(snapDate){
-          try{
-            const ghPath = `../data/ai/modelswatch/snapshots/${snapDate}/gh_summaries.json`;
-            const snap = await fetch(ghPath,{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null);
-            if(snap?.items){
-              // detect placeholder-heavy snapshots generated when LLM unavailable
-              const total = snap.items.length;
-              const ph = (snap.items||[]).filter(it=>{
-                const s = (it.summary||it.summary_zh||it.summary_en||'').toString();
-                return /自动摘要（占位|占位:无法连接|占位:空响应|placeholder/i.test(s);
-              }).length;
-              const phRatio = total? (ph/total) : 0;
-              // allow runtime override via config.json (data/ai/modelswatch/config.json)
-              let threshold = 0.5;
-              try{
-                const cfg = await fetch('../data/ai/modelswatch/config.json', { cache: 'no-store' }).then(r=> r.ok? r.json() : null).catch(()=>null);
-                if(cfg && typeof cfg.snapshot_placeholder_threshold === 'number') threshold = cfg.snapshot_placeholder_threshold;
-              }catch(e){}
-              if(phRatio <= threshold){
-                const arr = (snap.items||[]).map(it=> shallowNormalize({...it, __hot:'projects'}));
-                items = arr;
-                window.__mw_hot_grouping = 'projects';
-                window.__mw_updated_at = computeUpdatedAt(snap?.updated_at || snap?.generated_at, arr);
-                try{ setDataSourceLabel('Snapshot', snapDate); }catch{}
-                // snapshot loaded
-                return;
-              } else {
-                console.warn('[mw] snapshot', snapDate, 'appears placeholder-heavy (ratio=' + phRatio.toFixed(2) + '), skipping');
-              }
-            }
-          }catch{}
+        const corp = await fetch('../data/ai/modelswatch/corpus.gh.json', { cache: 'no-store' }).then(r=> r.ok? r.json(): null).catch(()=>null);
+        if(corp?.items){
+          const arr = (corp.items||[]).map(it=> shallowNormalize({ ...it, __hot:'projects' }));
+          items = arr;
+          window.__mw_hot_grouping = '';
+          window.__mw_updated_at = computeUpdatedAt(corp?.updated_at || corp?.generated_at, arr);
+          try{ setDataSourceLabel('Corpus', 'corpus.gh.json'); }catch{}
+          return;
         }
       }catch{}
-      // Fallback: prefer engineering hotlist if snapshot missing or skipped
+      // Fallback: projects_hotlist.json
       try{
-  const hot = await fetch('../data/ai/modelswatch/projects_hotlist.json',{cache:'no-store'}).then(r=>r.json());
+        const hot = await fetch('../data/ai/modelswatch/projects_hotlist.json',{cache:'no-store'}).then(r=>r.json());
         if(hot?.by_category){
-          if(typeof hot.version==='number' && hot.version!==1){ console.warn('[mw] projects_hotlist version mismatch', hot.version); }
           const out=[]; const multiCount={};
           for(const [cat,list] of Object.entries(hot.by_category)){
             (list||[]).forEach(it=>{ out.push(shallowNormalize({...it,__group:cat,__hot:'projects'})); multiCount[it.id]=(multiCount[it.id]||0)+1; });
@@ -2035,85 +2010,36 @@
           items = out; window.__mw_hot_grouping='projects';
           window.__mw_updated_at = computeUpdatedAt(hot?.updated_at, out);
           try{ setDataSourceLabel('Hotlist', 'projects_hotlist.json'); }catch{}
-          // hotlist loaded
           return;
         }
-      }catch(e){ /* fallback */ }
-      // Last resort: top_github with best-effort enrichment from snapshot if present
+      }catch{}
+      // Last fallback: top_github.json
       try{
-  const g = await fetch('../data/ai/modelswatch/top_github.json',{cache:'no-store'}).then(r=>r.json());
-        let arr = (g?.items||[]).map(shallowNormalize);
-        try{
-          const snapDate = await latestSnapshotDate();
-          if(snapDate){
-            const ghPath = `../data/ai/modelswatch/snapshots/${snapDate}/gh_summaries.json`;
-            const snap = await fetch(ghPath,{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null);
-            if(snap?.items){
-              const map = new Map();
-              snap.items.forEach(it=> map.set(it.id, it));
-              arr = arr.map(it=>{
-                const m = map.get(it.id);
-                if(m){
-                  return { ...it,
-                    summary: m.summary || it.summary || '',
-                    summary_en: m.summary_en || it.summary_en || it.summary || '',
-                    summary_zh: m.summary_zh || it.summary_zh || '',
-                    summary_es: m.summary_es || it.summary_es || ''
-                  };
-                }
-                return it;
-              });
-            }
-          }
-        }catch{}
-  items = arr; window.__mw_hot_grouping='';
-  window.__mw_updated_at = computeUpdatedAt(g?.updated_at, arr);
-  try{ setDataSourceLabel('Top List', 'top_github.json'); }catch{}
-  // top_github fallback loaded
+        const g = await fetch('../data/ai/modelswatch/top_github.json',{cache:'no-store'}).then(r=>r.json());
+        const arr = (g?.items||[]).map(shallowNormalize);
+        items = arr; window.__mw_hot_grouping='';
+        window.__mw_updated_at = computeUpdatedAt(g?.updated_at, arr);
+        try{ setDataSourceLabel('Top List', 'top_github.json'); }catch{}
       }catch{ items=[]; window.__mw_updated_at=''; window.__mw_hot_grouping=''; }
     }
 
     async function loadTopHF(){
-      // Use snapshot sidecar as authoritative source when available (B option)
+      // Primary: corpus.hf.json (qualified, high-quality bilingual summaries; es falls back to en)
       try{
-        const snapDate = await latestSnapshotDate();
-        if(snapDate){
-          try{
-            const hfPath = `../data/ai/modelswatch/snapshots/${snapDate}/hf_summaries.json`;
-            const snap = await fetch(hfPath,{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null);
-            if(snap?.items){
-              // detect placeholder-heavy snapshots generated when LLM unavailable
-              const total = snap.items.length;
-              const ph = (snap.items||[]).filter(it=>{
-                const s = (it.summary||it.summary_zh||it.summary_en||'').toString();
-                return /自动摘要（占位|占位:无法连接|占位:空响应|placeholder/i.test(s);
-              }).length;
-              const phRatio = total? (ph/total) : 0;
-              // allow runtime override via config.json (data/ai/modelswatch/config.json)
-              let threshold = 0.5;
-              try{
-                const cfg = await fetch('../data/ai/modelswatch/config.json', { cache: 'no-store' }).then(r=> r.ok? r.json() : null).catch(()=>null);
-                if(cfg && typeof cfg.snapshot_placeholder_threshold === 'number') threshold = cfg.snapshot_placeholder_threshold;
-              }catch(e){}
-              if(phRatio <= threshold){
-                const arr = (snap.items||[]).map(it=> shallowNormalize({...it, __hot:'models'}));
-                items = arr;
-                window.__mw_hot_grouping = 'models';
-                window.__mw_updated_at = computeUpdatedAt(snap?.updated_at || snap?.generated_at, arr);
-                try{ setDataSourceLabel('Snapshot', snapDate); }catch{}
-                return;
-              } else {
-                console.warn('[mw] snapshot', snapDate, 'appears placeholder-heavy (ratio=' + phRatio.toFixed(2) + '), skipping');
-              }
-            }
-          }catch{}
+        const corp = await fetch('../data/ai/modelswatch/corpus.hf.json', { cache: 'no-store' }).then(r=> r.ok? r.json(): null).catch(()=>null);
+        if(corp?.items){
+          const arr = (corp.items||[]).map(it=> shallowNormalize({ ...it, __hot:'models' }));
+          items = arr;
+          window.__mw_hot_grouping = '';
+          window.__mw_updated_at = computeUpdatedAt(corp?.updated_at || corp?.generated_at, arr);
+          try{ setDataSourceLabel('Corpus', 'corpus.hf.json'); }catch{}
+          return;
         }
       }catch{}
-      // Fallback: prefer models hotlist if snapshot missing or skipped
+      // Fallback: models_hotlist.json
       try{
-  const hot = await fetch('../data/ai/modelswatch/models_hotlist.json',{cache:'no-store'}).then(r=>r.json());
+        const hot = await fetch('../data/ai/modelswatch/models_hotlist.json',{cache:'no-store'}).then(r=>r.json());
         if(hot?.by_category){
-          if(typeof hot.version==='number' && hot.version!==1){ console.warn('[mw] models_hotlist version mismatch', hot.version); }
           const out=[]; const multiCount={};
           for(const [task,list] of Object.entries(hot.by_category)){
             (list||[]).forEach(it=>{ out.push(shallowNormalize({...it,__group:task,__hot:'models'})); multiCount[it.id]=(multiCount[it.id]||0)+1; });
@@ -2124,37 +2050,14 @@
           try{ setDataSourceLabel('Hotlist', 'models_hotlist.json'); }catch{}
           return;
         }
-      }catch(e){ /* fallback */ }
-      // Last resort: top_hf with best-effort enrichment from snapshot if present
+      }catch{}
+      // Last fallback: top_hf.json
       try{
-  const h = await fetch('../data/ai/modelswatch/top_hf.json',{cache:'no-store'}).then(r=>r.json());
-        let arr = (h?.items||[]).map(shallowNormalize);
-        try{
-          const snapDate = await latestSnapshotDate();
-          if(snapDate){
-            const hfPath = `../data/ai/modelswatch/snapshots/${snapDate}/hf_summaries.json`;
-            const snap = await fetch(hfPath,{cache:'no-store'}).then(r=> r.ok? r.json(): null).catch(()=>null);
-            if(snap?.items){
-              const map = new Map();
-              snap.items.forEach(it=> map.set(it.id, it));
-              arr = arr.map(it=>{
-                const m = map.get(it.id);
-                if(m){
-                  return { ...it,
-                    summary: m.summary || it.summary || '',
-                    summary_en: m.summary_en || it.summary_en || it.summary || '',
-                    summary_zh: m.summary_zh || it.summary_zh || '',
-                    summary_es: m.summary_es || it.summary_es || ''
-                  };
-                }
-                return it;
-              });
-            }
-          }
-        }catch{}
-  items = arr; window.__mw_hot_grouping='';
-  window.__mw_updated_at = computeUpdatedAt(h?.updated_at, arr);
-  try{ setDataSourceLabel('Top List', 'top_hf.json'); }catch{}
+        const h = await fetch('../data/ai/modelswatch/top_hf.json',{cache:'no-store'}).then(r=>r.json());
+        const arr = (h?.items||[]).map(shallowNormalize);
+        items = arr; window.__mw_hot_grouping='';
+        window.__mw_updated_at = computeUpdatedAt(h?.updated_at, arr);
+        try{ setDataSourceLabel('Top List', 'top_hf.json'); }catch{}
       }catch{ items=[]; window.__mw_updated_at=''; window.__mw_hot_grouping=''; }
     }
 

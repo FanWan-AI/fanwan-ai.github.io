@@ -7,7 +7,9 @@
 ### 快速结论（要点）
 - 5-item 配额 `MODELSWATCH_TRI_LIMIT`：Stage B（TRI）在 GitHub Actions 的 `modelswatch-stage-b.yml` 中可设为 `5`。tri_worker 会先读两个来源的 pending 桶（`github`、`huggingface`），并在这 5 个名额里轮流抽样分配，避免单一来源被饿死。源码默认值（没有环境变量覆盖时）为 `20`。
 - 前端在“今日灵感（daily 模式）”优先读取 `data/ai/modelswatch/daily/<日期>.github.json` 与 `data/ai/modelswatch/daily/<日期>.huggingface.json` 并合并去重；仅在缺失时才回退到 `daily_github.json` / `daily_hf.json` 的联合包。
-- GH / HF 榜单分别优先读取 `snapshots/<latest>/gh_summaries.json` / `snapshots/<latest>/hf_summaries.json`，再回退到 `projects_hotlist.json` / `models_hotlist.json`，最后兜底 `top_github.json` / `top_hf.json`。
+- GH / HF 热榜主源：`data/ai/modelswatch/corpus.gh.json`（GitHub）与 `data/ai/modelswatch/corpus.hf.json`（Hugging Face）。这两份文件仅包含“达标且具备高质量摘要”的精选条目（西语无则用英语占位）。
+  - 回退（若 corpus 缺失）：GitHub 用 `projects_hotlist.json`，HF 用 `models_hotlist.json`。
+  - 最后兜底：`top_github.json` / `top_hf.json`。
 
 ---
 
@@ -60,13 +62,15 @@ Stage C — Analysis & Publish
 - 关键产物：
   - `daily/<date>.<source>.json`（比如 `daily/2025-10-10.github.json`、`daily/2025-10-10.huggingface.json`）
   - `daily_<source>.json`（别名/聚合）
-  - `models_hotlist.json`、`projects_hotlist.json`、`models_by_task.json` 等
+  - 新增：`corpus.gh.json`、`corpus.hf.json`（作为热榜主源，仅含“qualified”条目；`summaries.es` 若缺则回落 `summaries.en`）
+  - 其他：`models_hotlist.json`、`projects_hotlist.json`、`models_by_task.json` 等
 - 重要行为变更：我们已修改 `qualify_publish.mjs`，即便某个来源（如 HF）没有合格内容也会写出一个空的 `daily/<date>.huggingface.json` 文件，以避免前端 404 导致页面异常。
 
 ---
 
 ## 常用超参与默认值（可以用环境变量覆盖）
 - `MODELSWATCH_TRI_LIMIT`：默认 20，短跑可设为 5（actions 覆盖）。
+  - 建议新语义：按来源独立配额（GH/HF 各自拥有 `MODELSWATCH_TRI_LIMIT` 名额）。可选：引入 `MODELSWATCH_TRI_LIMIT_GH` / `MODELSWATCH_TRI_LIMIT_HF`；或开关 `MODELSWATCH_TRI_ALLOW_BORROW` 控制是否允许互相借用空余名额（默认 false）。
 - `MODELSWATCH_GH_PER_PAGE`：默认 20。
 - `MODELSWATCH_HF_LIMIT`：默认 20。
 - `MODELSWATCH_TASK_THRESHOLD`：任务匹配阈值，默认 0.7。
