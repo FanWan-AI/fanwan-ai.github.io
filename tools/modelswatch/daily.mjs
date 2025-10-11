@@ -335,6 +335,28 @@ async function main() {
     return !summaryModels[canonical] && !summaryModels[`hf:${id}`];
   });
 
+  // Fallback injection: if no HF targets remain after prefiltering, try to inject a few from hotlist deficits
+  if (filteredHfTargets.length === 0) {
+    try {
+      const hotlistPath = resolveDataPath('models_hotlist.json');
+      const hotlistRaw = await readJsonIfExists(hotlistPath);
+      const byCategory = hotlistRaw && hotlistRaw.by_category ? hotlistRaw.by_category : {};
+      const pool = new Set();
+      for (const arr of Object.values(byCategory)) {
+        if (!Array.isArray(arr)) continue;
+        for (const it of arr) {
+          const id = it?.id || it?.repo || it?.model_id || '';
+          if (typeof id === 'string' && id.includes('/')) pool.add(id);
+        }
+      }
+      const candidates = Array.from(pool).filter((id) => !summaryModels[`huggingface:${id}`] && !summaryModels[`hf:${id}`]);
+      if (candidates.length) {
+        filteredHfTargets.push(...candidates.slice(0, 12));
+        info('[daily] injected %d HF targets from models_hotlist gaps', Math.min(12, candidates.length));
+      }
+    } catch {}
+  }
+
   if (originalPlannedGithubTargets.length !== filteredGithubTargets.length) {
     info('[daily] prefilter: removed %d github targets already in summary_cache (kept %d/%d)',
       originalPlannedGithubTargets.length - filteredGithubTargets.length,
@@ -445,6 +467,36 @@ async function main() {
       generatedAt,
       { summaryModels, planAdjustments }
     );
+
+      // Merge up to N pass-once upgrades from daily_tasklist.json to guarantee full-summary follow-ups
+      try {
+        const upgradeLimit = Number(process.env.MODELSWATCH_UPGRADE_PASSONCE_LIMIT || '30');
+        const tasklistPath = resolveDataPath('daily_tasklist.json');
+        const tasklist = await readJsonIfExists(tasklistPath);
+        if (tasklist && Array.isArray(tasklist.items)) {
+          const existing = new Set(pending.items.map((it) => it.promptHash).filter(Boolean));
+          const upgrades = tasklist.items
+            .filter((t) => t && t.reason === 'upgrade_passonce_to_qualified' && t.promptHash && !existing.has(t.promptHash))
+            .slice(0, Math.max(0, upgradeLimit));
+          if (upgrades.length) {
+            const injected = upgrades.map((t, idx) => ({
+              canonical_id: t.canonical_id || null,
+              promptHash: t.promptHash,
+              locales: ['zh', 'en'],
+              priority: -1000 + idx, // prioritize ahead of normal queue
+              requested_at: t.requested_at || generatedAt,
+              source: (String(t.source||'').toLowerCase() === 'hf') ? 'huggingface' : (t.source || 'huggingface'),
+              reason: 'upgrade_passonce_to_qualified'
+            }));
+            pending.items = [...injected, ...pending.items];
+            pending.stats.total = pending.items.length;
+            pending.stats.new += injected.length;
+            info('[daily] injected %d items into pending from daily_tasklist (pass-once upgrades)', injected.length);
+          }
+        }
+      } catch (e) {
+        warn('[daily] failed to inject pass-once upgrades: %s', e?.message || e);
+      }
 
     await writeArtifact('raw_corpus', resolveDataPath('raw_corpus.gh.json'), rawCorpusGh, { dryRun });
     await writeArtifact('raw_corpus', resolveDataPath('raw_corpus.hf.json'), rawCorpusHf, { dryRun });

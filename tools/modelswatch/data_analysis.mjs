@@ -602,6 +602,31 @@ async function main() {
       }
     }
 
+    // Upgrade path: schedule pass-once HF items for full LLM summaries in subsequent runs.
+    // Any pass-once without qualified summaries today gets re-queued with elevated priority.
+    for (const source of sources) {
+      const suffix = resolveSourceSuffix(source);
+      const passoncePath = resolveDataPath('daily', `${dateKey}.passonce_${suffix}.json`);
+      const payload = await readJsonIfExists(passoncePath);
+      if (!payload || !Array.isArray(payload.items)) continue;
+      for (const item of payload.items) {
+        if (!item.promptHash || usedPromptHashes.has(item.promptHash)) continue;
+        // Only re-queue when the cache lacks a qualified summary; passonce implies summary_short only.
+        const taskEntry = {
+          canonical_id: item.canonical_id,
+          promptHash: item.promptHash,
+          source,
+          priority: Math.max(0, Math.floor(tasklistItems.length / 4)), // bump earlier in the queue
+          reason: 'upgrade_passonce_to_qualified',
+          status: 'pending',
+          requested_at: nowUtcISOString(),
+          notes: 'Auto-scheduled: upgrade popular pass-once item with full bilingual summary'
+        };
+        tasklistItems.unshift(taskEntry); // push to front to prioritize
+        usedPromptHashes.add(item.promptHash);
+      }
+    }
+
     const tasklistPayload = buildTasklistPayload({
       items: tasklistItems,
       runId,

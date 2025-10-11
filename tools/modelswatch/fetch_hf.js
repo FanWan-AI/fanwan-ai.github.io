@@ -17,6 +17,10 @@ const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '40', 10) ||
 const HF_PAGE_SIZE = parseInt(process.env.MODELSWATCH_HF_PAGE_SIZE || '100', 10) || 100;
 const HF_MAX_PAGES = parseInt(process.env.MODELSWATCH_HF_MAX_PAGES || '8', 10) || 8;
 const HF_MAX_ITEMS = parseInt(process.env.MODELSWATCH_HF_MAX_ITEMS || '400', 10) || 400;
+const HF_SORT = String(process.env.MODELSWATCH_HF_SORT || 'downloads'); // 'downloads' or 'lastModified'
+const HF_DIRECTION = String(process.env.MODELSWATCH_HF_DIRECTION || '-1');
+const HF_SINCE_DAYS = Math.max(0, parseInt(process.env.MODELSWATCH_HF_SINCE_DAYS || '0', 10) || 0);
+const HF_PREFER_CACHE = ['1','true','yes','on'].includes(String(process.env.MODELSWATCH_HF_PREFER_CACHE || '0').toLowerCase());
 
 let headerLogged = false;
 function buildHeaders({ log = true } = {}) {
@@ -51,7 +55,7 @@ function parseLinkHeader(linkHeader) {
 async function hfListPaginated({ desired, pageSize = HF_PAGE_SIZE, maxPages = HF_MAX_PAGES } = {}){
   const headers = buildHeaders({ log: true });
   const collected = [];
-  let url = `https://huggingface.co/api/models?sort=downloads&direction=-1&limit=${pageSize}`;
+  let url = `https://huggingface.co/api/models?sort=${encodeURIComponent(HF_SORT)}&direction=${encodeURIComponent(HF_DIRECTION)}&limit=${pageSize}`;
   let pages = 0;
   const seen = new Set();
   while (url && pages < maxPages && collected.length < desired) {
@@ -152,8 +156,9 @@ export async function fetchHFTop(options = {}){
   ensureDirs();
   const cachePath = path.join(DATA_DIR, 'top_hf.json');
   const now = Date.now();
-  const MAX_AGE_MS = parseInt(process.env.HF_CACHE_MAX_AGE_MS || '21600000', 10); // default 6h
-  const preferCache = !Array.isArray(options.targetedModels) || options.targetedModels.length === 0;
+  const MAX_AGE_MS = parseInt(process.env.HF_CACHE_MAX_AGE_MS || '0', 10); // default 0 => always refresh
+  // Disable prefer-cache by default; allow opt-in via MODELSWATCH_HF_PREFER_CACHE
+  const preferCache = HF_PREFER_CACHE && (!Array.isArray(options.targetedModels) || options.targetedModels.length === 0);
   // Determine desired item count up-front so pagination can honor it
   const baseLimit = HF_FETCH_LIMIT;
   let desired = baseLimit;
@@ -198,8 +203,17 @@ export async function fetchHFTop(options = {}){
     return [];
   }
 
+  // Optional recency filter: include models updated within the last HF_SINCE_DAYS
+  const sinceCutoff = HF_SINCE_DAYS > 0 ? (Date.now() - HF_SINCE_DAYS*24*3600*1000) : 0;
   const items = (arr||[])
     .filter(m => !m.gated)
+    .filter(m => {
+      if (!sinceCutoff) return true;
+      const lm = m.lastModified || m.lastModifiedAt || m.updatedAt;
+      if (!lm) return false;
+      const t = Date.parse(lm);
+      return Number.isFinite(t) ? t >= sinceCutoff : true;
+    })
     .slice(0, desired)
     .map(mapModel)
     .filter(Boolean);
