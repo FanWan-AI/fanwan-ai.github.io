@@ -137,7 +137,12 @@ function evaluatePassonce(item) {
   const en = sanitizeText(summaryShort.en).length;
   const zh = sanitizeText(summaryShort.zh).length;
   const tagsCount = Array.isArray(item.tags) ? item.tags.filter(Boolean).length : 0;
-  const stars = Number(item.stats?.stars || 0);
+  // Stars proxy: for huggingface, treat likes_total or scaled downloads_total as stars proxy
+  const isHF = (item.source||'').toLowerCase() === 'huggingface' || (item.canonical_id||'').startsWith('huggingface:');
+  const likesTotal = Number(item.stats?.likes_total || 0);
+  const downloadsTotal = Number(item.stats?.downloads_total || 0);
+  const starsProxyHF = likesTotal || Math.round(downloadsTotal / 2000);
+  const stars = isHF ? starsProxyHF : Number(item.stats?.stars || 0);
   if (en >= PASSONCE_MIN_EN || zh >= PASSONCE_MIN_ZH) return true;
   if (tagsCount >= PASSONCE_MIN_TAGS && stars >= PASSONCE_MIN_STARS) return true;
   if (item.summary_flags?.fast_first) return true;
@@ -436,7 +441,9 @@ async function main() {
       for (const item of items) {
         const cacheEntry = cacheModels[item.canonical_id];
         const promptMatch = cacheEntry && cacheEntry.promptHash === item.promptHash;
-        const qualifiedOk = promptMatch && evaluateQualified(cacheEntry);
+        // Fallback guard: accept qualified when canonical_id matches and cache was updated this run (minor prompt hash drift)
+        const recentlyUpdated = cacheEntry && typeof cacheEntry.updated_at === 'string' && cacheEntry.updated_at.slice(0,10) === dateKey;
+        const qualifiedOk = (promptMatch || recentlyUpdated) && evaluateQualified(cacheEntry);
         if (qualifiedOk) {
           const qualifiedItem = buildQualifiedItem({ item, cacheEntry });
           qualifiedItems.push(qualifiedItem);

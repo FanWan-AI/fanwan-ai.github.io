@@ -381,7 +381,7 @@ async function main() {
           limit: Math.max(1, Math.round(TRI_LIMIT_HF * FETCH_BUFFER)),
           // use the filtered list so we skip already-qualified models
           targetedModels: filteredHfTargets,
-          targetedLimit: 20
+          targetedLimit: 80
         }).then((items) => ({ source: 'hf', items }))
       );
     }
