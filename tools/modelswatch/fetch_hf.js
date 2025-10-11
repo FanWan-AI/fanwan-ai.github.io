@@ -14,9 +14,9 @@ function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '
 const HF_TOKEN = process.env.HF_TOKEN || '';
 // Base page size used if no explicit limit provided by caller
 const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '40', 10) || 40;
-const HF_PAGE_SIZE = parseInt(process.env.MODELSWATCH_HF_PAGE_SIZE || String(Math.min(100, HF_FETCH_LIMIT)), 10) || HF_FETCH_LIMIT;
-const HF_MAX_PAGES = parseInt(process.env.MODELSWATCH_HF_MAX_PAGES || '5', 10) || 5;
-const HF_MAX_ITEMS = parseInt(process.env.MODELSWATCH_HF_MAX_ITEMS || '200', 10) || 200;
+const HF_PAGE_SIZE = parseInt(process.env.MODELSWATCH_HF_PAGE_SIZE || '100', 10) || 100;
+const HF_MAX_PAGES = parseInt(process.env.MODELSWATCH_HF_MAX_PAGES || '8', 10) || 8;
+const HF_MAX_ITEMS = parseInt(process.env.MODELSWATCH_HF_MAX_ITEMS || '400', 10) || 400;
 
 let headerLogged = false;
 function buildHeaders({ log = true } = {}) {

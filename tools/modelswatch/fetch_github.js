@@ -8,17 +8,24 @@ const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, 'data', 'ai', 'modelswatch');
 
 const GH_TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '';
-// Total number of repositories to fetch (defaults to 40)
+// Total number of repositories to fetch (increase default to 80 to broaden intake)
 const GH_TOTAL_LIMIT = parseInt(
-  process.env.MODELSWATCH_GH_LIMIT || process.env.MODELSWATCH_GH_PER_PAGE || '40',
+  process.env.MODELSWATCH_GH_LIMIT || process.env.MODELSWATCH_GH_PER_PAGE || '80',
   10
-) || 40;
-// Page size can be customised separately; fall back to total limit when unset
+) || 80;
+// Page size can be customised separately; fall back to total limit when unset (cap 100)
 const GH_PAGE_SIZE_RAW = parseInt(
   process.env.MODELSWATCH_GH_PAGE_SIZE || process.env.MODELSWATCH_GH_PER_PAGE || String(GH_TOTAL_LIMIT),
   10
 );
 const GH_PER_PAGE = Math.max(1, Math.min(GH_PAGE_SIZE_RAW || GH_TOTAL_LIMIT, 100));
+// Allow raising pages/items via env to explore deeper result sets (GitHub caps to first 1000 results)
+const GH_MAX_PAGES = Math.max(1, parseInt(process.env.MODELSWATCH_GH_MAX_PAGES || '10', 10) || 10);
+const GH_MAX_ITEMS = Math.max(1, parseInt(process.env.MODELSWATCH_GH_MAX_ITEMS || '400', 10) || 400);
+// Query shaping knobs
+const GH_SINCE_DAYS = Math.max(1, parseInt(process.env.MODELSWATCH_GH_SINCE_DAYS || '365', 10) || 365);
+const GH_SORT = String(process.env.MODELSWATCH_GH_SORT || 'stars').toLowerCase(); // 'stars' | 'updated' | 'created'
+const GH_MIN_STARS = Math.max(0, parseInt(process.env.MODELSWATCH_GH_MIN_STARS || (GH_SORT==='stars' ? '500' : GH_SORT==='updated' ? '50' : '10'), 10) || 0);
 
 function iso(d) { return new Date(d).toISOString(); }
 function todayISO(){ return new Date().toISOString().slice(0,10); }
@@ -94,9 +101,11 @@ async function fetchTargetRepo(slug) {
 export async function fetchGithubTop(options = {}){
   ensureDirs();
   // Search top repos updated in last 365 days, with license, many stars
-  const since = (new Date(Date.now()-365*86400000)).toISOString().slice(0,10);
-  // Simpler query to avoid 422: remove license OR filters
-  const q1 = encodeURIComponent(`stars:>500 pushed:>=${since}`);
+  const since = (new Date(Date.now()-GH_SINCE_DAYS*86400000)).toISOString().slice(0,10);
+  // Build query based on strategy; keep it simple to avoid 422 errors
+  // For 'created' we bias toward newly created repos; for others, use pushed date
+  const dateField = GH_SORT === 'created' ? 'created' : 'pushed';
+  const q1 = encodeURIComponent(`stars:>${GH_MIN_STARS} ${dateField}:>=${since}`);
   // Support requesting more than 100 items by paginating when MODELSWATCH_GH_PER_PAGE > 100
   const baseLimit = GH_TOTAL_LIMIT;
   let desired = baseLimit;
@@ -105,13 +114,12 @@ export async function fetchGithubTop(options = {}){
   } else if (Number.isFinite(options.limitMultiplier)) {
     desired = Math.max(1, Math.round(baseLimit * options.limitMultiplier));
   }
-  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : 200);
+  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : GH_MAX_ITEMS);
   desired = Math.max(baseLimit, desired);
   const perPage = GH_PER_PAGE; // <= 100
   const pages = Math.max(1, Math.ceil(desired / perPage));
   // GitHub Search API only returns up to the first 1000 results (10 pages of 100)
-  const MAX_GH_PAGES = 10;
-  const effectivePages = Math.min(pages, MAX_GH_PAGES);
+  const effectivePages = Math.min(pages, GH_MAX_PAGES);
   const cacheFile = path.join(DATA_DIR, '.gh.search.etag');
   const lastOut = path.join(DATA_DIR, 'top_github.json');
   let etag=null; try{ etag=fs.readFileSync(cacheFile,'utf8'); }catch{}
@@ -120,7 +128,8 @@ export async function fetchGithubTop(options = {}){
   let allItems = [];
   let res;
   for (let p = 1; p <= effectivePages; p++) {
-    const url = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=${perPage}&page=${p}`;
+    const sortParam = (GH_SORT === 'updated' || GH_SORT === 'created') ? GH_SORT : 'stars';
+    const url = `https://api.github.com/search/repositories?q=${q1}&sort=${sortParam}&order=desc&per_page=${perPage}&page=${p}`;
     try{
       // Use per-page ETag when available
       const useEtag = pageEtags[String(p)] || (p === 1 ? etag : null);
@@ -129,8 +138,8 @@ export async function fetchGithubTop(options = {}){
       // On failure, try a relaxed fallback for the whole fetch (single attempt)
       if (p === 1) {
         try{
-          const q2 = encodeURIComponent(`stars:>200 pushed:>=${since}`);
-          const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=stars&order=desc&per_page=${perPage}&page=${p}`;
+          const q2 = encodeURIComponent(`stars:>${Math.max(0, Math.floor(GH_MIN_STARS/2))} ${dateField}:>=${since}`);
+          const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=${sortParam}&order=desc&per_page=${perPage}&page=${p}`;
           res = await gh(url2, null);
         }catch(e2){
           throw e2;
