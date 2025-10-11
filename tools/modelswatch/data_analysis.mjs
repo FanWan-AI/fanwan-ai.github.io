@@ -18,6 +18,10 @@ const PASSONCE_MIN_EN = Number(process.env.PASSONCE_MIN_EN_SHORT || '160');
 const PASSONCE_MIN_ZH = Number(process.env.PASSONCE_MIN_ZH_SHORT || '100');
 const PASSONCE_MIN_TAGS = Number(process.env.PASSONCE_MIN_TAGS || '1');
 const PASSONCE_MIN_STARS = Number(process.env.PASSONCE_MIN_STARS || '50');
+// Fast-path thresholds for very popular HF models
+const HF_PASSONCE_FAST_LIKES = Number(process.env.MODELSWATCH_HF_PASS_LIKES_FAST || '500');
+const HF_PASSONCE_FAST_DOWNLOADS = Number(process.env.MODELSWATCH_HF_PASS_DL_FAST || '200000');
+const HF_PASSONCE_FAST_ENABLE = ['1','true','yes','on'].includes(String(process.env.MODELSWATCH_HF_PASS_FAST_ENABLE || '1').toLowerCase());
 
 function parseArgs(argv) {
   const args = { _: [] };
@@ -132,7 +136,7 @@ function evaluateQualified(cacheEntry) {
 }
 
 function evaluatePassonce(item) {
-  if (!item || item.status !== 'passonce') return false;
+  if (!item) return false;
   const summaryShort = item.summary_short || {};
   const en = sanitizeText(summaryShort.en).length;
   const zh = sanitizeText(summaryShort.zh).length;
@@ -143,6 +147,14 @@ function evaluatePassonce(item) {
   const downloadsTotal = Number(item.stats?.downloads_total || 0);
   const starsProxyHF = likesTotal || Math.round(downloadsTotal / 2000);
   const stars = isHF ? starsProxyHF : Number(item.stats?.stars || 0);
+  const statusOk = item.status === 'passonce' || (isHF && (item.status === 'pending' || item.status === 'unqualified'));
+  if (!statusOk) return false;
+  // Popularity fast-path for HF: if extremely popular, allow passonce even if short summary is thin
+  if (isHF && HF_PASSONCE_FAST_ENABLE) {
+    if (likesTotal >= HF_PASSONCE_FAST_LIKES || downloadsTotal >= HF_PASSONCE_FAST_DOWNLOADS) {
+      return true;
+    }
+  }
   if (en >= PASSONCE_MIN_EN || zh >= PASSONCE_MIN_ZH) return true;
   if (tagsCount >= PASSONCE_MIN_TAGS && stars >= PASSONCE_MIN_STARS) return true;
   if (item.summary_flags?.fast_first) return true;

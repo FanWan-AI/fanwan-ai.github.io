@@ -12,8 +12,11 @@ function ensureDirs(){ fs.mkdirSync(DATA_DIR, {recursive:true}); fs.mkdirSync(IT
 function writeJSON(p, obj){ fs.writeFileSync(p, JSON.stringify(obj, null, 2) + '\n', 'utf8'); }
 
 const HF_TOKEN = process.env.HF_TOKEN || '';
-// Configurable HF fetch limit via repository Variables; default trimmed to 40 for faster iterations
+// Base page size used if no explicit limit provided by caller
 const HF_FETCH_LIMIT = parseInt(process.env.MODELSWATCH_HF_LIMIT || '40', 10) || 40;
+const HF_PAGE_SIZE = parseInt(process.env.MODELSWATCH_HF_PAGE_SIZE || String(Math.min(100, HF_FETCH_LIMIT)), 10) || HF_FETCH_LIMIT;
+const HF_MAX_PAGES = parseInt(process.env.MODELSWATCH_HF_MAX_PAGES || '5', 10) || 5;
+const HF_MAX_ITEMS = parseInt(process.env.MODELSWATCH_HF_MAX_ITEMS || '200', 10) || 200;
 
 let headerLogged = false;
 function buildHeaders({ log = true } = {}) {
@@ -30,24 +33,69 @@ function buildHeaders({ log = true } = {}) {
   return headers;
 }
 
-async function hfList(){
-  // Public browse endpoint (documented): sort=downloads, limit
-  // Increase HF fetch limit to include more top models for the hotlist (was 60)
-  const url = `https://huggingface.co/api/models?sort=downloads&direction=-1&limit=${HF_FETCH_LIMIT}`;
+function parseLinkHeader(linkHeader) {
+  // Parses RFC 5988 Link header into a map of rel=>url
+  // e.g., <https://huggingface.co/api/models?cursor=abc&limit=50>; rel="next"
+  const out = {};
+  if (!linkHeader || typeof linkHeader !== 'string') return out;
+  const parts = linkHeader.split(',');
+  for (const part of parts) {
+    const match = part.match(/<([^>]+)>;\s*rel="([^"]+)"/);
+    if (match) {
+      out[match[2]] = match[1];
+    }
+  }
+  return out;
+}
+
+async function hfListPaginated({ desired, pageSize = HF_PAGE_SIZE, maxPages = HF_MAX_PAGES } = {}){
   const headers = buildHeaders({ log: true });
-  let res;
-  try {
-    res = await fetch(url, { headers });
-  } catch(e){
-    warn('HF list network error', e.message);
-    throw e;
+  const collected = [];
+  let url = `https://huggingface.co/api/models?sort=downloads&direction=-1&limit=${pageSize}`;
+  let pages = 0;
+  const seen = new Set();
+  while (url && pages < maxPages && collected.length < desired) {
+    let res;
+    try {
+      res = await fetch(url, { headers });
+    } catch(e){
+      warn('HF list network error', e.message);
+      if (collected.length) break; // return partial results if we have some
+      throw e;
+    }
+    if (!res.ok) {
+      warn('HF list failed status %s on page %d', res.status, pages+1);
+      if (collected.length) break; // return partial results if we have some
+      throw new Error('HF list failed ' + res.status);
+    }
+    let pageItems = [];
+    try {
+      pageItems = await res.json();
+    } catch (e) {
+      warn('HF list JSON parse error on page %d: %s', pages+1, e.message || e);
+      if (collected.length) break;
+      throw e;
+    }
+    for (const m of pageItems) {
+      const id = m && m.id;
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      collected.push(m);
+      if (collected.length >= desired) break;
+    }
+    pages += 1;
+    if (collected.length >= desired) break;
+    const link = res.headers.get('link') || res.headers.get('Link');
+    const links = parseLinkHeader(link);
+    url = links.next || null;
+    if (!url) break;
+    // Ensure we don't accidentally change page size when following next
+    if (!/limit=/.test(url)) {
+      const sep = url.includes('?') ? '&' : '?';
+      url = `${url}${sep}limit=${pageSize}`;
+    }
   }
-  if (!res.ok) {
-    warn('HF list failed status', res.status);
-    throw new Error('HF list failed ' + res.status);
-  }
-  const arr = await res.json();
-  return arr;
+  return collected;
 }
 
 function mapModel(m){
@@ -106,30 +154,7 @@ export async function fetchHFTop(options = {}){
   const now = Date.now();
   const MAX_AGE_MS = parseInt(process.env.HF_CACHE_MAX_AGE_MS || '21600000', 10); // default 6h
   const preferCache = !Array.isArray(options.targetedModels) || options.targetedModels.length === 0;
-  let arr = [];
-  if (preferCache) {
-    try {
-      const stat = fs.statSync(cachePath);
-      if (stat && (now - stat.mtimeMs) < MAX_AGE_MS) {
-        const prev = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-        if (prev && Array.isArray(prev.items_raw)) {
-          arr = prev.items_raw;
-        }
-      }
-    } catch {}
-  }
-  try {
-    if (!arr.length) {
-      arr = await hfList();
-      // Save lightweight daily cache for reuse when targets=0
-      try { fs.writeFileSync(cachePath, JSON.stringify({ items_raw: arr }, null, 2), 'utf8'); } catch {}
-    }
-  }
-  catch(e){
-    // Reuse last top file if available
-    try{ const prev = JSON.parse(fs.readFileSync(cachePath,'utf8')); if(prev && Array.isArray(prev.items_raw)) return prev.items_raw.map(mapModel).filter(Boolean); }catch{}
-    return [];
-  }
+  // Determine desired item count up-front so pagination can honor it
   const baseLimit = HF_FETCH_LIMIT;
   let desired = baseLimit;
   if (Number.isFinite(options.limit)) {
@@ -137,8 +162,41 @@ export async function fetchHFTop(options = {}){
   } else if (Number.isFinite(options.limitMultiplier)) {
     desired = Math.max(1, Math.round(baseLimit * options.limitMultiplier));
   }
-  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : 200);
+  desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : HF_MAX_ITEMS);
   desired = Math.max(baseLimit, desired);
+
+  let arr = [];
+  if (preferCache) {
+    try {
+      const stat = fs.statSync(cachePath);
+      if (stat && (now - stat.mtimeMs) < MAX_AGE_MS) {
+        const prev = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        if (prev && Array.isArray(prev.items_raw) && prev.items_raw.length >= desired) {
+          arr = prev.items_raw;
+        }
+      }
+    } catch {}
+  }
+  try {
+    if (!arr.length) {
+      arr = await hfListPaginated({ desired, pageSize: HF_PAGE_SIZE, maxPages: HF_MAX_PAGES });
+      // Save lightweight daily cache for reuse when targets=0
+      try { fs.writeFileSync(cachePath, JSON.stringify({ items_raw: arr }, null, 2), 'utf8'); } catch {}
+    }
+  } catch(e){
+    // Reuse last top file if available
+    try {
+      const prev = JSON.parse(fs.readFileSync(cachePath,'utf8'));
+      if(prev && Array.isArray(prev.items_raw)) {
+        return prev.items_raw
+          .filter(m => !m.gated)
+          .slice(0, desired)
+          .map(mapModel)
+          .filter(Boolean);
+      }
+    } catch{}
+    return [];
+  }
 
   const items = (arr||[])
     .filter(m => !m.gated)
