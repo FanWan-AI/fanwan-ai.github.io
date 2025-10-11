@@ -18,7 +18,7 @@ const DEFAULT_MAX_ITEMS = Number(
 ) || 20;
 const PER_SOURCE_GH = Number(process.env.MODELSWATCH_TRI_LIMIT_GH || Math.ceil(DEFAULT_MAX_ITEMS/2));
 const PER_SOURCE_HF = Number(process.env.MODELSWATCH_TRI_LIMIT_HF || Math.floor(DEFAULT_MAX_ITEMS/2));
-const ENABLE_SUMMARY_GUARD = (process.env.TRI_SUMMARY_GUARD || '1').toLowerCase() in ('1','true','yes','on');
+const ENABLE_SUMMARY_GUARD = ['1','true','yes','on'].includes((process.env.TRI_SUMMARY_GUARD || '1').toLowerCase());
 const MIN_EN_LENGTH = Number(process.env.TRI_MIN_EN_LENGTH || '220');
 const MIN_ZH_LENGTH = Number(process.env.TRI_MIN_ZH_LENGTH || '150');
 

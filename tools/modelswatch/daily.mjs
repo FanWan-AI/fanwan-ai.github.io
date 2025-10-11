@@ -20,9 +20,9 @@ import { loadFetchPlan, computeFetchAdjustments, summarizeAdjustments } from './
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUALIFIED_MIN_EN = Number(process.env.TRI_ACCEPT_MIN_EN || '220');
 const QUALIFIED_MIN_ZH = Number(process.env.TRI_ACCEPT_MIN_ZH || '150');
-const REFRESH_ENABLE = (process.env.TRI_REFRESH_ENABLE || '1').toLowerCase() in ('1','true','yes','on');
+const REFRESH_ENABLE = ['1','true','yes','on'].includes((process.env.TRI_REFRESH_ENABLE || '1').toLowerCase());
 const REFRESH_TTL_DAYS = Number(process.env.TRI_REFRESH_TTL_DAYS || '30');
-const FORCE_REFRESH = (process.env.TRI_FORCE_REFRESH || '0').toLowerCase() in ('1','true','yes','on');
+const FORCE_REFRESH = ['1','true','yes','on'].includes((process.env.TRI_FORCE_REFRESH || '0').toLowerCase());
 const FETCH_BUFFER = Number(process.env.MODELSWATCH_FETCH_BUFFER || '1.3');
 const TRI_LIMIT_TOTAL = Number(process.env.MODELSWATCH_TRI_LIMIT || '20');
 const TRI_LIMIT_GH = Number(process.env.MODELSWATCH_TRI_LIMIT_GH || Math.ceil(TRI_LIMIT_TOTAL/2));
