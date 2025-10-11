@@ -911,7 +911,7 @@ function selectTopExamples(bucket, { limit = 3, allowedSources = null } = {}) {
     }));
 }
 
-function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, categoryContext, generatedAt }) {
+async function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, categoryContext, generatedAt }) {
   // Build global backlog pools for fallback targeting
   const globalBacklogGithub = [];
   const globalBacklogHF = [];
@@ -946,6 +946,61 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
         score: entry.score
       }));
   };
+
+  // Load corpus/hotlist as strong fallback pools
+  let corpusGH = null;
+  let corpusHF = null;
+  let hotGH = null;
+  let hotHF = null;
+  try { corpusGH = JSON.parse(await fs.readFile(resolveDataPath('corpus.gh.json'), 'utf8')); } catch {}
+  try { corpusHF = JSON.parse(await fs.readFile(resolveDataPath('corpus.hf.json'), 'utf8')); } catch {}
+  try { hotGH = JSON.parse(await fs.readFile(resolveDataPath('projects_hotlist.json'), 'utf8')); } catch {}
+  try { hotHF = JSON.parse(await fs.readFile(resolveDataPath('models_hotlist.json'), 'utf8')); } catch {}
+
+  function selectFromCorpusOrHotlist({ source, limit }) {
+    const isGH = source === 'github';
+    const corpus = isGH ? corpusGH : corpusHF;
+    const hot = isGH ? hotGH : hotHF;
+    const items = [];
+    // Prefer corpus (qualified-only,稳定)
+    if (corpus && Array.isArray(corpus.items)) {
+      for (const it of corpus.items) {
+        items.push({ item: it, score: computePopularityScore(it.stats) || 0 });
+      }
+    }
+    // If still insufficient, top up from hotlist
+    if (items.length < limit && hot) {
+      // Flatten hotlist entries: either { items: [...] } or { by_category: {key:[...]}} shapes
+      const hotItems = Array.isArray(hot.items)
+        ? hot.items
+        : hot.by_category && typeof hot.by_category === 'object'
+        ? Object.values(hot.by_category).flat().filter(Boolean)
+        : [];
+      for (const it of hotItems) {
+        const adapt = {
+          canonical_id: it.canonical_id || (isGH ? `github:${it.id}` : `huggingface:${it.id}`),
+          name: it.name,
+          source: isGH ? 'github' : 'huggingface',
+          status: it.status || 'passonce',
+          stats: it.stats || {},
+          summaries: it.summaries || { zh: it.summary_zh || '', en: it.summary_en || '' },
+          summary_short: it.summary_short || {}
+        };
+        items.push({ item: adapt, score: computePopularityScore(adapt.stats) || 0 });
+      }
+    }
+    const picked = items
+      .sort((a,b)=> (b.score||0)-(a.score||0))
+      .slice(0, limit)
+      .map(({ item, score }) => ({
+        canonical_id: item.canonical_id,
+        name: item.name,
+        source: item.source,
+        status: item.status,
+        score
+      }));
+    return picked;
+  }
   const categories = [];
   for (const [key, label] of categoryContext.labels.entries()) {
     const bucket = categoryBuckets.get(key) || [];
@@ -962,8 +1017,11 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     const coverageRatio = Number((qualified / Math.max(1, CATEGORY_TARGET)).toFixed(4));
     let topExamples = selectTopExamples(bucket, { allowedSources: ['github'] });
     if (!topExamples.length) {
-      // Fallback: choose top GitHub backlog items globally
-      topExamples = fallbackTopFromGlobal(globalBacklogGithub, 6);
+      // Fallback order: corpus -> hotlist -> global backlog
+      topExamples = selectFromCorpusOrHotlist({ source: 'github', limit: 6 });
+      if (!topExamples.length) {
+        topExamples = fallbackTopFromGlobal(globalBacklogGithub, 6);
+      }
     }
     categories.push({
       key,
@@ -1008,8 +1066,11 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     const label = taskContext.labels.get(task.key) || task.label;
     let topExamples = selectTopExamples(bucket, { allowedSources: ['huggingface'] });
     if (!topExamples.length) {
-      // Fallback: choose top HF backlog items globally
-      topExamples = fallbackTopFromGlobal(globalBacklogHF, 8);
+      // Fallback order: corpus -> hotlist -> global backlog
+      topExamples = selectFromCorpusOrHotlist({ source: 'huggingface', limit: 8 });
+      if (!topExamples.length) {
+        topExamples = fallbackTopFromGlobal(globalBacklogHF, 8);
+      }
     }
     tasks.push({
       key: task.key,
@@ -1521,7 +1582,7 @@ async function main() {
       }
     }
 
-    const coveragePlan = buildCoveragePriorities({
+    const coveragePlan = await buildCoveragePriorities({
       taskBuckets,
       taskContext,
       categoryBuckets,
