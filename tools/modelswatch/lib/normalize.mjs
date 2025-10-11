@@ -16,14 +16,16 @@ function buildSummaryFlags(summaryMeta) {
 function normalizeCommon(raw, source, nowIso) {
   const canonical_id = baseCanonicalId(source, raw.id);
   const summaryMeta = buildSummaryShort(raw);
+  // Build a stable prompt identity: exclude volatile stats; keep identity to canonical_id + name + normalized description + trimmed tags + short summary
+  const stableInput = {
+    name: raw.name,
+    description: truncateForIdentity(raw.summary || raw.description || ''),
+    tags: Array.isArray(raw.tags) ? raw.tags.slice(0, 16) : [],
+    summary_short: summaryMeta.summary_short
+  };
   const promptHash = computePromptHash({
     canonical_id,
-    canonicalized_input: stableStringify({
-      name: raw.name,
-      tags: raw.tags || [],
-      stats: raw.stats || {},
-      summary_short: summaryMeta.summary_short
-    })
+    canonicalized_input: stableStringify(stableInput)
   });
 
   return {
@@ -60,4 +62,12 @@ export function normalizeHFItem(raw, nowIso = new Date().toISOString()) {
   const doc = normalizeCommon(raw, 'huggingface', nowIso);
   doc.repo_id = raw.id;
   return doc;
+}
+
+// Helper: keep identity deterministic without making the prompt hash too sensitive
+function truncateForIdentity(text) {
+  if (!text) return '';
+  const t = String(text).replace(/\s+/g, ' ').trim();
+  // Cap to 300 chars to avoid churn from long descriptions
+  return t.length > 300 ? t.slice(0, 300) : t;
 }

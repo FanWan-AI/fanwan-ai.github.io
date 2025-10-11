@@ -912,6 +912,40 @@ function selectTopExamples(bucket, { limit = 3, allowedSources = null } = {}) {
 }
 
 function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, categoryContext, generatedAt }) {
+  // Build global backlog pools for fallback targeting
+  const globalBacklogGithub = [];
+  const globalBacklogHF = [];
+  for (const [, entries] of categoryBuckets.entries()) {
+    for (const entry of entries || []) {
+      if (!entry?.item) continue;
+      if ((entry.item.status !== 'qualified') && (entry.item.source === 'github')) {
+        globalBacklogGithub.push(entry);
+      }
+    }
+  }
+  for (const [, entries] of taskBuckets.entries()) {
+    for (const entry of entries || []) {
+      if (!entry?.item) continue;
+      if ((entry.item.status !== 'qualified') && (entry.item.source === 'huggingface')) {
+        globalBacklogHF.push(entry);
+      }
+    }
+  }
+
+  const fallbackTopFromGlobal = (arr, limit = 6) => {
+    if (!Array.isArray(arr) || !arr.length) return [];
+    return arr
+      .slice()
+      .sort((a, b) => (computePopularityScore(b.item?.stats) || 0) - (computePopularityScore(a.item?.stats) || 0))
+      .slice(0, limit)
+      .map((entry) => ({
+        canonical_id: entry.item.canonical_id,
+        name: entry.item.name,
+        source: entry.item.source,
+        status: entry.item.status,
+        score: entry.score
+      }));
+  };
   const categories = [];
   for (const [key, label] of categoryContext.labels.entries()) {
     const bucket = categoryBuckets.get(key) || [];
@@ -926,7 +960,11 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     }
     const deficit = Math.max(0, CATEGORY_TARGET - qualified);
     const coverageRatio = Number((qualified / Math.max(1, CATEGORY_TARGET)).toFixed(4));
-    const topExamples = selectTopExamples(bucket, { allowedSources: ['github'] });
+    let topExamples = selectTopExamples(bucket, { allowedSources: ['github'] });
+    if (!topExamples.length) {
+      // Fallback: choose top GitHub backlog items globally
+      topExamples = fallbackTopFromGlobal(globalBacklogGithub, 6);
+    }
     categories.push({
       key,
       label,
@@ -968,7 +1006,11 @@ function buildCoveragePriorities({ taskBuckets, taskContext, categoryBuckets, ca
     const deficit = Math.max(0, TASK_TARGET - qualified);
     const coverageRatio = Number((qualified / Math.max(1, TASK_TARGET)).toFixed(4));
     const label = taskContext.labels.get(task.key) || task.label;
-    const topExamples = selectTopExamples(bucket, { allowedSources: ['huggingface'] });
+    let topExamples = selectTopExamples(bucket, { allowedSources: ['huggingface'] });
+    if (!topExamples.length) {
+      // Fallback: choose top HF backlog items globally
+      topExamples = fallbackTopFromGlobal(globalBacklogHF, 8);
+    }
     tasks.push({
       key: task.key,
       label,

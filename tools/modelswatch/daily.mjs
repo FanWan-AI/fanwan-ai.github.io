@@ -20,6 +20,13 @@ import { loadFetchPlan, computeFetchAdjustments, summarizeAdjustments } from './
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const QUALIFIED_MIN_EN = Number(process.env.TRI_ACCEPT_MIN_EN || '220');
 const QUALIFIED_MIN_ZH = Number(process.env.TRI_ACCEPT_MIN_ZH || '150');
+const REFRESH_ENABLE = (process.env.TRI_REFRESH_ENABLE || '1').toLowerCase() in ('1','true','yes','on');
+const REFRESH_TTL_DAYS = Number(process.env.TRI_REFRESH_TTL_DAYS || '30');
+const FORCE_REFRESH = (process.env.TRI_FORCE_REFRESH || '0').toLowerCase() in ('1','true','yes','on');
+const FETCH_BUFFER = Number(process.env.MODELSWATCH_FETCH_BUFFER || '1.3');
+const TRI_LIMIT_TOTAL = Number(process.env.MODELSWATCH_TRI_LIMIT || '20');
+const TRI_LIMIT_GH = Number(process.env.MODELSWATCH_TRI_LIMIT_GH || Math.ceil(TRI_LIMIT_TOTAL/2));
+const TRI_LIMIT_HF = Number(process.env.MODELSWATCH_TRI_LIMIT_HF || Math.floor(TRI_LIMIT_TOTAL/2));
 
 function sanitizeText(text) {
   return String(text || '').replace(/\s+/g, ' ').trim();
@@ -35,7 +42,14 @@ async function readJsonIfExists(filePath) {
   }
 }
 
-function isCacheEntryQualified(entry, pendingItem) {
+function daysSince(iso) {
+  if (!iso) return Infinity;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return Infinity;
+  return (Date.now() - t) / (1000*3600*24);
+}
+
+function isCacheEntryQualified(entry) {
   if (!entry || entry.quality?.fallback) return false;
   const summaries = entry.summaries || {
     en: entry.summary_en || '',
@@ -44,8 +58,14 @@ function isCacheEntryQualified(entry, pendingItem) {
   const enLen = sanitizeText(summaries.en).length;
   const zhLen = sanitizeText(summaries.zh).length;
   if (enLen < QUALIFIED_MIN_EN && zhLen < QUALIFIED_MIN_ZH) return false;
-  if (pendingItem?.promptHash && entry.promptHash && entry.promptHash !== pendingItem.promptHash) {
-    return false;
+  // Refresh TTL policy: if disabled, treat as qualified; if enabled, only re-tri when TTL expired unless forced
+  if (FORCE_REFRESH) return false; // force re-tri
+  if (REFRESH_ENABLE && REFRESH_TTL_DAYS > 0) {
+    const last = entry.quality?.accepted_at || entry.updated_at || entry.first_generated_at || entry.created_at;
+    const age = daysSince(last);
+    if (age > REFRESH_TTL_DAYS) {
+      return false; // stale -> needs refresh
+    }
   }
   return true;
 }
@@ -66,7 +86,7 @@ function filterNewItems(items, summaryModels, sourceLabel, stats) {
     }
     seen.add(item.canonical_id);
     const cacheEntry = summaryModels[item.canonical_id];
-    if (isCacheEntryQualified(cacheEntry, item)) {
+    if (isCacheEntryQualified(cacheEntry)) {
       removedQualified += 1;
       continue;
     }
@@ -134,16 +154,36 @@ function buildStats(items) {
   return stats;
 }
 
-function buildPendingQueue(items, dateKey, runId, generatedAt) {
-  const queue = items
-    .filter((item) => item.status === 'pending')
-    .map((item, idx) => ({
-      canonical_id: item.canonical_id,
-      promptHash: item.promptHash,
+function buildPendingQueue(items, dateKey, runId, generatedAt, { summaryModels, planAdjustments }) {
+  const pending = items.filter((item) => item.status === 'pending');
+  // Priority tiers: 1) no prior LLM summary; 2) TTL-stale; 3) exploration aligned with deficits; 4) others
+  const focusGithub = new Set((planAdjustments?.github?.focusKeys) || []);
+  const focusHF = new Set((planAdjustments?.huggingface?.focusKeys) || []);
+  function tierOf(it){
+    const existing = summaryModels[it.canonical_id];
+    const hasLLM = existing && !existing.fallback && (sanitizeText(existing.summary_zh).length >= QUALIFIED_MIN_ZH || sanitizeText(existing.summary_en).length >= QUALIFIED_MIN_EN);
+    if (!hasLLM) return 1;
+    if (REFRESH_ENABLE && REFRESH_TTL_DAYS>0) {
+      const last = existing.quality?.accepted_at || existing.updated_at || existing.first_generated_at || existing.created_at;
+      if (daysSince(last) > REFRESH_TTL_DAYS) return 2;
+    }
+    // exploration aligned to deficits
+    const src = (it.source||'').toLowerCase();
+    const tags = (it.tags||[]).map(String);
+    const aligned = src==='github' ? tags.some(t=>focusGithub.has(t)) : src==='huggingface' ? tags.some(t=>focusHF.has(t)) : false;
+    if (aligned) return 3;
+    return 4;
+  }
+  const queue = pending
+    .map((item) => ({ item, tier: tierOf(item) }))
+    .sort((a,b)=> a.tier - b.tier)
+    .map((entry, idx) => ({
+      canonical_id: entry.item.canonical_id,
+      promptHash: entry.item.promptHash,
       locales: ['zh', 'en'],
       priority: idx,
       requested_at: generatedAt,
-      source: item.source,
+      source: entry.item.source,
       reason: 'needs_tri'
     }));
   return {
@@ -326,7 +366,8 @@ async function main() {
     if (sources.includes('github')) {
       fetchJobs.push(
         fetchGithubTop({
-          limitMultiplier: planAdjustments.github.limitMultiplier,
+          // Align GH fetch size to per-source TRI capacity with buffer
+          limit: Math.max(1, Math.round(TRI_LIMIT_GH * FETCH_BUFFER)),
           // use the filtered list so we skip already-qualified repos
           targetedRepos: filteredGithubTargets,
           targetedLimit: 12
@@ -336,7 +377,8 @@ async function main() {
     if (sources.includes('hf')) {
       fetchJobs.push(
         fetchHFTop({
-          limitMultiplier: planAdjustments.huggingface.limitMultiplier,
+          // Align HF fetch size to per-source TRI capacity with buffer
+          limit: Math.max(1, Math.round(TRI_LIMIT_HF * FETCH_BUFFER)),
           // use the filtered list so we skip already-qualified models
           targetedModels: filteredHfTargets,
           targetedLimit: 20
@@ -400,7 +442,8 @@ async function main() {
       [...githubNormalized, ...hfNormalized],
       dateKey,
       runId,
-      generatedAt
+      generatedAt,
+      { summaryModels, planAdjustments }
     );
 
     await writeArtifact('raw_corpus', resolveDataPath('raw_corpus.gh.json'), rawCorpusGh, { dryRun });

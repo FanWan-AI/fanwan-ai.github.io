@@ -16,6 +16,9 @@ import { PipelineLock } from './lib/lock.mjs';
 const DEFAULT_MAX_ITEMS = Number(
   process.env.MODELSWATCH_TRI_LIMIT || process.env.SNAPSHOT_MAX_NEW || '20'
 ) || 20;
+const PER_SOURCE_GH = Number(process.env.MODELSWATCH_TRI_LIMIT_GH || Math.ceil(DEFAULT_MAX_ITEMS/2));
+const PER_SOURCE_HF = Number(process.env.MODELSWATCH_TRI_LIMIT_HF || Math.floor(DEFAULT_MAX_ITEMS/2));
+const ENABLE_SUMMARY_GUARD = (process.env.TRI_SUMMARY_GUARD || '1').toLowerCase() in ('1','true','yes','on');
 const MIN_EN_LENGTH = Number(process.env.TRI_MIN_EN_LENGTH || '220');
 const MIN_ZH_LENGTH = Number(process.env.TRI_MIN_ZH_LENGTH || '150');
 
@@ -141,6 +144,8 @@ function createContextFromDraft(item) {
 async function loadContextIndex(date) {
   const byCanonical = new Map();
   const byPrompt = new Map();
+  const summaryCache = await readJsonIfExists(resolveDataPath('summary_cache.json'));
+  const summaryModels = summaryCache && summaryCache.models ? summaryCache.models : {};
 
   async function ingest(filePath, transformer, label) {
     const payload = await readJsonIfExists(filePath);
@@ -172,7 +177,7 @@ async function loadContextIndex(date) {
   await ingest(draftGh, createContextFromDraft, 'draft_github');
   await ingest(draftHf, createContextFromDraft, 'draft_hf');
 
-  return { byCanonical, byPrompt };
+  return { byCanonical, byPrompt, summaryModels };
 }
 
 function lookupContext(pendingItem, index) {
@@ -493,7 +498,15 @@ function rebuildPendingQueue(pending, processedMap) {
   return updated;
 }
 
-function selectPendingItems(items, limit) {
+function isQualifiedSummary(entry) {
+  if (!entry || entry.fallback) return false;
+  const zh = sanitizeText(entry.summary_zh || entry?.summaries?.zh);
+  const en = sanitizeText(entry.summary_en || entry?.summaries?.en);
+  if (zh.length >= MIN_ZH_LENGTH || en.length >= MIN_EN_LENGTH) return true;
+  return false;
+}
+
+function selectPendingItems(items, limit, opts = {}) {
   if (!Array.isArray(items) || !items.length) return [];
   const max = Math.max(0, Math.floor(Number.isFinite(limit) ? limit : items.length));
   if (max === 0) return [];
@@ -516,6 +529,11 @@ function selectPendingItems(items, limit) {
 
   const selection = [];
   const seen = new Set();
+  const perSourceCap = new Map([
+    ['github', Number.isFinite(opts.ghCap) ? opts.ghCap : PER_SOURCE_GH],
+    ['huggingface', Number.isFinite(opts.hfCap) ? opts.hfCap : PER_SOURCE_HF]
+  ]);
+  const perSourceCount = new Map([['github',0],['huggingface',0]]);
   while (selection.length < max) {
     let advanced = false;
     for (const key of order) {
@@ -523,7 +541,17 @@ function selectPendingItems(items, limit) {
       if (!bucket || !bucket.length) continue;
       const candidate = bucket.shift();
       if (seen.has(candidate)) continue;
+      // Per-source quota check
+      const src = (candidate?.source || '').toString().toLowerCase();
+      const cap = perSourceCap.get(src);
+      const used = perSourceCount.get(src) || 0;
+      if (Number.isFinite(cap) && used >= cap) {
+        // skip for now, push back to bucket tail
+        bucket.push(candidate);
+        continue;
+      }
       selection.push(candidate);
+      perSourceCount.set(src, used + 1);
       seen.add(candidate);
       advanced = true;
       if (selection.length === max) break;
@@ -591,13 +619,21 @@ async function main() {
       });
     }
 
-    const contextIndex = await loadContextIndex(dateKey);
-    const entries = selected.map((pendingItem) => ({ pendingItem, context: lookupContext(pendingItem, contextIndex) }));
+  const contextIndex = await loadContextIndex(dateKey);
+  const entries = selected.map((pendingItem) => ({ pendingItem, context: lookupContext(pendingItem, contextIndex) }));
 
     const prompts = [];
     for (const entry of entries) {
       if (!entry.context) continue;
       try {
+        // Guard: if summary_cache already has a good bilingual for this canonical_id, skip building prompt
+        if (ENABLE_SUMMARY_GUARD) {
+          const existing = contextIndex.summaryModels?.[entry.context.canonical_id];
+          if (existing && isQualifiedSummary(existing)) {
+            entry.guardSkip = true;
+            continue;
+          }
+        }
         entry.promptIndex = prompts.length;
         entry.prompt = buildPrompt(entry.context);
         prompts.push(entry.prompt);
@@ -657,6 +693,16 @@ async function main() {
         skipped += 1;
         processed.push(
           buildErrorItem({ pendingItem, context, status: 'skipped', reason: 'context_missing' })
+        );
+        continue;
+      }
+
+      if (entry.guardSkip) {
+        processedMap.set(pendingItem.promptHash, 'ok');
+        skipped += 1;
+        // We can surface a lightweight success to keep downstream happy, but with zero summaries
+        processed.push(
+          buildErrorItem({ pendingItem, context, status: 'skipped', reason: 'summary_guard' })
         );
         continue;
       }

@@ -258,6 +258,7 @@ function mergeAcceptedItem({ item, enText, zhText, summaries }, summaryCache, no
   models[key] = {
     canonical_id: key,
     promptHash,
+    last_accepted_hash: promptHash,
     summary_version: (existing?.summary_version || 0) + 1,
     locales,
     summaries: combinedSummaries,

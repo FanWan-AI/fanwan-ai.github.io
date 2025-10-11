@@ -115,14 +115,16 @@ export async function fetchGithubTop(options = {}){
   const cacheFile = path.join(DATA_DIR, '.gh.search.etag');
   const lastOut = path.join(DATA_DIR, 'top_github.json');
   let etag=null; try{ etag=fs.readFileSync(cacheFile,'utf8'); }catch{}
+  const pageEtagsPath = path.join(DATA_DIR, '.gh.page.etags.json');
+  let pageEtags = {}; try{ pageEtags = JSON.parse(fs.readFileSync(pageEtagsPath,'utf8')); }catch{}
   let allItems = [];
   let res;
   for (let p = 1; p <= effectivePages; p++) {
     const url = `https://api.github.com/search/repositories?q=${q1}&sort=stars&order=desc&per_page=${perPage}&page=${p}`;
     try{
-      // Only use etag optimization when fetching the first page and only a single page is requested
-      const useEtag = (pages === 1 && etag);
-      res = await gh(url, useEtag ? etag : null);
+      // Use per-page ETag when available
+      const useEtag = pageEtags[String(p)] || (p === 1 ? etag : null);
+      res = await gh(url, useEtag);
     }catch(e){
       // On failure, try a relaxed fallback for the whole fetch (single attempt)
       if (p === 1) {
@@ -140,17 +142,32 @@ export async function fetchGithubTop(options = {}){
     }
 
     if (res && res.status === 304) {
-      debug('GitHub search not modified (304)');
-      try{ const prev = readJSON(lastOut); if(prev && Array.isArray(prev.items)) return prev.items; }catch{}
-      return [];
+      debug(`GitHub search page ${p} not modified (304)`);
+      // Reuse prior items for this page from lastOut when possible; otherwise skip page
+      try{
+        const prev = readJSON(lastOut);
+        if(prev && Array.isArray(prev.items)){
+          const start = (p-1)*perPage;
+          const slice = prev.items.slice(start, start+perPage);
+          if (slice.length) {
+            allItems = allItems.concat(slice);
+            continue;
+          }
+        }
+      }catch{}
+      continue; // page unchanged but we couldn't restore; move on
     }
 
     if (res && res.data && Array.isArray(res.data.items)) {
       allItems = allItems.concat(res.data.items);
     }
 
-    // Save etag from first page only (best-effort)
+    // Save etags
     if (p === 1 && res && res.etag) fs.writeFileSync(cacheFile, res.etag, 'utf8');
+    if (res && res.etag) {
+      pageEtags[String(p)] = res.etag;
+      try{ fs.writeFileSync(pageEtagsPath, JSON.stringify(pageEtags, null, 2), 'utf8'); }catch{}
+    }
 
     // Be polite to GitHub API between pages
     if (p < pages) await sleep(500);
@@ -186,6 +203,8 @@ export async function fetchGithubTop(options = {}){
     });
   });
 
+  // Persist normalized snapshot for later reuse and page-level restore
+  try { writeJSON(lastOut, { items }); } catch {}
   return items;
 }
 if (import.meta.url === `file://${process.argv[1]}`) {

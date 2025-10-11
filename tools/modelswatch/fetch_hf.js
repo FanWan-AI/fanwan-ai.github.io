@@ -102,11 +102,32 @@ async function fetchTargetModel(id) {
 
 export async function fetchHFTop(options = {}){
   ensureDirs();
+  const cachePath = path.join(DATA_DIR, 'top_hf.json');
+  const now = Date.now();
+  const MAX_AGE_MS = parseInt(process.env.HF_CACHE_MAX_AGE_MS || '21600000', 10); // default 6h
+  const preferCache = !Array.isArray(options.targetedModels) || options.targetedModels.length === 0;
   let arr = [];
-  try { arr = await hfList(); }
+  if (preferCache) {
+    try {
+      const stat = fs.statSync(cachePath);
+      if (stat && (now - stat.mtimeMs) < MAX_AGE_MS) {
+        const prev = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        if (prev && Array.isArray(prev.items_raw)) {
+          arr = prev.items_raw;
+        }
+      }
+    } catch {}
+  }
+  try {
+    if (!arr.length) {
+      arr = await hfList();
+      // Save lightweight daily cache for reuse when targets=0
+      try { fs.writeFileSync(cachePath, JSON.stringify({ items_raw: arr }, null, 2), 'utf8'); } catch {}
+    }
+  }
   catch(e){
     // Reuse last top file if available
-    try{ const prev = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'top_hf.json'),'utf8')); if(prev && Array.isArray(prev.items)) return prev.items; }catch{}
+    try{ const prev = JSON.parse(fs.readFileSync(cachePath,'utf8')); if(prev && Array.isArray(prev.items_raw)) return prev.items_raw.map(mapModel).filter(Boolean); }catch{}
     return [];
   }
   const baseLimit = HF_FETCH_LIMIT;
@@ -140,6 +161,8 @@ export async function fetchHFTop(options = {}){
   }
 
   items.forEach(it=>{ it.score = scoreModel(it); });
+  // Keep a mirrored "top_hf.json" with normalized items for quick reuse by other tools
+  try { writeJSON(cachePath, { items_raw: arr, items }); } catch {}
   return items;
 }
 if (import.meta.url === `file://${process.argv[1]}`) {
