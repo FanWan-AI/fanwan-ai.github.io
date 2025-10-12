@@ -114,7 +114,7 @@ const translations = {
   module_ai_teacher_desc: '孩子的专属AI导师，适配个性化学习路径，答疑解惑无所不能。',
   module_ai_teacher_title: 'AI 教师',
   module_ai_teacher_name: '🧑‍🏫 AI 教师 · AI Teacher · Maestro IA',
-  module_ai_daily_academy_title: 'AI每日学堂',
+  module_ai_daily_academy_title: 'AI 每日学堂',
   module_ai_daily_academy_desc: '构建你的AI核心知识体系，助你在日积月累中，从容应对技术变革的浪潮。',
   module_ai_career_desc: '智能匹配职缺，优化简历投递，让下一个机会主动来敲门。',
   module_ai_career_title: 'AI 求职助手',
