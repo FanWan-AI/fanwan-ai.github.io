@@ -621,6 +621,7 @@
       const state = {
         aliasMap: new Map(),
         highlights: [],
+        allHighlights: [], // Global search data
         dateCache: new Map(),
         showingPerDay: null,
         availableDates: new Set(),
@@ -699,6 +700,23 @@
         return map;
       }
 
+      async function loadAllHighlights(dates) {
+        const allItems = [];
+        const promises = dates.map(async (date) => {
+          try {
+            const url = `${DATA_BASE}/data/ai/scholarpush/${date}.json`;
+            const data = await fetchJSON(url);
+            const items = Array.isArray(data.items) ? data.items : (Array.isArray(data) ? data : []);
+            allItems.push(...items);
+          } catch (err) {
+            // Skip failed dates
+            console.warn(`Failed to load ${date}:`, err);
+          }
+        });
+        await Promise.all(promises);
+        return allItems;
+      }
+
       function canonicalize(tag) {
         const key = String(tag || '').trim();
         if (!key) return '';
@@ -761,7 +779,7 @@
         }
       }
 
-      function renderHighlightStats(items) {
+      function renderHighlightStats(items, isSearching = false) {
         if (!highlightStats) return;
         if (!items.length) {
           highlightStats.innerHTML = '';
@@ -770,6 +788,7 @@
         const total = items.length;
         const withCode = items.filter((it) => it.has_code).length;
         const avgImpact = Math.round(items.reduce((sum, it) => sum + (Number(it.impact_score) || 0), 0) / total);
+        // For global search, compute time span from all items
         const timeSpan = items.reduce((acc, it) => {
           const time = new Date(it.ts || it.date || it.generated_at || '');
           if (Number.isNaN(time.getTime())) return acc;
@@ -790,25 +809,12 @@
           spanText = formattedMin || formattedMax || '';
         }
 
-        // If we're showing the aggregated index (not a per-day JSON), prefer the
-        // latest date available from dates.json (state.availableDates) so the
-        // UI reflects the newest per-day snapshot rather than being derived from
-        // the possibly older timestamps inside the aggregated items.
-        if (!state.showingPerDay && state.availableDates && state.availableDates.size) {
-          try {
-            const avail = Array.from(state.availableDates).sort();
-            const latestKey = avail[avail.length - 1];
-            if (latestKey) spanText = latestKey;
-          } catch (e) {
-            // keep computed spanText on error
-          }
-        }
-
         const codeCaption = tr('paperhub_stat_code_caption', { count: withCode }, '{count} 篇附带代码仓库');
+        const totalLabel = isSearching ? tr('paperhub_stat_search_total_label', {}, '搜索结果数量') : tr('paperhub_stat_highlight_label', {}, '今日精选数量');
 
         highlightStats.innerHTML = `
           <article class="hub-stat">
-            <span>${tr('paperhub_stat_highlight_label', {}, '当日精选数量')}</span>
+            <span>${totalLabel}</span>
             <h4>${total}</h4>
             <span>${tr('paperhub_stat_highlight_caption', {}, '记录的论文条目')}</span>
           </article>
@@ -846,7 +852,7 @@
       function renderHighlightChips(items) {
         if (!highlightChips) return;
         const counts = new Map();
-        for (const item of items) {
+        for (const item of state.allHighlights) {
           const set = new Set();
           const tags = (item.tags || []).map(canonicalize);
           tags.forEach((tag) => { if (tag) set.add(tag); });
@@ -1022,33 +1028,29 @@
       function renderHighlights() {
         if (!highlightList) return;
         if (state.loadingHighlights) return;
-        if (!state.hasHighlightData && state.highlights.length === 0) return;
+        if (!state.hasHighlightData && state.allHighlights.length === 0) return;
         if (highlightEmpty) {
           highlightEmpty.textContent = tr('paperhub_empty_highlight', {}, '没有匹配的论文，换个关键词试试。');
         }
         const query = (highlightSearch?.value || '').trim().toLowerCase();
         const tags = Array.from(state.highlightFilters);
-        const selectedDate = highlightDateInput ? fromInputDate(highlightDateInput.value) : null;
-        const selectedIsoDay = selectedDate ? toLocalYYYYMMDD(selectedDate) : null;
+        const isSearching = query || tags.length > 0;
 
-        const filtered = state.highlights.filter((item) => {
+        let dataToFilter;
+        if (isSearching) {
+          // When searching or filtering, use all data
+          dataToFilter = state.allHighlights;
+        } else {
+          // When no search/filter, show latest date data
+          dataToFilter = state.highlights;
+        }
+
+        const filtered = dataToFilter.filter((item) => {
           if (tags.length) {
             const itemTags = new Set((item.tags || []).map(canonicalize));
             if (item.task) itemTags.add(canonicalize(item.task));
             const hasAll = tags.every((tag) => itemTags.has(tag));
             if (!hasAll) return false;
-          }
-          // Only perform per-item date filtering when the user explicitly selected a date
-          // AND we are NOT displaying a per-day dataset. If a per-day JSON file was
-          // loaded (state.showingPerDay), treat that file as authoritative and display
-          // its items as-is — do not re-filter them by their internal timestamps.
-          const userSelected = highlightDateInput && highlightDateInput.dataset.userSelected === 'true';
-          if (!state.showingPerDay && userSelected && selectedIsoDay) {
-            const ts = item.ts || item.date || item.generated_at || '';
-            const d = ts ? new Date(ts) : null;
-            if (!d) return false;
-            const itemLocal = toLocalYYYYMMDD(new Date(d.getFullYear(), d.getMonth(), d.getDate()));
-            if (itemLocal !== selectedIsoDay) return false;
           }
           if (!query) return true;
           const blob = [highlightTitle(item), highlightSummary(item), (item.tags || []).join(' '), item.task || '', item.type || '']
@@ -1057,7 +1059,7 @@
           return blob.includes(query);
         });
 
-        renderHighlightStats(filtered);
+        renderHighlightStats(filtered, isSearching);
         const hasItems = filtered.length > 0;
         if (highlightEmpty) highlightEmpty.hidden = hasItems;
         if (!hasItems) {
@@ -1413,16 +1415,17 @@
           if (Array.isArray(datesIndex)) dateList = datesIndex;
           else if (Array.isArray(datesIndex.dates)) dateList = datesIndex.dates;
           state.availableDates = new Set(dateList);
+          // Load all highlights from all dates
+          state.allHighlights = await loadAllHighlights(dateList);
           state.milestonesIndex = Array.isArray(milestoneIndex.tasks) ? milestoneIndex.tasks : [];
           state.loadingHighlights = false;
           state.loadingMilestones = false;
           state.hasHighlightData = true;
           state.hasMilestoneData = true;
-          renderHighlightChips(state.highlights);
+          renderHighlightChips(state.allHighlights);
           // initialize date input to latest date from dates.json (if available) or fallback
           initSelectedDate();
-          // Default view: render index.json (latest aggregated) on page load.
-          // Per-day files are only loaded when the user interacts with the calendar.
+          // Default view: render all highlights on page load.
           renderHighlights();
           renderMilestoneFilters(state.milestonesIndex);
           renderMilestones();
@@ -1512,7 +1515,7 @@
       window.addEventListener('language-changed', () => {
         syncStaticText();
         if (state.hasHighlightData) {
-          renderHighlightChips(state.highlights);
+          renderHighlightChips(state.allHighlights);
         }
         if (state.hasMilestoneData) {
           renderMilestoneFilters(state.milestonesIndex);
