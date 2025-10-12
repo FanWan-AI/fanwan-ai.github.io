@@ -230,6 +230,8 @@ THEME_LINES: Dict[str, str] = {
     "工具/产业": "工具链与落地方案增多，关注集成与业务影响。",
 }
 
+REQUIRED_SECTIONS = ["今日大事", "政策/融资", "研究/模型", "工具/产业"]
+
 
 def _classify(item: NewsItem) -> str:
     tags_lower = {t.lower() for t in item.tags}
@@ -491,6 +493,67 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
     return True, "ok"
 
 
+def _deep_copy(data: Dict[str, Any]) -> Dict[str, Any]:
+    return json.loads(json.dumps(data, ensure_ascii=False))
+
+
+def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[str, Any]:
+    base = _deep_copy(fallback)
+
+    def _merge_dict(dst: Dict[str, Any], src: Dict[str, Any]) -> None:
+        for key, value in (src or {}).items():
+            if isinstance(value, dict) and isinstance(dst.get(key), dict):
+                _merge_dict(dst[key], value)
+            else:
+                dst[key] = value
+
+    if isinstance(primary, dict):
+        if primary.get("meta"):
+            if "meta" not in base or not isinstance(base["meta"], dict):
+                base["meta"] = {}
+            _merge_dict(base["meta"], primary.get("meta") or {})
+        if primary.get("deep_dive"):
+            base["deep_dive"] = primary.get("deep_dive")
+        if primary.get("outro"):
+            if "outro" not in base or not isinstance(base["outro"], dict):
+                base["outro"] = {}
+            _merge_dict(base["outro"], primary.get("outro") or {})
+
+    fallback_sections = {sec.get("title"): sec for sec in base.get("sections", []) if isinstance(sec, dict)}
+    primary_sections = {}
+    if isinstance(primary, dict):
+        for sec in primary.get("sections", []) or []:
+            if isinstance(sec, dict) and sec.get("title"):
+                primary_sections[sec["title"]] = sec
+
+    merged_sections: List[Dict[str, Any]] = []
+    for title in REQUIRED_SECTIONS:
+        sec = _deep_copy(fallback_sections.get(title, {"title": title, "items": []}))
+        if title in primary_sections:
+            cand = primary_sections[title]
+            if isinstance(cand.get("items"), list):
+                sec["items"] = cand["items"]
+            else:
+                sec["items"] = []
+        merged_sections.append(sec)
+
+    # Preserve additional sections provided by the LLM (if any)
+    for title, sec in primary_sections.items():
+        if title in REQUIRED_SECTIONS:
+            continue
+        merged_sections.append(sec)
+
+    base["sections"] = merged_sections
+
+    deep = base.get("deep_dive")
+    if not isinstance(deep, dict) or not deep.get("id"):
+        base["deep_dive"] = fallback.get("deep_dive")
+
+    base["date"] = primary.get("date") or fallback.get("date")
+    base["mode"] = primary.get("mode") or fallback.get("mode")
+    return base
+
+
 def _generation_log(start: float, llm_used: bool, items: List[NewsItem], model_hint: Optional[str]) -> Dict[str, Any]:
     return {
         "generated_at": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -564,6 +627,8 @@ def main() -> None:
     prompt_data = _prompt_payload(date_str, mode, items, stats)
     force_template = os.getenv("BRIEFING_FORCE_TEMPLATE", "0").lower() in {"1", "true", "yes"}
 
+    fallback_briefing = _fallback_briefing(date_str, mode, items, stats)
+
     briefing: Dict[str, Any]
     start = time.time()
     llm_ok = False
@@ -574,17 +639,18 @@ def main() -> None:
             raw = chat_once(prompt, system="You craft accurate Chinese news briefings in JSON.", temperature=0.2, max_tokens=max_tokens, want_json=True)
             text = raw.strip().strip("` ")
             briefing = json.loads(text)
+            briefing = _merge_briefings(briefing, fallback_briefing)
             ok, reason = _validate_briefing(briefing, date_str)
             if not ok:
                 print(f"[ai-radar] briefing validation failed ({reason}); falling back to template")
-                briefing = _fallback_briefing(date_str, mode, items, stats)
+                briefing = fallback_briefing
             else:
                 llm_ok = True
         except (LLMError, json.JSONDecodeError, ValueError) as exc:
             print(f"[ai-radar] briefing LLM error: {exc}; using template fallback")
-            briefing = _fallback_briefing(date_str, mode, items, stats)
+            briefing = fallback_briefing
     else:
-        briefing = _fallback_briefing(date_str, mode, items, stats)
+        briefing = fallback_briefing
 
     log = _generation_log(start, llm_ok, items, _model_hint())
     briefing["generation_log"] = log
