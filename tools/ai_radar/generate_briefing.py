@@ -98,9 +98,11 @@ class NewsItem:
 
     id: str
     title: str
+    title_cn: str
     url: str
     source_host: str
     raw_excerpt: str
+    excerpt_cn: str
     tags: List[str]
     published_at: str
     published_dt: datetime
@@ -161,6 +163,29 @@ def _extract_excerpt(record: Dict[str, Any]) -> str:
     return ""
 
 
+def _extract_cn_title(record: Dict[str, Any]) -> str:
+    bundle = record.get("title_i18n") or {}
+    if isinstance(bundle, dict):
+        for key in ("zh", "zh-cn", "zh_CN", "zh-Hans"):
+            text = (bundle.get(key) or "").strip()
+            if text:
+                return text
+    return (record.get("title") or "").strip()
+
+
+def _extract_cn_excerpt(record: Dict[str, Any]) -> str:
+    bundle = record.get("excerpt_i18n") or {}
+    if isinstance(bundle, dict):
+        for key in ("zh", "zh-cn", "zh_CN", "zh-Hans"):
+            text = (bundle.get(key) or "").strip()
+            if text:
+                return text
+    base = (record.get("raw_excerpt") or "").strip()
+    if base:
+        return base
+    return (record.get("title") or "").strip()
+
+
 def _normalize_text(text: str, limit: int = 420) -> str:
     if not text:
         return ""
@@ -168,6 +193,28 @@ def _normalize_text(text: str, limit: int = 420) -> str:
     if len(cleaned) <= limit:
         return cleaned
     return cleaned[: limit - 1].rstrip() + "…"
+
+
+def _chinese_ratio(paragraphs: Iterable[str]) -> float:
+    text = "".join(str(p or "") for p in paragraphs)
+    stripped = text.strip()
+    if not stripped:
+        return 0.0
+    cjk = 0
+    latin = 0
+    for ch in stripped:
+        if "\u4e00" <= ch <= "\u9fff":
+            cjk += 1
+        elif "a" <= ch.lower() <= "z":
+            latin += 1
+    total = cjk + latin
+    if total == 0:
+        return 1.0 if cjk > 0 else 0.0
+    return cjk / total
+
+
+def _is_mostly_chinese(paragraphs: Iterable[str], threshold: float = 0.65) -> bool:
+    return _chinese_ratio(paragraphs) >= threshold
 
 
 def _tag_bonus(tags: Iterable[str]) -> float:
@@ -206,12 +253,16 @@ def _select_top(items: List[Dict[str, Any]], top_k: int, blacklist: List[str]) -
             continue
         published_dt = _parse_iso8601(raw.get("published_at", "")) or now
         excerpt = _normalize_text(_extract_excerpt(raw))
+        title_cn = _normalize_text(_extract_cn_title(raw), 180)
+        excerpt_cn = _normalize_text(_extract_cn_excerpt(raw), 180)
         news = NewsItem(
             id=item_id,
             title=(raw.get("title") or "").strip(),
+            title_cn=title_cn or (raw.get("title") or "").strip(),
             url=(raw.get("url") or "").strip(),
             source_host=host,
             raw_excerpt=excerpt,
+            excerpt_cn=excerpt_cn or excerpt,
             tags=[str(t) for t in raw.get("tags") or []],
             published_at=raw.get("published_at") or "",
             published_dt=published_dt,
@@ -245,8 +296,6 @@ THEME_LINES: Dict[str, str] = {
     "研究/模型": "研究迭代加速，新模型与论文值得重点跟进。",
     "工具/产业": "工具链与落地方案增多，关注集成与业务影响。",
 }
-SCRIPT_MAX_SEGMENTS = 8
-SCRIPT_MIN_SEGMENTS = 5
 
 
 def _classify(item: NewsItem) -> str:
@@ -416,46 +465,65 @@ def _compose_script_text(script: Dict[str, Any]) -> str:
 
 
 def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: Dict[str, Any]) -> Dict[str, Any]:
-    lead_items = items[:SCRIPT_MAX_SEGMENTS]
-    if len(lead_items) < SCRIPT_MIN_SEGMENTS:
-        lead_items = items[: max(SCRIPT_MIN_SEGMENTS, len(items))]
+    total_items = len(items)
+    host_counter: Counter[str] = stats.get("host_counter") or Counter()
+    section_counter: Counter[str] = stats.get("section_counter") or Counter()
 
+    section_groups: Dict[str, List[NewsItem]] = {}
+    for it in items:
+        section_groups.setdefault(_classify(it), []).append(it)
+
+    ordered_sections = [label for label, _ in section_counter.most_common()] or list(section_groups.keys())
+    if not ordered_sections:
+        ordered_sections = ["行业动态"]
+
+    opening = f"这里是AI前沿要闻导读，{_bj_date_chinese(date_str)}我们精选梳理了{total_items}条重要资讯。"
     segments: List[Dict[str, Any]] = []
+    paragraphs: List[str] = [opening]
 
-    opening = f"这里是AI前沿要闻导读，{_bj_date_chinese(date_str)}为您带来{max(len(lead_items), 1)}条重点资讯。"
-
-    def _segment_fact(it: NewsItem) -> str:
-        if it.raw_excerpt:
-            return _normalize_text(it.raw_excerpt, 140)
-        return _normalize_text(it.title, 140)
-
-    for it in lead_items:
-        section = _classify(it)
-        fact = _segment_fact(it)
-        impact = _default_impact(section)
+    for idx, label in enumerate(ordered_sections, start=1):
+        entries = section_groups.get(label, [])
+        if not entries:
+            continue
+        sorted_entries = sorted(entries, key=lambda it: it.score, reverse=True)
+        covered_ids = [it.id for it in sorted_entries]
+        names = [(_normalize_text(it.title_cn or it.title, 40) or it.title) for it in sorted_entries]
+        if names:
+            # Chunk names into readable pieces
+            chunked: List[str] = []
+            for i in range(0, len(names), 3):
+                chunk = "、".join(names[i : i + 3])
+                chunked.append(chunk)
+            name_sentence = "；".join(chunked)
+        else:
+            name_sentence = "多条行业动态"  # fallback
+        fact_sentence = f"{label}板块共有{len(sorted_entries)}条动态，重点关注{name_sentence}。"
+        impact_sentence = THEME_LINES.get(label, "请持续跟进相关进展。")
         segments.append(
             {
-                "id": it.id,
-                "tag": section,
-                "fact": fact or _normalize_text(it.title, 120),
-                "impact": impact,
-                "source_host": it.source_host or "",
+                "id": f"section-{idx}",
+                "tag": label,
+                "fact": fact_sentence,
+                "impact": impact_sentence,
+                "source_host": ",".join(sorted({it.source_host for it in sorted_entries if it.source_host})),
+                "covered_ids": covered_ids,
             }
         )
+        paragraphs.append(fact_sentence + " " + impact_sentence)
 
     if not segments:
         segments = [
             {
-                "id": "none",
+                "id": "section-1",
                 "tag": "行业动态",
                 "fact": "今日暂无足够新闻条目，建议稍后再查看。",
-                "impact": "",
+                "impact": "请留意后续更新。",
                 "source_host": "",
+                "covered_ids": [],
             }
         ]
+        paragraphs.append("今日暂无足够新闻条目，建议稍后再来关注。")
 
-    host_counter: Counter[str] = stats.get("host_counter") or Counter()
-    section_counter: Counter[str] = stats.get("section_counter") or Counter()
     themes = [
         {"topic": label, "one_line": THEME_LINES.get(label, "持续跟进相关进展。")}
         for label, _ in section_counter.most_common(2)
@@ -463,29 +531,11 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
     if not themes:
         themes = [{"topic": "行业动态", "one_line": "关注行业与工具落地的最新动向。"}]
 
-    top_host = host_counter.most_common(1)[0][0] if host_counter else "重点来源"
     closing = "以上是今天的核心动态，感谢收听，查看更多详情请访问官网。"
+    top_host = host_counter.most_common(1)[0][0] if host_counter else "重点来源"
     call_to_action = f"关注 {top_host} 等重点渠道，第一时间掌握后续更新。"
-
-    paragraphs: List[str] = []
-    if opening:
-        paragraphs.append(opening)
-    for idx, seg in enumerate(segments, start=1):
-        fact = seg.get("fact") or ""
-        impact = seg.get("impact") or ""
-        tag = seg.get("tag") or ""
-        body_parts = [fact] if fact else []
-        if impact:
-            body_parts.append(impact)
-        if body_parts:
-            prefix = f"第{idx}条"
-            if tag:
-                prefix += f"（{tag}）"
-            paragraphs.append(f"{prefix}：{' '.join(body_parts)}")
-    if closing:
-        paragraphs.append(closing)
-    if call_to_action:
-        paragraphs.append(call_to_action)
+    paragraphs.append(closing)
+    paragraphs.append(call_to_action)
 
     script_payload = {
         "language": "zh",
@@ -504,7 +554,7 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
         "meta": {
             "hotness_delta": _hotness_delta(items),
             "themes": themes,
-            "length_sec_estimate": 120,
+            "length_sec_estimate": min(600, max(240, len(segments) * 18)),
         },
         "script": script_payload,
         "script_text": script_text,
@@ -516,7 +566,7 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
                     "url": it.url,
                     "tag": _classify(it),
                 }
-                for it in lead_items
+                for it in items
             ]
         },
     }
@@ -527,6 +577,7 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
         return {
             "id": it.id,
             "title": it.title,
+            "title_cn": it.title_cn,
             "url": it.url,
             "source_host": it.source_host,
             "published_at": it.published_at,
@@ -534,15 +585,72 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
             "hotness": it.hotness,
             "score": it.score,
             "excerpt": it.raw_excerpt,
+            "summary_cn": it.excerpt_cn,
         }
 
     tag_counter: Counter[str] = stats.get("tag_counter") or Counter()
     host_counter: Counter[str] = stats.get("host_counter") or Counter()
     section_counter: Counter[str] = stats.get("section_counter") or Counter()
+
+    section_groups: Dict[str, List[NewsItem]] = {}
+    for it in items:
+        section = _classify(it)
+        section_groups.setdefault(section, []).append(it)
+
+    ordered_sections: List[str] = [label for label, _ in section_counter.most_common()] or list(section_groups.keys())
+    sections_payload: List[Dict[str, Any]] = []
+    for label in ordered_sections:
+        entries = section_groups.get(label, [])
+        if not entries:
+            continue
+        sorted_entries = sorted(entries, key=lambda x: x.score, reverse=True)
+        sections_payload.append(
+            {
+                "section": label,
+                "count": len(entries),
+                "theme_hint": THEME_LINES.get(label, "关注行业节奏。"),
+                "items": [
+                    {
+                        "id": it.id,
+                        "title_cn": it.title_cn,
+                        "summary_cn": it.excerpt_cn,
+                        "source_host": it.source_host,
+                        "hotness": it.hotness,
+                        "published_at": it.published_at,
+                    }
+                    for it in sorted_entries
+                ],
+            }
+        )
+
+    hot_sorted = sorted(items, key=lambda it: it.hotness, reverse=True)
+    quick_highlights = [
+        {
+            "id": it.id,
+            "title_cn": it.title_cn,
+            "source_host": it.source_host,
+            "hotness": it.hotness,
+            "summary_cn": it.excerpt_cn,
+        }
+        for it in hot_sorted[: min(12, len(hot_sorted))]
+    ]
+
+    coverage_instructions = {
+        "total_items": len(items),
+        "guidance": (
+            "请以纯中文完成播报。可按主题或影响将多条新闻融合在同一段落中，但务必让每条新闻都被提及，"
+            "必要时可在一句中串联多条资讯并提示来源。"
+        ),
+    }
     return {
-        "date": date_str,
-        "mode": mode,
-        "top_items": [_item_dict(it) for it in items],
+    "date": date_str,
+    "mode": mode,
+    "total_items": len(items),
+        "total_items": len(items),
+    "top_items": [_item_dict(it) for it in items],
+        "sections": sections_payload,
+        "highlights": quick_highlights,
+        "coverage": coverage_instructions,
         "stats": {
             "tag_distribution": tag_counter.most_common(12),
             "host_distribution": host_counter.most_common(6),
@@ -561,7 +669,7 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
             "script": {
                 "language": "zh",
                 "opening": "开场一句",
-                "segments": "数组，6-8 条事件段落，每条含 id/tag/fact/impact",
+                "segments": "数组，数量可自定，每条含 id/tag/fact/impact/covered_ids",
                 "closing": "收束一句",
                 "call_to_action": "可选收尾行动号召",
                 "paragraphs": "数组，按顺序列出完整段落（含开场与收束）",
@@ -572,22 +680,34 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
 
 
 def _build_prompt(data: Dict[str, Any]) -> str:
+    total_items = int(data.get("total_items") or len(data.get("top_items") or []) or 1)
+    suggested_runtime = max(240, min(600, total_items * 18))
     return (
-        "你是一名资深科技新闻播报脚本总监，要为忙碌的听众打造一段 2-5 分钟的中文口播导览。\n"
-        "目标：让听众在最短时间内掌握当日 AI 领域的关键走向，理解背后意义，并对后续发展产生兴趣。\n"
-        "素材：仅可使用输入新闻中的事实，禁止杜撰数字、结论或未给出的背景。\n"
-        "整体风格：稳重、可信、具有节奏感，段落衔接自然，可使用过渡语串联话题。避免逐条念标题或简单摘要，要用口播语言凝练成信息密度高、可听性强的讲述。\n"
-        "输出格式：必须返回严格合法的 JSON（不要代码块或多余文字），字段结构如下——meta、script、script_text。\n"
-        "meta：填写热度趋势、主题脉络、预计时长（确保 120-300 秒区间）。\n"
-        "script：包含 language/opening/segments/closing/call_to_action/paragraphs。segments 需 6-8 条，每条提供 id、tag、fact、impact；fact 用 1-2 句解释事件核心，impact 用 1-2 句说明影响意义或下一步关注点，严禁直接重复标题。\n"
-        "paragraphs：开场、各段事件、收束按口播逻辑组织，每段 2-3 句，注意用词口语化但专业。适当插入过渡提醒听众为什么要关心。\n"
-        "script_text：将 opening、segments、closing、call_to_action 按顺序拼接成完整可读文本。\n"
-        "如部分素材信息不足，可提示仍在跟进，用模糊措辞，不可杜撰细节。\n"
+        "你是一名资深科技新闻播报脚本总监，为忙碌的听众制作一段完整的中文口播导览。\n"
+        "输入提供了当日全部 AI 相关新闻条目，请做到：逐条覆盖、事实准确、节奏紧凑。\n"
+        "写稿原则：\n"
+        "1) 仅引用输入中的信息，禁止杜撰数字、结论或未给出的背景。\n"
+        "2) 语言必须为自然流畅的中文（专业英文名词可保留，但需要中文解释或上下文），不可出现长篇英文句子。\n"
+        "3) 优先按主题、影响、时间线等方式把多条新闻融入同一段，以提高可听性；段落之间要有逻辑过渡。\n"
+        "4) 段落要适合口播，每段 2-3 句，可在句中引用多条资讯并注明来源或影响。\n"
+        "输出要求（必须返回合法 JSON，无额外文本）：\n"
+        f"meta：包含 hotness_delta / themes / length_sec_estimate，播报时长估算建议约 {suggested_runtime} 秒，可结合口播节奏微调。\n"
+        "script：language 固定为 'zh'，opening / segments / closing / call_to_action / paragraphs 必须填写。segments 数量可在 6-15 段之间，由你根据主题归纳决定，"
+        "但要求在这些段落中覆盖输入的全部新闻。\n"
+        "segment 结构：\n"
+        "- id：自定义段落编号（如 section-1）。\n"
+        "- tag：段落主题标签，可使用输入中的分类或自拟中文主题。\n"
+        "- fact：用 1-3 句中文串联该主题下的全部新闻，确保每条资讯被提及（可在句中点名来源或标题核心词）。\n"
+        "- impact：用 1-2 句说明这些动向的意义、行业影响或值得关注的下一步。\n"
+        "- covered_ids：数组，写出此段落覆盖的新闻 id 列表。\n"
+        "paragraphs：按照 opening -> 各 segment -> closing -> call_to_action 输出完整口播段落，段内句式口语化但保持专业度。\n"
+        "script_text：将 opening、所有段落正文、closing、call_to_action 拼成单段可朗读文本，段间请用换行分隔。\n"
+        "如素材信息不足，可提示仍在跟进或引用公开表述，不得编造细节。\n"
         f"【当日新闻素材】{json.dumps(data, ensure_ascii=False)}"
     )
 
 
-def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, str]:
+def _validate_briefing(payload: Dict[str, Any], date_str: str, expected_ids: Optional[List[str]] = None) -> Tuple[bool, str]:
     if not isinstance(payload, dict):
         return False, "payload-not-dict"
     if payload.get("date") != date_str:
@@ -600,6 +720,7 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
         return False, "segments-empty"
     if len(segments) < 3:
         return False, "segments-too-few"
+    segment_ids: List[str] = []
     for seg in segments:
         if not isinstance(seg, dict):
             return False, "segment-not-dict"
@@ -607,6 +728,12 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
         fact = str(seg.get("fact") or "").strip()
         if not seg_id or not fact:
             return False, "segment-missing-fields"
+        segment_ids.append(seg_id)
+    if expected_ids:
+        if len(segment_ids) != len(expected_ids):
+            return False, "segment-count-mismatch"
+        if segment_ids != expected_ids:
+            return False, "segment-order-mismatch"
     paragraphs_field = script.get("paragraphs")
     paragraphs: List[str] = []
     if isinstance(paragraphs_field, list):
@@ -703,12 +830,22 @@ def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[
             if not impact and fallback_seg.get("impact"):
                 impact = fallback_seg.get("impact")
             source_host = str(seg.get("source_host") or fallback_seg.get("source_host") or "").strip()
+            covered_ids = seg.get("covered_ids")
+            if isinstance(covered_ids, list):
+                covered_ids = [str(v) for v in covered_ids if str(v).strip()]
+            else:
+                fallback_ids = fallback_seg.get("covered_ids") if isinstance(fallback_seg, dict) else None
+                if isinstance(fallback_ids, list):
+                    covered_ids = [str(v) for v in fallback_ids if str(v).strip()]
+                else:
+                    covered_ids = []
             return {
                 "id": seg_id,
                 "tag": tag,
                 "fact": fact,
                 "impact": impact,
                 "source_host": source_host,
+                "covered_ids": covered_ids,
             }
 
         def _normalize_script(script: Any, fallback_script_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -946,7 +1083,8 @@ def main() -> None:
     if not isinstance(raw_items, list) or not raw_items:
         raise SystemExit("latest.json has no items to brief")
 
-    top_k = max(4, _env_int("BRIEFING_TOP_K", 12))
+    default_top_k = max(len(raw_items), 12)
+    top_k = max(4, _env_int("BRIEFING_TOP_K", default_top_k))
     mode = (os.getenv("BRIEFING_MODE") or "narrative_script").strip() or "narrative_script"
     blacklist = _env_list("BRIEFING_SOURCE_BLACKLIST")
     items = _select_top(raw_items, top_k, blacklist)
@@ -980,7 +1118,8 @@ def main() -> None:
             text = raw.strip().strip("` ")
             briefing = json.loads(text)
             briefing = _merge_briefings(briefing, fallback_briefing)
-            ok, reason = _validate_briefing(briefing, date_str)
+            expected_ids = [it.id for it in items]
+            ok, reason = _validate_briefing(briefing, date_str, expected_ids)
             if not ok:
                 print(f"[ai-radar] briefing validation failed ({reason}); falling back to template")
                 briefing = fallback_briefing
@@ -999,7 +1138,20 @@ def main() -> None:
         if llm_status == "pending":
             llm_status = "skipped-unknown"
 
+    paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
+    initial_ratio = _chinese_ratio(paragraphs_for_tts) if paragraphs_for_tts else 0.0
+    non_chinese_fallback = False
+    if paragraphs_for_tts and not _is_mostly_chinese(paragraphs_for_tts):
+        llm_ok = False
+        llm_status = (llm_status or "") + "|non_chinese"
+        briefing = fallback_briefing
+        non_chinese_fallback = True
+        paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
+
     if not isinstance(briefing.get("script_text"), str) or not briefing.get("script_text", "").strip():
+        briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
+    else:
+        # Ensure script_text reflects potential fallback adjustments
         briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
 
     log = _generation_log(start, llm_ok, items, model_hint)
@@ -1008,7 +1160,11 @@ def main() -> None:
     log["force_template"] = force_template
     if llm_error:
         log["llm_error"] = llm_error
+    if non_chinese_fallback:
+        log["briefing_source"] = "template-non-chinese"
+        log["llm_chinese_ratio"] = initial_ratio
     paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
+    log["chinese_ratio"] = _chinese_ratio(paragraphs_for_tts) if paragraphs_for_tts else 0.0
     briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, os.getenv("VOICE"), briefing.get("script", {}).get("language", "zh"), log)
     briefing["generation_log"] = log
 
