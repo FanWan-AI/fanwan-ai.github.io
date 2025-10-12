@@ -32,6 +32,7 @@ function i18nStr(key, lang){
     briefingThemes: { zh: '主题脉络', en: 'Theme highlights', es: 'Temas clave' },
     briefingLength: { zh: '播报约 {seconds} 秒', en: 'Runtime ≈ {seconds}s', es: 'Duración ≈ {seconds}s' },
     briefingHotness: { zh: '热度趋势 {value}', en: 'Hotness {value}', es: 'Tendencia {value}' },
+    audioSpeedLabel: { zh: '播放速度', en: 'Playback speed', es: 'Velocidad de reproducción' },
   };
   return (map[key]?.[lang]) || (map[key]?.zh) || '';
 }
@@ -176,7 +177,9 @@ function setupBriefingAudio(scope, segments){
   if (!wrap) return;
   const playBtn = wrap.querySelector('.rad-audio-toggle');
   const statusEl = wrap.querySelector('.rad-audio-status');
+  const captionEl = wrap.querySelector('.rad-audio-caption');
   const audioEl = wrap.querySelector('audio.rad-audio');
+  const speedEl = wrap.querySelector('.rad-audio-speed-select');
   if (!playBtn || !audioEl) return;
 
   const safeSegments = segments.filter(seg => seg && typeof seg.file === 'string');
@@ -190,9 +193,35 @@ function setupBriefingAudio(scope, segments){
   let state = 'idle';
   let endedNaturally = false;
 
-  function highlight(){ /* no list UI */ }
+  function applySpeed(rate){
+    const value = Number(rate);
+    if (!Number.isFinite(value) || value <= 0) return;
+    try { audioEl.playbackRate = value; } catch {}
+  }
+
+  if (speedEl){
+    applySpeed(parseFloat(speedEl.value) || 1.25);
+    speedEl.addEventListener('change', () => {
+      applySpeed(parseFloat(speedEl.value) || 1);
+    });
+  } else {
+    applySpeed(1);
+  }
+
+  function highlight(){ /* paragraphs stay static */ }
 
   function updateStatus(text){ if (statusEl) statusEl.textContent = text || ''; }
+
+  function updateCaption(text){
+    if (!captionEl) return;
+    const val = text ? String(text).trim() : '';
+    captionEl.textContent = val;
+    captionEl.hidden = !val;
+  }
+
+  function segmentProgressLabel(idx){
+    return `（${idx + 1}/${safeSegments.length}）`;
+  }
 
   function setState(next){
     state = next;
@@ -214,9 +243,10 @@ function setupBriefingAudio(scope, segments){
     endedNaturally = false;
     audioEl.src = seg.file;
     audioEl.currentTime = 0;
+    try { audioEl.load(); } catch {}
     highlight(idx);
-    const snippet = seg.text ? `：${seg.text.slice(0, 42)}` : '';
-    updateStatus(`正在播放第 ${idx + 1} 段${snippet}`);
+    updateCaption(seg.text || '');
+    updateStatus(`正在播放${segmentProgressLabel(idx)}`);
     return true;
   }
 
@@ -239,13 +269,13 @@ function setupBriefingAudio(scope, segments){
     } else if (state === 'playing'){
   audioEl.pause();
       setState('paused');
-      updateStatus('已暂停');
+      updateStatus(`已暂停${segmentProgressLabel(index)}`);
     } else if (state === 'paused'){
       audioEl.play().then(() => {
         setState('playing');
         const seg = safeSegments[index];
-        const snippet = seg && seg.text ? `：${seg.text.slice(0, 42)}` : '';
-        updateStatus(`继续播放第 ${index + 1} 段${snippet}`);
+        updateCaption(seg ? seg.text || '' : '');
+        updateStatus(`继续播放${segmentProgressLabel(index)}`);
       }).catch(err => {
         console.warn('audio resume failed', err);
         updateStatus('无法继续播放，请重试');
@@ -260,7 +290,8 @@ function setupBriefingAudio(scope, segments){
       play(index);
     } else {
       setState('done');
-      highlight(-1);
+      highlight(safeSegments.length);
+      updateCaption('');
       updateStatus('播放完成');
       index = 0;
     }
@@ -270,7 +301,7 @@ function setupBriefingAudio(scope, segments){
     if (endedNaturally) return;
     if (state === 'playing'){
       setState('paused');
-      updateStatus('已暂停');
+      updateStatus(`已暂停${segmentProgressLabel(index)}`);
     }
   });
 
@@ -282,6 +313,8 @@ function setupBriefingAudio(scope, segments){
   });
 
   setState('idle');
+  highlight(-1);
+  updateCaption('');
   updateStatus('音频已就绪，点击播放');
 }
 
@@ -682,15 +715,37 @@ async function renderAIRadar(containerId = 'ai-radar') {
         })
         .filter(Boolean);
     }
-    const audioHtml = audioSegments.length ? `
-      <div class="rad-briefing-audio" data-count="${audioSegments.length}">
-        <div class="rad-audio-head">
-          <button type="button" class="btn outline rad-audio-toggle">▶ 播放语音导读</button>
-          <span class="rad-audio-status" aria-live="polite">音频加载中…</span>
+    let audioHtml = '';
+    if (audioSegments.length){
+      const speedLabel = i18nStr('audioSpeedLabel', lang) || '播放速度';
+      const speedChoices = [
+        { value: '0.75', label: '0.75×' },
+        { value: '1', label: '1.0×' },
+        { value: '1.25', label: '1.25×' },
+        { value: '1.5', label: '1.5×' },
+      ];
+      const defaultSpeed = '1.25';
+      const speedOptionsHtml = speedChoices.map(choice => {
+        const selected = choice.value === defaultSpeed ? ' selected' : '';
+        return `<option value="${choice.value}"${selected}>${choice.label}</option>`;
+      }).join('');
+      audioHtml = `
+        <div class="rad-briefing-audio" data-count="${audioSegments.length}">
+          <div class="rad-audio-head">
+            <button type="button" class="btn outline rad-audio-toggle">▶ 播放语音导读</button>
+            <div class="rad-audio-status" role="status" aria-live="polite">音频加载中…</div>
+            <label class="rad-audio-speed">
+              <span>${escapeHtml(speedLabel)}</span>
+              <select class="rad-audio-speed-select" aria-label="${escapeAttr(speedLabel)}">
+                ${speedOptionsHtml}
+              </select>
+            </label>
+          </div>
+          <div class="rad-audio-caption" aria-live="polite" hidden></div>
+          <audio class="rad-audio" preload="none"></audio>
         </div>
-        <audio class="rad-audio" preload="none"></audio>
-      </div>
-    ` : '';
+      `;
+    }
 
     let paragraphs = [];
     if (Array.isArray(script.paragraphs)){
@@ -752,7 +807,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
       const attrStr = attrs.length ? ' ' + attrs.join(' ') : '';
       return `<p class="rad-briefing-paragraph"${attrStr}>${escapeHtml(text)}</p>`;
     }).join('');
-    const bodyHtml = `<div class="rad-briefing-text">${paragraphHtml}</div>`;
+    const bodyHtml = audioSegments.length ? '' : `<div class="rad-briefing-text">${paragraphHtml}</div>`;
 
     briefingEl.innerHTML = `
       <div class="rad-briefing-inner">

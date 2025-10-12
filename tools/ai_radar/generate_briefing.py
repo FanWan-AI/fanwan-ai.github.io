@@ -953,7 +953,8 @@ def main() -> None:
     if not items:
         raise SystemExit("no items left after applying filters; adjust BRIEFING_SOURCE_BLACKLIST or data")
 
-    date_str = _bj_date()
+    generated_dt = _parse_iso8601(latest.get("generated_at", ""))
+    date_str = _bj_date(generated_dt)
     stats = _collect_stats(items)
     prompt_data = _prompt_payload(date_str, mode, items, stats)
     force_template = os.getenv("BRIEFING_FORCE_TEMPLATE", "0").lower() in {"1", "true", "yes"}
