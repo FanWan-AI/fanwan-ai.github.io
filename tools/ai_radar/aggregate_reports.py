@@ -646,19 +646,31 @@ def _briefing_reference(date_str: str):
             data = json.load(fh)
     except Exception:
         return None
+    script = data.get('script') if isinstance(data, dict) else None
+    segments = script.get('segments') if isinstance(script, dict) else None
+    segment_ids = []
+    if isinstance(segments, list):
+        for seg in segments:
+            if isinstance(seg, dict) and seg.get('id'):
+                segment_ids.append(seg['id'])
     sections = []
     for sec in data.get('sections', []) or []:
         if isinstance(sec, dict) and sec.get('title'):
             sections.append(sec['title'])
     deep_id = ''
-    try:
-        deep_id = (data.get('deep_dive') or {}).get('id') or ''
-    except Exception:
-        deep_id = ''
+    if segment_ids:
+        deep_id = segment_ids[0]
+    else:
+        try:
+            deep_id = (data.get('deep_dive') or {}).get('id') or ''
+        except Exception:
+            deep_id = ''
     return {
         'date': date_str,
         'url': f"/data/ai/airadar/briefings/{date_str}.json",
         'sections': sections,
+        'segments': segment_ids,
+        'mode': data.get('mode', ''),
         'deep_dive_id': deep_id,
     }
 

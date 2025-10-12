@@ -267,7 +267,10 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const normalizedUrl = ensureLeadingSlash(url);
     if (briefingCache.has(normalizedUrl)){
       briefingData = briefingCache.get(normalizedUrl);
-      briefingState = briefingData ? 'ready' : 'empty';
+      const cached = briefingData || {};
+      const hasScript = cached && cached.script && Array.isArray(cached.script.segments) && cached.script.segments.length;
+      const hasSections = cached && Array.isArray(cached.sections) && cached.sections.length;
+      briefingState = (hasScript || hasSections) ? 'ready' : 'empty';
       return;
     }
     try{
@@ -281,7 +284,9 @@ async function renderAIRadar(containerId = 'ai-radar') {
       const data = await res.json();
       briefingData = data;
       briefingCache.set(normalizedUrl, data);
-      briefingState = Array.isArray(data.sections) && data.sections.length ? 'ready' : 'empty';
+      const hasScript = data && data.script && Array.isArray(data.script.segments) && data.script.segments.length;
+      const hasSections = data && Array.isArray(data.sections) && data.sections.length;
+      briefingState = (hasScript || hasSections) ? 'ready' : 'empty';
     }catch{
       briefingData = null;
       briefingState = 'empty';
@@ -522,7 +527,11 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (!briefingEl){ return; }
     const lang = currentLang();
     briefingEl.dataset.state = briefingState;
-    if (!briefingData || !Array.isArray(briefingData.sections) || !briefingData.sections.length){
+    const script = briefingData && briefingData.script;
+    const segments = script && Array.isArray(script.segments) ? script.segments : [];
+    const hasScript = Boolean(script && segments.length);
+    const hasLegacySections = briefingData && Array.isArray(briefingData.sections) && briefingData.sections.length;
+    if (!hasScript && !hasLegacySections){
       const msgKey = briefingState === 'loading' ? 'briefingLoading' : 'briefingEmpty';
       briefingEl.innerHTML = `<div class="rad-briefing-empty">${escapeHtml(i18nStr(msgKey, lang))}</div>`;
       return;
@@ -536,39 +545,82 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const jumpLabel = i18nStr('briefingJump', lang);
     const noItemsLabel = i18nStr('briefingNoItems', lang);
 
-    const sectionsHtml = (briefingData.sections || []).map(section => {
-      const title = escapeHtml(section.title || '');
-      const entries = Array.isArray(section.items) ? section.items : [];
-      const content = entries.length ? entries.map(entry => {
-        const targetId = entry.id ? String(entry.id) : '';
-        const bits = [];
-        if (entry.one_liner) bits.push(`<strong>${escapeHtml(entry.one_liner)}</strong>`);
-        if (entry.why_it_matters) bits.push(`<p>${escapeHtml(entry.why_it_matters)}</p>`);
-        if (entry.next_step) bits.push(`<p>${escapeHtml(entry.next_step)}</p>`);
-        if (targetId) bits.push(`<button type="button" class="rad-briefing-link" data-briefing-jump="${escapeAttr(targetId)}">${escapeHtml(jumpLabel)}</button>`);
-        return `<div class="rad-briefing-item">${bits.join('')}</div>`;
-      }).join('') : `<div class="rad-briefing-empty">${escapeHtml(noItemsLabel)}</div>`;
-      return `<div class="rad-briefing-section"><h4>${title}</h4>${content}</div>`;
-    }).join('');
+    let bodyHtml = '';
 
-    const deep = briefingData.deep_dive || {};
-    const deepHasContent = deep && (deep.why_read || deep.counterpoint || deep.takeaway);
-    const deepHtml = deepHasContent ? `
-      <div class="rad-briefing-deep">
-        <h4>今日深读</h4>
-        ${deep.why_read ? `<p><strong>值得读：</strong>${escapeHtml(deep.why_read)}</p>` : ''}
-        ${deep.counterpoint ? `<p><strong>注意点：</strong>${escapeHtml(deep.counterpoint)}</p>` : ''}
-        ${deep.takeaway ? `<p><strong>带走要点：</strong>${escapeHtml(deep.takeaway)}</p>` : ''}
-      </div>
-    ` : '';
+    if (hasScript){
+      const opening = script.opening ? `<p class="rad-briefing-opening">${escapeHtml(script.opening)}</p>` : '';
+      const segmentsHtml = segments.map((segment, idx) => {
+        if (!segment || typeof segment !== 'object') return '';
+        const seq = idx + 1;
+        const segId = segment.id ? String(segment.id) : '';
+        const tag = segment.tag ? `<span class="rad-briefing-tag">${escapeHtml(segment.tag)}</span>` : '';
+        const fact = segment.fact ? `<p class="rad-briefing-fact">${escapeHtml(segment.fact)}</p>` : '';
+        const impact = segment.impact ? `<p class="rad-briefing-impact">${escapeHtml(segment.impact)}</p>` : '';
+        const host = segment.source_host ? `<p class="rad-briefing-source">${escapeHtml(segment.source_host)}</p>` : '';
+        const jumpBtn = segId ? `<button type="button" class="rad-briefing-link" data-briefing-jump="${escapeAttr(segId)}">${escapeHtml(jumpLabel)}</button>` : '';
+        return `
+          <div class="rad-briefing-segment">
+            <div class="rad-briefing-segment-head">
+              <span class="rad-briefing-seq">${seq < 10 ? '0' + seq : seq}</span>
+              ${tag}
+            </div>
+            <div class="rad-briefing-segment-body">
+              ${fact || `<p class="rad-briefing-empty">${escapeHtml(noItemsLabel)}</p>`}
+              ${impact}
+              ${host}
+            </div>
+            ${jumpBtn}
+          </div>
+        `;
+      }).join('');
+      const closing = script.closing ? `<p class="rad-briefing-closing">${escapeHtml(script.closing)}</p>` : '';
+      const callToAction = script.call_to_action ? `<p class="rad-briefing-cta">${escapeHtml(script.call_to_action)}</p>` : '';
+      bodyHtml = `
+        ${opening}
+        <div class="rad-briefing-script">${segmentsHtml || `<div class="rad-briefing-empty">${escapeHtml(noItemsLabel)}</div>`}</div>
+        ${closing}
+        ${callToAction}
+      `;
+    } else {
+      const sectionsHtml = (briefingData.sections || []).map(section => {
+        const title = escapeHtml(section.title || '');
+        const entries = Array.isArray(section.items) ? section.items : [];
+        const content = entries.length ? entries.map(entry => {
+          const targetId = entry.id ? String(entry.id) : '';
+          const bits = [];
+          if (entry.one_liner) bits.push(`<strong>${escapeHtml(entry.one_liner)}</strong>`);
+          if (entry.why_it_matters) bits.push(`<p>${escapeHtml(entry.why_it_matters)}</p>`);
+          if (entry.next_step) bits.push(`<p>${escapeHtml(entry.next_step)}</p>`);
+          if (targetId) bits.push(`<button type="button" class="rad-briefing-link" data-briefing-jump="${escapeAttr(targetId)}">${escapeHtml(jumpLabel)}</button>`);
+          return `<div class="rad-briefing-item">${bits.join('')}</div>`;
+        }).join('') : `<div class="rad-briefing-empty">${escapeHtml(noItemsLabel)}</div>`;
+        return `<div class="rad-briefing-section"><h4>${title}</h4>${content}</div>`;
+      }).join('');
 
-    const outro = briefingData.outro || {};
-    const outroHtml = (outro.tomorrow_watch || outro.call_to_action) ? `
-      <div class="rad-briefing-outro">
-        ${outro.tomorrow_watch ? `<p><strong>明日关注：</strong>${escapeHtml(outro.tomorrow_watch)}</p>` : ''}
-        ${outro.call_to_action ? `<p><strong>建议动作：</strong>${escapeHtml(outro.call_to_action)}</p>` : ''}
-      </div>
-    ` : '';
+      const deep = briefingData.deep_dive || {};
+      const deepHasContent = deep && (deep.why_read || deep.counterpoint || deep.takeaway);
+      const deepHtml = deepHasContent ? `
+        <div class="rad-briefing-deep">
+          <h4>今日深读</h4>
+          ${deep.why_read ? `<p><strong>值得读：</strong>${escapeHtml(deep.why_read)}</p>` : ''}
+          ${deep.counterpoint ? `<p><strong>注意点：</strong>${escapeHtml(deep.counterpoint)}</p>` : ''}
+          ${deep.takeaway ? `<p><strong>带走要点：</strong>${escapeHtml(deep.takeaway)}</p>` : ''}
+        </div>
+      ` : '';
+
+      const outro = briefingData.outro || {};
+      const outroHtml = (outro.tomorrow_watch || outro.call_to_action) ? `
+        <div class="rad-briefing-outro">
+          ${outro.tomorrow_watch ? `<p><strong>明日关注：</strong>${escapeHtml(outro.tomorrow_watch)}</p>` : ''}
+          ${outro.call_to_action ? `<p><strong>建议动作：</strong>${escapeHtml(outro.call_to_action)}</p>` : ''}
+        </div>
+      ` : '';
+      bodyHtml = `
+        <div class="rad-briefing-sections">${sectionsHtml}</div>
+        ${deepHtml}
+        ${outroHtml}
+      `;
+    }
 
     briefingEl.innerHTML = `
       <div class="rad-briefing-inner">
@@ -580,9 +632,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
           </div>
           ${hotnessChip ? `<span class="rad-briefing-chip">${escapeHtml(hotnessChip)}</span>` : ''}
         </div>
-        <div class="rad-briefing-sections">${sectionsHtml}</div>
-        ${deepHtml}
-        ${outroHtml}
+        ${bodyHtml}
       </div>
     `;
     setupBriefingInteractions();

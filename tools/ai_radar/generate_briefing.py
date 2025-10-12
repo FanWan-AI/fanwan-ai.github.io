@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Generate AI Radar daily briefing files (host script mode).
+"""Generate AI Radar daily briefing files (narrative script mode).
 
 This script reads the freshly produced ``latest.json`` payload, selects the
 strongest items for the day, and asks the configured LLM (via ``tools.ai_llm``)
@@ -14,7 +14,7 @@ Usage (after ``aggregate_reports.py``):
 
 Environment knobs (all optional):
     BRIEFING_TOP_K            default 12
-    BRIEFING_MODE             default "host_script"
+    BRIEFING_MODE             default "narrative_script"
     BRIEFING_MAX_TOKENS       default 2200
     BRIEFING_SOURCE_BLACKLIST comma-separated hostnames to skip
     BRIEFING_FORCE_TEMPLATE   set to 1 to skip LLM and use template
@@ -26,7 +26,7 @@ import os
 import re
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -229,8 +229,8 @@ THEME_LINES: Dict[str, str] = {
     "研究/模型": "研究迭代加速，新模型与论文值得重点跟进。",
     "工具/产业": "工具链与落地方案增多，关注集成与业务影响。",
 }
-
-REQUIRED_SECTIONS = ["今日大事", "政策/融资", "研究/模型", "工具/产业"]
+SCRIPT_MAX_SEGMENTS = 8
+SCRIPT_MIN_SEGMENTS = 5
 
 
 def _classify(item: NewsItem) -> str:
@@ -249,6 +249,14 @@ def _bj_date(now: Optional[datetime] = None) -> str:
     base = now or datetime.now(timezone.utc)
     bj = base + timedelta(hours=8)
     return bj.strftime("%Y-%m-%d")
+
+
+def _bj_date_chinese(date_str: str) -> str:
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    except ValueError:
+        return date_str
+    return f"{dt.month}月{dt.day}日"
 
 
 def _collect_stats(items: List[NewsItem]) -> Dict[str, Any]:
@@ -334,75 +342,108 @@ def _default_next_step(section: str) -> str:
     return "建议开发者尝试相关工具或关注后续落地更新。"
 
 
+def _default_impact(section: str) -> str:
+    if section == "政策/融资":
+        return "意味着监管与资本动向正在影响行业节奏。"
+    if section == "研究/模型":
+        return "突显模型或方法的新进展，值得关注实验细节。"
+    return "提示工具或产业落地正在加速，关注实际应用影响。"
+
+
+def _compose_script_text(script: Dict[str, Any]) -> str:
+    if not isinstance(script, dict):
+        return ""
+    opening = (script.get("opening") or "").strip()
+    closing = (script.get("closing") or "").strip()
+    call_to_action = (script.get("call_to_action") or "").strip()
+    segments = script.get("segments") if isinstance(script.get("segments"), list) else []
+    lines: List[str] = []
+    if opening:
+        lines.append(opening)
+    for idx, seg in enumerate(segments, start=1):
+        if not isinstance(seg, dict):
+            continue
+        fact = (seg.get("fact") or "").strip()
+        impact = (seg.get("impact") or "").strip()
+        tag = (seg.get("tag") or "").strip()
+        prefix = f"第{idx}条"
+        if tag:
+            prefix += f"（{tag}）"
+        body_parts = [fact] if fact else []
+        if impact:
+            body_parts.append(impact)
+        if body_parts:
+            lines.append(f"{prefix}：{' '.join(body_parts)}")
+    if closing:
+        lines.append(closing)
+    if call_to_action:
+        lines.append(call_to_action)
+    return "\n\n".join(filter(None, lines))
+
+
 def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: Dict[str, Any]) -> Dict[str, Any]:
-    # Use first 3 items as今日大事; rest go by category buckets.
-    leading = items[: min(3, len(items))]
-    buckets: Dict[str, List[NewsItem]] = defaultdict(list)
-    for it in items:
-        buckets[_classify(it)].append(it)
-    def _one_line(it: NewsItem) -> str:
+    lead_items = items[:SCRIPT_MAX_SEGMENTS]
+    if len(lead_items) < SCRIPT_MIN_SEGMENTS:
+        lead_items = items[: max(SCRIPT_MIN_SEGMENTS, len(items))]
+
+    segments: List[Dict[str, Any]] = []
+
+    def _segment_fact(it: NewsItem) -> str:
         if it.raw_excerpt:
-            return _normalize_text(it.raw_excerpt, 96)
-        return _normalize_text(it.title, 96)
+            return _normalize_text(it.raw_excerpt, 140)
+        return _normalize_text(it.title, 140)
 
-    def _why(it: NewsItem, section: str) -> str:
-        if section == "研究/模型":
-            return "突出了模型或方法的新亮点，值得关注实验细节。"
-        if section == "政策/融资":
-            return "反映政策或资本动向，可能改变行业方向。"
-        return "涉及实际落地与工具更新，对业务有直接影响。"
-
-    sections_payload: List[Dict[str, Any]] = []
-    # 今日大事
-    sections_payload.append(
-        {
-            "title": "今日大事",
-            "items": [
-                {
-                    "id": it.id,
-                    "one_liner": _one_line(it),
-                    "why_it_matters": "焦点事件，建议优先了解要点。",
-                    "next_step": _default_next_step(_classify(it)),
-                }
-                for it in leading
-            ],
-        }
-    )
-    for label, _ in CATEGORY_RULES:
-        entries = []
-        for it in buckets.get(label, []):
-            entries.append(
-                {
-                    "id": it.id,
-                    "one_liner": _one_line(it),
-                    "why_it_matters": _why(it, label),
-                    "next_step": _default_next_step(label),
-                }
-            )
-        sections_payload.append({"title": label, "items": entries})
-
-    deep_source = max(items, key=lambda it: (len(it.raw_excerpt), it.hotness), default=None)
-    deep_payload = {
-        "id": deep_source.id if deep_source else (items[0].id if items else ""),
-        "why_read": _normalize_text(
-            (deep_source.raw_excerpt if deep_source else "重点条目，建议完整阅读原文。"), 180
+    for it in lead_items:
+        section = _classify(it)
+        fact = _segment_fact(it)
+        impact = _default_impact(section)
+        segments.append(
+            {
+                "id": it.id,
+                "tag": section,
+                "fact": fact or _normalize_text(it.title, 120),
+                "impact": impact,
+                "source_host": it.source_host or "",
+            }
         )
-        or "重点条目，建议完整阅读原文。",
-        "counterpoint": "同时关注潜在风险与局限，避免过度解读。",
-        "takeaway": "带走一个关键结论，帮助指导接下来的决策。",
-    }
+
+    if not segments:
+        segments = [
+            {
+                "id": "none",
+                "tag": "行业动态",
+                "fact": "今日暂无足够新闻条目，建议稍后再查看。",
+                "impact": "",
+                "source_host": "",
+            }
+        ]
+
     host_counter: Counter[str] = stats.get("host_counter") or Counter()
-    top_host = host_counter.most_common(1)[0][0] if host_counter else "重点来源"
-    outro = {
-        "tomorrow_watch": f"关注 {top_host} 及相关发布节奏，可能还有后续更新。",
-        "call_to_action": "收藏导读卡片或订阅邮件，次日快速掌握重点。",
-    }
+    section_counter: Counter[str] = stats.get("section_counter") or Counter()
     themes = [
         {"topic": label, "one_line": THEME_LINES.get(label, "持续跟进相关进展。")}
-        for label, _ in (stats.get("section_counter") or Counter()).most_common(2)
+        for label, _ in section_counter.most_common(2)
     ]
     if not themes:
         themes = [{"topic": "行业动态", "one_line": "关注行业与工具落地的最新动向。"}]
+
+    opening = (
+        f"这里是AI前沿要闻导读，{_bj_date_chinese(date_str)}为您带来{len(segments)}条重点资讯。"
+    )
+    top_host = host_counter.most_common(1)[0][0] if host_counter else "重点来源"
+    closing = "以上是今天的核心动态，感谢收听，查看更多详情请访问官网。"
+    call_to_action = f"关注 {top_host} 等重点渠道，第一时间掌握后续更新。"
+
+    script_payload = {
+        "language": "zh",
+        "opening": opening,
+        "segments": segments,
+        "closing": closing,
+        "call_to_action": call_to_action,
+    }
+
+    script_text = _compose_script_text(script_payload)
+
     return {
         "date": date_str,
         "mode": mode,
@@ -411,9 +452,19 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
             "themes": themes,
             "length_sec_estimate": 120,
         },
-        "sections": sections_payload,
-        "deep_dive": deep_payload,
-        "outro": outro,
+        "script": script_payload,
+        "script_text": script_text,
+        "references": {
+            "items": [
+                {
+                    "id": it.id,
+                    "title": it.title,
+                    "url": it.url,
+                    "tag": _classify(it),
+                }
+                for it in lead_items
+            ]
+        },
     }
 
 
@@ -447,28 +498,33 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
         },
         "output_schema": {
             "date": "YYYY-MM-DD",
-            "mode": "host_script",
-            "meta.hotness_delta": "字符串，带百分号或≈0%",
-            "meta.themes": "数组，两条主题脉络",
-            "sections": [
-                "今日大事",
-                "政策/融资",
-                "研究/模型",
-                "工具/产业",
-            ],
+            "mode": "narrative_script",
+            "meta": {
+                "hotness_delta": "字符串，带百分号或≈0%",
+                "themes": "数组，2 条核心主题",
+                "length_sec_estimate": "播报时长估算（秒）",
+            },
+            "script": {
+                "language": "zh",
+                "opening": "开场一句",
+                "segments": "数组，6-8 条事件段落，每条含 id/tag/fact/impact",
+                "closing": "收束一句",
+                "call_to_action": "可选收尾行动号召",
+            },
+            "script_text": "将 opening/segments/closing 组合后的完整文本",
         },
     }
 
 
 def _build_prompt(data: Dict[str, Any]) -> str:
     return (
-        "你是一名专业的科技新闻编辑，需要输出主持人播报手稿。\n"
-        "请仔细阅读提供的新闻列表，只能基于输入事实改写。\n"
+        "你是一名专业的科技新闻播报脚本编辑，需要生成 2 分钟左右的中文口播稿。\n"
+        "请仔细阅读提供的新闻列表，只能基于输入事实改写，不得添加未出现的数字或结论。\n"
         "输出必须是严格 JSON，禁止添加代码块或额外文字。\n"
-        "结构包括：meta、sections（含今日大事/政策/融资/研究/模型/工具/产业）、deep_dive、outro。\n"
-        "每条 items 需给出 one_liner、why_it_matters、next_step。\n"
-        "中文输出，语气稳重、通俗、避免夸张。\n"
-        "若事实不足，请使用模糊表述，不得捏造数字。\n"
+        "结构包括：meta（热度信息与主题），script（language/opening/segments/closing/call_to_action），以及组合后的 script_text。\n"
+        "script.segments 需包含 6-8 条事件，每条含 id、tag、fact、impact；fact 和 impact 都要通俗准确，且与输入事实一致。\n"
+        "语气稳重、克制，避免夸张形容，保持播音员节奏。\n"
+        "若某条信息不足，请用含糊表达，不得虚构细节。\n"
         f"输入：{json.dumps(data, ensure_ascii=False)}"
     )
 
@@ -478,18 +534,24 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
         return False, "payload-not-dict"
     if payload.get("date") != date_str:
         return False, "date-mismatch"
-    if "sections" not in payload or not isinstance(payload["sections"], list):
-        return False, "sections-missing"
-    needed = {"今日大事", "政策/融资", "研究/模型", "工具/产业"}
-    existing = {sec.get("title") for sec in payload["sections"] if isinstance(sec, dict)}
-    if not needed.issubset(existing):
-        return False, "sections-incomplete"
-    deep = payload.get("deep_dive", {})
-    if not isinstance(deep, dict) or not deep.get("id"):
-        return False, "deep_dive-missing"
-    outro = payload.get("outro", {})
-    if not isinstance(outro, dict):
-        return False, "outro-invalid"
+    script = payload.get("script")
+    if not isinstance(script, dict):
+        return False, "script-missing"
+    segments = script.get("segments") if isinstance(script.get("segments"), list) else None
+    if not segments:
+        return False, "segments-empty"
+    if len(segments) < SCRIPT_MIN_SEGMENTS:
+        return False, "segments-too-few"
+    for seg in segments:
+        if not isinstance(seg, dict):
+            return False, "segment-not-dict"
+        seg_id = str(seg.get("id") or "").strip()
+        fact = str(seg.get("fact") or "").strip()
+        if not seg_id or not fact:
+            return False, "segment-missing-fields"
+    script_text = payload.get("script_text")
+    if script_text is not None and not isinstance(script_text, str):
+        return False, "script-text-invalid"
     return True, "ok"
 
 
@@ -500,57 +562,143 @@ def _deep_copy(data: Dict[str, Any]) -> Dict[str, Any]:
 def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[str, Any]:
     base = _deep_copy(fallback)
 
-    def _merge_dict(dst: Dict[str, Any], src: Dict[str, Any]) -> None:
-        for key, value in (src or {}).items():
-            if isinstance(value, dict) and isinstance(dst.get(key), dict):
-                _merge_dict(dst[key], value)
+    def _normalize_meta(meta: Any, fallback_meta: Dict[str, Any]) -> Dict[str, Any]:
+        if not isinstance(meta, dict):
+            return _deep_copy(fallback_meta)
+        normalized = _deep_copy(meta)
+        themes = normalized.get("themes")
+        valid_themes: List[Dict[str, str]] = []
+        if isinstance(themes, list):
+            for entry in themes:
+                if isinstance(entry, dict):
+                    topic = str(entry.get("topic") or "").strip()
+                    line = str(entry.get("one_line") or "").strip()
+                    if topic and line:
+                        valid_themes.append({"topic": topic, "one_line": line})
+                elif isinstance(entry, str):
+                    raw = entry.strip()
+                    if raw:
+                        if "：" in raw:
+                            topic, line = raw.split("：", 1)
+                            topic = topic.strip()
+                            line = line.strip()
+                        elif ":" in raw:
+                            topic, line = raw.split(":", 1)
+                            topic = topic.strip()
+                            line = line.strip()
+                        else:
+                            topic = raw[:6].strip() or "主题"
+                            line = raw
+                        if line:
+                            valid_themes.append({"topic": topic or "主题", "one_line": line})
+        if not valid_themes:
+            fallback_themes = (fallback_meta or {}).get("themes")
+            if isinstance(fallback_themes, list):
+                valid_themes = _deep_copy(fallback_themes)
             else:
-                dst[key] = value
+                valid_themes = []
+        normalized["themes"] = valid_themes
+
+        hotness = normalized.get("hotness_delta")
+        if not isinstance(hotness, str) or not hotness.strip():
+            normalized["hotness_delta"] = str((fallback_meta or {}).get("hotness_delta") or "≈0%")
+
+        length_est = normalized.get("length_sec_estimate")
+        if not isinstance(length_est, (int, float)):
+            normalized["length_sec_estimate"] = (fallback_meta or {}).get("length_sec_estimate", 120)
+        else:
+            normalized["length_sec_estimate"] = int(length_est)
+        return normalized
 
     if isinstance(primary, dict):
-        if primary.get("meta"):
-            if "meta" not in base or not isinstance(base["meta"], dict):
-                base["meta"] = {}
-            _merge_dict(base["meta"], primary.get("meta") or {})
-        if primary.get("deep_dive"):
-            base["deep_dive"] = primary.get("deep_dive")
-        if primary.get("outro"):
-            if "outro" not in base or not isinstance(base["outro"], dict):
-                base["outro"] = {}
-            _merge_dict(base["outro"], primary.get("outro") or {})
+        fallback_meta = fallback.get("meta") if isinstance(fallback, dict) else {}
+        meta_src = primary.get("meta")
+        if meta_src:
+            merged_meta = _normalize_meta(meta_src, fallback_meta if isinstance(fallback_meta, dict) else {})
+            base["meta"] = _normalize_meta({**base.get("meta", {}), **merged_meta}, fallback_meta if isinstance(fallback_meta, dict) else {})
+        else:
+            base["meta"] = _normalize_meta(base.get("meta"), fallback_meta if isinstance(fallback_meta, dict) else {})
 
-    fallback_sections = {sec.get("title"): sec for sec in base.get("sections", []) if isinstance(sec, dict)}
-    primary_sections = {}
-    if isinstance(primary, dict):
-        for sec in primary.get("sections", []) or []:
-            if isinstance(sec, dict) and sec.get("title"):
-                primary_sections[sec["title"]] = sec
+        fallback_script = fallback.get("script") if isinstance(fallback, dict) else {}
 
-    merged_sections: List[Dict[str, Any]] = []
-    for title in REQUIRED_SECTIONS:
-        sec = _deep_copy(fallback_sections.get(title, {"title": title, "items": []}))
-        if title in primary_sections:
-            cand = primary_sections[title]
-            if isinstance(cand.get("items"), list):
-                sec["items"] = cand["items"]
-            else:
-                sec["items"] = []
-        merged_sections.append(sec)
+        def _normalize_segment(seg: Any, fallback_segments: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            if not isinstance(seg, dict):
+                return None
+            seg_id = str(seg.get("id") or "").strip()
+            fact = _normalize_text(seg.get("fact"), 160)
+            if not seg_id or not fact:
+                return None
+            fallback_seg = fallback_segments.get(seg_id, {})
+            tag = str(seg.get("tag") or fallback_seg.get("tag") or "").strip() or "行业动态"
+            impact = _normalize_text(seg.get("impact"), 160)
+            if not impact and fallback_seg.get("impact"):
+                impact = fallback_seg.get("impact")
+            source_host = str(seg.get("source_host") or fallback_seg.get("source_host") or "").strip()
+            return {
+                "id": seg_id,
+                "tag": tag,
+                "fact": fact,
+                "impact": impact,
+                "source_host": source_host,
+            }
 
-    # Preserve additional sections provided by the LLM (if any)
-    for title, sec in primary_sections.items():
-        if title in REQUIRED_SECTIONS:
-            continue
-        merged_sections.append(sec)
+        def _normalize_script(script: Any, fallback_script_data: Dict[str, Any]) -> Dict[str, Any]:
+            fallback_segments = {}
+            fallback_list = fallback_script_data.get("segments") if isinstance(fallback_script_data.get("segments"), list) else []
+            for seg in fallback_list:
+                if isinstance(seg, dict) and seg.get("id"):
+                    fallback_segments[str(seg["id"])] = seg
 
-    base["sections"] = merged_sections
+            normalized: Dict[str, Any] = _deep_copy(fallback_script_data)
+            if not isinstance(normalized, dict):
+                normalized = {}
 
-    deep = base.get("deep_dive")
-    if not isinstance(deep, dict) or not deep.get("id"):
-        base["deep_dive"] = fallback.get("deep_dive")
+            if isinstance(script, dict):
+                if script.get("language"):
+                    normalized["language"] = str(script.get("language") or "").strip() or normalized.get("language") or "zh"
+                if script.get("opening"):
+                    normalized["opening"] = _normalize_text(script.get("opening"), 200)
+                if script.get("closing"):
+                    normalized["closing"] = _normalize_text(script.get("closing"), 180)
+                if script.get("call_to_action"):
+                    normalized["call_to_action"] = _normalize_text(script.get("call_to_action"), 160)
 
-    base["date"] = primary.get("date") or fallback.get("date")
-    base["mode"] = primary.get("mode") or fallback.get("mode")
+                segs = script.get("segments") if isinstance(script.get("segments"), list) else []
+                normalized_segments = []
+                for seg in segs:
+                    norm_seg = _normalize_segment(seg, fallback_segments)
+                    if norm_seg:
+                        normalized_segments.append(norm_seg)
+                if normalized_segments:
+                    normalized["segments"] = normalized_segments
+            if "segments" not in normalized or not isinstance(normalized["segments"], list) or not normalized["segments"]:
+                normalized["segments"] = fallback_list
+            if not normalized.get("language"):
+                normalized["language"] = "zh"
+            if not normalized.get("opening"):
+                normalized["opening"] = fallback_script_data.get("opening") or ""
+            if not normalized.get("closing"):
+                normalized["closing"] = fallback_script_data.get("closing") or ""
+            if not normalized.get("call_to_action") and fallback_script_data.get("call_to_action"):
+                normalized["call_to_action"] = fallback_script_data.get("call_to_action")
+            return normalized
+
+        script_src = primary.get("script")
+        base["script"] = _normalize_script(script_src, fallback_script if isinstance(fallback_script, dict) else {})
+
+        if primary.get("script_text") and isinstance(primary.get("script_text"), str):
+            base["script_text"] = primary["script_text"].strip()
+
+        if primary.get("references"):
+            base["references"] = primary["references"]
+
+    else:
+        fallback_meta = fallback.get("meta") if isinstance(fallback, dict) else {}
+        base["meta"] = _normalize_meta(base.get("meta"), fallback_meta if isinstance(fallback_meta, dict) else {})
+
+    base["date"] = primary.get("date") if isinstance(primary, dict) and primary.get("date") else fallback.get("date")
+    base["mode"] = primary.get("mode") if isinstance(primary, dict) and primary.get("mode") else fallback.get("mode")
+    base["script_text"] = _compose_script_text(base.get("script") or {})
     return base
 
 
@@ -585,11 +733,17 @@ def _update_latest_reference(date_str: str, briefing: Dict[str, Any]) -> None:
         latest = json.loads(LATEST_PATH.read_text(encoding="utf-8"))
     except Exception:
         return
+    script = briefing.get("script") if isinstance(briefing, dict) else {}
+    segments = script.get("segments") if isinstance(script, dict) else []
+    segment_ids = [seg.get("id") for seg in segments if isinstance(seg, dict) and seg.get("id")]
     ref = {
         "date": date_str,
         "url": f"/data/ai/airadar/briefings/{date_str}.json",
+        "mode": briefing.get("mode", ""),
+        "segment_count": len(segment_ids),
+        "segments": segment_ids,
         "sections": [sec.get("title") for sec in briefing.get("sections", []) if isinstance(sec, dict) and sec.get("title")],
-        "deep_dive_id": (briefing.get("deep_dive") or {}).get("id", ""),
+        "deep_dive_id": segment_ids[0] if segment_ids else "",
     }
     latest["briefing"] = ref
     write_json(LATEST_PATH, latest)
@@ -616,7 +770,7 @@ def main() -> None:
         raise SystemExit("latest.json has no items to brief")
 
     top_k = max(4, _env_int("BRIEFING_TOP_K", 12))
-    mode = (os.getenv("BRIEFING_MODE") or "host_script").strip() or "host_script"
+    mode = (os.getenv("BRIEFING_MODE") or "narrative_script").strip() or "narrative_script"
     blacklist = _env_list("BRIEFING_SOURCE_BLACKLIST")
     items = _select_top(raw_items, top_k, blacklist)
     if not items:
@@ -651,6 +805,9 @@ def main() -> None:
             briefing = fallback_briefing
     else:
         briefing = fallback_briefing
+
+    if not isinstance(briefing.get("script_text"), str) or not briefing.get("script_text", "").strip():
+        briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
 
     log = _generation_log(start, llm_ok, items, _model_hint())
     briefing["generation_log"] = log
