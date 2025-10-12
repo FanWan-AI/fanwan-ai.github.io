@@ -350,35 +350,53 @@ def _default_impact(section: str) -> str:
     return "提示工具或产业落地正在加速，关注实际应用影响。"
 
 
-def _compose_script_text(script: Dict[str, Any]) -> str:
+def _script_paragraphs(script: Dict[str, Any]) -> List[str]:
     if not isinstance(script, dict):
-        return ""
+        return []
+    paragraphs: List[str] = []
+    raw_paragraphs = script.get("paragraphs")
+    if isinstance(raw_paragraphs, list):
+        for entry in raw_paragraphs:
+            text = str(entry or "").strip()
+            if text:
+                paragraphs.append(text)
+    if paragraphs:
+        return paragraphs
+
     opening = (script.get("opening") or "").strip()
-    closing = (script.get("closing") or "").strip()
-    call_to_action = (script.get("call_to_action") or "").strip()
-    segments = script.get("segments") if isinstance(script.get("segments"), list) else []
-    lines: List[str] = []
     if opening:
-        lines.append(opening)
+        paragraphs.append(opening)
+
+    segments = script.get("segments") if isinstance(script.get("segments"), list) else []
     for idx, seg in enumerate(segments, start=1):
         if not isinstance(seg, dict):
             continue
-        fact = (seg.get("fact") or "").strip()
-        impact = (seg.get("impact") or "").strip()
-        tag = (seg.get("tag") or "").strip()
-        prefix = f"第{idx}条"
-        if tag:
-            prefix += f"（{tag}）"
+        fact = str(seg.get("fact") or "").strip()
+        impact = str(seg.get("impact") or "").strip()
+        tag = str(seg.get("tag") or "").strip()
         body_parts = [fact] if fact else []
         if impact:
             body_parts.append(impact)
         if body_parts:
-            lines.append(f"{prefix}：{' '.join(body_parts)}")
+            prefix = f"第{idx}条"
+            if tag:
+                prefix += f"（{tag}）"
+            paragraphs.append(f"{prefix}：{' '.join(body_parts)}")
+
+    closing = (script.get("closing") or "").strip()
     if closing:
-        lines.append(closing)
+        paragraphs.append(closing)
+
+    call_to_action = (script.get("call_to_action") or "").strip()
     if call_to_action:
-        lines.append(call_to_action)
-    return "\n\n".join(filter(None, lines))
+        paragraphs.append(call_to_action)
+
+    return paragraphs
+
+
+def _compose_script_text(script: Dict[str, Any]) -> str:
+    paragraphs = _script_paragraphs(script)
+    return "\n\n".join(paragraphs)
 
 
 def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: Dict[str, Any]) -> Dict[str, Any]:
@@ -387,6 +405,8 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
         lead_items = items[: max(SCRIPT_MIN_SEGMENTS, len(items))]
 
     segments: List[Dict[str, Any]] = []
+
+    opening = f"这里是AI前沿要闻导读，{_bj_date_chinese(date_str)}为您带来{max(len(lead_items), 1)}条重点资讯。"
 
     def _segment_fact(it: NewsItem) -> str:
         if it.raw_excerpt:
@@ -427,12 +447,29 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
     if not themes:
         themes = [{"topic": "行业动态", "one_line": "关注行业与工具落地的最新动向。"}]
 
-    opening = (
-        f"这里是AI前沿要闻导读，{_bj_date_chinese(date_str)}为您带来{len(segments)}条重点资讯。"
-    )
     top_host = host_counter.most_common(1)[0][0] if host_counter else "重点来源"
     closing = "以上是今天的核心动态，感谢收听，查看更多详情请访问官网。"
     call_to_action = f"关注 {top_host} 等重点渠道，第一时间掌握后续更新。"
+
+    paragraphs: List[str] = []
+    if opening:
+        paragraphs.append(opening)
+    for idx, seg in enumerate(segments, start=1):
+        fact = seg.get("fact") or ""
+        impact = seg.get("impact") or ""
+        tag = seg.get("tag") or ""
+        body_parts = [fact] if fact else []
+        if impact:
+            body_parts.append(impact)
+        if body_parts:
+            prefix = f"第{idx}条"
+            if tag:
+                prefix += f"（{tag}）"
+            paragraphs.append(f"{prefix}：{' '.join(body_parts)}")
+    if closing:
+        paragraphs.append(closing)
+    if call_to_action:
+        paragraphs.append(call_to_action)
 
     script_payload = {
         "language": "zh",
@@ -440,9 +477,10 @@ def _fallback_briefing(date_str: str, mode: str, items: List[NewsItem], stats: D
         "segments": segments,
         "closing": closing,
         "call_to_action": call_to_action,
+        "paragraphs": paragraphs,
     }
 
-    script_text = _compose_script_text(script_payload)
+    script_text = "\n\n".join(paragraphs)
 
     return {
         "date": date_str,
@@ -510,6 +548,7 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
                 "segments": "数组，6-8 条事件段落，每条含 id/tag/fact/impact",
                 "closing": "收束一句",
                 "call_to_action": "可选收尾行动号召",
+                "paragraphs": "数组，按顺序列出完整段落（含开场与收束）",
             },
             "script_text": "将 opening/segments/closing 组合后的完整文本",
         },
@@ -521,8 +560,9 @@ def _build_prompt(data: Dict[str, Any]) -> str:
         "你是一名专业的科技新闻播报脚本编辑，需要生成 2 分钟左右的中文口播稿。\n"
         "请仔细阅读提供的新闻列表，只能基于输入事实改写，不得添加未出现的数字或结论。\n"
         "输出必须是严格 JSON，禁止添加代码块或额外文字。\n"
-        "结构包括：meta（热度信息与主题），script（language/opening/segments/closing/call_to_action），以及组合后的 script_text。\n"
+        "结构包括：meta（热度信息与主题），script（language/opening/segments/closing/call_to_action/paragraphs），以及组合后的 script_text。\n"
         "script.segments 需包含 6-8 条事件，每条含 id、tag、fact、impact；fact 和 impact 都要通俗准确，且与输入事实一致。\n"
+        "script.paragraphs 需给出完整播报段落（含开场、每条事件、收束与号召），保证朗读自然顺畅。\n"
         "语气稳重、克制，避免夸张形容，保持播音员节奏。\n"
         "若某条信息不足，请用含糊表达，不得虚构细节。\n"
         f"输入：{json.dumps(data, ensure_ascii=False)}"
@@ -540,7 +580,7 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
     segments = script.get("segments") if isinstance(script.get("segments"), list) else None
     if not segments:
         return False, "segments-empty"
-    if len(segments) < SCRIPT_MIN_SEGMENTS:
+    if len(segments) < 3:
         return False, "segments-too-few"
     for seg in segments:
         if not isinstance(seg, dict):
@@ -549,6 +589,17 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str) -> Tuple[bool, st
         fact = str(seg.get("fact") or "").strip()
         if not seg_id or not fact:
             return False, "segment-missing-fields"
+    paragraphs_field = script.get("paragraphs")
+    paragraphs: List[str] = []
+    if isinstance(paragraphs_field, list):
+        for entry in paragraphs_field:
+            text = str(entry or "").strip()
+            if text:
+                paragraphs.append(text)
+    if not paragraphs:
+        return False, "paragraphs-missing"
+    if len(paragraphs) < 3:
+        return False, "paragraphs-too-short"
     script_text = payload.get("script_text")
     if script_text is not None and not isinstance(script_text, str):
         return False, "script-text-invalid"
@@ -663,6 +714,15 @@ def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[
                 if script.get("call_to_action"):
                     normalized["call_to_action"] = _normalize_text(script.get("call_to_action"), 160)
 
+                raw_paragraphs = script.get("paragraphs") if isinstance(script.get("paragraphs"), list) else []
+                cleaned_paragraphs: List[str] = []
+                for entry in raw_paragraphs:
+                    text = str(entry or "").strip()
+                    if text:
+                        cleaned_paragraphs.append(text)
+                if cleaned_paragraphs:
+                    normalized["paragraphs"] = cleaned_paragraphs
+
                 segs = script.get("segments") if isinstance(script.get("segments"), list) else []
                 normalized_segments = []
                 for seg in segs:
@@ -681,6 +741,8 @@ def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[
                 normalized["closing"] = fallback_script_data.get("closing") or ""
             if not normalized.get("call_to_action") and fallback_script_data.get("call_to_action"):
                 normalized["call_to_action"] = fallback_script_data.get("call_to_action")
+            if not normalized.get("paragraphs") or not isinstance(normalized.get("paragraphs"), list):
+                normalized["paragraphs"] = _script_paragraphs(normalized)
             return normalized
 
         script_src = primary.get("script")
@@ -736,13 +798,23 @@ def _update_latest_reference(date_str: str, briefing: Dict[str, Any]) -> None:
     script = briefing.get("script") if isinstance(briefing, dict) else {}
     segments = script.get("segments") if isinstance(script, dict) else []
     segment_ids = [seg.get("id") for seg in segments if isinstance(seg, dict) and seg.get("id")]
+    paragraphs = _script_paragraphs(script if isinstance(script, dict) else {})
+    preview = ""
+    if paragraphs:
+        preview = paragraphs[0][:180]
+    sections = []
+    for sec in briefing.get("sections", []) if isinstance(briefing, dict) else []:
+        if isinstance(sec, dict) and sec.get("title"):
+            sections.append(sec["title"])
     ref = {
         "date": date_str,
         "url": f"/data/ai/airadar/briefings/{date_str}.json",
         "mode": briefing.get("mode", ""),
         "segment_count": len(segment_ids),
         "segments": segment_ids,
-        "sections": [sec.get("title") for sec in briefing.get("sections", []) if isinstance(sec, dict) and sec.get("title")],
+        "paragraph_count": len(paragraphs),
+        "preview": preview,
+        "sections": sections,
         "deep_dive_id": segment_ids[0] if segment_ids else "",
     }
     latest["briefing"] = ref

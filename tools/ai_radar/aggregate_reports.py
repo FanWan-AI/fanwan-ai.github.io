@@ -653,6 +653,17 @@ def _briefing_reference(date_str: str):
         for seg in segments:
             if isinstance(seg, dict) and seg.get('id'):
                 segment_ids.append(seg['id'])
+    paragraphs = []
+    if isinstance(script, dict) and isinstance(script.get('paragraphs'), list):
+        for entry in script['paragraphs']:
+            text = str(entry or '').strip()
+            if text:
+                paragraphs.append(text)
+    if not paragraphs:
+        script_text = data.get('script_text') if isinstance(data, dict) else ''
+        if isinstance(script_text, str):
+            candidates = [p.strip() for p in re.split(r'\n{2,}', script_text) if p.strip()]
+            paragraphs.extend(candidates)
     sections = []
     for sec in data.get('sections', []) or []:
         if isinstance(sec, dict) and sec.get('title'):
@@ -665,12 +676,15 @@ def _briefing_reference(date_str: str):
             deep_id = (data.get('deep_dive') or {}).get('id') or ''
         except Exception:
             deep_id = ''
+    preview = paragraphs[0][:180] if paragraphs else ''
     return {
         'date': date_str,
         'url': f"/data/ai/airadar/briefings/{date_str}.json",
         'sections': sections,
         'segments': segment_ids,
         'mode': data.get('mode', ''),
+        'paragraph_count': len(paragraphs),
+        'preview': preview,
         'deep_dive_id': deep_id,
     }
 
