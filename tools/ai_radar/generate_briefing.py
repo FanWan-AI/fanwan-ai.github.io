@@ -557,15 +557,17 @@ def _prompt_payload(date_str: str, mode: str, items: List[NewsItem], stats: Dict
 
 def _build_prompt(data: Dict[str, Any]) -> str:
     return (
-        "你是一名专业的科技新闻播报脚本编辑，需要生成 2 分钟左右的中文口播稿。\n"
-        "请仔细阅读提供的新闻列表，只能基于输入事实改写，不得添加未出现的数字或结论。\n"
-        "输出必须是严格 JSON，禁止添加代码块或额外文字。\n"
-        "结构包括：meta（热度信息与主题），script（language/opening/segments/closing/call_to_action/paragraphs），以及组合后的 script_text。\n"
-        "script.segments 需包含 6-8 条事件，每条含 id、tag、fact、impact；fact 和 impact 都要通俗准确，且与输入事实一致。\n"
-        "script.paragraphs 需给出完整播报段落（含开场、每条事件、收束与号召），保证朗读自然顺畅。\n"
-        "语气稳重、克制，避免夸张形容，保持播音员节奏。\n"
-        "若某条信息不足，请用含糊表达，不得虚构细节。\n"
-        f"输入：{json.dumps(data, ensure_ascii=False)}"
+        "你是一名资深科技新闻播报脚本总监，要为忙碌的听众打造一段 2-5 分钟的中文口播导览。\n"
+        "目标：让听众在最短时间内掌握当日 AI 领域的关键走向，理解背后意义，并对后续发展产生兴趣。\n"
+        "素材：仅可使用输入新闻中的事实，禁止杜撰数字、结论或未给出的背景。\n"
+        "整体风格：稳重、可信、具有节奏感，段落衔接自然，可使用过渡语串联话题。避免逐条念标题或简单摘要，要用口播语言凝练成信息密度高、可听性强的讲述。\n"
+        "输出格式：必须返回严格合法的 JSON（不要代码块或多余文字），字段结构如下——meta、script、script_text。\n"
+        "meta：填写热度趋势、主题脉络、预计时长（确保 120-300 秒区间）。\n"
+        "script：包含 language/opening/segments/closing/call_to_action/paragraphs。segments 需 6-8 条，每条提供 id、tag、fact、impact；fact 用 1-2 句解释事件核心，impact 用 1-2 句说明影响意义或下一步关注点，严禁直接重复标题。\n"
+        "paragraphs：开场、各段事件、收束按口播逻辑组织，每段 2-3 句，注意用词口语化但专业。适当插入过渡提醒听众为什么要关心。\n"
+        "script_text：将 opening、segments、closing、call_to_action 按顺序拼接成完整可读文本。\n"
+        "如部分素材信息不足，可提示仍在跟进，用模糊措辞，不可杜撰细节。\n"
+        f"【当日新闻素材】{json.dumps(data, ensure_ascii=False)}"
     )
 
 
@@ -855,6 +857,14 @@ def main() -> None:
 
     fallback_briefing = _fallback_briefing(date_str, mode, items, stats)
 
+    model_hint = _model_hint()
+    llm_status = "pending"
+    llm_error = ""
+    if force_template:
+        llm_status = "skipped-force-template"
+    elif not chat_once:
+        llm_status = "skipped-no-client"
+
     briefing: Dict[str, Any]
     start = time.time()
     llm_ok = False
@@ -870,23 +880,42 @@ def main() -> None:
             if not ok:
                 print(f"[ai-radar] briefing validation failed ({reason}); falling back to template")
                 briefing = fallback_briefing
+                llm_status = f"validation-failed:{reason}"
+                llm_error = reason
             else:
                 llm_ok = True
+                llm_status = "success"
         except (LLMError, json.JSONDecodeError, ValueError) as exc:
             print(f"[ai-radar] briefing LLM error: {exc}; using template fallback")
             briefing = fallback_briefing
+            llm_status = "error"
+            llm_error = str(exc)
     else:
         briefing = fallback_briefing
+        if llm_status == "pending":
+            llm_status = "skipped-unknown"
 
     if not isinstance(briefing.get("script_text"), str) or not briefing.get("script_text", "").strip():
         briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
 
-    log = _generation_log(start, llm_ok, items, _model_hint())
+    log = _generation_log(start, llm_ok, items, model_hint)
+    log["llm_status"] = llm_status
+    log["briefing_source"] = "llm" if llm_ok else "template"
+    log["force_template"] = force_template
+    if llm_error:
+        log["llm_error"] = llm_error
     briefing["generation_log"] = log
 
     output_path = BRIEFINGS_DIR / f"{date_str}.json"
     write_json(output_path, briefing)
     _update_latest_reference(date_str, briefing)
+    if llm_ok:
+        descriptor = f"llm ({model_hint or 'auto'})"
+    else:
+        descriptor = f"template fallback ({llm_status})"
+    print(f"[ai-radar] briefing source -> {descriptor}")
+    if llm_error:
+        print(f"[ai-radar] llm detail: {llm_error}")
     print(f"[ai-radar] briefing generated -> {output_path}")
 
 
