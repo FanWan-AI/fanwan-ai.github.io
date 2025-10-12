@@ -177,7 +177,6 @@ function setupBriefingAudio(scope, segments){
   const playBtn = wrap.querySelector('.rad-audio-toggle');
   const statusEl = wrap.querySelector('.rad-audio-status');
   const audioEl = wrap.querySelector('audio.rad-audio');
-  const listEl = wrap.querySelector('.rad-audio-list');
   if (!playBtn || !audioEl) return;
 
   const safeSegments = segments.filter(seg => seg && typeof seg.file === 'string');
@@ -191,15 +190,7 @@ function setupBriefingAudio(scope, segments){
   let state = 'idle';
   let endedNaturally = false;
 
-  function highlight(idx){
-    if (!listEl) return;
-    listEl.querySelectorAll('li').forEach((li, liIdx) => {
-      const active = liIdx === idx;
-      li.classList.toggle('is-active', active);
-      if (active) li.setAttribute('aria-current', 'true');
-      else li.removeAttribute('aria-current');
-    });
-  }
+  function highlight(){ /* no list UI */ }
 
   function updateStatus(text){ if (statusEl) statusEl.textContent = text || ''; }
 
@@ -290,24 +281,8 @@ function setupBriefingAudio(scope, segments){
     }
   });
 
-  if (listEl){
-    listEl.querySelectorAll('li').forEach((li, liIdx) => {
-      li.addEventListener('click', () => {
-        index = liIdx;
-        play(index);
-      });
-      li.addEventListener('keydown', (evt) => {
-        if (evt.key === 'Enter' || evt.key === ' '){
-          evt.preventDefault();
-          index = liIdx;
-          play(index);
-        }
-      });
-    });
-  }
-
   setState('idle');
-  updateStatus('音频已就绪');
+  updateStatus('音频已就绪，点击播放');
 }
 
 async function renderAIRadar(containerId = 'ai-radar') {
@@ -713,10 +688,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
           <button type="button" class="btn outline rad-audio-toggle">▶ 播放语音导读</button>
           <span class="rad-audio-status" aria-live="polite">音频加载中…</span>
         </div>
-  <audio class="rad-audio" preload="none" controls></audio>
-        <ol class="rad-audio-list">
-          ${audioSegments.map((seg, idx) => `<li data-src="${escapeAttr(seg.file)}" role="button" tabindex="0"><span class="rad-audio-index">${idx + 1}</span><span class="rad-audio-text">${escapeHtml((seg.text || '').slice(0, 64))}</span></li>`).join('')}
-        </ol>
+        <audio class="rad-audio" preload="none"></audio>
       </div>
     ` : '';
 
