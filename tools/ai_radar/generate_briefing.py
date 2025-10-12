@@ -1023,7 +1023,8 @@ def _synthesize_audio(
     bundle_dir = AUDIO_DIR / date_str
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
-    voice_id = voice or os.getenv("VOICE", "").strip() or "Katerina"
+    voice_env = voice or os.getenv("VOICE") or os.getenv("voice")
+    voice_id = (voice_env or "").strip() or "Katerina"
     language_type = "Chinese" if language.lower().startswith("zh") else "English"
     entries: List[Dict[str, Any]] = []
     success = 0
@@ -1165,7 +1166,8 @@ def main() -> None:
         log["llm_chinese_ratio"] = initial_ratio
     paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
     log["chinese_ratio"] = _chinese_ratio(paragraphs_for_tts) if paragraphs_for_tts else 0.0
-    briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, os.getenv("VOICE"), briefing.get("script", {}).get("language", "zh"), log)
+    voice_env = os.getenv("VOICE") or os.getenv("voice")
+    briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, voice_env, briefing.get("script", {}).get("language", "zh"), log)
     briefing["generation_log"] = log
 
     output_path = BRIEFINGS_DIR / f"{date_str}.json"
