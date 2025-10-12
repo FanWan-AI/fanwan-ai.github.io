@@ -63,6 +63,7 @@ OUT_DIR = str(REPO_ROOT.joinpath('data', 'ai', 'airadar'))
 TMP_PATH = os.path.join(OUT_DIR, '_events_tmp.json')
 LATEST_PATH = os.path.join(OUT_DIR, 'latest.json')
 DATES_INDEX = os.path.join(OUT_DIR, 'dates.json')
+BRIEFINGS_DIR = Path(OUT_DIR) / 'briefings'
 
 WINDOW_HOURS = int(os.getenv('RADAR_WINDOW_HOURS', '48'))
 MAX_ITEMS = int(os.getenv('RADAR_MAX_ITEMS', '80'))
@@ -636,6 +637,36 @@ out = {
     'items': final_items
 }
 
+def _briefing_reference(date_str: str):
+    path = BRIEFINGS_DIR / f'{date_str}.json'
+    if not path.exists():
+        return None
+    try:
+        with path.open('r', encoding='utf-8') as fh:
+            data = json.load(fh)
+    except Exception:
+        return None
+    sections = []
+    for sec in data.get('sections', []) or []:
+        if isinstance(sec, dict) and sec.get('title'):
+            sections.append(sec['title'])
+    deep_id = ''
+    try:
+        deep_id = (data.get('deep_dive') or {}).get('id') or ''
+    except Exception:
+        deep_id = ''
+    return {
+        'date': date_str,
+        'url': f"/data/ai/airadar/briefings/{date_str}.json",
+        'sections': sections,
+        'deep_dive_id': deep_id,
+    }
+
+brief_date = (now + timedelta(hours=8)).strftime('%Y-%m-%d')
+ref = _briefing_reference(brief_date)
+if ref:
+    out['briefing'] = ref
+
 with open(LATEST_PATH, 'w', encoding='utf-8') as f:
     json.dump(out, f, ensure_ascii=False, indent=2)
 
@@ -743,6 +774,9 @@ for d, arr in by_date.items():
         'count': len(combined),
         'items': combined
     }
+    daily_ref = _briefing_reference(d)
+    if daily_ref:
+        daily_out['briefing'] = daily_ref
     with open(daily_path, 'w', encoding='utf-8') as f:
         json.dump(daily_out, f, ensure_ascii=False, indent=2)
     msg_bits = [f"+{len(new_unique)} new"]

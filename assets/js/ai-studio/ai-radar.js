@@ -24,6 +24,14 @@ function i18nStr(key, lang){
     archive: { zh: '归档', en: 'Archive', es: 'Archivo' },
     updated: { zh: '更新', en: 'Updated', es: 'Actualizado' },
     items: { zh: '条', en: 'items', es: 'entradas' },
+    briefingTitle: { zh: '今日导读', en: "Today's Briefing", es: 'Resumen de hoy' },
+    briefingLoading: { zh: '今日导读加载中…', en: 'Loading daily briefing…', es: 'Cargando el resumen diario…' },
+    briefingEmpty: { zh: '今日导读暂未生成，稍后再来。', en: 'Briefing not ready yet. Check back soon.', es: 'El resumen aún no está listo. Vuelve pronto.' },
+    briefingNoItems: { zh: '暂无条目', en: 'No items yet', es: 'Sin elementos' },
+    briefingJump: { zh: '定位到新闻', en: 'View story', es: 'Ver noticia' },
+    briefingThemes: { zh: '主题脉络', en: 'Theme highlights', es: 'Temas clave' },
+    briefingLength: { zh: '播报约 {seconds} 秒', en: 'Runtime ≈ {seconds}s', es: 'Duración ≈ {seconds}s' },
+    briefingHotness: { zh: '热度趋势 {value}', en: 'Hotness {value}', es: 'Tendencia {value}' },
   };
   return (map[key]?.[lang]) || (map[key]?.zh) || '';
 }
@@ -106,6 +114,50 @@ function sourceDisplay(item){
   }catch{ return (item.source?.site) || 'Unknown'; }
 }
 
+function escapeHtml(value){
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+}
+function escapeAttr(value){
+  return escapeHtml(value).replace(/`/g, '&#96;');
+}
+function ensureLeadingSlash(url){
+  if (!url) return '';
+  if (/^https?:/i.test(url)) return url;
+  const trimmed = String(url).replace(/^\/+/, '');
+  return '/' + trimmed;
+}
+function cssEscapeLite(value){
+  const str = String(value ?? '');
+  if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(str);
+  return str.replace(/[^a-zA-Z0-9_\-]/g, s => `\\${s}`);
+}
+function ensureItemId(it){
+  if (it.__briefId) return it.__briefId;
+  let base = '';
+  if (it.id) base = String(it.id);
+  else if (it.url) base = `url:${it.url}`;
+  else if (it.title) base = `title:${it.title}`;
+  else {
+    if (!it.__generatedId) it.__generatedId = `auto-${Math.random().toString(36).slice(2,10)}`;
+    base = it.__generatedId;
+  }
+  it.__briefId = base;
+  return base;
+}
+function highlightCardById(itemId){
+  if (!itemId) return;
+  try{
+    const selector = `[data-item-id="${cssEscapeLite(itemId)}"]`;
+    const el = document.querySelector(selector);
+    if (!el) return;
+    el.classList.remove('rad-card--highlight');
+    void el.offsetWidth;
+    el.classList.add('rad-card--highlight');
+    el.scrollIntoView({behavior:'smooth', block:'center'});
+    setTimeout(()=> el.classList.remove('rad-card--highlight'), 2800);
+  }catch{}
+}
+
 async function renderAIRadar(containerId = 'ai-radar') {
   const listEl = document.getElementById(containerId);
   const subEl = document.getElementById('rad-sub');
@@ -116,10 +168,16 @@ async function renderAIRadar(containerId = 'ai-radar') {
   const prevEl = document.getElementById('rad-prev');
   const nextEl = document.getElementById('rad-next');
   const topEl = document.getElementById('rad-top');
+  const briefingEl = document.getElementById('rad-briefing');
 
-  let dates=[]; let payload=null; let items=[];
-  const allCache = new Map(); // date -> items
-  let globalIndex = null; // optional global search index
+  let dates = [];
+  let payload = null;
+  let items = [];
+  let briefingData = null;
+  let briefingState = 'idle';
+  const briefingCache = new Map();
+  const allCache = new Map();
+  let globalIndex = null;
   let topKeys = new Set();
 
   function currentLang(){
@@ -132,51 +190,111 @@ async function renderAIRadar(containerId = 'ai-radar') {
     return (dict[lang] && dict[lang][key]) ?? (dict.en && dict.en[key]) ?? fallback;
   }
 
-  async function loadDates(){
-    try{ dates = await fetch('/data/ai/airadar/dates.json',{cache:'no-store'}).then(r=>r.json()); if(!Array.isArray(dates)) dates=[]; }
-    catch{ dates=[]; }
+  function isoToBjDate(iso){
+    try{
+      if(!iso) return '';
+      const ms = Date.parse(iso);
+      if (Number.isNaN(ms)) return '';
+      const bj = new Date(ms + 8 * 3600 * 1000);
+      return bj.toISOString().slice(0,10);
+    }catch{return '';}
   }
-  function setDateBounds(){ if(dates.length>0){ dateEl.min=dates[dates.length-1]; dateEl.max=dates[0]; } }
-  function updateNav(){ const idx=dates.indexOf(dateEl.value||''); prevEl.disabled=(idx===-1)||(idx>=dates.length-1); nextEl.disabled=(idx===-1)||(idx<=0); }
+
+  async function loadDates(){
+    try{
+      dates = await fetch('/data/ai/airadar/dates.json',{cache:'no-store'}).then(r=>r.json());
+      if(!Array.isArray(dates)) dates=[];
+    }catch{ dates=[]; }
+  }
+  function setDateBounds(){ if(dateEl && dates.length>0){ dateEl.min=dates[dates.length-1]; dateEl.max=dates[0]; } }
+  function updateNav(){ const idx=dates.indexOf(dateEl?.value||''); if(prevEl) prevEl.disabled=(idx===-1)||(idx>=dates.length-1); if(nextEl) nextEl.disabled=(idx===-1)||(idx<=0); }
+
+  function assignItemIds(arr){ arr.forEach(it=> ensureItemId(it)); }
 
   async function loadData(){
-    const picked = dateEl.value;
+    const picked = dateEl?.value;
     let url = '/data/ai/airadar/latest.json';
     if (picked) url = `/data/ai/airadar/${picked}.json`;
     payload = await fetch(url, {cache:'no-store'}).then(r=>r.json()).catch(()=>({items:[]}));
     items = Array.isArray(payload.items)? payload.items: [];
-    // Localize select placeholders each load
+    assignItemIds(items);
     try{
       const lang = currentLang();
       if (qEl) qEl.placeholder = i18nStr('searchPH', lang);
     }catch{}
-    // populate dynamic sources
     try{
       const lang = currentLang();
       const hosts = Array.from(new Set(items.map(it=> extractHost(it.url||it.source?.site||it.source?.feed||'')).filter(Boolean))).sort();
-      const current = srcEl.value;
-      srcEl.innerHTML = `<option value="">${i18nStr('allSources', lang)}</option>` + hosts.map(h=>`<option value="${h}">${h}</option>`).join('');
-      if (hosts.includes(current)) srcEl.value=current; else srcEl.value='';
+      const current = srcEl?.value;
+      if (srcEl){
+        srcEl.innerHTML = `<option value="">${i18nStr('allSources', lang)}</option>` + hosts.map(h=>`<option value="${h}">${h}</option>`).join('');
+        if (hosts.includes(current)) srcEl.value=current; else srcEl.value='';
+      }
     }catch{}
-    // populate dynamic tags
     try{
       const lang = currentLang();
       const tagSet = new Set();
       items.forEach(it=> (it.tags||[]).forEach(t=> tagSet.add(String(t))));
       const tags = Array.from(tagSet).sort();
-      const cur = tagEl.value;
-      tagEl.innerHTML = `<option value="">${i18nStr('allTags', lang)}</option>` + tags.map(t=>`<option>${t}</option>`).join('');
-      if (tags.includes(cur)) tagEl.value = cur; else tagEl.value = '';
+      const cur = tagEl?.value;
+      if (tagEl){
+        tagEl.innerHTML = `<option value="">${i18nStr('allTags', lang)}</option>` + tags.map(t=>`<option>${t}</option>`).join('');
+        if (tags.includes(cur)) tagEl.value = cur; else tagEl.value = '';
+      }
     }catch{}
-  // no pagination; render all in view
+  }
+
+  function currentBriefingDate(){
+    if (payload?.briefing?.date) return payload.briefing.date;
+    if (dateEl?.value) return dateEl.value;
+    if (payload?.generated_at){ const bj = isoToBjDate(payload.generated_at); if (bj) return bj; }
+    if (items.length && items[0]?.published_at){ const bj = isoToBjDate(items[0].published_at); if (bj) return bj; }
+    return '';
+  }
+
+  async function loadBriefing(){
+    briefingState = 'loading';
+    if (briefingEl) briefingEl.dataset.state = 'loading';
+    const ref = payload?.briefing || {};
+    let url = ref.url || '';
+    const fallbackDate = currentBriefingDate();
+    if (!url && fallbackDate) url = `/data/ai/airadar/briefings/${fallbackDate}.json`;
+    if (!url){
+      briefingData = null;
+      briefingState = 'empty';
+      return;
+    }
+    const normalizedUrl = ensureLeadingSlash(url);
+    if (briefingCache.has(normalizedUrl)){
+      briefingData = briefingCache.get(normalizedUrl);
+      briefingState = briefingData ? 'ready' : 'empty';
+      return;
+    }
+    try{
+      const res = await fetch(normalizedUrl, {cache:'no-store'});
+      if (!res.ok){
+        briefingData = null;
+        briefingCache.set(normalizedUrl, null);
+        briefingState = 'empty';
+        return;
+      }
+      const data = await res.json();
+      briefingData = data;
+      briefingCache.set(normalizedUrl, data);
+      briefingState = Array.isArray(data.sections) && data.sections.length ? 'ready' : 'empty';
+    }catch{
+      briefingData = null;
+      briefingState = 'empty';
+    }
   }
 
   function applySubtitle(){
+    if(!subEl || !payload) return;
     const lang=currentLang();
     const gen = new Date(payload.generated_at||Date.now());
-  const ts = gen.toLocaleString(); const count = items.length;
-    if(!subEl) return;
-    const isArchive = Boolean(dateEl.value);
+    const ts = gen.toLocaleString();
+    const count = items.length;
+    const isArchive = Boolean(dateEl?.value);
     if (isArchive){
       if (lang==='en') subEl.textContent = `${i18nStr('archive',lang)} · ${dateEl.value} · ${count} ${i18nStr('items',lang)} · ${i18nStr('updated',lang)} ${ts}`;
       else if (lang==='es') subEl.textContent = `${i18nStr('archive',lang)} · ${dateEl.value} · ${count} ${i18nStr('items',lang)} · ${i18nStr('updated',lang)} ${ts}`;
@@ -192,16 +310,14 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (globalIndex !== null) return;
     try{
       const data = await fetch('/data/ai/airadar/index.json', {cache:'no-store'}).then(r=>r.json());
-      if (data && Array.isArray(data.items)) globalIndex = data.items;
-      else globalIndex = [];
+      globalIndex = Array.isArray(data?.items) ? data.items : [];
     }catch{ globalIndex = []; }
   }
+
   async function getAllItems(){
-    // Prefer prebuilt global index if available; else merge daily files
     await ensureGlobalIndex();
     if (Array.isArray(globalIndex) && globalIndex.length){
-      // adapt to card renderer fields by mapping back to expected keys
-      return globalIndex.map(it => ({
+      const mapped = globalIndex.map(it => ({
         id: it.id,
         url: it.url,
         published_at: it.ts,
@@ -211,6 +327,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
         source: { site: it.source_host, feed: '' },
         tags: [],
       }));
+      assignItemIds(mapped);
+      return mapped;
     }
     const want = dates.slice();
     const toFetch = want.filter(d => !allCache.has(d));
@@ -223,6 +341,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const merged = [];
     for (const d of want){ merged.push(...(allCache.get(d) || [])); }
     merged.sort((a,b)=> String(b.published_at||'').localeCompare(String(a.published_at||'')));
+    assignItemIds(merged);
     return merged;
   }
 
@@ -230,9 +349,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const q = (qEl?.value||'').trim().toLowerCase();
     const src = (srcEl?.value||'').trim().toLowerCase();
     const tag = (tagEl?.value||'').trim().toLowerCase();
-    // Choose source: global when searching, else current date payload
     let pool = items;
-    if (q) { pool = await getAllItems(); }
+    if (q) pool = await getAllItems();
     return pool.filter(it=>{
       if (src){
         const host = extractHost(it.url||'');
@@ -257,6 +375,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
 
   function cardHTML(it, isTop=false){
     const lang = currentLang();
+    const itemId = ensureItemId(it);
     const titleRaw = getTitle(it, lang);
     const title = titleRaw && titleRaw.trim() ? titleRaw.trim() : '(无标题)';
     const hostDisp = sourceDisplay(it) || '未知来源';
@@ -291,7 +410,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
       ? `<p class="rad-excerpt">${excerptPrimary}</p>`
       : `<p class="rad-excerpt rad-excerpt--empty">${fallbackExcerpt}</p>`;
     return `
-      <article class="card rad-card${topClass}" tabindex="0" aria-label="${aria}">
+      <article class="card rad-card${topClass}" data-item-id="${escapeAttr(itemId)}" tabindex="0" aria-label="${aria}">
         <div class="rad-card-head">
           ${badgesBlock}
           <div class="rad-card-title">
@@ -315,32 +434,27 @@ async function renderAIRadar(containerId = 'ai-radar') {
   async function renderList(){
     if(!listEl) return;
     const arr = await filterItems();
-    // Simple pagination
     const PAGE = 40;
     let page = 1;
     function draw(){
-      // Exclude Top items from main list only when no filters are active
       const hasQuery = (qEl?.value||'').trim().length>0;
       const hasSourceFilter = (srcEl?.value||'').trim().length>0;
       const hasTagFilter = (tagEl?.value||'').trim().length>0;
       const hasAnyFilter = hasQuery || hasSourceFilter || hasTagFilter;
-      const deduped = hasAnyFilter ? arr.slice() : arr.filter(it=>{
-        const key = it.id || it.url || it.title;
-        return !topKeys.has(key);
-      });
+      const deduped = hasAnyFilter ? arr.slice() : arr.filter(it=> !topKeys.has(ensureItemId(it)));
       const slice = deduped.slice(0, PAGE*page);
       const needsMore = slice.length < deduped.length;
       listEl.innerHTML = slice.map(it => cardHTML(it)).join('') + (needsMore ? `<div style="grid-column:1 / -1;display:flex;justify-content:center;margin:8px 0"><button id="rad-more" class="btn outline" aria-label="加载更多">加载更多</button></div>` : '');
-      setupCardInteractivity();
+      setupCardInteractivity(listEl);
       const more = document.getElementById('rad-more');
       more?.addEventListener('click', ()=>{ page++; draw(); });
     }
     draw();
   }
 
-  function setupCardInteractivity(){
-    // whole-card click (avoid when clicking inner links)
-    listEl.querySelectorAll('article.card.rad-card').forEach(card=>{
+  function setupCardInteractivity(scope){
+    if(!scope) return;
+    scope.querySelectorAll('article.card.rad-card').forEach(card=>{
       const link = card.querySelector('a[href]');
       const url = link?.getAttribute('href');
       if (!url) return;
@@ -350,44 +464,47 @@ async function renderAIRadar(containerId = 'ai-radar') {
   }
 
   function getTopItems(arr){
-  const N = 6;
+    const N = 6;
     const res = [];
     const seen = new Set();
-    // prefer marked
     for (const it of arr){
-      if (guessBadges(it).length>0){
-        const key = it.id || it.url || it.title;
-        if (!seen.has(key)) { res.push(it); seen.add(key); if (res.length===N) break; }
+      const key = ensureItemId(it);
+      if (guessBadges(it).length>0 && !seen.has(key)){
+        res.push(it);
+        seen.add(key);
+        if (res.length===N) break;
       }
     }
-    // fill from the rest
     if (res.length < N){
       for (const it of arr){
-        const key = it.id || it.url || it.title;
-        if (!seen.has(key)) { res.push(it); seen.add(key); if (res.length===N) break; }
+        const key = ensureItemId(it);
+        if (!seen.has(key)){
+          res.push(it);
+          seen.add(key);
+          if (res.length===N) break;
+        }
       }
     }
     return res.slice(0,N);
   }
+
   function renderTop(){
     if(!topEl) return;
-    // Hide Top when searching or filtering
-    const hasQuery = (document.getElementById('rad-q')?.value||'').trim().length>0;
-    const hasSourceFilter = (document.getElementById('rad-source')?.value||'').trim().length>0;
-    const hasTagFilter = (document.getElementById('rad-tag')?.value||'').trim().length>0;
-    if (hasQuery || hasSourceFilter || hasTagFilter){ topEl.innerHTML=''; return; }
-    // Use current date payload for Top 8 (not global)
+    const hasQuery = (qEl?.value||'').trim().length>0;
+    const hasSourceFilter = (srcEl?.value||'').trim().length>0;
+    const hasTagFilter = (tagEl?.value||'').trim().length>0;
+    if (hasQuery || hasSourceFilter || hasTagFilter){ topEl.innerHTML=''; topKeys = new Set(); return; }
     const arr = items.slice();
     const top = getTopItems(arr);
-    topKeys = new Set(top.map(it => it.id || it.url || it.title));
+    topKeys = new Set(top.map(it => ensureItemId(it)));
     const wrap = document.createElement('div');
     wrap.className = 'rad-top-wrap';
     const heading = document.createElement('div');
     heading.className = 'rad-top-heading';
     const titleEl = document.createElement('h3');
-  titleEl.textContent = tr('radar_top_label', 'Top 6 热度榜');
+    titleEl.textContent = tr('radar_top_label', 'Top 6 热度榜');
     const subtitle = document.createElement('span');
-  subtitle.textContent = tr('radar_top_caption', '今日关注度最高的 6 条资讯');
+    subtitle.textContent = tr('radar_top_caption', '今日关注度最高的 6 条资讯');
     heading.appendChild(titleEl);
     heading.appendChild(subtitle);
     wrap.appendChild(heading);
@@ -398,46 +515,140 @@ async function renderAIRadar(containerId = 'ai-radar') {
     topEl.innerHTML = '';
     try { topEl.classList.remove('rad-list'); } catch {}
     topEl.appendChild(wrap);
+    setupCardInteractivity(topEl);
   }
 
-  // Load flow
+  function renderBriefing(){
+    if (!briefingEl){ return; }
+    const lang = currentLang();
+    briefingEl.dataset.state = briefingState;
+    if (!briefingData || !Array.isArray(briefingData.sections) || !briefingData.sections.length){
+      const msgKey = briefingState === 'loading' ? 'briefingLoading' : 'briefingEmpty';
+      briefingEl.innerHTML = `<div class="rad-briefing-empty">${escapeHtml(i18nStr(msgKey, lang))}</div>`;
+      return;
+    }
+    const meta = briefingData.meta || {};
+    const themeEntries = Array.isArray(meta.themes) ? meta.themes : [];
+    const themeLine = themeEntries.length ? themeEntries.map(t => `${t.topic || ''}：${t.one_line || ''}`.trim()).filter(Boolean).join('；') : '';
+    const themesLabel = i18nStr('briefingThemes', lang);
+    const lengthLine = meta.length_sec_estimate ? i18nStr('briefingLength', lang).replace('{seconds}', String(meta.length_sec_estimate)) : '';
+    const hotnessChip = meta.hotness_delta ? i18nStr('briefingHotness', lang).replace('{value}', String(meta.hotness_delta)) : '';
+    const jumpLabel = i18nStr('briefingJump', lang);
+    const noItemsLabel = i18nStr('briefingNoItems', lang);
+
+    const sectionsHtml = (briefingData.sections || []).map(section => {
+      const title = escapeHtml(section.title || '');
+      const entries = Array.isArray(section.items) ? section.items : [];
+      const content = entries.length ? entries.map(entry => {
+        const targetId = entry.id ? String(entry.id) : '';
+        const bits = [];
+        if (entry.one_liner) bits.push(`<strong>${escapeHtml(entry.one_liner)}</strong>`);
+        if (entry.why_it_matters) bits.push(`<p>${escapeHtml(entry.why_it_matters)}</p>`);
+        if (entry.next_step) bits.push(`<p>${escapeHtml(entry.next_step)}</p>`);
+        if (targetId) bits.push(`<button type="button" class="rad-briefing-link" data-briefing-jump="${escapeAttr(targetId)}">${escapeHtml(jumpLabel)}</button>`);
+        return `<div class="rad-briefing-item">${bits.join('')}</div>`;
+      }).join('') : `<div class="rad-briefing-empty">${escapeHtml(noItemsLabel)}</div>`;
+      return `<div class="rad-briefing-section"><h4>${title}</h4>${content}</div>`;
+    }).join('');
+
+    const deep = briefingData.deep_dive || {};
+    const deepHasContent = deep && (deep.why_read || deep.counterpoint || deep.takeaway);
+    const deepHtml = deepHasContent ? `
+      <div class="rad-briefing-deep">
+        <h4>今日深读</h4>
+        ${deep.why_read ? `<p><strong>值得读：</strong>${escapeHtml(deep.why_read)}</p>` : ''}
+        ${deep.counterpoint ? `<p><strong>注意点：</strong>${escapeHtml(deep.counterpoint)}</p>` : ''}
+        ${deep.takeaway ? `<p><strong>带走要点：</strong>${escapeHtml(deep.takeaway)}</p>` : ''}
+      </div>
+    ` : '';
+
+    const outro = briefingData.outro || {};
+    const outroHtml = (outro.tomorrow_watch || outro.call_to_action) ? `
+      <div class="rad-briefing-outro">
+        ${outro.tomorrow_watch ? `<p><strong>明日关注：</strong>${escapeHtml(outro.tomorrow_watch)}</p>` : ''}
+        ${outro.call_to_action ? `<p><strong>建议动作：</strong>${escapeHtml(outro.call_to_action)}</p>` : ''}
+      </div>
+    ` : '';
+
+    briefingEl.innerHTML = `
+      <div class="rad-briefing-inner">
+        <div class="rad-briefing-head">
+          <div>
+            <h3 class="rad-briefing-title">${escapeHtml(i18nStr('briefingTitle', lang))}</h3>
+            ${themeLine ? `<p class="rad-briefing-themes">${escapeHtml(`${themesLabel}：${themeLine}`)}</p>` : ''}
+            ${lengthLine ? `<p class="rad-briefing-meta">${escapeHtml(lengthLine)}</p>` : ''}
+          </div>
+          ${hotnessChip ? `<span class="rad-briefing-chip">${escapeHtml(hotnessChip)}</span>` : ''}
+        </div>
+        <div class="rad-briefing-sections">${sectionsHtml}</div>
+        ${deepHtml}
+        ${outroHtml}
+      </div>
+    `;
+    setupBriefingInteractions();
+  }
+
+  function setupBriefingInteractions(){
+    if (!briefingEl) return;
+    briefingEl.querySelectorAll('[data-briefing-jump]').forEach(btn => {
+      btn.addEventListener('click', ()=> highlightCardById(btn.getAttribute('data-briefing-jump')));
+    });
+  }
+
   await loadDates();
   setDateBounds();
-  // If no date selected, default to the latest (today in Beijing TZ)
   if (dateEl && !dateEl.value && Array.isArray(dates) && dates.length > 0) {
     try { dateEl.value = dates[0]; } catch {}
   }
   await loadData();
+  await loadBriefing();
   applySubtitle();
+  renderBriefing();
   renderTop();
   await renderList();
   updateNav();
 
-  // Bind events (single set)
   qEl?.addEventListener('input', ()=>{ renderTop(); renderList(); });
   srcEl?.addEventListener('change', ()=>{ renderTop(); renderList(); });
   tagEl?.addEventListener('change', ()=>{ renderTop(); renderList(); });
-  dateEl?.addEventListener('change', async ()=>{ await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav(); });
+  dateEl?.addEventListener('change', async ()=>{
+    await loadData();
+    await loadBriefing();
+    applySubtitle();
+    renderBriefing();
+    renderTop();
+    await renderList();
+    updateNav();
+  });
   prevEl?.addEventListener('click', async ()=>{
-    // Move to older date (index +1). If none selected, start from latest (index 0)
-    let idx = dates.indexOf(dateEl.value||'');
+    let idx = dates.indexOf(dateEl?.value||'');
     if (idx === -1) idx = 0;
     if (idx < dates.length - 1) {
       dateEl.value = dates[idx + 1];
-      await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
+      await loadData();
+      await loadBriefing();
+      applySubtitle();
+      renderBriefing();
+      renderTop();
+      await renderList();
+      updateNav();
     }
   });
   nextEl?.addEventListener('click', async ()=>{
-    // Move to newer date (index -1)
-    let idx = dates.indexOf(dateEl.value||'');
-    if (idx === -1) idx = 0; // if empty, treat as latest
+    let idx = dates.indexOf(dateEl?.value||'');
+    if (idx === -1) idx = 0;
     if (idx > 0) {
       dateEl.value = dates[idx - 1];
-      await loadData(); applySubtitle(); renderTop(); await renderList(); updateNav();
+      await loadData();
+      await loadBriefing();
+      applySubtitle();
+      renderBriefing();
+      renderTop();
+      await renderList();
+      updateNav();
     }
   });
 
-  // Re-render on language change
-  window.addEventListener('language-changed', ()=>{ applySubtitle(); renderTop(); renderList(); });
+  window.addEventListener('language-changed', ()=>{ applySubtitle(); renderBriefing(); renderTop(); renderList(); });
 }
 window.addEventListener('DOMContentLoaded', () => renderAIRadar('ai-radar'));
