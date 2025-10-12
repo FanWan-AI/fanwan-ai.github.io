@@ -170,6 +170,146 @@ function briefingHasContent(data){
   return false;
 }
 
+function setupBriefingAudio(scope, segments){
+  if (!scope || !segments || !segments.length) return;
+  const wrap = scope.querySelector('.rad-briefing-audio');
+  if (!wrap) return;
+  const playBtn = wrap.querySelector('.rad-audio-toggle');
+  const statusEl = wrap.querySelector('.rad-audio-status');
+  const audioEl = wrap.querySelector('audio.rad-audio');
+  const listEl = wrap.querySelector('.rad-audio-list');
+  if (!playBtn || !audioEl) return;
+
+  const safeSegments = segments.filter(seg => seg && typeof seg.file === 'string');
+  if (!safeSegments.length) return;
+
+  const playLabel = '▶ 播放语音导读';
+  const pauseLabel = '⏸ 暂停播放';
+  const resumeLabel = '▶ 继续播放';
+
+  let index = 0;
+  let state = 'idle';
+  let endedNaturally = false;
+
+  function highlight(idx){
+    if (!listEl) return;
+    listEl.querySelectorAll('li').forEach((li, liIdx) => {
+      const active = liIdx === idx;
+      li.classList.toggle('is-active', active);
+      if (active) li.setAttribute('aria-current', 'true');
+      else li.removeAttribute('aria-current');
+    });
+  }
+
+  function updateStatus(text){ if (statusEl) statusEl.textContent = text || ''; }
+
+  function setState(next){
+    state = next;
+    if (state === 'idle' || state === 'done'){
+      playBtn.textContent = playLabel;
+      playBtn.setAttribute('aria-label', '播放今日导读音频');
+    } else if (state === 'playing'){
+      playBtn.textContent = pauseLabel;
+      playBtn.setAttribute('aria-label', '暂停播放');
+    } else if (state === 'paused'){
+      playBtn.textContent = resumeLabel;
+      playBtn.setAttribute('aria-label', '继续播放');
+    }
+  }
+
+  function load(idx){
+    const seg = safeSegments[idx];
+    if (!seg) return false;
+    endedNaturally = false;
+    audioEl.src = seg.file;
+    audioEl.currentTime = 0;
+    highlight(idx);
+    const snippet = seg.text ? `：${seg.text.slice(0, 42)}` : '';
+    updateStatus(`正在播放第 ${idx + 1} 段${snippet}`);
+    return true;
+  }
+
+  async function play(idx){
+    if (!load(idx)) return;
+    try{
+      await audioEl.play();
+      setState('playing');
+    }catch(err){
+      console.warn('audio playback failed', err);
+      setState('paused');
+      updateStatus('音频无法自动播放，请点击播放按钮重试。');
+    }
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (state === 'idle' || state === 'done'){
+      index = 0;
+      play(index);
+    } else if (state === 'playing'){
+  audioEl.pause();
+      setState('paused');
+      updateStatus('已暂停');
+    } else if (state === 'paused'){
+      audioEl.play().then(() => {
+        setState('playing');
+        const seg = safeSegments[index];
+        const snippet = seg && seg.text ? `：${seg.text.slice(0, 42)}` : '';
+        updateStatus(`继续播放第 ${index + 1} 段${snippet}`);
+      }).catch(err => {
+        console.warn('audio resume failed', err);
+        updateStatus('无法继续播放，请重试');
+      });
+    }
+  });
+
+  audioEl.addEventListener('ended', () => {
+    endedNaturally = true;
+    index += 1;
+    if (index < safeSegments.length){
+      play(index);
+    } else {
+      setState('done');
+      highlight(-1);
+      updateStatus('播放完成');
+      index = 0;
+    }
+  });
+
+  audioEl.addEventListener('pause', () => {
+    if (endedNaturally) return;
+    if (state === 'playing'){
+      setState('paused');
+      updateStatus('已暂停');
+    }
+  });
+
+  audioEl.addEventListener('play', () => {
+    endedNaturally = false;
+    if (state !== 'playing'){
+      setState('playing');
+    }
+  });
+
+  if (listEl){
+    listEl.querySelectorAll('li').forEach((li, liIdx) => {
+      li.addEventListener('click', () => {
+        index = liIdx;
+        play(index);
+      });
+      li.addEventListener('keydown', (evt) => {
+        if (evt.key === 'Enter' || evt.key === ' '){
+          evt.preventDefault();
+          index = liIdx;
+          play(index);
+        }
+      });
+    });
+  }
+
+  setState('idle');
+  updateStatus('音频已就绪');
+}
+
 async function renderAIRadar(containerId = 'ai-radar') {
   const listEl = document.getElementById(containerId);
   const subEl = document.getElementById('rad-sub');
@@ -552,6 +692,34 @@ async function renderAIRadar(containerId = 'ai-radar') {
     const lengthLine = meta.length_sec_estimate ? i18nStr('briefingLength', lang).replace('{seconds}', String(meta.length_sec_estimate)) : '';
     const hotnessChip = meta.hotness_delta ? i18nStr('briefingHotness', lang).replace('{value}', String(meta.hotness_delta)) : '';
 
+    const audioMeta = data.audio && typeof data.audio === 'object' ? data.audio : null;
+    let audioSegments = [];
+    if (audioMeta && Array.isArray(audioMeta.segments)){
+      audioSegments = audioMeta.segments
+        .map(seg => {
+          if (!seg || typeof seg !== 'object') return null;
+          const file = ensureLeadingSlash(seg.file || seg.url || '');
+          if (!file) return null;
+          return {
+            file,
+            text: typeof seg.text === 'string' ? seg.text : '',
+          };
+        })
+        .filter(Boolean);
+    }
+    const audioHtml = audioSegments.length ? `
+      <div class="rad-briefing-audio" data-count="${audioSegments.length}">
+        <div class="rad-audio-head">
+          <button type="button" class="btn outline rad-audio-toggle">▶ 播放语音导读</button>
+          <span class="rad-audio-status" aria-live="polite">音频加载中…</span>
+        </div>
+  <audio class="rad-audio" preload="none" controls></audio>
+        <ol class="rad-audio-list">
+          ${audioSegments.map((seg, idx) => `<li data-src="${escapeAttr(seg.file)}" role="button" tabindex="0"><span class="rad-audio-index">${idx + 1}</span><span class="rad-audio-text">${escapeHtml((seg.text || '').slice(0, 64))}</span></li>`).join('')}
+        </ol>
+      </div>
+    ` : '';
+
     let paragraphs = [];
     if (Array.isArray(script.paragraphs)){
       paragraphs = script.paragraphs.map(entry => String(entry || '').trim()).filter(Boolean);
@@ -624,9 +792,18 @@ async function renderAIRadar(containerId = 'ai-radar') {
           </div>
           ${hotnessChip ? `<span class="rad-briefing-chip">${escapeHtml(hotnessChip)}</span>` : ''}
         </div>
+        ${audioHtml}
         ${bodyHtml}
       </div>
     `;
+
+    if (audioSegments.length){
+      setupBriefingAudio(briefingEl, audioSegments.map((seg, idx) => ({
+        index: idx,
+        text: seg.text || '',
+        file: seg.file,
+      })));
+    }
   }
 
   await loadDates();

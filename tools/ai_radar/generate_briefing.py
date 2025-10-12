@@ -31,6 +31,19 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
+from urllib.parse import urlparse
+
+requests = None  # type: ignore
+try:
+    import requests  # type: ignore
+except Exception:
+    pass
+
+dashscope = None  # type: ignore
+try:
+    import dashscope  # type: ignore
+except Exception:
+    pass
 
 # Resolve repository root so we can import helpers comfortably.
 _HERE = Path(__file__).resolve()
@@ -74,6 +87,9 @@ DATA_DIR = ROOT / "data" / "ai" / "airadar"
 LATEST_PATH = DATA_DIR / "latest.json"
 BRIEFINGS_DIR = DATA_DIR / "briefings"
 BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+AUDIO_DIR = DATA_DIR / "audio"
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass
@@ -832,6 +848,93 @@ def _update_latest_reference(date_str: str, briefing: Dict[str, Any]) -> None:
         write_json(archive_path, archive)
 
 
+def _safe_filename(name: str) -> str:
+    sanitized = re.sub(r"[^a-zA-Z0-9_-]+", "-", name).strip("-")
+    return sanitized or "segment"
+
+
+def _download_audio(url: str, dest: Path) -> bool:
+    if not requests:
+        return False
+    try:
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return False
+        resp = requests.get(url, timeout=60)
+        resp.raise_for_status()
+        dest.write_bytes(resp.content)
+        return True
+    except Exception:
+        return False
+
+
+def _synthesize_audio(
+    paragraphs: List[str],
+    date_str: str,
+    voice: Optional[str],
+    language: str,
+    log: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    if not api_key or not dashscope:
+        log["tts_status"] = "skipped-no-sdk" if dashscope is None else "skipped-no-key"
+        return None
+    if not paragraphs:
+        log["tts_status"] = "skipped-no-paragraphs"
+        return None
+
+    bundle_dir = AUDIO_DIR / date_str
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+    voice_id = voice or os.getenv("VOICE", "").strip() or "Katerina"
+    language_type = "Chinese" if language.lower().startswith("zh") else "English"
+    entries: List[Dict[str, Any]] = []
+    success = 0
+    for idx, paragraph in enumerate(paragraphs, start=1):
+        text = paragraph.strip()
+        if not text:
+            continue
+        try:
+            response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+                model="qwen3-tts-flash",
+                api_key=api_key,
+                text=text,
+                voice=voice_id,
+                language_type=language_type,
+                stream=False,
+            )
+        except Exception as exc:  # pragma: no cover - SDK errors
+            log.setdefault("tts_errors", []).append(str(exc))
+            continue
+
+        output = getattr(response, "output", None)
+        audio = getattr(output, "audio", None)
+        url = getattr(audio, "url", None)
+        if not isinstance(url, str) or not url:
+            log.setdefault("tts_errors", []).append("missing-audio-url")
+            continue
+
+        filename = f"{idx:02d}-{_safe_filename(text[:32])}.mp3"
+        audio_path = bundle_dir / filename
+        if not _download_audio(url, audio_path):
+            log.setdefault("tts_errors", []).append("download-failed")
+            continue
+
+        success += 1
+        entries.append(
+            {
+                "id": f"paragraph-{idx}",
+                "text": text,
+                "file": f"/data/ai/airadar/audio/{date_str}/{filename}",
+            }
+        )
+
+    log["tts_status"] = "success" if success else "error"
+    log["tts_voice"] = voice_id
+    log["tts_count"] = success
+    return {"date": date_str, "voice": voice_id, "segments": entries, "language": language_type}
+
+
 def main() -> None:
     if not LATEST_PATH.exists():
         raise SystemExit("latest.json not found; run aggregate_reports.py first")
@@ -904,6 +1007,8 @@ def main() -> None:
     log["force_template"] = force_template
     if llm_error:
         log["llm_error"] = llm_error
+    paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
+    briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, os.getenv("VOICE"), briefing.get("script", {}).get("language", "zh"), log)
     briefing["generation_log"] = log
 
     output_path = BRIEFINGS_DIR / f"{date_str}.json"
