@@ -430,7 +430,10 @@ html[lang="es"] .i18n.l-es { display: inline; }
   z-index: 1200;
   display: block;
   font-size: 0.95rem;
-  pointer-events: auto;
+  /* Let most clicks pass through the container so it never accidentally blocks
+     underlying interactive elements (audio play, links). Only the visible
+     tab remains pointer-sensitive (see .floating-toc__tab). */
+  pointer-events: none;
 }
 .floating-toc__panel {
   width: 320px;
@@ -443,6 +446,10 @@ html[lang="es"] .i18n.l-es { display: inline; }
   transform-origin: left center;
   transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 180ms ease;
   opacity: 1;
+  /* allow the panel to receive pointer events when visible (tab is clickable
+     even when the container is pointer-events:none). The collapsed rule keeps
+     it non-interactive when off-screen. */
+  pointer-events: auto;
 }
 .floating-toc--collapsed .floating-toc__panel {
   transform: translateX(-102%);
@@ -467,6 +474,9 @@ html[lang="es"] .i18n.l-es { display: inline; }
   overflow: hidden; /* prevent internal decoration overflow */
   display: grid;
   place-items: center;
+  /* Make the tab clickable even though the parent container is pointer-events:none */
+  pointer-events: auto;
+  z-index: 1201; /* sit above nearby content but below critical UI like modals */
 }
 
 /* Make the button more visually prominent and theme-aware so users notice it's interactive */
@@ -573,15 +583,19 @@ html[lang="es"] .i18n.l-es { display: inline; }
 
 /* Small screens: move TOC to bottom as a compact button */
 @media (max-width: 880px) {
-  .floating-toc { left: auto; right: 12px; top: auto; bottom: 14px; transform: none; }
-  .floating-toc__panel { width: 88vw; max-width: 88vw; border-radius: 12px; }
-  .floating-toc--collapsed .floating-toc__panel { transform: translateY(92%); }
-  .floating-toc--collapsed:hover .floating-toc__panel { transform: translateY(0); }
+  /* Keep the TOC visually on the left-middle even on narrow viewports so it is
+     consistently positioned and less likely to cover central content like the
+     audio card. We keep the tab pointer-enabled while the container stays
+     non-blocking to underlying elements. */
+  .floating-toc { left: 12px; right: auto; top: 50vh; bottom: auto; transform: translateY(-50%); }
+  .floating-toc__panel { width: 320px; max-width: calc(100vw - 48px); border-radius: 12px; }
+  .floating-toc--collapsed .floating-toc__panel { transform: translateX(-102%); }
+  .floating-toc--collapsed:hover .floating-toc__panel { transform: translateX(-102%); }
 
-  /* Make the collapsed tab a short horizontal pill on mobile */
-  .floating-toc__tab { width: 64px; height: 44px; border-radius: 12px; padding: 6px; }
-  .toc-track { width: 36px; height: 6px; display: inline-block; }
-  .toc-thumb { width: 18px; height: 6px; top: 50%; transform: translate(-50%, -50%); }
+  /* Keep the tab compact on mobile but vertically centered */
+  .floating-toc__tab { width: 52px; height: 52px; border-radius: 50%; padding: 6px; }
+  .toc-track { display: none; }
+  .toc-thumb { display: none; }
   .toc-arrow { display: none; }
 }
 
@@ -1200,11 +1214,49 @@ body > header {
 }
 
 @media (max-width: 640px) {
-  .post-audio-card { padding: 1.2rem 1.3rem; }
-  .post-audio-toggle { width: 100%; justify-content: center; }
-  .post-audio-meta { gap: .6rem; }
-  .post-audio-controls { flex-direction: column; align-items: flex-start; }
-  .post-audio-progress { width: 100%; }
+  .post-audio-card { padding: 1rem 0.9rem; border-radius: 18px; }
+  /* Make the play toggle large and full-width for easy tapping */
+  .post-audio-toggle { width: 100%; justify-content: center; padding: 1rem; font-size: 1.06rem; border-radius: 14px; }
+  .post-audio-meta { gap: .5rem; }
+  /* Stack controls vertically and center them */
+  .post-audio-controls { flex-direction: column; align-items: center; gap: 0.6rem; }
+  /* Avoid the desktop flex-basis (320px) from forcing a large vertical space on mobile.
+     Make the progress region flexible and constrained in height. */
+  .post-audio-progress { width: 100%; flex: 0 1 auto; min-height: 0; max-height: 180px; }
+  /* Increase scrubber touch targets */
+  .post-audio-card .scrubber-track { height: 14px; border-radius: 999px; }
+  .post-audio-card .scrubber-track .scrubber-fill { transition: transform 100ms linear; height: 14px; }
+  .post-audio-card .scrubber-thumb { width: 22px; height: 22px; border-width: 3px; top: 50%; transform: translate(-50%, -50%); }
+  .post-audio-card .scrubber-times { display: none; }
+  /* Make speed selector friendlier on mobile */
+  .post-audio-speed { width: 100%; justify-content: center; }
+  .post-audio-speed select { height: 44px; padding-inline: 16px; font-size: 1rem; }
+  /* Hide decorative orb on small screens to save space */
+  .post-audio-orb { display: none; }
+
+  /* Ensure the play toggle (large full-width button) is always on top and clickable */
+  .post-audio-toggle { position: relative; z-index: 10; pointer-events: auto; }
+
+  /* Reduce vertical spacing above the scrubber so it's visually closer to the speed control */
+  .post-audio-body { gap: 0.45rem; }
+}
+
+/* Mobile navbar adjustments to avoid icon overflow in the top-right corner */
+@media (max-width: 640px) {
+  /* slightly smaller action buttons on narrow phones */
+  :root { --nav-action-size: 36px; }
+
+  /* Reduce horizontal padding so header items have room */
+  body > header { padding-inline: 10px; }
+
+  /* Collapse grid to two columns on tiny viewports: brand + actions */
+  .navbar { grid-template-columns: 1fr auto; gap: 0.6rem; }
+
+  /* Prefer hamburger for navigation on small screens; hide the full link row by default */
+  .nav-links { display: none !important; }
+
+  /* Make action cluster slightly tighter */
+  .nav-actions { gap: 0.4rem; }
 }
 
 /* Prose width: match page title container width for consistency */
