@@ -13,7 +13,8 @@ Usage (after ``aggregate_reports.py``):
     python tools/ai_radar/generate_briefing.py
 
 Environment knobs (all optional):
-    BRIEFING_TOP_K            default 12
+    BRIEFING_ITEMS            number of news items or "all" (overrides BRIEFING_TOP_K, defaults to all)
+    BRIEFING_TOP_K            legacy integer override (ignored when BRIEFING_ITEMS is set)
     BRIEFING_MODE             default "narrative_script"
     BRIEFING_MAX_TOKENS       default 2200
     BRIEFING_SOURCE_BLACKLIST comma-separated hostnames to skip
@@ -30,7 +31,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 from urllib.parse import urlparse
 
 requests = None  # type: ignore
@@ -126,6 +127,32 @@ def _env_list(name: str) -> List[str]:
     if not raw:
         return []
     return [chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()]
+
+
+def _parse_briefing_limit(raw: str, total: int) -> Optional[int]:
+    cleaned = (raw or "").strip()
+    if not cleaned:
+        return None
+    if cleaned.lower() == "all":
+        return max(total, 0)
+    match = re.search(r"-?\d+", cleaned)
+    if not match:
+        return None
+    try:
+        value = int(match.group(0))
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    return max(1, min(total, value)) if total > 0 else value
+
+
+def _resolve_briefing_limit(total: int) -> Tuple[int, bool]:
+    for key in ("BRIEFING_ITEMS", "BRIEFING_TOP_K"):
+        candidate = _parse_briefing_limit(os.getenv(key, ""), total)
+        if candidate is not None:
+            return candidate, True
+    return max(total, 0), False
 
 
 def _parse_iso8601(value: str) -> Optional[datetime]:
@@ -721,6 +748,7 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str, expected_ids: Opt
     if len(segments) < 3:
         return False, "segments-too-few"
     segment_ids: List[str] = []
+    coverage_ids: Set[str] = set()
     for seg in segments:
         if not isinstance(seg, dict):
             return False, "segment-not-dict"
@@ -729,11 +757,21 @@ def _validate_briefing(payload: Dict[str, Any], date_str: str, expected_ids: Opt
         if not seg_id or not fact:
             return False, "segment-missing-fields"
         segment_ids.append(seg_id)
+        covered = seg.get("covered_ids")
+        if isinstance(covered, (list, tuple)):
+            for raw in covered:
+                cid = str(raw or "").strip()
+                if cid:
+                    coverage_ids.add(cid)
     if expected_ids:
-        if len(segment_ids) != len(expected_ids):
-            return False, "segment-count-mismatch"
-        if segment_ids != expected_ids:
-            return False, "segment-order-mismatch"
+        expected_list = [str(e or "").strip() for e in expected_ids if str(e or "").strip()]
+        expected_set = set(expected_list)
+        missing = [eid for eid in expected_list if eid not in coverage_ids]
+        if missing:
+            return False, "segment-coverage-missing"
+        extras = [cid for cid in coverage_ids if cid not in expected_set]
+        if extras:
+            return False, "segment-coverage-extra"
     paragraphs_field = script.get("paragraphs")
     paragraphs: List[str] = []
     if isinstance(paragraphs_field, list):
@@ -1084,8 +1122,17 @@ def main() -> None:
     if not isinstance(raw_items, list) or not raw_items:
         raise SystemExit("latest.json has no items to brief")
 
-    default_top_k = max(len(raw_items), 12)
-    top_k = max(4, _env_int("BRIEFING_TOP_K", default_top_k))
+    total_items = len(raw_items)
+    limit_value, limit_from_env = _resolve_briefing_limit(total_items)
+    if total_items <= 0:
+        raise SystemExit("no items left to brief")
+    if limit_from_env:
+        top_k = min(total_items, max(1, limit_value))
+    else:
+        if total_items >= 4:
+            top_k = min(total_items, max(4, limit_value))
+        else:
+            top_k = total_items
     mode = (os.getenv("BRIEFING_MODE") or "narrative_script").strip() or "narrative_script"
     blacklist = _env_list("BRIEFING_SOURCE_BLACKLIST")
     items = _select_top(raw_items, top_k, blacklist)
