@@ -549,7 +549,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const iconEl = wrap.querySelector('.post-audio-icon');
       const voiceEl = wrap.querySelector('[data-role="voice"]');
       const countEl = wrap.querySelector('[data-role="count"]');
-      if (!playBtn || !audioEl || !statusEl || !progressEl) return;
+  if (!playBtn || !audioEl || !statusEl || !progressEl) return;
 
       wrap.dataset.audioReady = '1';
 
@@ -645,18 +645,117 @@ document.addEventListener('DOMContentLoaded', () => {
           .replace('{total}', String(total));
       }
 
+      // Interactive progress bar: shows total timeline across segments and allows seeking.
+      // We'll render a scrubber inside the existing progressEl and keep text fallback.
+      let segmentDurations = new Array(total).fill(null); // seconds or null
+      let totalDuration = null; // seconds or null
+
+      function formatTime(s){
+        if (!Number.isFinite(s) || s <= 0) return '0:00';
+        const sec = Math.floor(s % 60);
+        const min = Math.floor((s / 60) % 60);
+        const hr = Math.floor(s / 3600);
+        const pad = (n)=>String(n).padStart(2,'0');
+        if (hr > 0) return `${hr}:${pad(min)}:${pad(sec)}`;
+        return `${min}:${pad(sec)}`;
+      }
+
+      function buildProgressScrubber(){
+        // Build HTML structure once
+        progressEl.innerHTML = `
+          <div class="scrubber" role="slider" aria-valuemin="0" aria-valuemax="100" tabindex="0">
+            <div class="scrubber-track"><div class="scrubber-fill"></div><div class="scrubber-thumb" aria-hidden="true"></div></div>
+          </div>
+          <div class="scrubber-times"><span class="scrubber-current">0:00</span><span class="scrubber-sep">/</span><span class="scrubber-total">-:--</span></div>
+        `;
+        // cache nodes
+        progressEl._scrubber = progressEl.querySelector('.scrubber');
+        progressEl._track = progressEl.querySelector('.scrubber-track');
+        progressEl._fill = progressEl.querySelector('.scrubber-fill');
+        progressEl._thumb = progressEl.querySelector('.scrubber-thumb');
+        progressEl._timeCurrent = progressEl.querySelector('.scrubber-current');
+        progressEl._timeTotal = progressEl.querySelector('.scrubber-total');
+      }
+
+      function setScrubberPosition(percent){
+        if (!progressEl || !progressEl._fill) return;
+        const p = Math.max(0, Math.min(1, percent));
+        progressEl._fill.style.transform = `scaleX(${p})`;
+        progressEl._thumb.style.left = `${p * 100}%`;
+        if (totalDuration) progressEl._timeTotal.textContent = formatTime(totalDuration);
+      }
+
+      function setScrubberTime(curSeconds){
+        if (!progressEl || !progressEl._timeCurrent) return;
+        progressEl._timeCurrent.textContent = formatTime(curSeconds);
+        if (totalDuration) setScrubberPosition(curSeconds / totalDuration);
+      }
+
+      function findSegmentForGlobalTime(t){
+        // returns {idx, offset}
+        if (!Array.isArray(segmentDurations) || segmentDurations.length === 0) return { idx: 0, offset: 0 };
+        let acc = 0;
+        for (let i=0;i<segmentDurations.length;i++){
+          const d = Number(segmentDurations[i]) || 0;
+          if (t <= acc + d || i === segmentDurations.length - 1){
+            return { idx: i, offset: Math.max(0, t - acc) };
+          }
+          acc += d;
+        }
+        return { idx: segmentDurations.length -1, offset: 0 };
+      }
+
+      async function ensureDurations(){
+        // Only fetch if any nulls remain and not currently all known.
+        if (totalDuration !== null) return;
+        try {
+          // Use a single temp audio for sequential metadata loads to avoid many players.
+          const probe = document.createElement('audio');
+          probe.preload = 'metadata';
+          let acc = 0;
+          for (let i=0;i<segments.length;i++){
+            if (typeof segmentDurations[i] === 'number') { acc += segmentDurations[i]; continue; }
+            const src = resolveSource(segments[i].file);
+            let dur = 0;
+            try {
+              probe.src = src;
+              await new Promise((resolve, reject) => {
+                const onLoaded = () => { dur = Number.isFinite(probe.duration) ? probe.duration : 0; cleanup(); resolve(); };
+                const onErr = () => { dur = 0; cleanup(); resolve(); };
+                const onTimeout = () => { dur = 0; cleanup(); resolve(); };
+                function cleanup(){ probe.removeEventListener('loadedmetadata', onLoaded); probe.removeEventListener('error', onErr); clearTimeout(timer); probe.src = ''; }
+                probe.addEventListener('loadedmetadata', onLoaded);
+                probe.addEventListener('error', onErr);
+                const timer = setTimeout(onTimeout, 4500);
+              });
+            } catch { dur = 0; }
+            segmentDurations[i] = Math.max(0, Number(dur) || 0);
+            acc += segmentDurations[i];
+          }
+          totalDuration = segmentDurations.reduce((a,b)=>a + (Number(b)||0), 0) || null;
+          if (!totalDuration) totalDuration = null;
+          if (progressEl && progressEl._timeTotal && totalDuration) progressEl._timeTotal.textContent = formatTime(totalDuration);
+        } catch (e) {
+          // ignore: leave durations unknown
+          totalDuration = null;
+        }
+      }
+
       function renderProgress(idx){
         if (!progressEl) return;
-        if (idx < 0) {
-          if (strings.progressIdle) {
-            progressEl.textContent = strings.progressIdle;
-          } else {
-            progressEl.textContent = strings.progressTemplate
-              .replace('{current}', '0')
-              .replace('{total}', String(total));
-          }
+        // Build scrubber only once
+        if (!progressEl._scrubber) buildProgressScrubber();
+        // If we have durations, compute global time; otherwise show segment index and total
+        if (totalDuration) {
+          // compute global current time
+          let acc = 0;
+          for (let i=0;i<idx;i++) acc += Number(segmentDurations[i]) || 0;
+          const cur = acc + (audioEl.currentTime || 0);
+          setScrubberTime(cur);
         } else {
-          progressEl.textContent = progressText(idx);
+          // fallback: show segment index / total
+          progressEl._timeCurrent && (progressEl._timeCurrent.textContent = `${idx+1}/${total}`);
+          progressEl._timeTotal && (progressEl._timeTotal.textContent = '');
         }
       }
 
@@ -782,6 +881,89 @@ document.addEventListener('DOMContentLoaded', () => {
           index = 0;
         }
       });
+
+      // Update scrubber position as audio plays
+      audioEl.addEventListener('timeupdate', () => {
+        try { renderProgress(index); } catch (e) {}
+      });
+
+      // Wire scrubber interactions (click to seek, drag to scrub)
+      function seekToGlobal(seconds){
+        if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
+        if (!Array.isArray(segmentDurations) || segmentDurations.every(d => !d)) {
+          // Unknown durations: just restart current segment
+          try { audioEl.currentTime = 0; } catch {}
+          return;
+        }
+        const seg = findSegmentForGlobalTime(seconds);
+        if (!seg) return;
+        const { idx: tgtIdx, offset } = seg;
+        index = tgtIdx;
+        loadSegment(index);
+        try { audioEl.currentTime = Math.max(0, Math.min(audioEl.duration || 1, offset)); } catch {}
+        audioEl.play().catch(()=>{});
+      }
+
+      // Attach handlers to scrubber nodes when built
+      function wireScrubber(){
+        if (!progressEl || !progressEl._scrubber) return;
+        const scrub = progressEl._scrubber;
+        let dragging = false;
+        const getRect = ()=> progressEl._track.getBoundingClientRect();
+
+        function posToSeconds(clientX){
+          const rect = getRect();
+          const x = Math.max(0, Math.min(rect.width, clientX - rect.left));
+          const frac = rect.width ? (x / rect.width) : 0;
+          return (totalDuration || 0) * frac;
+        }
+
+        function onDown(e){
+          e.preventDefault();
+          dragging = true;
+          const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+          const seconds = posToSeconds(clientX);
+          setScrubberTime(seconds);
+        }
+        function onMove(e){
+          if (!dragging) return;
+          const clientX = (e.touches ? e.touches[0].clientX : e.clientX);
+          const seconds = posToSeconds(clientX);
+          setScrubberTime(seconds);
+        }
+        function onUp(e){
+          if (!dragging) return; dragging = false;
+          const clientX = (e.changedTouches ? e.changedTouches[0].clientX : e.clientX);
+          const seconds = posToSeconds(clientX);
+          seekToGlobal(seconds);
+        }
+
+        scrub.addEventListener('mousedown', onDown);
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+        scrub.addEventListener('touchstart', onDown, { passive: true });
+        window.addEventListener('touchmove', onMove, { passive: true });
+        window.addEventListener('touchend', onUp, { passive: true });
+
+        // keyboard accessibility
+        scrub.addEventListener('keydown', (e)=>{
+          if (!totalDuration) return;
+          const step = totalDuration / 20;
+          if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { seekToGlobal((audioEl.currentTime || 0) + step); }
+          else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') { seekToGlobal((audioEl.currentTime || 0) - step); }
+          else if (e.key === 'Home') { seekToGlobal(0); }
+          else if (e.key === 'End') { seekToGlobal(totalDuration); }
+        });
+      }
+
+      // Initialize scrubber and start probing durations in background
+      buildProgressScrubber();
+      wireScrubber();
+      // probe durations but don't block UI
+      ensureDurations().then(()=>{
+        // if we have durations, update UI
+        if (totalDuration) setScrubberPosition(0);
+      }).catch(()=>{});
 
       audioEl.addEventListener('error', () => {
         renderStatus(strings.statusError, index);
