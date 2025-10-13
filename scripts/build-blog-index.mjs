@@ -45,11 +45,18 @@ async function readPostMeta(slug){
   const isTrue = (s)=>/^(true|1|yes|on)$/i.test(s);
   const isFalse = (s)=>/^(false|0|no|off)$/i.test(s);
   if (isTrue(val(meta.draft)) || isTrue(val(meta.hidden)) || isFalse(val(meta.published))) { continue; }
+      // Normalize cover: treat missing or empty cover as undefined so
+      // pickCover can decide (and prefer PNG when available).
+      let coverVal = undefined;
+      if (meta.hasOwnProperty('cover')) {
+        const cv = String(meta.cover || '').trim();
+        if (cv.length) coverVal = cv;
+      }
       metaByLang[lang] = {
         title: meta.title || slug,
         description: meta.description || '',
         date: meta.date || '',
-  cover: meta.cover || `assets/blog/${slug}-${lang}.svg`,
+        cover: coverVal,
       };
     } catch {}
   }
@@ -60,13 +67,13 @@ async function pickCover(slug, lang, metaCover){
   // Prefer meta cover if provided; if it's a site path, verify existence.
   if (metaCover) {
     if (/^https?:\/\//i.test(metaCover)) return metaCover;
-    try { await fs.access(path.join(root, metaCover.replace(/^\/?/, ''))); return metaCover; } catch {}
+    try { await fs.access(path.join(root, metaCover.replace(/^\/?/, ''))); return String(metaCover).replace(/\\/g, '/'); } catch {}
   }
-  const png = path.join('assets','blog',`${slug}-${lang}.png`);
-  const svg = path.join('assets','blog',`${slug}-${lang}.svg`);
-  // Prefer SVG for crispness in thumbnails; fall back to PNG then placeholder
-  try { await fs.access(path.join(root, svg)); return svg; } catch {}
-  try { await fs.access(path.join(root, png)); return png; } catch {}
+  const pngRel = path.join('assets','blog',`${slug}-${lang}.png`);
+  const svgRel = path.join('assets','blog',`${slug}-${lang}.svg`);
+  // Prefer PNG for thumbnails (pre-generated rasterized covers), fall back to SVG then placeholder
+  try { await fs.access(path.join(root, pngRel)); return pngRel.replace(/\\/g, '/'); } catch {}
+  try { await fs.access(path.join(root, svgRel)); return svgRel.replace(/\\/g, '/'); } catch {}
   return 'assets/placeholder.jpg';
 }
 
