@@ -739,12 +739,12 @@ async function buildPost(dir){
         if (preferRel) {
           try { await fs.access(path.join(root, preferRel)); ogRel = toUrlPath(preferRel); } catch {}
         }
-        // Otherwise prefer auto SVG then PNG
-        if (!ogRel) {
-          try { await fs.access(path.join(root, svgRel)); ogRel = svgRel; } catch {}
-        }
+        // Otherwise prefer PNG (smaller, raster-friendly) then SVG
         if (!ogRel) {
           try { await fs.access(path.join(root, pngRel)); ogRel = pngRel; } catch {}
+        }
+        if (!ogRel) {
+          try { await fs.access(path.join(root, svgRel)); ogRel = svgRel; } catch {}
         }
         if (!ogRel) ogRel = 'assets/placeholder.jpg';
       }
