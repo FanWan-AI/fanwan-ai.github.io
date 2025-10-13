@@ -508,7 +508,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Toggle localized hero image according to language
     function syncPostHero(){
       const lang = getActiveLang();
-      const arts = isPost.querySelectorAll('.post-hero-art');
+      const arts = isPost.querySelectorAll('.post-hero-art, .post-hero-visual');
       arts.forEach(el => {
         const l = el.getAttribute('data-lang');
         if (l === lang) { el.hidden = false; }
@@ -516,14 +516,267 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
+    function initPostAudio(){
+      const wrap = isPost.querySelector('.post-audio-card');
+      const dataNode = document.getElementById('post-tts-data');
+      if (!wrap || !dataNode) return;
+      if (wrap.dataset.audioReady === '1') return;
+      let payload = null;
+      try { payload = JSON.parse(dataNode.textContent || '{}'); } catch { payload = null; }
+      if (!payload) return;
+      const rawSegments = Array.isArray(payload.segments) ? payload.segments : [];
+      const segments = rawSegments
+        .map((seg, idx) => {
+          if (!seg || typeof seg.file !== 'string') return null;
+          const file = String(seg.file || '').trim();
+          if (!file) return null;
+          return {
+            id: String(seg.id || `segment-${idx + 1}`),
+            text: typeof seg.text === 'string' ? seg.text : '',
+            file,
+          };
+        })
+        .filter(Boolean);
+      if (!segments.length) return;
+
+      const playBtn = wrap.querySelector('[data-role="toggle"]');
+      const statusEl = wrap.querySelector('[data-role="status"]');
+      const captionEl = wrap.querySelector('[data-role="caption"]');
+      const progressEl = wrap.querySelector('[data-role="progress"]');
+      const speedEl = wrap.querySelector('[data-role="speed"]');
+      const audioEl = wrap.querySelector('[data-role="audio"]');
+      const actionEl = wrap.querySelector('[data-role="action"]');
+      const voiceEl = wrap.querySelector('[data-role="voice"]');
+      const countEl = wrap.querySelector('[data-role="count"]');
+      if (!playBtn || !audioEl || !statusEl || !progressEl) return;
+
+      wrap.dataset.audioReady = '1';
+
+      const strings = {
+        play: wrap.dataset.labelPlay || 'Play',
+        pause: wrap.dataset.labelPause || 'Pause',
+        resume: wrap.dataset.labelResume || 'Resume',
+        statusReady: wrap.dataset.statusReady || '',
+        statusLoading: wrap.dataset.statusLoading || '',
+        statusPlaying: wrap.dataset.statusPlaying || '',
+        statusPaused: wrap.dataset.statusPaused || '',
+        statusResuming: wrap.dataset.statusResuming || '',
+        statusCompleted: wrap.dataset.statusCompleted || '',
+        statusError: wrap.dataset.statusError || '',
+        statusAutoplay: wrap.dataset.statusAutoplay || '',
+        progressTemplate: wrap.dataset.progressTemplate || '{current}/{total}',
+        progressIdle: wrap.dataset.progressIdle || '',
+        captionPrefix: wrap.dataset.captionPrefix || '',
+      };
+
+      const total = segments.length;
+      if (voiceEl && payload.voice && !voiceEl.textContent.trim()) {
+        voiceEl.textContent = payload.voice;
+      }
+      if (countEl && !countEl.textContent.trim() && strings.progressIdle) {
+        countEl.textContent = strings.progressIdle;
+      }
+
+      let state = 'idle';
+      let index = 0;
+      let endedNaturally = false;
+      let currentRate = Number.parseFloat(speedEl && speedEl.value ? speedEl.value : '1.25') || 1.25;
+
+      function setActionLabel(label){
+        const text = label || '';
+        playBtn.setAttribute('aria-label', text);
+        if (actionEl) actionEl.textContent = text;
+      }
+
+      function setState(next){
+        state = next;
+        playBtn.dataset.state = next;
+        if (next === 'playing') {
+          setActionLabel(strings.pause);
+        } else if (next === 'paused') {
+          setActionLabel(strings.resume);
+        } else {
+          setActionLabel(strings.play);
+        }
+      }
+
+      function applyRate(value){
+        const rate = Number.parseFloat(String(value));
+        if (!Number.isFinite(rate) || rate <= 0) return;
+        currentRate = rate;
+        try {
+          audioEl.playbackRate = rate;
+          audioEl.defaultPlaybackRate = rate;
+        } catch {}
+      }
+
+      function progressText(idx){
+        const safeIndex = Math.max(0, Math.min(total - 1, idx));
+        return strings.progressTemplate
+          .replace('{current}', String(safeIndex + 1))
+          .replace('{total}', String(total));
+      }
+
+      function renderProgress(idx){
+        if (!progressEl) return;
+        if (idx < 0) {
+          if (strings.progressIdle) {
+            progressEl.textContent = strings.progressIdle;
+          } else {
+            progressEl.textContent = strings.progressTemplate
+              .replace('{current}', '0')
+              .replace('{total}', String(total));
+          }
+        } else {
+          progressEl.textContent = progressText(idx);
+        }
+      }
+
+      function renderStatus(template, idx){
+        if (!statusEl) return;
+        const base = template || '';
+        if (base.includes('{progress}')) {
+          const position = typeof idx === 'number' ? idx : index;
+          statusEl.textContent = base.replace('{progress}', progressText(Math.max(0, Math.min(total - 1, position))));
+        } else {
+          statusEl.textContent = base;
+        }
+      }
+
+      function shorten(text){
+        const cleaned = (text || '').replace(/\s+/g, ' ').trim();
+        if (!cleaned) return '';
+        if (cleaned.length <= 160) return cleaned;
+        return `${cleaned.slice(0, 150).trim()}…`;
+      }
+
+      function updateCaption(idx){
+        if (!captionEl) return;
+        const seg = idx >= 0 ? segments[idx] : null;
+        const trimmed = seg ? shorten(seg.text || '') : '';
+        if (trimmed) {
+          captionEl.hidden = false;
+          captionEl.textContent = strings.captionPrefix ? `${strings.captionPrefix} · ${trimmed}` : trimmed;
+        } else {
+          captionEl.hidden = true;
+          captionEl.textContent = '';
+        }
+      }
+
+      function resolveSource(file){
+        if (!file) return '';
+        if (/^https?:\/\//i.test(file) || file.startsWith('/')) return file;
+        if (file.startsWith('../') || file.startsWith('./')) return file;
+        return `../${file.replace(/^\/+/, '')}`;
+      }
+
+      function loadSegment(idx){
+        const seg = segments[idx];
+        if (!seg) return false;
+        endedNaturally = false;
+        const src = resolveSource(seg.file);
+        if (src) {
+          audioEl.src = src;
+        }
+        try { audioEl.load(); } catch {}
+        try { audioEl.currentTime = 0; } catch {}
+        applyRate(currentRate);
+        renderProgress(idx);
+        updateCaption(idx);
+        return true;
+      }
+
+      async function startSegment(idx){
+        index = idx;
+        if (!loadSegment(idx)) return;
+        renderStatus(strings.statusLoading, idx);
+        try {
+          await audioEl.play();
+          setState('playing');
+          renderStatus(strings.statusPlaying, idx);
+        } catch (err) {
+          console.warn('audio playback blocked', err);
+          setState('paused');
+          renderStatus(strings.statusAutoplay || strings.statusError, idx);
+        }
+      }
+
+      playBtn.addEventListener('click', () => {
+        if (state === 'idle' || state === 'done') {
+          index = 0;
+          startSegment(index);
+        } else if (state === 'playing') {
+          audioEl.pause();
+        } else if (state === 'paused') {
+          renderStatus(strings.statusResuming, index);
+          audioEl.play().then(() => {
+            setState('playing');
+            renderStatus(strings.statusPlaying, index);
+          }).catch(err => {
+            console.warn('audio resume failed', err);
+            renderStatus(strings.statusError, index);
+          });
+        }
+      });
+
+      if (speedEl) {
+        speedEl.addEventListener('change', () => {
+          applyRate(speedEl.value);
+        });
+        applyRate(speedEl.value);
+      } else {
+        applyRate(currentRate);
+      }
+
+      audioEl.addEventListener('play', () => {
+        endedNaturally = false;
+        setState('playing');
+        renderStatus(strings.statusPlaying, index);
+      });
+
+      audioEl.addEventListener('pause', () => {
+        if (endedNaturally) return;
+        setState('paused');
+        renderStatus(strings.statusPaused, index);
+      });
+
+      audioEl.addEventListener('ended', () => {
+        endedNaturally = true;
+        const nextIndex = index + 1;
+        if (nextIndex < total) {
+          index = nextIndex;
+          setTimeout(() => startSegment(index), 90);
+        } else {
+          renderProgress(total - 1);
+          renderStatus(strings.statusCompleted, total - 1);
+          updateCaption(-1);
+          setState('done');
+          index = 0;
+        }
+      });
+
+      audioEl.addEventListener('error', () => {
+        renderStatus(strings.statusError, index);
+        setState('paused');
+      });
+
+      setState('idle');
+      renderStatus(strings.statusReady, -1);
+      renderProgress(-1);
+      if (captionEl) { captionEl.hidden = true; captionEl.textContent = ''; }
+      wrap.classList.add('post-audio-ready');
+    }
+
     // Initial sync: do critical visibility first, then defer heavier work
     syncLangBlocks();
     syncPostHero();
+    initPostAudio();
     const schedule = window.requestIdleCallback ? (cb) => requestIdleCallback(cb, { timeout: 1000 }) : (cb) => setTimeout(cb, 0);
     schedule(() => {
       updateTocLabel();
       buildToc();
       updateReadingTime();
+      initPostAudio();
     });
     // Rebuild when language changes
     window.addEventListener('language-changed', () => {

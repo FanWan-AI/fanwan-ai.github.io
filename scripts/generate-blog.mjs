@@ -51,9 +51,42 @@ function escapeHtml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function escapeAttr(s){
+  return escapeHtml(s).replace(/`/g, '&#96;');
+}
+
+function serializeForScript(data){
+  return JSON.stringify(data).replace(/</g, '\\u003C').replace(/>/g, '\\u003E');
+}
+
 // Normalize any Windows-style paths to URL-safe forward slashes
 function toUrlPath(p){
   return String(p).replace(/\\/g, '/');
+}
+
+async function readTtsMeta(slug, lang){
+  const base = path.join(root, 'data', 'blog', 'tts');
+  const file = path.join(base, `${slug}.${lang}.json`);
+  try {
+    const raw = await fs.readFile(file, 'utf8');
+    const parsed = JSON.parse(raw);
+    const segments = Array.isArray(parsed?.segments) ? parsed.segments.filter(seg => seg && typeof seg.file === 'string' && seg.file.trim()) : [];
+    if (!segments.length) return null;
+    const normalized = segments.map((seg, idx) => ({
+      id: String(seg.id || `segment-${idx + 1}`),
+      text: String(seg.text || ''),
+      file: String(seg.file || '').trim(),
+    }));
+    return {
+      slug,
+      lang,
+      voice: String(parsed.voice || parsed.voice_id || '').trim(),
+      generated_at: parsed.generated_at || parsed.generatedAt || '',
+      segments: normalized,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function mdToHtml(md, { slug } = {}) {
@@ -214,7 +247,7 @@ function mdToHtml(md, { slug } = {}) {
   return out.join('\n');
 }
 
-function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogImage, prevNext, orderList, backHref}){
+function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogImage, prevNext, orderList, backHref, ttsData}){
   const langLabel = lang==='en' ? 'English' : lang==='es' ? 'Español' : '中文';
   const titleForTwitter = lang==='en' ? `${title} (with KBLaM)` : title;
   const url = `${siteOrigin}blog/${slug}${lang==='zh'?'':'.'+lang}.html`;
@@ -223,6 +256,80 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   const estRead = lang==='en' ? 'Estimated read' : lang==='es' ? 'Lectura' : '预计阅读';
   // Prefer PNG/JPEG for OG for better compatibility (some platforms ignore SVG)
   const ogType = ogImage.endsWith('.png') ? 'image/png' : (ogImage.endsWith('.jpg') || ogImage.endsWith('.jpeg')) ? 'image/jpeg' : 'image/png';
+  const hasTts = ttsData && Array.isArray(ttsData.segments) && ttsData.segments.length;
+  const segmentsCount = hasTts ? ttsData.segments.length : 0;
+  const voiceId = hasTts ? (ttsData.voice || 'Katerina') : '';
+  const audioCopy = {
+    zh: {
+      badge: '语音朗读',
+      voiceLabel: '配音 · {voice}',
+      segmentsLabel: '共 {count} 段',
+      play: '播放全文朗读',
+      pause: '暂停播放',
+      resume: '继续播放',
+      speed: '播放速度',
+      statusReady: '音频已就绪，点击播放',
+      statusLoading: '音频加载中…',
+      statusPlaying: '正在播放 {progress}',
+      statusPaused: '已暂停 {progress}',
+      statusResuming: '继续播放 {progress}',
+      statusCompleted: '播放完成',
+      statusError: '无法继续播放，请重试',
+      statusAutoplay: '音频无法自动播放，请点击重试',
+      progressTemplate: '第 {current}/{total} 段',
+      progressIdle: '共 {total} 段',
+      captionPrefix: '当前段落',
+      speedValues: ['1.0×','1.25×','1.5×','1.75×','2.0×'],
+    },
+    en: {
+      badge: 'Narration',
+      voiceLabel: 'Voice · {voice}',
+      segmentsLabel: '{count} segments',
+      play: 'Play full narration',
+      pause: 'Pause narration',
+      resume: 'Resume narration',
+      speed: 'Speed',
+      statusReady: 'Audio ready. Press play.',
+      statusLoading: 'Preparing audio…',
+      statusPlaying: 'Playing {progress}',
+      statusPaused: 'Paused {progress}',
+      statusResuming: 'Resuming {progress}',
+      statusCompleted: 'Playback complete',
+      statusError: 'Unable to continue. Try again.',
+      statusAutoplay: 'Autoplay blocked. Press play again.',
+      progressTemplate: '{current}/{total}',
+      progressIdle: '{total} segments',
+      captionPrefix: 'Now reading',
+      speedValues: ['1.0×','1.25×','1.5×','1.75×','2.0×'],
+    },
+    es: {
+      badge: 'Narración',
+      voiceLabel: 'Voz · {voice}',
+      segmentsLabel: '{count} secciones',
+      play: 'Reproducir narración completa',
+      pause: 'Pausar narración',
+      resume: 'Reanudar narración',
+      speed: 'Velocidad',
+      statusReady: 'Audio listo. Pulsa reproducir.',
+      statusLoading: 'Preparando audio…',
+      statusPlaying: 'Reproduciendo {progress}',
+      statusPaused: 'Pausado {progress}',
+      statusResuming: 'Reanudando {progress}',
+      statusCompleted: 'Reproducción completada',
+      statusError: 'No se pudo continuar. Inténtalo de nuevo.',
+      statusAutoplay: 'La reproducción automática fue bloqueada. Pulsa reproducir.',
+      progressTemplate: '{current}/{total}',
+      progressIdle: '{total} secciones',
+      captionPrefix: 'Sección actual',
+      speedValues: ['1.0×','1.25×','1.5×','1.75×','2.0×'],
+    },
+  };
+  const copy = audioCopy[lang] || audioCopy.zh;
+  const voiceLine = hasTts ? copy.voiceLabel.replace('{voice}', escapeHtml(voiceId || 'Katerina')) : '';
+  const segmentsLine = hasTts ? copy.segmentsLabel.replace('{count}', String(segmentsCount)) : '';
+  const progressIdle = copy.progressIdle.replace('{total}', String(segmentsCount));
+  const postSummary = description ? `<p class="post-hero-summary">${escapeHtml(description)}</p>` : '';
+  const ttsScript = hasTts ? `<script id="post-tts-data" type="application/json">${serializeForScript(ttsData)}</script>` : '';
   return `<!doctype html>
 <html lang="${lang}" data-force-lang="${lang}">
 <head>
@@ -332,16 +439,71 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   </header>
   <main id="main" class="blog-post">
     <section class="page-hero section">
-      <div class="container">
-        <div class="i18n-block" data-lang="${lang}">
-          <h1 class="post-title">${escapeHtml(title)}</h1>
-          <p class="muted post-meta">${dateLabel} · ${estRead} 5 min</p>
+      <div class="container post-hero-container">
+        <div class="post-hero-grid">
+          <div class="post-hero-main">
+            <div class="i18n-block" data-lang="${lang}">
+              <span class="post-hero-chip">${lang==='en'?'Research Note':(lang==='es'?'Cuaderno de análisis':'深度长文')}</span>
+              <h1 class="post-title">${escapeHtml(title)}</h1>
+              <p class="muted post-meta">${dateLabel} · ${estRead} 5 min</p>
+            </div>
+            ${postSummary}
+            ${hasTts ? `<div class="post-audio-card"
+              data-label-play="${escapeAttr(copy.play)}"
+              data-label-pause="${escapeAttr(copy.pause)}"
+              data-label-resume="${escapeAttr(copy.resume)}"
+              data-status-ready="${escapeAttr(copy.statusReady)}"
+              data-status-loading="${escapeAttr(copy.statusLoading)}"
+              data-status-playing="${escapeAttr(copy.statusPlaying)}"
+              data-status-paused="${escapeAttr(copy.statusPaused)}"
+              data-status-resuming="${escapeAttr(copy.statusResuming)}"
+              data-status-completed="${escapeAttr(copy.statusCompleted)}"
+              data-status-error="${escapeAttr(copy.statusError)}"
+              data-status-autoplay="${escapeAttr(copy.statusAutoplay)}"
+              data-progress-template="${escapeAttr(copy.progressTemplate)}"
+              data-progress-idle="${escapeAttr(progressIdle)}"
+              data-caption-prefix="${escapeAttr(copy.captionPrefix)}"
+            >
+              <div class="post-audio-header">
+                <span class="post-audio-chip">${escapeHtml(copy.badge)}</span>
+                <div class="post-audio-meta">
+                  <span class="post-audio-voice" data-role="voice">${voiceLine}</span>
+                  <span class="post-audio-count" data-role="count">${escapeHtml(segmentsLine)}</span>
+                </div>
+              </div>
+              <div class="post-audio-body">
+                <button type="button" class="post-audio-toggle" data-role="toggle" aria-label="${escapeAttr(copy.play)}">
+                  <span class="post-audio-icon" aria-hidden="true">
+                    <svg viewBox="0 0 48 48" role="presentation"><circle cx="24" cy="24" r="23" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"></circle><path d="M20 17.5v13l11-6.5z" fill="currentColor"></path></svg>
+                  </span>
+                  <span class="post-audio-text" data-role="action">${escapeHtml(copy.play)}</span>
+                </button>
+                <div class="post-audio-status" data-role="status">${escapeHtml(copy.statusReady)}</div>
+                <p class="post-audio-caption" data-role="caption" hidden></p>
+              </div>
+              <div class="post-audio-controls">
+                <label class="post-audio-speed">
+                  <span>${escapeHtml(copy.speed)}</span>
+                  <select class="post-audio-speed-select" data-role="speed">
+                    <option value="1">${escapeHtml(copy.speedValues[0])}</option>
+                    <option value="1.25" selected>${escapeHtml(copy.speedValues[1])}</option>
+                    <option value="1.5">${escapeHtml(copy.speedValues[2])}</option>
+                    <option value="1.75">${escapeHtml(copy.speedValues[3])}</option>
+                    <option value="2">${escapeHtml(copy.speedValues[4])}</option>
+                  </select>
+                </label>
+                <div class="post-audio-progress" data-role="progress">${escapeHtml(progressIdle)}</div>
+              </div>
+              <audio class="post-audio-element" data-role="audio" preload="none"></audio>
+            </div>` : ''}
+            ${ttsScript}
+          </div>
+          ${heroImg ? `<div class="post-hero-visual" data-lang="${lang}"><div class="post-hero-visual-glow"></div><img src="${heroImg}" alt="Cover art"></div>` : ''}
         </div>
       </div>
     </section>
     <section class="section">
       <div class="container prose">
-  ${heroImg ? `<div class="post-hero-art" data-lang="${lang}"><img src="${heroImg}" alt="Cover"/></div>` : ''}
         <nav class="toc card" aria-label="Contents" style="padding:16px;margin:12px 0;"><strong>${lang==='en'?'Contents':(lang==='es'?'Índice':'目录')}</strong><ol></ol></nav>
         <article class="i18n-block" data-lang="${lang}">
 ${bodyHtml}
@@ -541,7 +703,8 @@ async function buildPost(dir){
         ? meta.cover
         : `../${toUrlPath(chosenRel).replace(/^\/?/, '')}`;
   const bodyHtml = mdToHtml(body, { slug });
-  const html = buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogImage, prevNext, orderList, backHref});
+  const ttsData = await readTtsMeta(slug, lang);
+  const html = buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogImage, prevNext, orderList, backHref, ttsData});
       const outPath = path.join(outDir, `${slug}${lang==='zh'?'':'.'+lang}.html`);
       await fs.writeFile(outPath, html, 'utf8');
       console.log('Wrote', path.relative(root, outPath));
