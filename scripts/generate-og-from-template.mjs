@@ -77,6 +77,7 @@ async function renderPngFromText(title, subline, outPng){
     await page.setViewport({ width: 1200, height: 630, deviceScaleFactor: 1 });
     const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(filled);
     await page.goto(dataUrl, { waitUntil: 'networkidle0' });
+    await page.evaluate(() => (window.document.fonts ? window.document.fonts.ready : Promise.resolve()));
   // Shrink title font-size if overflowing horizontally
     await page.evaluate(() => {
       const el = document.getElementById('og-title');

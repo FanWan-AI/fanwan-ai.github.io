@@ -16,8 +16,10 @@ async function ensureDir(p) {
 
 const svg = await fs.readFile(tplPath, 'utf8');
 const filled = svg
-  .replace('id="og-title" x="80" y="270" font-size="56" font-weight="700">标题 Title', `id="og-title" x="80" y="270" font-size="56" font-weight="700">${titleArg}`)
-  .replace('id="og-desc" x="80" y="330" font-size="28" opacity="0.95">副标题/摘要 Subtitle', `id="og-desc" x="80" y="330" font-size="28" opacity="0.95">${descArg}`);
+  .replace(/<text id="og-title"[\s\S]*?<\/text>/i,
+    `<text id="og-title" x="96" y="180" font-size="56" font-weight="700">${titleArg}</text>`)
+  .replace(/<text id="og-desc"[\s\S]*?<\/text>/i,
+    `<text id="og-desc" x="96" y="270" font-size="28" opacity="0.95">${descArg}</text>`);
 
 await ensureDir(outPathArg);
 
@@ -30,6 +32,7 @@ try {
     await page.setViewport({ width: 1200, height: 630, deviceScaleFactor: 1 });
     const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(filled);
     await page.goto(dataUrl, { waitUntil: 'networkidle0' });
+  await page.evaluate(() => (window.document.fonts ? window.document.fonts.ready : Promise.resolve()));
     await ensureDir(outPathArg);
     await page.screenshot({ path: outPathArg, type: 'png' });
     await browser.close();

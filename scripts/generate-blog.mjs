@@ -118,8 +118,18 @@ function mdToHtml(md, { slug } = {}) {
   const isHr = (s) => /^---+$/.test(s.trim());
 
   const inlineFmt = (s) => {
+    // Safely allow limited inline HTML (sup/sub with links) by lifting them out before escaping.
+    const rawHtmlTokens = [];
+    let working = s.replace(/<(sup|sub)([^>]*)>([\s\S]*?)<\/\1>/gi, (m, tag, attrs, inner) => {
+      // Only allow very small snippets to avoid unexpected HTML; skip if inner contains other block-level tags.
+      if (/<(script|style|iframe|object|embed)/i.test(inner)) {
+        return m; // fall back to default escaping
+      }
+      rawHtmlTokens.push(m);
+      return `\u0000RAW${rawHtmlTokens.length - 1}\u0000`;
+    });
     // 1) Escape HTML
-    let t = escapeHtml(s);
+    let t = escapeHtml(working);
     // 2) Images first
     t = t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, url) => {
       let u = url;
@@ -151,6 +161,26 @@ function mdToHtml(md, { slug } = {}) {
     // 8) Restore math and code
     t = t.replace(/\u0000MATH(\d+)\u0000/g, (m, i) => mathTokens[+i] ?? m);
     t = t.replace(/\u0000CODE(\d+)\u0000/g, (m, i) => `<code>${codeTokens[+i]}</code>`);
+    // 9) Restore whitelisted raw HTML tokens (sup/sub) while escaping stray angle brackets inside href attributes
+    t = t.replace(/\u0000RAW(\d+)\u0000/g, (m, i) => {
+      const original = rawHtmlTokens[+i] ?? '';
+      if (!original) return '';
+      // Basic scrub: strip forbidden characters on the sup/sub tag wrapper, keep inner content untouched.
+      return original.replace(/<(sup|sub)([^>]*)>/i, (match, tag, attrs) => {
+        const safeAttrs = attrs.replace(/[^\s\w="'\-:]/g, '');
+        return `<${tag}${safeAttrs}>`;
+      });
+    });
+    // 10) Ensure external links open in a new tab when not already specified
+    t = t.replace(/<a\s+([^>]*href="([^"]+)"[^>]*)>/gi, (match, attrs, href) => {
+      if (!/^https?:\/\//i.test(href)) return match;
+      const hasTarget = /\btarget\s*=\s*"?[^"\s]+"?/i.test(attrs);
+      const hasRel = /\brel\s*=\s*"?[^"\s]+"?/i.test(attrs);
+      let updated = attrs.trim();
+      if (!hasTarget) updated += ' target="_blank"';
+      if (!hasRel) updated += ' rel="noopener"';
+      return `<a ${updated}>`;
+    });
     return t;
   };
 

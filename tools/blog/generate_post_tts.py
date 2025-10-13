@@ -84,7 +84,25 @@ _INLINE_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _INLINE_CODE_RE = re.compile(r"`([^`]+)`")
 _INLINE_REF_RE = re.compile(r"\[(?:\d+|[a-z]+)\]", re.IGNORECASE)
 _TAG_RE = re.compile(r"<[^>]+>")
+_INLINE_MATH_RE = re.compile(r"\$(?:\\.|[^$\\])+\$")
+_PAREN_MATH_RE = re.compile(r"\\\((?:\\.|[^\\])+?\\\)")
+_MATH_FENCE_RE = re.compile(r"^\s*\$\$\s*$")
 _SAFE_FILENAME_RE = re.compile(r"[^\w\u4e00-\u9fff-]+", re.UNICODE)
+
+_LATEX_SIMPLE_REPLACEMENTS = {
+    r"\\times": " × ",
+    r"\\cdot": " · ",
+    r"\\pm": " ± ",
+    r"\\langle": "〈",
+    r"\\rangle": "〉",
+    r"\\leq": " ≤ ",
+    r"\\geq": " ≥ ",
+    r"\\infty": " ∞ ",
+    r"\\rightarrow": " → ",
+    r"\\left": " ",
+    r"\\right": " ",
+    r"\\tilde": " tilde ",
+}
 
 
 def _safe_filename(value: str) -> str:
@@ -125,11 +143,29 @@ def _split_long(text: str, limit: int = 360) -> List[str]:
     return result
 
 
+def _latex_to_plain(expr: str) -> str:
+    expr = expr.replace("\n", " ").strip()
+    if not expr:
+        return ""
+    expr = re.sub(r"\\text\s*\{([^}]*)\}", r"\1", expr)
+    expr = re.sub(r"\\operatorname\s*\{([^}]*)\}", r"\1", expr)
+    for pattern, replacement in _LATEX_SIMPLE_REPLACEMENTS.items():
+        expr = expr.replace(pattern, replacement)
+    expr = expr.replace("{", " ").replace("}", " ")
+    expr = expr.replace("^", " superscript ")
+    expr = expr.replace("_", " sub ")
+    expr = re.sub(r"\\[a-zA-Z]+", "", expr)
+    expr = expr.replace("\\", "")
+    expr = re.sub(r"\s+", " ", expr).strip()
+    return expr
+
+
 def _markdown_to_segments(body: str) -> List[str]:
     lines = body.replace("\r\n", "\n").split("\n")
     segments: List[str] = []
     buffer: List[str] = []
     in_code = False
+    in_math = False
     skip_references = False
 
     def flush() -> None:
@@ -148,7 +184,16 @@ def _markdown_to_segments(body: str) -> List[str]:
         if line.strip().startswith("```"):
             in_code = not in_code
             continue
+        if _MATH_FENCE_RE.match(line.strip()):
+            if in_math:
+                in_math = False
+            else:
+                flush()
+                in_math = True
+            continue
         if in_code:
+            continue
+        if in_math:
             continue
         stripped = line.strip()
         if not stripped:
@@ -185,6 +230,8 @@ def _markdown_to_segments(body: str) -> List[str]:
         cleaned = cleaned.replace("**", "").replace("__", "")
         cleaned = _INLINE_CODE_RE.sub(r"\1", cleaned)
         cleaned = _INLINE_REF_RE.sub("", cleaned)
+    cleaned = _INLINE_MATH_RE.sub(lambda m: _latex_to_plain(m.group(0)[1:-1]), cleaned)
+    cleaned = _PAREN_MATH_RE.sub(lambda m: _latex_to_plain(m.group(0)[2:-2]), cleaned)
         cleaned = _TAG_RE.sub(" ", cleaned)
         cleaned = cleaned.replace("&nbsp;", " ")
         cleaned = re.sub(r"\\{#.+?\\}", "", cleaned)
