@@ -4,11 +4,80 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import https from 'node:https';
 
 // Resolve project root: scripts/ -> ..
 const root = path.resolve(new URL('.', import.meta.url).pathname, '..');
 const contentDir = path.join(root, 'content', 'blog');
 const tplPath = path.join(root, 'assets', 'og-template.svg');
+
+const fontSources = {
+  regular: {
+    file: path.join(root, 'assets', 'fonts', 'NotoSansSC-Regular.ttf'),
+    url: 'https://fonts.gstatic.com/s/notosanssc/v39/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf',
+    mime: 'font/ttf',
+  },
+  bold: {
+    file: path.join(root, 'assets', 'fonts', 'NotoSansSC-Bold.ttf'),
+    url: 'https://fonts.gstatic.com/s/notosanssc/v39/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaGzjCnYw.ttf',
+    mime: 'font/ttf',
+  },
+};
+
+let cachedFontData = null;
+
+async function fetchBinary(url){
+  return new Promise((resolve, reject) => {
+    https.get(url, res => {
+      if (res.statusCode && res.statusCode >= 300) {
+        reject(new Error(`HTTP ${res.statusCode} for ${url}`));
+        res.resume();
+        return;
+      }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => resolve(Buffer.concat(chunks)));
+    }).on('error', reject);
+  });
+}
+
+async function loadFontBase64(kind){
+  const { file, url } = fontSources[kind];
+  try {
+    const buf = await fs.readFile(file);
+    return buf.toString('base64');
+  } catch {}
+  const data = await fetchBinary(url);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, data);
+  return data.toString('base64');
+}
+
+async function ensureFontData(){
+  if (cachedFontData) return cachedFontData;
+  try {
+    const [regular, bold] = await Promise.all([
+      loadFontBase64('regular'),
+      loadFontBase64('bold'),
+    ]);
+    cachedFontData = {
+      regular: `data:${fontSources.regular.mime};base64,${regular}`,
+      bold: `data:${fontSources.bold.mime};base64,${bold}`,
+    };
+  } catch (err) {
+    console.warn('[og] Warning: failed to embed font data:', err?.message || err);
+    cachedFontData = null;
+  }
+  return cachedFontData;
+}
+
+async function embedFonts(svg){
+  const fontData = await ensureFontData();
+  if (!fontData) return svg;
+  return svg
+    .replace(/__OG_FONT_REGULAR__/g, fontData.regular)
+    .replace(/__OG_FONT_BOLD__/g, fontData.bold);
+}
 
 function escapeXml(s){
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -50,7 +119,8 @@ function wrapSvgText(text, {x=80, y=270, maxWidth=1000, lineHeight=1.2, fontSize
 }
 
 async function renderPngFromText(title, subline, outPng){
-  const svg = await fs.readFile(tplPath, 'utf8');
+  let svg = await fs.readFile(tplPath, 'utf8');
+  svg = await embedFonts(svg);
   // Title: move to the previous top header position after removing it in template
   const titleY = 180; // occupy old "Fan Wan" line
   // Title: 56px, max 2 lines; we will also shrink in browser if still too wide
@@ -75,23 +145,26 @@ async function renderPngFromText(title, subline, outPng){
     const browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 630, deviceScaleFactor: 1 });
-    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(filled);
-    await page.goto(dataUrl, { waitUntil: 'networkidle0' });
+    const html = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${filled}</body></html>`;
+    await page.setContent(html, { waitUntil: 'networkidle0' });
     await page.evaluate(() => (window.document.fonts ? window.document.fonts.ready : Promise.resolve()));
-  // Shrink title font-size if overflowing horizontally
+    // Shrink title font-size if overflowing horizontally
     await page.evaluate(() => {
       const el = document.getElementById('og-title');
       if (!el) return;
-  const maxW = 1024;
-      let size = parseFloat(el.getAttribute('font-size')||'56');
+      const maxW = 1024;
+      let size = parseFloat(el.getAttribute('font-size') || '56');
       const bbox = () => el.getBBox();
-      while (bbox().width > maxW && size > 28) { size -= 2; el.setAttribute('font-size', String(size)); }
+      while (bbox().width > maxW && size > 28) {
+        size -= 2;
+        el.setAttribute('font-size', String(size));
+      }
     });
     await page.screenshot({ path: outPng, type: 'png' });
-  await browser.close();
-  console.log('OG PNG generated at', outPng);
+    await browser.close();
+    console.log('OG PNG generated at', outPng);
   } catch (e) {
-  console.log('Puppeteer not available. Wrote SVG at', outSvg);
+    console.log('Puppeteer not available. Wrote SVG at', outSvg);
   }
 }
 
