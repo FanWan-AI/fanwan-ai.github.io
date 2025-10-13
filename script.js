@@ -273,6 +273,115 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } catch { /* ignore */ }
   })();
+
+  /* Floating Table of Contents: auto-build from h2/h3 and attach a hover-expandable widget */
+  (function buildFloatingTOC(){
+    try {
+      // Only build on post pages (presence of .blog-post or many headings)
+      const isPost = document.body.classList.contains('blog-post') || document.querySelector('.i18n-block');
+      if (!isPost) return;
+
+      const headings = Array.from(document.querySelectorAll('.i18n-block h2, .i18n-block h3'))
+                        .filter(h => h.id || (h.textContent && h.textContent.trim().length));
+      if (!headings.length) return;
+
+      // Normalize: ensure each heading has an id
+      headings.forEach((h, i) => {
+        if (!h.id) {
+          const base = h.textContent.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g,'');
+          let id = base || `heading-${i}`;
+          // avoid collisions
+          let k = 1;
+          while (document.getElementById(id)) { id = `${base || 'heading'}-${k++}`; }
+          h.id = id;
+        }
+      });
+
+      // Build DOM
+      const toc = document.createElement('nav');
+      toc.className = 'floating-toc floating-toc--collapsed';
+      toc.setAttribute('aria-label','Table of contents');
+      toc.tabIndex = 0;
+
+      const panel = document.createElement('div'); panel.className = 'floating-toc__panel';
+      const tab = document.createElement('button'); tab.className = 'floating-toc__tab'; tab.type = 'button';
+      tab.title = '目录'; tab.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>`;
+      tab.setAttribute('aria-expanded','false');
+
+      const content = document.createElement('div'); content.className = 'floating-toc__content';
+      const title = document.createElement('div'); title.className = 'floating-toc__title'; title.textContent = '目录';
+      const list = document.createElement('ul'); list.className = 'floating-toc__list';
+
+      headings.forEach(h => {
+        const li = document.createElement('li');
+        li.tabIndex = 0;
+        li.setAttribute('data-level', h.tagName.toLowerCase() === 'h2' ? '2' : '3');
+        li.dataset.target = h.id;
+        li.textContent = (h.textContent || '').trim();
+        li.addEventListener('click', (e)=>{
+          e.preventDefault();
+          // compute target top taking into account a fixed header if present
+          const targetEl = document.getElementById(h.id);
+          if (targetEl) {
+            const rect = targetEl.getBoundingClientRect();
+            // detect fixed header by querying header element height (if present)
+            const header = document.querySelector('body > header, header');
+            const headerHeight = header ? header.getBoundingClientRect().height : 0;
+            const safeOffset = Math.min(headerHeight + 12, Math.round(window.innerHeight * 0.18));
+            const top = window.scrollY + rect.top - safeOffset;
+            window.scrollTo({ top: top, behavior: 'smooth' });
+          }
+          // collapse on mobile small screens
+          if (window.matchMedia('(max-width: 880px)').matches) {
+            toc.classList.add('floating-toc--collapsed');
+            tab.setAttribute('aria-expanded','false');
+          }
+        });
+        li.addEventListener('keydown', (ev)=>{ if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } });
+        list.appendChild(li);
+      });
+
+      content.appendChild(title);
+      content.appendChild(list);
+      panel.appendChild(tab);
+      panel.appendChild(content);
+      toc.appendChild(panel);
+      document.body.appendChild(toc);
+
+      // Interaction: tab toggles collapsed state on click; hover/focus expands
+      tab.addEventListener('click', ()=>{
+        const isCollapsed = toc.classList.contains('floating-toc--collapsed');
+        if (isCollapsed) { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); }
+        else { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); }
+      });
+      // Expand on focus/hover
+      toc.addEventListener('mouseover', ()=> { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); });
+      toc.addEventListener('mouseout', (e)=>{ if (!toc.contains(document.activeElement)) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } });
+      toc.addEventListener('focusin', ()=> { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); });
+      toc.addEventListener('focusout', (e)=>{ if (!toc.contains(document.activeElement)) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } });
+
+      // Highlight active heading on scroll (IntersectionObserver)
+      const items = Array.from(list.querySelectorAll('li'));
+      const idToItem = new Map(items.map(li => [li.dataset.target, li]));
+      const io = new IntersectionObserver((entries)=>{
+        entries.forEach(en=>{
+          const id = en.target.id;
+          const li = idToItem.get(id);
+          if (!li) return;
+          if (en.isIntersecting && en.intersectionRatio > 0.25) {
+            items.forEach(x=>x.classList.remove('active'));
+            li.classList.add('active');
+          }
+        });
+      }, { root: null, rootMargin: '0px 0px -60% 0px', threshold: [0.25, 0.5] });
+
+      headings.forEach(h => io.observe(h));
+
+      // Accessibility: allow closing via Escape when focused inside
+      toc.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); tab.focus(); } });
+
+    } catch (err) { console.warn('floating TOC init failed', err); }
+  })();
   // Set current year in footer
   const yearSpan = document.getElementById('year');
   if (yearSpan) {
