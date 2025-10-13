@@ -193,19 +193,26 @@ function setupBriefingAudio(scope, segments){
   let state = 'idle';
   let endedNaturally = false;
 
-  function applySpeed(rate){
+  let currentRate = 1;
+  function applySpeed(rate, remember = true){
     const value = Number(rate);
     if (!Number.isFinite(value) || value <= 0) return;
-    try { audioEl.playbackRate = value; } catch {}
+    if (remember) currentRate = value;
+    try {
+      audioEl.defaultPlaybackRate = value;
+      audioEl.playbackRate = value;
+    } catch {}
   }
 
   if (speedEl){
-    applySpeed(parseFloat(speedEl.value) || 1.25);
+    currentRate = Number(parseFloat(speedEl.value) || 1.5);
+    applySpeed(currentRate, true);
     speedEl.addEventListener('change', () => {
-      applySpeed(parseFloat(speedEl.value) || 1);
+      const next = parseFloat(speedEl.value) || 1;
+      applySpeed(next, true);
     });
   } else {
-    applySpeed(1);
+    applySpeed(1.5, true);
   }
 
   function highlight(){ /* paragraphs stay static */ }
@@ -243,7 +250,8 @@ function setupBriefingAudio(scope, segments){
     endedNaturally = false;
     audioEl.src = seg.file;
     audioEl.currentTime = 0;
-    try { audioEl.load(); } catch {}
+  try { audioEl.load(); } catch {}
+  applySpeed(currentRate, false);
     highlight(idx);
     updateCaption(seg.text || '');
     updateStatus(`正在播放${segmentProgressLabel(idx)}`);
@@ -719,12 +727,13 @@ async function renderAIRadar(containerId = 'ai-radar') {
     if (audioSegments.length){
       const speedLabel = i18nStr('audioSpeedLabel', lang) || '播放速度';
       const speedChoices = [
-        { value: '0.75', label: '0.75×' },
         { value: '1', label: '1.0×' },
         { value: '1.25', label: '1.25×' },
         { value: '1.5', label: '1.5×' },
+        { value: '1.75', label: '1.75×' },
+        { value: '2', label: '2.0×' },
       ];
-      const defaultSpeed = '1.25';
+      const defaultSpeed = '1.5';
       const speedOptionsHtml = speedChoices.map(choice => {
         const selected = choice.value === defaultSpeed ? ' selected' : '';
         return `<option value="${choice.value}"${selected}>${choice.label}</option>`;
