@@ -539,13 +539,14 @@ document.addEventListener('DOMContentLoaded', () => {
         .filter(Boolean);
       if (!segments.length) return;
 
-      const playBtn = wrap.querySelector('[data-role="toggle"]');
+  const playBtn = wrap.querySelector('[data-role="toggle"]');
       const statusEl = wrap.querySelector('[data-role="status"]');
       const captionEl = wrap.querySelector('[data-role="caption"]');
       const progressEl = wrap.querySelector('[data-role="progress"]');
       const speedEl = wrap.querySelector('[data-role="speed"]');
       const audioEl = wrap.querySelector('[data-role="audio"]');
       const actionEl = wrap.querySelector('[data-role="action"]');
+  const iconEl = wrap.querySelector('.post-audio-icon');
       const voiceEl = wrap.querySelector('[data-role="voice"]');
       const countEl = wrap.querySelector('[data-role="count"]');
       if (!playBtn || !audioEl || !statusEl || !progressEl) return;
@@ -598,6 +599,33 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
           setActionLabel(strings.play);
         }
+      }
+
+      // SVG assets for the small orb button. Keep them inline to avoid extra
+      // network requests and to allow immediate swapping when state changes.
+      const playSvg = '<svg viewBox="0 0 60 60" role="presentation"><circle cx="30" cy="30" r="27" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.2"></circle><path d="M26 21v18l14-9z" fill="currentColor"></path></svg>';
+      const pauseSvg = '<svg viewBox="0 0 60 60" role="presentation"><circle cx="30" cy="30" r="27" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.2"></circle><rect x="20" y="20" width="7" height="20" fill="currentColor"></rect><rect x="33" y="20" width="7" height="20" fill="currentColor"></rect></svg>';
+
+      // Enhance setState to also update the visible icon so it reflects the
+      // actual playback state (playing -> show pause icon; paused/idle -> play).
+      const originalSetState = setState;
+      function setState(next){
+        // call original behaviour
+        state = next;
+        playBtn.dataset.state = next;
+        if (next === 'playing') {
+          setActionLabel(strings.pause);
+        } else if (next === 'paused') {
+          setActionLabel(strings.resume);
+        } else {
+          setActionLabel(strings.play);
+        }
+        try {
+          if (iconEl) {
+            if (next === 'playing') iconEl.innerHTML = pauseSvg;
+            else iconEl.innerHTML = playSvg;
+          }
+        } catch (e) { /* ignore DOM write errors */ }
       }
 
       function applyRate(value){
