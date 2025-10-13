@@ -424,12 +424,13 @@ html[lang="es"] .i18n.l-es { display: inline; }
 /* Floating Table of Contents (TOC) */
 .floating-toc {
   position: fixed;
-  left: 12px;
-  top: 50%;
+  left: 14px; /* slight inset to avoid touching the window edge */
+  top: 50vh; /* precise viewport vertical midpoint */
   transform: translateY(-50%);
   z-index: 1200;
   display: block;
   font-size: 0.95rem;
+  pointer-events: auto;
 }
 .floating-toc__panel {
   width: 320px;
@@ -440,28 +441,56 @@ html[lang="es"] .i18n.l-es { display: inline; }
   box-shadow: var(--shadow-md);
   overflow: hidden;
   transform-origin: left center;
-  transition: transform 200ms cubic-bezier(.2,.9,.2,1), opacity 180ms ease;
+  transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 180ms ease;
   opacity: 1;
 }
 .floating-toc--collapsed .floating-toc__panel {
-  transform: translateX(-92%);
-  opacity: 0.92;
+  transform: translateX(-102%);
+  opacity: 0;
   pointer-events: none;
 }
 .floating-toc__tab {
-  width: 44px;
-  height: 44px;
+  /* Redesigned circular button */
+  width: 56px;
+  height: 56px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, color-mix(in oklab, var(--primary), var(--surface) 18%), var(--surface));
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+  border-radius: 50%;
+  background: linear-gradient(180deg, color-mix(in oklab, var(--surface), var(--surface-2) 6%), var(--surface));
+  color: color-mix(in oklab, var(--muted), var(--text) 28%);
+  box-shadow: 0 10px 30px rgba(2,6,23,0.08);
   cursor: pointer;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in oklab, var(--border), rgba(0,0,0,0.04));
+  padding: 6px;
+  transition: transform 180ms cubic-bezier(.2,.9,.2,1), box-shadow 180ms ease, background 180ms ease;
+  overflow: hidden; /* prevent internal decoration overflow */
+  display: grid;
+  place-items: center;
 }
-.floating-toc--collapsed .floating-toc__tab { opacity: 0.95; }
+
+/* Make the button more visually prominent and theme-aware so users notice it's interactive */
+:root[data-theme="light"] .floating-toc__tab {
+  /* light: subtle primary tint on white, darker icon */
+  background: color-mix(in oklab, var(--surface), var(--primary) 10%);
+  color: color-mix(in oklab, var(--primary-700), var(--text) 8%);
+  border-color: color-mix(in oklab, var(--border), var(--primary) 24%);
+  box-shadow: 0 10px 30px color-mix(in oklab, var(--primary), rgba(2,6,23,0.06) 12%);
+}
+
+:root[data-theme="dark"] .floating-toc__tab {
+  /* dark: use a stronger primary tint so it reads on dark background */
+  background: color-mix(in oklab, var(--primary) 26%, var(--surface));
+  color: color-mix(in oklab, white 92%, var(--primary) 8%);
+  border-color: color-mix(in oklab, var(--primary), rgba(255,255,255,0.06) 26%);
+  box-shadow: 0 12px 34px rgba(37,99,235,0.12);
+}
+
+/* Hover/focus accent strengthens the tint slightly for discoverability */
+.floating-toc__tab:hover,
+.floating-toc__tab:active { transform: translateX(-3px) scale(1.03); }
+.floating-toc__tab:focus-visible { box-shadow: 0 10px 34px color-mix(in oklab, var(--primary), rgba(2,6,23,0.12) 18%), var(--ring); }
+.floating-toc--collapsed .floating-toc__tab { opacity: 1; }
 .floating-toc__content { max-height: 70vh; overflow: auto; padding: 10px 12px; }
 .floating-toc__title { font-weight: 700; margin: 0 0 6px; color: var(--primary); }
 .floating-toc__list { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
@@ -471,9 +500,76 @@ html[lang="es"] .i18n.l-es { display: inline; }
 .floating-toc__list li[data-level="3"] { padding-left: 18px; font-weight: 500; font-size: 0.92rem; }
 .floating-toc__list li.active { background: linear-gradient(90deg, color-mix(in oklab, var(--primary), var(--surface) 18%), transparent 60%); color: var(--text); }
 
-/* UX: expand on hover/focus to reveal content (preserve vertical centering by not changing root transform) */
-.floating-toc--collapsed:hover .floating-toc__panel,
-.floating-toc--collapsed:focus-within .floating-toc__panel { transform: translateX(0); pointer-events: auto; opacity: 1; }
+/* New mini-track visuals inside collapsed tab (kept for decorative effect inside button) */
+.toc-track { display: none !important; }
+.toc-thumb { display: none !important; }
+.toc-arrow { display: none !important; }
+
+/* Hover/focus on collapsed button: subtle highlight */
+.floating-toc__tab:hover { transform: translateX(-2px) scale(1.02); box-shadow: 0 12px 34px rgba(2,6,23,0.12); }
+.floating-toc__tab:focus-visible { outline: none; box-shadow: var(--ring); transform: translateX(-2px) scale(1.02); }
+
+/* When TOC is expanded, convert the tab to a compact list icon and hide the decorative track */
+.floating-toc:not(.floating-toc--collapsed) .toc-track,
+.floating-toc:not(.floating-toc--collapsed) .toc-arrow { display: none !important; }
+.floating-toc:not(.floating-toc--collapsed) .floating-toc__tab {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  padding: 6px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+}
+
+/* NEW: expanded-state icon — a tasteful 2x2 grid of dots to indicate the expanded panel */
+.floating-toc:not(.floating-toc--collapsed) .floating-toc__tab::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 18px;
+  background-image:
+    radial-gradient(circle at 25% 25%, currentColor 50%, transparent 51%),
+    radial-gradient(circle at 75% 25%, currentColor 50%, transparent 51%),
+    radial-gradient(circle at 25% 75%, currentColor 50%, transparent 51%),
+    radial-gradient(circle at 75% 75%, currentColor 50%, transparent 51%);
+  background-repeat: no-repeat;
+  background-size: 6px 6px, 6px 6px, 6px 6px, 6px 6px;
+  background-position: 0 0, 100% 0, 0 100%, 100% 100%;
+  opacity: 0.95;
+}
+
+/* UX: expansion is controlled by JS (click-to-toggle). Keep a11y-friendly fallback selectors so keyboard users
+   still get visible panel on focus. */
+.floating-toc--collapsed .floating-toc__tab:focus-visible + .floating-toc__content,
+.floating-toc--collapsed .floating-toc__panel:focus-within .floating-toc__content {
+  transform: translateX(0); pointer-events: auto; opacity: 1;
+}
+
+/* Render a simple, crisp 'list' icon inside the circular button using pseudo-elements */
+.floating-toc__tab::before,
+.floating-toc__tab::after,
+.floating-toc__tab > span.icon-line { content: ""; display: block; background: currentColor; border-radius: 2px; }
+.floating-toc__tab::before { width: 20px; height: 2px; opacity: 0.9; margin-bottom: 6px; display: block; }
+.floating-toc__tab > span.icon-line { width: 14px; height: 2px; opacity: 0.9; display: block; }
+.floating-toc__tab::after { width: 12px; height: 2px; opacity: 0.9; margin-top: 6px; display: block; }
+.floating-toc__tab::before, .floating-toc__tab::after { content: ""; }
+
+/* Collapsed state now uses the previous three-line 'hamburger' motif (centered) */
+.floating-toc--collapsed .floating-toc__tab::before {
+  content: "";
+  display: block;
+  width: 18px;
+  height: 14px;
+  background-image: linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor), linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 0, 0 6px, 0 12px;
+  background-size: 100% 2px, 100% 2px, 100% 2px;
+  opacity: 0.95;
+}
+
+/* Improve icon contrast in dark theme */
+:root[data-theme="dark"] .floating-toc__tab { color: color-mix(in oklab, white 88%, var(--primary) 12%); }
 
 /* Small screens: move TOC to bottom as a compact button */
 @media (max-width: 880px) {
@@ -481,7 +577,17 @@ html[lang="es"] .i18n.l-es { display: inline; }
   .floating-toc__panel { width: 88vw; max-width: 88vw; border-radius: 12px; }
   .floating-toc--collapsed .floating-toc__panel { transform: translateY(92%); }
   .floating-toc--collapsed:hover .floating-toc__panel { transform: translateY(0); }
+
+  /* Make the collapsed tab a short horizontal pill on mobile */
+  .floating-toc__tab { width: 64px; height: 44px; border-radius: 12px; padding: 6px; }
+  .toc-track { width: 36px; height: 6px; display: inline-block; }
+  .toc-thumb { width: 18px; height: 6px; top: 50%; transform: translate(-50%, -50%); }
+  .toc-arrow { display: none; }
 }
+
+/* Hide the in-article TOC on blog posts when the floating TOC is present. */
+.blog-post .toc.card,
+.blog-post .toc { display: none !important; }
 
 @media (max-width: 640px) {
   .post-audio-card .post-audio-controls { flex-direction: column; gap: 8px; }

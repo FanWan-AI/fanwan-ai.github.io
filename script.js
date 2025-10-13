@@ -305,7 +305,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const panel = document.createElement('div'); panel.className = 'floating-toc__panel';
       const tab = document.createElement('button'); tab.className = 'floating-toc__tab'; tab.type = 'button';
-      tab.title = '目录'; tab.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h16"></path></svg>`;
+      tab.title = '目录';
+      // Simplified content: a single span used as the icon canvas. Visual lines are drawn with CSS.
+      tab.innerHTML = `<span class="icon-line" aria-hidden="true"></span>`;
       tab.setAttribute('aria-expanded','false');
 
       const content = document.createElement('div'); content.className = 'floating-toc__content';
@@ -331,34 +333,45 @@ document.addEventListener('DOMContentLoaded', () => {
             const top = window.scrollY + rect.top - safeOffset;
             window.scrollTo({ top: top, behavior: 'smooth' });
           }
-          // collapse on mobile small screens
-          if (window.matchMedia('(max-width: 880px)').matches) {
-            toc.classList.add('floating-toc--collapsed');
-            tab.setAttribute('aria-expanded','false');
-          }
+          // Always collapse after the user selects a TOC entry (click-to-toggle UX)
+          toc.classList.add('floating-toc--collapsed');
+          tab.setAttribute('aria-expanded','false');
+          try { tab.focus(); } catch (e) {}
         });
         li.addEventListener('keydown', (ev)=>{ if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } });
         list.appendChild(li);
       });
 
-      content.appendChild(title);
-      content.appendChild(list);
-      panel.appendChild(tab);
-      panel.appendChild(content);
-      toc.appendChild(panel);
+  content.appendChild(title);
+  content.appendChild(list);
+  // Keep the tab outside the sliding panel so the collapsed circular
+  // button remains visible even when the panel is translated off-screen.
+  panel.appendChild(content);
+  toc.appendChild(tab);
+  toc.appendChild(panel);
       document.body.appendChild(toc);
 
-      // Interaction: tab toggles collapsed state on click; hover/focus expands
+      // Interaction: tab toggles collapsed state on click (click-to-toggle UX).
+      // Keep the handler lightweight; keyboard activation via Enter/Space is wired below.
       tab.addEventListener('click', ()=>{
         const isCollapsed = toc.classList.contains('floating-toc--collapsed');
         if (isCollapsed) { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); }
         else { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); }
       });
-      // Expand on focus/hover
-      toc.addEventListener('mouseover', ()=> { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); });
-      toc.addEventListener('mouseout', (e)=>{ if (!toc.contains(document.activeElement)) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } });
-      toc.addEventListener('focusin', ()=> { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); });
-      toc.addEventListener('focusout', (e)=>{ if (!toc.contains(document.activeElement)) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } });
+
+      // Click-to-toggle: collapse when clicking/tapping outside the TOC.
+      function collapseToc(){ if (!toc.classList.contains('floating-toc--collapsed')) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } }
+      function expandToc(){ if (toc.classList.contains('floating-toc--collapsed')) { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); } }
+
+      // Keyboard: allow Enter/Space to toggle when the tab is focused
+      tab.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tab.click(); } });
+
+      // Outside click/tap collapses the TOC
+      document.addEventListener('click', (e) => { if (!toc.contains(e.target)) collapseToc(); });
+      document.addEventListener('touchstart', (e) => { if (!toc.contains(e.target)) collapseToc(); }, { passive: true });
+
+      // Global Escape: collapse and restore focus to the tab for accessibility
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { collapseToc(); try { tab.focus(); } catch (err) {} } });
 
       // Highlight active heading on scroll (IntersectionObserver)
       const items = Array.from(list.querySelectorAll('li'));
