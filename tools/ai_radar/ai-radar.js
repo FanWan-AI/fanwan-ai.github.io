@@ -33,6 +33,21 @@ function i18nStr(key, lang){
     briefingLength: { zh: '播报约 {seconds} 秒', en: 'Runtime ≈ {seconds}s', es: 'Duración ≈ {seconds}s' },
     briefingHotness: { zh: '热度趋势 {value}', en: 'Hotness {value}', es: 'Tendencia {value}' },
     audioSpeedLabel: { zh: '播放速度', en: 'Playback speed', es: 'Velocidad de reproducción' },
+    audioPlayButton: { zh: '播放语音导读', en: 'Play briefing audio', es: 'Reproducir audio del resumen' },
+    audioPauseButton: { zh: '暂停播放', en: 'Pause playback', es: 'Pausar reproducción' },
+    audioResumeButton: { zh: '继续播放', en: 'Resume playback', es: 'Reanudar reproducción' },
+    audioAriaPlay: { zh: '播放今日导读音频', en: "Play today's briefing audio", es: 'Reproducir el audio del resumen de hoy' },
+    audioAriaPause: { zh: '暂停播放', en: 'Pause playback', es: 'Pausar reproducción' },
+    audioAriaResume: { zh: '继续播放', en: 'Resume playback', es: 'Reanudar reproducción' },
+    audioStatusLoading: { zh: '音频加载中…', en: 'Preparing audio…', es: 'Preparando audio…' },
+    audioStatusReady: { zh: '音频已就绪，点击播放', en: 'Audio ready. Press play.', es: 'Audio listo. Pulsa reproducir.' },
+    audioStatusPlaying: { zh: '正在播放{progress}', en: 'Playing {progress}', es: 'Reproduciendo {progress}' },
+    audioStatusPaused: { zh: '已暂停{progress}', en: 'Paused {progress}', es: 'Pausado {progress}' },
+    audioStatusResuming: { zh: '继续播放{progress}', en: 'Resuming {progress}', es: 'Reanudando {progress}' },
+    audioStatusCompleted: { zh: '播放完成', en: 'Playback complete', es: 'Reproducción completada' },
+    audioStatusAutoplayError: { zh: '音频无法自动播放，请点击播放按钮重试。', en: 'Autoplay blocked. Please press play again.', es: 'La reproducción automática falló. Pulsa reproducir otra vez.' },
+    audioStatusResumeError: { zh: '无法继续播放，请重试', en: 'Unable to resume. Please try again.', es: 'No se pudo reanudar. Inténtalo de nuevo.' },
+    audioProgressLabel: { zh: '（{current}/{total}）', en: ' ({current}/{total})', es: ' ({current}/{total})' },
   };
   return (map[key]?.[lang]) || (map[key]?.zh) || '';
 }
@@ -171,7 +186,7 @@ function briefingHasContent(data){
   return false;
 }
 
-function setupBriefingAudio(scope, segments){
+function setupBriefingAudio(scope, segments, lang){
   if (!scope || !segments || !segments.length) return;
   const wrap = scope.querySelector('.rad-briefing-audio');
   if (!wrap) return;
@@ -185,9 +200,28 @@ function setupBriefingAudio(scope, segments){
   const safeSegments = segments.filter(seg => seg && typeof seg.file === 'string');
   if (!safeSegments.length) return;
 
-  const playLabel = '▶ 播放语音导读';
-  const pauseLabel = '⏸ 暂停播放';
-  const resumeLabel = '▶ 继续播放';
+  const locale = (lang || document.documentElement.lang || 'zh').toLowerCase();
+  const strings = {
+    play: i18nStr('audioPlayButton', locale) || '播放语音导读',
+    pause: i18nStr('audioPauseButton', locale) || '暂停播放',
+    resume: i18nStr('audioResumeButton', locale) || '继续播放',
+    ariaPlay: i18nStr('audioAriaPlay', locale) || '播放今日导读音频',
+    ariaPause: i18nStr('audioAriaPause', locale) || '暂停播放',
+    ariaResume: i18nStr('audioAriaResume', locale) || '继续播放',
+    statusLoading: i18nStr('audioStatusLoading', locale) || '音频加载中…',
+    statusReady: i18nStr('audioStatusReady', locale) || '音频已就绪，点击播放',
+    statusPlaying: i18nStr('audioStatusPlaying', locale) || '正在播放{progress}',
+    statusPaused: i18nStr('audioStatusPaused', locale) || '已暂停{progress}',
+    statusResuming: i18nStr('audioStatusResuming', locale) || '继续播放{progress}',
+    statusCompleted: i18nStr('audioStatusCompleted', locale) || '播放完成',
+    statusAutoplayError: i18nStr('audioStatusAutoplayError', locale) || '音频无法自动播放，请点击播放按钮重试。',
+    statusResumeError: i18nStr('audioStatusResumeError', locale) || '无法继续播放，请重试',
+    progress: i18nStr('audioProgressLabel', locale) || '({current}/{total})',
+  };
+
+  const playLabel = strings.play;
+  const pauseLabel = strings.pause;
+  const resumeLabel = strings.resume;
 
   let index = 0;
   let state = 'idle';
@@ -227,20 +261,31 @@ function setupBriefingAudio(scope, segments){
   }
 
   function segmentProgressLabel(idx){
-    return `（${idx + 1}/${safeSegments.length}）`;
+    const tpl = strings.progress;
+    const current = idx + 1;
+    const total = safeSegments.length;
+    return tpl
+      .replace('{current}', String(current))
+      .replace('{total}', String(total));
+  }
+
+  function formatStatus(template, idx){
+    if (!template) return '';
+    return template.replace('{progress}', segmentProgressLabel(idx));
   }
 
   function setState(next){
     state = next;
+    playBtn.dataset.state = next;
     if (state === 'idle' || state === 'done'){
       playBtn.textContent = playLabel;
-      playBtn.setAttribute('aria-label', '播放今日导读音频');
+      playBtn.setAttribute('aria-label', strings.ariaPlay);
     } else if (state === 'playing'){
       playBtn.textContent = pauseLabel;
-      playBtn.setAttribute('aria-label', '暂停播放');
+      playBtn.setAttribute('aria-label', strings.ariaPause);
     } else if (state === 'paused'){
       playBtn.textContent = resumeLabel;
-      playBtn.setAttribute('aria-label', '继续播放');
+      playBtn.setAttribute('aria-label', strings.ariaResume);
     }
   }
 
@@ -254,7 +299,7 @@ function setupBriefingAudio(scope, segments){
   applySpeed(currentRate, false);
     highlight(idx);
     updateCaption(seg.text || '');
-    updateStatus(`正在播放${segmentProgressLabel(idx)}`);
+    updateStatus(formatStatus(strings.statusPlaying, idx));
     return true;
   }
 
@@ -266,7 +311,7 @@ function setupBriefingAudio(scope, segments){
     }catch(err){
       console.warn('audio playback failed', err);
       setState('paused');
-      updateStatus('音频无法自动播放，请点击播放按钮重试。');
+      updateStatus(strings.statusAutoplayError);
     }
   }
 
@@ -275,18 +320,18 @@ function setupBriefingAudio(scope, segments){
       index = 0;
       play(index);
     } else if (state === 'playing'){
-  audioEl.pause();
+      audioEl.pause();
       setState('paused');
-      updateStatus(`已暂停${segmentProgressLabel(index)}`);
+      updateStatus(formatStatus(strings.statusPaused, index));
     } else if (state === 'paused'){
       audioEl.play().then(() => {
         setState('playing');
         const seg = safeSegments[index];
         updateCaption(seg ? seg.text || '' : '');
-        updateStatus(`继续播放${segmentProgressLabel(index)}`);
+        updateStatus(formatStatus(strings.statusResuming, index));
       }).catch(err => {
         console.warn('audio resume failed', err);
-        updateStatus('无法继续播放，请重试');
+        updateStatus(strings.statusResumeError);
       });
     }
   });
@@ -300,7 +345,7 @@ function setupBriefingAudio(scope, segments){
       setState('done');
       highlight(safeSegments.length);
       updateCaption('');
-      updateStatus('播放完成');
+      updateStatus(strings.statusCompleted);
       index = 0;
     }
   });
@@ -309,7 +354,7 @@ function setupBriefingAudio(scope, segments){
     if (endedNaturally) return;
     if (state === 'playing'){
       setState('paused');
-      updateStatus(`已暂停${segmentProgressLabel(index)}`);
+      updateStatus(formatStatus(strings.statusPaused, index));
     }
   });
 
@@ -323,7 +368,7 @@ function setupBriefingAudio(scope, segments){
   setState('idle');
   highlight(-1);
   updateCaption('');
-  updateStatus('音频已就绪，点击播放');
+  updateStatus(strings.statusReady);
 }
 
 async function renderAIRadar(containerId = 'ai-radar') {
@@ -726,6 +771,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
     let audioHtml = '';
     if (audioSegments.length){
       const speedLabel = i18nStr('audioSpeedLabel', lang) || '播放速度';
+      const playLabel = i18nStr('audioPlayButton', lang) || '播放语音导读';
+      const statusLoading = i18nStr('audioStatusLoading', lang) || '音频加载中…';
       const speedChoices = [
         { value: '1', label: '1.0×' },
         { value: '1.25', label: '1.25×' },
@@ -741,8 +788,8 @@ async function renderAIRadar(containerId = 'ai-radar') {
       audioHtml = `
         <div class="rad-briefing-audio" data-count="${audioSegments.length}">
           <div class="rad-audio-head">
-            <button type="button" class="btn outline rad-audio-toggle">▶ 播放语音导读</button>
-            <div class="rad-audio-status" role="status" aria-live="polite">音频加载中…</div>
+            <button type="button" class="btn outline rad-audio-toggle">${escapeHtml(playLabel)}</button>
+            <div class="rad-audio-status" role="status" aria-live="polite">${escapeHtml(statusLoading)}</div>
             <label class="rad-audio-speed">
               <span>${escapeHtml(speedLabel)}</span>
               <select class="rad-audio-speed-select" aria-label="${escapeAttr(speedLabel)}">
@@ -838,7 +885,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
         index: idx,
         text: seg.text || '',
         file: seg.file,
-      })));
+      })), lang);
     }
   }
 
