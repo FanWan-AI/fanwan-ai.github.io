@@ -643,7 +643,11 @@ body > header {
   backdrop-filter: saturate(120%) blur(10px);
   -webkit-backdrop-filter: saturate(120%) blur(10px);
   border-bottom: 1px solid var(--border);
-  z-index: 1000;
+  /* 
+   Increase header stacking above other fixed UI (floating TOC uses z-index:1200).
+   This prevents transparent overlays from intercepting taps on header actions on mobile.
+  */
+  z-index: 1301;
 }
 
 .navbar {
@@ -680,7 +684,7 @@ body > header {
 }
 
 /* Right-aligned actions cluster */
-.nav-actions { display: flex; align-items: center; gap: .6rem; justify-self: end; position: relative; flex-wrap: nowrap; }
+.nav-actions { display: flex; align-items: center; gap: .6rem; justify-self: end; position: relative; flex-wrap: nowrap; /* ensure actions accept pointer events in stacked contexts */ pointer-events: auto; }
 .nav-actions .lang-switcher { position: relative; }
 /* Keep equal spacing between language, theme and menu buttons */
 .nav-actions .theme-toggle { margin-left: 0; }
@@ -1253,7 +1257,20 @@ body > header {
   .navbar { grid-template-columns: 1fr auto; gap: 0.6rem; }
 
   /* Prefer hamburger for navigation on small screens; hide the full link row by default */
-  .nav-links { display: none !important; }
+  /* Use transform to hide the full link row off-canvas instead of display:none so
+     the hamburger can toggle it. We keep pointer-events:none when collapsed to
+     avoid accidental taps on the off-screen area, and enable pointer-events when
+     open. This preserves the slide-in animation defined for .nav-links.open. */
+  .nav-links {
+    display: flex;
+    transform: translateX(100%);
+    transition: transform 0.28s ease;
+    pointer-events: none;
+  }
+  .nav-links.open {
+    transform: translateX(0);
+    pointer-events: auto;
+  }
 
   /* Make action cluster slightly tighter */
   .nav-actions { gap: 0.4rem; }
