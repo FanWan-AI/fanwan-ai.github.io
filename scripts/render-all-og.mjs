@@ -24,8 +24,11 @@ async function renderOne(svgName) {
     browser = await puppeteer.launch({ headless: 'new' });
     const page = await browser.newPage();
     await page.setViewport({ width: 1200, height: 630, deviceScaleFactor: 1 });
-    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    await page.goto(dataUrl, { waitUntil: 'networkidle0' });
+    // Render SVG inside HTML to ensure document.fonts API is available
+    const html = `<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">${svg}</body></html>`;
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+    // Wait for webfonts inlined in the SVG <style>@font-face</style> to be ready
+    await page.evaluate(() => (window.document.fonts ? window.document.fonts.ready : Promise.resolve()));
     await page.screenshot({ path: outPath, type: 'png' });
     console.log('Wrote PNG:', path.relative(root, outPath));
   } catch (e) {

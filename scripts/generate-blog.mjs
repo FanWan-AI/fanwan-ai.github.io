@@ -1,6 +1,6 @@
 // Simple Markdown → HTML blog generator for multilingual posts.
 // No external deps. Put content in content/blog/<slug>/{zh.md,en.md,es.md} with YAML front matter:
-// ---\n title: ...\n description: ...\n date: YYYY-MM-DD\n cover: assets/blog/<slug>-<lang>.png (optional per file)\n ---
+// ---\n title: ...\n description: ...\n date: YYYY-MM-DD\n cover: assets/blog/<slug>-<lang>.svg (optional per file)\n ---
 // The script outputs blog/<slug>.html, blog/<slug>.en.html, blog/<slug>.es.html
 
 import fs from 'node:fs/promises';
@@ -284,8 +284,14 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   const heroImg = heroSrc || '';
   const dateLabel = lang==='en' ? `Published on ${date}` : lang==='es' ? `Publicado el ${date}` : `发表于 ${date}`;
   const estRead = lang==='en' ? 'Estimated read' : lang==='es' ? 'Lectura' : '预计阅读';
-  // Prefer PNG/JPEG for OG for better compatibility (some platforms ignore SVG)
-  const ogType = ogImage.endsWith('.png') ? 'image/png' : (ogImage.endsWith('.jpg') || ogImage.endsWith('.jpeg')) ? 'image/jpeg' : 'image/png';
+  // Detect OG mime type from extension; include SVG support
+  const ogType = ogImage.endsWith('.svg')
+    ? 'image/svg+xml'
+    : (ogImage.endsWith('.png')
+        ? 'image/png'
+        : (ogImage.endsWith('.jpg') || ogImage.endsWith('.jpeg'))
+          ? 'image/jpeg'
+          : 'image/png');
   const hasTts = ttsData && Array.isArray(ttsData.segments) && ttsData.segments.length;
   const segmentsCount = hasTts ? ttsData.segments.length : 0;
   const voiceId = hasTts ? (ttsData.voice || 'Katerina') : '';
@@ -706,8 +712,9 @@ async function buildPost(dir){
       const description = meta.description || '';
       const date = meta.date || new Date().toISOString().slice(0,10);
       // Resolve a valid cover for hero/OG
-      // - For OG: use absolute URL at siteOrigin and prefer PNG/JPEG (many platforms ignore SVG)
-      // - For hero image in page: SVG is fine for crispness; use relative path from blog/ ("../assets/..."), no hardcoded domain
+      // - Now prefer SVG everywhere for crisp text (Chinese included). PNG/JPEG remain as fallbacks.
+      // - For OG meta, we will also point to SVG when available (note: some platforms may not render SVG previews).
+      // - For hero image in page: SVG is ideal; use relative path from blog/ ("../assets/..."), no hardcoded domain
       const preferRel = (meta.cover && !/^https?:\/\//i.test(meta.cover)) ? meta.cover.replace(/^\/?/,'') : '';
       const pngRel = toUrlPath(path.posix.join('assets','blog',`${slug}-${lang}.png`));
       const svgRel = toUrlPath(path.posix.join('assets','blog',`${slug}-${lang}.svg`));
@@ -715,22 +722,29 @@ async function buildPost(dir){
       if (preferRel) {
         try { await fs.access(path.join(root, preferRel)); chosenRel = toUrlPath(preferRel); } catch {}
       }
-      // Prefer PNG for on-page hero to support platforms that ignore SVG (e.g., WeChat fallback)
-      if (!chosenRel) {
-        try { await fs.access(path.join(root, pngRel)); chosenRel = pngRel; } catch {}
-      }
+      // Prefer SVG for on-page hero; fall back to PNG
       if (!chosenRel) {
         try { await fs.access(path.join(root, svgRel)); chosenRel = svgRel; } catch {}
       }
+      if (!chosenRel) {
+        try { await fs.access(path.join(root, pngRel)); chosenRel = pngRel; } catch {}
+      }
       if (!chosenRel) { chosenRel = 'assets/placeholder.jpg'; }
-      // Build OG absolute URL, strongly prefer PNG/JPG; never use SVG here for compatibility
+      // Build OG absolute URL, prefer SVG; fall back to PNG/JPG, else placeholder
       let ogRel = '';
       if (meta.cover && /^https?:\/\//i.test(meta.cover)) {
         ogRel = meta.cover; // external URL, assume valid
       } else {
-        try { await fs.access(path.join(root, pngRel)); ogRel = pngRel; } catch {}
-        if (!ogRel && preferRel && /\.(?:png|jpe?g)$/i.test(preferRel)) {
+        // Prefer explicitly provided cover if exists
+        if (preferRel) {
           try { await fs.access(path.join(root, preferRel)); ogRel = toUrlPath(preferRel); } catch {}
+        }
+        // Otherwise prefer auto SVG then PNG
+        if (!ogRel) {
+          try { await fs.access(path.join(root, svgRel)); ogRel = svgRel; } catch {}
+        }
+        if (!ogRel) {
+          try { await fs.access(path.join(root, pngRel)); ogRel = pngRel; } catch {}
         }
         if (!ogRel) ogRel = 'assets/placeholder.jpg';
       }

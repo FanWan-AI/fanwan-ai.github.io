@@ -49,7 +49,7 @@ async function readPostMeta(slug){
         title: meta.title || slug,
         description: meta.description || '',
         date: meta.date || '',
-        cover: meta.cover || `assets/blog/${slug}-${lang}.png`,
+  cover: meta.cover || `assets/blog/${slug}-${lang}.svg`,
       };
     } catch {}
   }
@@ -64,8 +64,9 @@ async function pickCover(slug, lang, metaCover){
   }
   const png = path.join('assets','blog',`${slug}-${lang}.png`);
   const svg = path.join('assets','blog',`${slug}-${lang}.svg`);
-  try { await fs.access(path.join(root, png)); return png; } catch {}
+  // Prefer SVG for crispness in thumbnails; fall back to PNG then placeholder
   try { await fs.access(path.join(root, svg)); return svg; } catch {}
+  try { await fs.access(path.join(root, png)); return png; } catch {}
   return 'assets/placeholder.jpg';
 }
 

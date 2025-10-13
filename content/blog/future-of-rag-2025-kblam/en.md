@@ -1,5 +1,5 @@
 ---
-title: Is RAG obsolete? 2025 roadmap from “long context” to GraphRAG, Retrieval‑Aware Training and KBLaM
+title: Is RAG obsolete? 
 description: RAG isn’t dying—naïve vector RAG with context dumping is. This updated 2025 guide explains why long context can’t replace RAG, how to modernize RAG with GraphRAG and Retrieval‑Aware Training, and how to land it with KBLaM in real systems.
 date: 2025-09-04
 draft: false

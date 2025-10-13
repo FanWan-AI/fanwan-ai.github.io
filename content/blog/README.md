@@ -8,7 +8,7 @@ How to write posts
 title: 标题 / Title / Título
 description: 摘要 / Description / Descripción
 date: 2025-09-03
-cover: assets/blog/<slug>-<lang>.png
+cover: assets/blog/<slug>-<lang>.svg
 ---
 
 Then write Markdown content.

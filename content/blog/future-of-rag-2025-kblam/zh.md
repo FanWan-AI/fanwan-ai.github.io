@@ -1,5 +1,5 @@
 ---
-title: RAG 会被淘汰吗？从“大上下文”到 GraphRAG、检索感知训练与 KBLaM 的 2025 路线图
+title: RAG 会被淘汰吗？
 description: RAG 不会被淘汰，被淘汰的是“天真向量检索 + 生搬硬塞上下文”。本文给出 2025 年 RAG 五件套、评测维度、选型矩阵与 KBLaM 落地范式。
 date: 2025-09-04
 draft: false

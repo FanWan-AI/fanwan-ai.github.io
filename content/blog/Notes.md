@@ -10,7 +10,7 @@
 3. 提交到 main 分支，等待 GitHub Actions 自动生成：
    - 文章页：`blog/<slug>.html`、`blog/<slug>.en.html`、`blog/<slug>.es.html`
    - 博客索引自动更新：`blog.html`
-   - 封面图自动生成：`assets/blog/<slug>-<lang>.png`（若无法生成则写同名 `.svg`）
+  - 封面图自动生成：`assets/blog/<slug>-<lang>.svg`（同时会生成 PNG 作为回退）
 
 发布后，浏览器请强制刷新一次（Shift+刷新）以避免 Service Worker 缓存旧页面。
 
@@ -40,7 +40,7 @@ draft: false
 # 封面（可选，三种写法三选一）
 # 1) 不写：自动使用生成封面（PNG/SVG），否则占位图
 # 2) 站内相对路径（会校验存在性）：
-# cover: assets/blog/my-second-post-zh.png
+# cover: assets/blog/my-second-post-zh.svg
 # 3) 绝对 URL（直接使用）：
 # cover: https://example.com/cover.png
 ---
@@ -69,7 +69,7 @@ draft: false
   - 文章页与索引会优先使用对应语言的 PNG；缺失则使用 SVG；仍缺失则使用 `assets/placeholder.jpg`。
 - 手动：
   - 在 Front Matter 设置 `cover`：
-    - 站内路径：`assets/blog/<slug>-<lang>.png`（建议 1200×630）
+  - 站内路径：`assets/blog/<slug>-<lang>.svg`（画布 1200×630，矢量优先；同时会生成同名 PNG）
     - 或绝对 URL。
 
 ---
