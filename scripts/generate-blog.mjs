@@ -330,6 +330,7 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
   const progressIdle = copy.progressIdle.replace('{total}', String(segmentsCount));
   const postSummary = description ? `<p class="post-hero-summary">${escapeHtml(description)}</p>` : '';
   const ttsScript = hasTts ? `<script id="post-tts-data" type="application/json">${serializeForScript(ttsData)}</script>` : '';
+  const blogOrderScript = JSON.stringify(orderList || []);
   return `<!doctype html>
 <html lang="${lang}" data-force-lang="${lang}">
 <head>
@@ -388,17 +389,14 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
     html[data-lang-loading="true"] body { visibility: hidden; }
   </style>
   <link rel="stylesheet" href="../style.css">
-  <!-- Code highlight (Highlight.js) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <!-- Math (KaTeX) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css" crossorigin="anonymous">
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js" crossorigin="anonymous"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js" crossorigin="anonymous"></script>
   <script defer src="../lang.js"></script>
   <script defer src="../script.js"></script>
-  <!-- QR library will be loaded on demand by script.js when user opens WeChat share -->
-  <script>window.__BLOG_ORDER__ = ${JSON.stringify(orderList || [])};</script>
+  <script>window.__BLOG_ORDER__ = ${blogOrderScript};</script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -413,13 +411,13 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
         <li><a href="../about.html"><span class="i18n l-zh">关于我</span><span class="i18n l-en">About</span><span class="i18n l-es">Acerca de</span></a></li>
         <li><a href="../publications.html"><span class="i18n l-zh">学术出版物</span><span class="i18n l-en">Research</span><span class="i18n l-es">Investigación</span></a></li>
         <li><a href="../blog.html"><span class="i18n l-zh">博客</span><span class="i18n l-en">Blog</span><span class="i18n l-es">Blog</span></a></li>
-  <li><a href="../ai-lab.html"><span class="i18n l-zh">AI Studio</span><span class="i18n l-en">AI Studio</span><span class="i18n l-es">Taller de IA</span></a></li>
+        <li><a href="../ai-lab.html"><span class="i18n l-zh">AI Studio</span><span class="i18n l-en">AI Studio</span><span class="i18n l-es">Taller de IA</span></a></li>
         <li><a href="../contact.html"><span class="i18n l-zh">联系</span><span class="i18n l-en">Contact</span><span class="i18n l-es">Contacto</span></a></li>
       </ul>
       <div class="nav-actions">
         <div class="lang-switcher">
           <button id="lang-button" class="btn outline icon-btn" aria-haspopup="listbox" aria-expanded="false">
-            <svg class="icon icon-globe" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></g></svg>
+            <svg class="icon icon-globe" viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a15 15 0 0 1 0 18"/><path d="M12 3a15 15 0 0 0 0 18"/></g></svg>
             <span class="label"></span>
           </button>
           <ul id="lang-menu" class="lang-menu" role="listbox" aria-label="Language" hidden>
@@ -441,6 +439,7 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
     <section class="page-hero section">
       <div class="container post-hero-container">
         <div class="post-hero-grid">
+          ${heroImg ? `<div class="post-hero-visual" data-lang="${lang}"><div class="post-hero-visual-glow"></div><div class="post-hero-visual-frame"><img src="${heroImg}" alt="Cover art"></div></div>` : ''}
           <div class="post-hero-main">
             <div class="i18n-block" data-lang="${lang}">
               <span class="post-hero-chip">${lang==='en'?'Research Note':(lang==='es'?'Cuaderno de análisis':'深度长文')}</span>
@@ -464,6 +463,7 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
               data-progress-idle="${escapeAttr(progressIdle)}"
               data-caption-prefix="${escapeAttr(copy.captionPrefix)}"
             >
+              <span class="post-audio-orb" aria-hidden="true"></span>
               <div class="post-audio-header">
                 <span class="post-audio-chip">${escapeHtml(copy.badge)}</span>
                 <div class="post-audio-meta">
@@ -474,7 +474,7 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
               <div class="post-audio-body">
                 <button type="button" class="post-audio-toggle" data-role="toggle" aria-label="${escapeAttr(copy.play)}">
                   <span class="post-audio-icon" aria-hidden="true">
-                    <svg viewBox="0 0 48 48" role="presentation"><circle cx="24" cy="24" r="23" fill="none" stroke="currentColor" stroke-width="2" opacity="0.3"></circle><path d="M20 17.5v13l11-6.5z" fill="currentColor"></path></svg>
+                    <svg viewBox="0 0 60 60" role="presentation"><circle cx="30" cy="30" r="27" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.2"></circle><path d="M26 21v18l14-9z" fill="currentColor"></path></svg>
                   </span>
                   <span class="post-audio-text" data-role="action">${escapeHtml(copy.play)}</span>
                 </button>
@@ -498,7 +498,6 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
             </div>` : ''}
             ${ttsScript}
           </div>
-          ${heroImg ? `<div class="post-hero-visual" data-lang="${lang}"><div class="post-hero-visual-glow"></div><img src="${heroImg}" alt="Cover art"></div>` : ''}
         </div>
       </div>
     </section>
@@ -570,6 +569,14 @@ ${bodyHtml}
   <footer>
     <div class="container"><p>© <span id="year"></span> Fan Wan</p></div>
   </footer>
+  <script>
+    (function(){
+      try {
+        var yearEl = document.getElementById('year');
+        if (yearEl) yearEl.textContent = new Date().getFullYear();
+      } catch (e) {}
+    })();
+  </script>
   <script>
     (function(){
       if (window.hljs) { try { window.hljs.highlightAll(); } catch(e){} }
