@@ -1260,7 +1260,9 @@ def pick_and_write(entries, max_words=1100):
 TTS_HARD_CHAR_LIMIT = 560
 TTS_DEFAULT_CHAR_LIMIT = 520
 TTS_MIN_CHAR_LIMIT = 220
-TTS_MAX_SEGMENTS = 3
+TTS_MAX_SEGMENTS = 4
+TTS_SEGMENT_SOFT_LIMIT = 280
+TTS_SEGMENT_RETRY_CAP = 260
 
 
 def _normalize_tts_text(text: str) -> str:
@@ -1329,6 +1331,7 @@ def _force_chunk(sentence: str, cap: int) -> list[str]:
 
 def _segments_from_sentences(sentences: list[str], cap: int, max_segments: int) -> list[str]:
     cap = max(TTS_MIN_CHAR_LIMIT, min(cap, TTS_HARD_CHAR_LIMIT))
+    target_cap = max(TTS_MIN_CHAR_LIMIT, min(cap, TTS_SEGMENT_SOFT_LIMIT))
     if not sentences:
         return []
 
@@ -1352,10 +1355,11 @@ def _segments_from_sentences(sentences: list[str], cap: int, max_segments: int) 
             combined.append(current.strip())
         return [seg for seg in combined if seg]
 
-    segments = aggregate(cap)
-    while len(segments) > max_segments and cap < TTS_HARD_CHAR_LIMIT:
-        cap = min(TTS_HARD_CHAR_LIMIT, cap + 60)
-        segments = aggregate(cap)
+    segments = aggregate(target_cap)
+    adjusted_cap = target_cap
+    while len(segments) > max_segments and adjusted_cap < cap:
+        adjusted_cap = min(cap, adjusted_cap + 40)
+        segments = aggregate(adjusted_cap)
 
     if len(segments) > max_segments:
         merged: list[str] = []
@@ -1391,6 +1395,40 @@ def _write_tts_source_text(text_dir: Path, slug: str, title: str, segments: list
     text_path = text_dir / f"{slug}.txt"
     text_path.write_text(payload, encoding="utf-8")
     return text_path
+
+
+def _looks_like_length_error(meta: dict) -> bool:
+    code = (meta.get("code") or "").lower()
+    message = (meta.get("message") or "").lower()
+    if "length" in message and ("invalidparameter" in code or "range of input length" in message):
+        return True
+    return "length should be" in message
+
+
+_PUNCTUATION_BREAKS = ("。", "！", "？", ".", "!", "?")
+
+
+def _recursive_split_text(text: str, cap: int) -> list[str]:
+    clean = (text or "").strip()
+    if not clean:
+        return []
+    if len(clean) <= cap or cap <= 60:
+        return [clean]
+    best_idx = -1
+    for token in _PUNCTUATION_BREAKS:
+        idx = clean.rfind(token, 0, cap)
+        if idx > best_idx:
+            best_idx = idx
+    if best_idx < int(cap * 0.35):
+        best_idx = cap
+    head = clean[: best_idx].strip()
+    tail = clean[best_idx:].strip()
+    result = []
+    if head:
+        result.extend(_recursive_split_text(head, cap))
+    if tail:
+        result.extend(_recursive_split_text(tail, cap))
+    return [seg for seg in result if seg]
 
 
 def _deep_find_audio_url(node, visited=None):
@@ -1496,31 +1534,35 @@ def _synthesize_card_audio(
         return None
 
     hard_limit = max(TTS_MIN_CHAR_LIMIT, min(max_chars, TTS_HARD_CHAR_LIMIT))
-    segments = _split_text_for_tts(title_seed, normalized_summary, hard_limit, TTS_MAX_SEGMENTS)
-    if not segments:
+    split_segments = _split_text_for_tts(title_seed, normalized_summary, hard_limit, TTS_MAX_SEGMENTS)
+    if not split_segments:
         return None
 
     slug = _audio_slug(title_seed or zh_summary or f"item-{idx}", idx)
     text_stem = f"{idx:02d}-{slug}"
 
-    segments_meta: list[dict[str, Any]] = []
+    pending_segments: list[dict[str, Any]] = [{"text": seg} for seg in split_segments if seg.strip()]
+    produced_meta: list[dict[str, Any]] = []
+    produced_files: list[dict[str, Any]] = []
+    produced_texts: list[str] = []
 
     def cleanup_files() -> None:
-        for meta in segments_meta:
-            rel = meta.get("file", "")
-            if not isinstance(rel, str):
-                continue
-            rel_name = rel.split("/")[-1]
-            target = audio_dir / rel_name
-            try:
-                if target.exists():
-                    target.unlink()
-            except Exception:
-                pass
+        for entry in produced_files:
+            path = entry.get("path")
+            if isinstance(path, Path):
+                try:
+                    if path.exists():
+                        path.unlink()
+                except Exception:
+                    pass
 
-    for seg_index, segment_text in enumerate(segments, start=1):
-        payload = _normalize_tts_text(segment_text)
+    seg_pointer = 0
+    segment_counter = 0
+    while seg_pointer < len(pending_segments):
+        segment_obj = pending_segments[seg_pointer]
+        payload = _normalize_tts_text(segment_obj.get("text") or "")
         if not payload:
+            seg_pointer += 1
             continue
         text_len = len(payload)
         try:
@@ -1533,7 +1575,7 @@ def _synthesize_card_audio(
                 stream=False,
             )
         except Exception as exc:  # pragma: no cover - SDK/network errors
-            print(f"[TTS] DashScope synthesis failed ({slug} segment {seg_index}): {exc}")
+            print(f"[TTS] DashScope synthesis failed ({slug} segment {seg_pointer + 1}): {exc}")
             cleanup_files()
             return None
 
@@ -1549,11 +1591,24 @@ def _synthesize_card_audio(
                 details.append(f"keys={keys}")
             details.append(f"chars={text_len}")
             suffix = f" ({'; '.join(str(x) for x in details)})" if details else ""
-            print(f"[TTS] DashScope returned no audio URL ({slug} segment {seg_index}){suffix}")
+
+            if _looks_like_length_error(meta) and text_len > TTS_MIN_CHAR_LIMIT:
+                retry_cap = min(TTS_SEGMENT_RETRY_CAP, hard_limit)
+                retry_segments = _recursive_split_text(payload, retry_cap)
+                retry_segments = [seg for seg in retry_segments if seg and seg.strip()]
+                if len(retry_segments) > 1:
+                    pending_segments.pop(seg_pointer)
+                    for idx_insert, seg_text in enumerate(retry_segments):
+                        pending_segments.insert(seg_pointer + idx_insert, {"text": seg_text})
+                    print(f"[TTS] Split segment for retry ({slug} → {len(retry_segments)} pieces, cap={retry_cap})")
+                    continue
+
+            print(f"[TTS] DashScope returned no audio URL ({slug} segment {seg_pointer + 1}){suffix}")
             cleanup_files()
             return None
 
-        filename = f"{text_stem}-s{seg_index:02d}.mp3" if len(segments) > 1 else f"{text_stem}.mp3"
+        segment_counter += 1
+        filename = f"{text_stem}-s{segment_counter:02d}.mp3"
         dest_path = audio_dir / filename
 
         try:
@@ -1561,33 +1616,51 @@ def _synthesize_card_audio(
             resp.raise_for_status()
             dest_path.write_bytes(resp.content)
         except Exception as exc:
-            print(f"[TTS] Audio download failed ({slug} segment {seg_index}): {exc}")
+            print(f"[TTS] Audio download failed ({slug} segment {segment_counter}): {exc}")
             cleanup_files()
             return None
 
-        segments_meta.append(
-            {
-                "file": f"/data/ai/scholarpush/audio/{date_key}/{filename}",
-                "index": seg_index,
-                "text_hash": hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12],
-                "chars": text_len,
-            }
-        )
+        meta_entry = {
+            "file": f"/data/ai/scholarpush/audio/{date_key}/{filename}",
+            "index": segment_counter,
+            "text_hash": hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12],
+            "chars": text_len,
+        }
+        produced_meta.append(meta_entry)
+        produced_files.append({"path": dest_path, "meta": meta_entry})
+        produced_texts.append(payload)
+        seg_pointer += 1
 
-    if not segments_meta:
+    if not produced_meta:
         return None
 
-    segments_meta.sort(key=lambda entry: int(entry.get("index", 0)))
-    text_path = _write_tts_source_text(text_dir, text_stem, title_seed, segments)
+    if len(produced_meta) == 1:
+        single = produced_files[0]
+        final_name = f"{text_stem}.mp3"
+        final_path = audio_dir / final_name
+        try:
+            if single["path"].name != final_name:
+                single["path"].replace(final_path)
+            single["path"] = final_path
+            single["meta"]["file"] = f"/data/ai/scholarpush/audio/{date_key}/{final_name}"
+            single["meta"]["index"] = 1
+        except Exception:
+            single["meta"]["file"] = f"/data/ai/scholarpush/audio/{date_key}/{single['path'].name}"
+        produced_meta = [single["meta"]]
+    else:
+        produced_meta.sort(key=lambda entry: int(entry.get("index", 0)))
+
+    text_segments_for_log = produced_texts
+    text_path = _write_tts_source_text(text_dir, text_stem, title_seed, text_segments_for_log)
 
     if not item.get("id"):
         item["id"] = slug
 
-    primary_file = segments_meta[0]["file"]
+    primary_file = produced_meta[0]["file"]
     return {
         "file": primary_file,
-        "segments": segments_meta,
-        "segment_count": len(segments_meta),
+        "segments": produced_meta,
+        "segment_count": len(produced_meta),
         "voice": voice_id,
         "model": model_name,
         "language": "zh",
