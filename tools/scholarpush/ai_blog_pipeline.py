@@ -1283,6 +1283,81 @@ def _audio_slug(seed: str, idx: int) -> str:
     return base[:48]
 
 
+def _deep_find_audio_url(node, visited=None):
+    if node is None:
+        return None
+    if visited is None:
+        visited = set()
+    node_id = id(node)
+    if node_id in visited:
+        return None
+    visited.add(node_id)
+
+    if isinstance(node, str):
+        lower = node.lower()
+        if node.startswith("http") and any(ext in lower for ext in (".mp3", ".wav", ".m4a", ".ogg", ".aac", ".flac", ".opus")):
+            return node
+        return None
+
+    if isinstance(node, dict):
+        for key in ("url", "audio_url", "download_url", "file_url", "href"):
+            val = node.get(key)
+            if isinstance(val, str) and val.startswith("http"):
+                return val
+        for value in node.values():
+            found = _deep_find_audio_url(value, visited)
+            if found:
+                return found
+        return None
+
+    if isinstance(node, (list, tuple, set)):
+        for value in node:
+            found = _deep_find_audio_url(value, visited)
+            if found:
+                return found
+        return None
+
+    for attr in ("url", "audio_url", "download_url", "file_url", "href"):
+        val = getattr(node, attr, None)
+        if isinstance(val, str) and val.startswith("http"):
+            return val
+        if val is not None:
+            found = _deep_find_audio_url(val, visited)
+            if found:
+                return found
+
+    if hasattr(node, "__dict__"):
+        return _deep_find_audio_url(vars(node), visited)
+
+    return None
+
+
+def _extract_audio_url_from_response(response):
+    meta = {
+        "code": None,
+        "message": None,
+        "output_keys": None,
+        "output_attrs": None,
+    }
+
+    if isinstance(response, dict):
+        meta["code"] = response.get("code") or response.get("status_code")
+        meta["message"] = response.get("message") or response.get("status") or response.get("msg")
+        output = response.get("output") or response.get("data") or response
+    else:
+        meta["code"] = getattr(response, "code", None) or getattr(response, "status_code", None)
+        meta["message"] = getattr(response, "message", None) or getattr(response, "status_message", None)
+        output = getattr(response, "output", None) or getattr(response, "data", None) or response
+
+    if isinstance(output, dict):
+        meta["output_keys"] = sorted(output.keys())[:8]
+    elif hasattr(output, "__dict__"):
+        meta["output_attrs"] = sorted(k for k in vars(output).keys() if not k.startswith("_"))[:8]
+
+    url = _deep_find_audio_url(output)
+    return url, meta
+
+
 def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, voice_id: str, model_name: str, max_chars: int):
     title_map = item.get("title_i18n") or {}
     zh_title = (title_map.get("zh") or item.get("headline") or "").strip()
@@ -1318,11 +1393,18 @@ def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, vo
         print(f"[TTS] DashScope synthesis failed ({slug}): {exc}")
         return None
 
-    output = getattr(response, "output", None)
-    audio = getattr(output, "audio", None)
-    url = getattr(audio, "url", None)
+    url, meta = _extract_audio_url_from_response(response)
     if not isinstance(url, str) or not url:
-        print(f"[TTS] DashScope returned no audio URL ({slug})")
+        details = []
+        if meta.get("code"):
+            details.append(f"code={meta['code']}")
+        if meta.get("message"):
+            details.append(f"message={meta['message']}")
+        keys = meta.get("output_keys") or meta.get("output_attrs")
+        if keys:
+            details.append(f"keys={keys}")
+        suffix = f" ({'; '.join(str(x) for x in details)})" if details else ""
+        print(f"[TTS] DashScope returned no audio URL ({slug}){suffix}")
         return None
 
     try:
