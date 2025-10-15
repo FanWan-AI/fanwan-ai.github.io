@@ -5,9 +5,12 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import https from 'node:https';
+import { fileURLToPath } from 'node:url';
 
 // Resolve project root: scripts/ -> ..
-const root = path.resolve(new URL('.', import.meta.url).pathname, '..');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const root = path.resolve(__dirname, '..');
 const contentDir = path.join(root, 'content', 'blog');
 const tplPath = path.join(root, 'assets', 'og-template.svg');
 
@@ -169,9 +172,10 @@ async function renderPngFromText(title, subline, outPng){
 }
 
 function parseFrontMatter(src){
-  const m = src.match(/^---\n([\s\S]*?)\n---\n?/);
+  const normalized = src.replace(/\r\n?/g, '\n');
+  const m = normalized.match(/^---\n([\s\S]*?)\n---\n?/);
   if (!m) return [{}, src];
-  const body = src.slice(m[0].length);
+  const body = normalized.slice(m[0].length);
   const yaml = m[1];
   const meta = {};
   yaml.split(/\r?\n/).forEach(line => {
