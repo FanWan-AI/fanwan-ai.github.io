@@ -722,12 +722,12 @@ async function buildPost(dir){
       if (preferRel) {
         try { await fs.access(path.join(root, preferRel)); chosenRel = toUrlPath(preferRel); } catch {}
       }
-      // Prefer SVG for on-page hero; fall back to PNG
-      if (!chosenRel) {
-        try { await fs.access(path.join(root, svgRel)); chosenRel = svgRel; } catch {}
-      }
+      // Prefer PNG for on-page hero; fall back to SVG if PNG missing
       if (!chosenRel) {
         try { await fs.access(path.join(root, pngRel)); chosenRel = pngRel; } catch {}
+      }
+      if (!chosenRel) {
+        try { await fs.access(path.join(root, svgRel)); chosenRel = svgRel; } catch {}
       }
       if (!chosenRel) { chosenRel = 'assets/placeholder.jpg'; }
       // Build OG absolute URL, prefer SVG; fall back to PNG/JPG, else placeholder
