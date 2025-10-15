@@ -1057,25 +1057,67 @@
         if (!bucket || typeof bucket !== 'object') return null;
         const zh = bucket.zh || bucket['zh-CN'] || bucket['zh_cn'] || bucket['zh-cn'];
         if (!zh) return null;
+
+        const normalizeSegment = (seg, index) => {
+          if (!seg) return null;
+          if (typeof seg === 'string') {
+            return { file: seg, index: index + 1 };
+          }
+          if (typeof seg === 'object') {
+            const file = seg.file || seg.url;
+            if (!file) return null;
+            const idx = Number(seg.index);
+            const normalized = {
+              file,
+              index: Number.isFinite(idx) && idx > 0 ? idx : index + 1,
+            };
+            if (typeof seg.text_hash === 'string' && seg.text_hash) {
+              normalized.textHash = seg.text_hash;
+            }
+            if (typeof seg.chars === 'number' && Number.isFinite(seg.chars)) {
+              normalized.chars = seg.chars;
+            }
+            return normalized;
+          }
+          return null;
+        };
+
+        let segments = [];
         if (typeof zh === 'string') {
-          return { url: zh, voice: '', language: 'zh' };
+          segments = [{ file: zh, index: 1 }];
+        } else if (Array.isArray(zh)) {
+          segments = zh.map((seg, idx) => normalizeSegment(seg, idx)).filter(Boolean);
+        } else if (Array.isArray(zh?.segments)) {
+          segments = zh.segments.map((seg, idx) => normalizeSegment(seg, idx)).filter(Boolean);
         }
-        if (typeof zh === 'object') {
+
+        if (!segments.length && typeof zh === 'object') {
           const file = zh.file || zh.url;
-          if (!file) return null;
-          return {
-            url: file,
-            voice: typeof zh.voice === 'string' ? zh.voice : '',
-            language: typeof zh.language === 'string' ? zh.language : (typeof zh.lang === 'string' ? zh.lang : 'zh')
-          };
+          if (file) segments = [{ file, index: 1 }];
         }
-        return null;
+
+        if (!segments.length) return null;
+
+        const reportedCount = Number(zh.segment_count);
+        const segmentCount = Number.isFinite(reportedCount) && reportedCount > 0 ? Math.floor(reportedCount) : segments.length;
+
+        return {
+          url: segments[0].file,
+          voice: typeof zh.voice === 'string' ? zh.voice : '',
+          language: typeof zh.language === 'string' ? zh.language : (typeof zh.lang === 'string' ? zh.lang : 'zh'),
+          segments,
+          segmentCount,
+          title: typeof zh.title === 'string' ? zh.title : '',
+          textSource: typeof zh.text_source === 'string' ? zh.text_source : '',
+        };
       }
 
       function createHighlightAudio() {
         let audioEl = null;
         let currentBtn = null;
-        let currentSrc = '';
+        let currentKey = '';
+        let currentSegments = [];
+        let currentSegmentIndex = 0;
         const selector = '[data-role="highlight-audio"]';
 
         function ensureAudio() {
@@ -1097,11 +1139,19 @@
             setState(currentBtn, 'paused');
           });
           el.addEventListener('ended', () => {
-            if (currentBtn) {
-              setState(currentBtn, 'idle');
-              currentBtn = null;
+            if (!currentBtn) {
+              currentSegments = [];
+              currentSegmentIndex = 0;
+              currentKey = '';
+              return;
             }
-            currentSrc = '';
+            if (currentSegments.length && currentSegmentIndex + 1 < currentSegments.length) {
+              playSegment(currentSegmentIndex + 1);
+              return;
+            }
+            const prevBtn = currentBtn;
+            stop(true);
+            if (prevBtn) setState(prevBtn, 'idle');
           });
           el.addEventListener('loadstart', () => {
             if (currentBtn) setState(currentBtn, 'loading');
@@ -1129,6 +1179,14 @@
           return AUDIO_ICON_PLAY;
         }
 
+        function setSegmentProgress(btn, index, total) {
+          if (!btn) return;
+          const safeTotal = Math.max(1, Number(total) || 1);
+          const safeIndex = Math.min(safeTotal, Math.max(1, Number(index) || 1));
+          btn.dataset.segmentCount = String(safeTotal);
+          btn.dataset.segmentCurrent = String(safeIndex);
+        }
+
         function setState(btn, state) {
           if (!btn) return;
           const iconWrap = btn.querySelector('.hub-audio-icon');
@@ -1149,7 +1207,12 @@
           const label = baseLabel();
           btn.setAttribute('title', voice ? `${label} · ${voice}` : label);
           const textNode = btn.querySelector('.hub-audio-label');
-          if (textNode) textNode.textContent = label;
+          if (textNode) {
+            const totalSegments = Math.max(1, Number(btn.dataset.segmentCount || '1') || 1);
+            const currentSegment = Math.max(1, Number(btn.dataset.segmentCurrent || '1') || 1);
+            const display = totalSegments > 1 ? `${label} (${currentSegment}/${totalSegments})` : label;
+            textNode.textContent = display;
+          }
         }
 
         function stop(resetRef = false) {
@@ -1158,21 +1221,95 @@
             audioEl.currentTime = 0;
           }
           if (currentBtn) {
+            setSegmentProgress(currentBtn, 1, Number(currentBtn.dataset.segmentCount || '1'));
             setState(currentBtn, 'idle');
           }
           if (resetRef) {
             currentBtn = null;
-            currentSrc = '';
+            currentKey = '';
+            currentSegments = [];
+            currentSegmentIndex = 0;
           }
+        }
+
+        function parseSegments(btn) {
+          if (!btn) return [];
+          const raw = btn.dataset.segments || '';
+          let segments = [];
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                segments = parsed
+                  .map((entry, idx) => {
+                    if (!entry) return null;
+                    if (typeof entry === 'string') {
+                      const file = entry.trim();
+                      if (!file) return null;
+                      return { file, index: idx + 1 };
+                    }
+                    if (typeof entry === 'object') {
+                      const fileRaw = entry.file || entry.url || '';
+                      const file = typeof fileRaw === 'string' ? fileRaw.trim() : String(fileRaw || '').trim();
+                      if (!file) return null;
+                      let index = Number(entry.index);
+                      if (!Number.isFinite(index) || index <= 0) index = idx + 1;
+                      return { file, index };
+                    }
+                    return null;
+                  })
+                  .filter(Boolean);
+              }
+            } catch (error) {
+              console.warn('Failed to parse highlight audio segments', error);
+            }
+          }
+          if (!segments.length) {
+            const src = btn.dataset.audio;
+            if (src) segments = [{ file: src, index: 1 }];
+          }
+          return segments.sort((a, b) => (a.index || 0) - (b.index || 0));
+        }
+
+        function playSegment(targetIndex) {
+          if (!currentBtn) return false;
+          const segments = currentSegments;
+          if (!segments.length) return false;
+          const segment = segments[targetIndex];
+          if (!segment) return false;
+          const audio = ensureAudio();
+          currentSegmentIndex = targetIndex;
+          setSegmentProgress(currentBtn, targetIndex + 1, segments.length);
+          setState(currentBtn, 'loading');
+          if (audio.src !== segment.file) {
+            audio.src = segment.file;
+          }
+          audio.currentTime = 0;
+          audio.play().catch((error) => {
+            console.warn('Highlight audio play failed', error);
+            setState(currentBtn, 'error');
+          });
+          return true;
         }
 
         function toggle(btn) {
           if (!btn) return;
-          const src = btn.dataset.audio;
-          if (!src) return;
+          const segments = parseSegments(btn);
+          if (!segments.length) {
+            setState(btn, 'error');
+            return;
+          }
+          const src = segments[0].file;
+          if (!src) {
+            setState(btn, 'error');
+            return;
+          }
+          btn.dataset.segmentCount = String(segments.length);
+          btn.dataset.segmentCurrent = btn.dataset.segmentCurrent || '1';
           const audio = ensureAudio();
 
           if (currentBtn && currentBtn !== btn) {
+            stop();
             setState(currentBtn, 'idle');
           }
 
@@ -1190,17 +1327,17 @@
           }
 
           currentBtn = btn;
-          currentSrc = src;
-          setState(btn, 'loading');
-          if (audio.src !== src) {
-            audio.src = src;
-          }
-          audio.play().catch((error) => {
-            console.warn('Highlight audio play failed', error);
+          currentKey = btn.dataset.audio || src;
+          currentSegments = segments;
+          currentSegmentIndex = 0;
+          audio.pause();
+          audio.currentTime = 0;
+          if (!playSegment(0)) {
             setState(btn, 'error');
             currentBtn = null;
-            currentSrc = '';
-          });
+            currentKey = '';
+            currentSegments = [];
+          }
         }
 
         function escapeSelector(value) {
@@ -1216,14 +1353,23 @@
           if (currentBtn && !scope.contains(currentBtn)) {
             currentBtn = null;
           }
-          if (!currentSrc) return;
+          if (!currentKey) return;
           const audio = audioEl;
           if (!audio) {
-            currentSrc = '';
+            currentKey = '';
             return;
           }
           if (currentBtn) return;
-          const match = scope.querySelector(`${selector}[data-audio="${escapeSelector(currentSrc)}"]`);
+          let match = scope.querySelector(`${selector}[data-audio="${escapeSelector(currentKey)}"]`);
+          if (!match) {
+            scope.querySelectorAll(selector).forEach((candidate) => {
+              if (match) return;
+              const segments = parseSegments(candidate);
+              if (segments.some((seg) => seg.file === audio.src)) {
+                match = candidate;
+              }
+            });
+          }
           if (match) {
             currentBtn = match;
             const state = audio.error ? 'error' : (audio.paused ? (audio.currentTime > 0 ? 'paused' : 'idle') : 'playing');
@@ -1331,7 +1477,23 @@
             if (audioInfo && audioInfo.url) {
               const playLabel = tr('paperhub_audio_play_label', { title }, `播放语音：${title}`);
               const tooltip = audioInfo.voice ? `${audioButtonLabel} · ${audioInfo.voice}` : audioButtonLabel;
-              audioButton = `<button class="hub-audio-btn" type="button" data-role="highlight-audio" data-audio="${escapeAttr(audioInfo.url)}" data-title="${escapeAttr(title)}" data-voice="${escapeAttr(audioInfo.voice || '')}" data-state="idle" aria-label="${escapeAttr(playLabel)}" title="${escapeAttr(tooltip)}"><span class="hub-audio-icon" aria-hidden="true">${AUDIO_ICON_PLAY}</span><span class="hub-audio-label">${escapeHTML(audioButtonLabel)}</span></button>`;
+              const segments = Array.isArray(audioInfo.segments) ? audioInfo.segments : [];
+              const segmentCount = segments.length ? segments.length : (Number(audioInfo.segmentCount) || 1);
+              let segmentsAttr = '';
+              if (segments.length) {
+                try {
+                  const compactSegments = segments.map((seg, idx) => ({
+                    file: seg.file || seg.url || audioInfo.url,
+                    index: Number(seg.index) && Number(seg.index) > 0 ? Number(seg.index) : idx + 1,
+                  }));
+                  segmentsAttr = ` data-segments="${escapeAttr(JSON.stringify(compactSegments))}"`;
+                } catch (error) {
+                  console.warn('Failed to serialize highlight audio segments', error);
+                }
+              }
+              const textSourceAttr = audioInfo.textSource ? ` data-text-source="${escapeAttr(audioInfo.textSource)}"` : '';
+              const segmentCountAttr = ` data-segment-count="${segmentCount > 0 ? segmentCount : 1}" data-segment-current="1"`;
+              audioButton = `<button class="hub-audio-btn" type="button" data-role="highlight-audio" data-audio="${escapeAttr(audioInfo.url)}" data-title="${escapeAttr(title)}" data-voice="${escapeAttr(audioInfo.voice || '')}" data-state="idle"${segmentCountAttr}${segmentsAttr}${textSourceAttr} aria-label="${escapeAttr(playLabel)}" title="${escapeAttr(tooltip)}"><span class="hub-audio-icon" aria-hidden="true">${AUDIO_ICON_PLAY}</span><span class="hub-audio-label">${escapeHTML(audioButtonLabel)}</span></button>`;
             }
             const codeLink = (item.links && item.links.code && item.links.code !== 'N/A')
               ? `<a href="${item.links.code}" target="_blank" rel="noopener">${tr('paperhub_link_code', {}, '代码')} →</a>`

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-import os, re, json, hashlib, subprocess, feedparser, requests, time
+import os, re, json, hashlib, subprocess, feedparser, requests, time, shutil, math
+from typing import Any, Optional
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -31,9 +32,12 @@ DATA_DIR = "data/ai/blog"
 OG_DIR = "assets/og"
 TPL_PATH = "tools/templates/blog_post_template.html"
 AUDIO_BASE_DIR = Path("data/ai/scholarpush/audio")
+TTS_TEXT_BASE_DIR = Path("data/ai/scholarpush/tts_text")
 os.makedirs(BLOG_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OG_DIR, exist_ok=True)
+AUDIO_BASE_DIR.mkdir(parents=True, exist_ok=True)
+TTS_TEXT_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
 # ScholarPush prompt for academic flash cards
 PROMPT_SCHOLAR = r"""
@@ -1253,9 +1257,10 @@ def pick_and_write(entries, max_words=1100):
         print("LLM unavailable, using fallback draft:", e)
     return _fallback_draft(used, max_words=max_words)
 
-# ===== ScholarPush TTS helpers =====
-TTS_HARD_CHAR_LIMIT = 800
-TTS_DEFAULT_CHAR_LIMIT = 780
+TTS_HARD_CHAR_LIMIT = 560
+TTS_DEFAULT_CHAR_LIMIT = 520
+TTS_MIN_CHAR_LIMIT = 220
+TTS_MAX_SEGMENTS = 3
 
 
 def _normalize_tts_text(text: str) -> str:
@@ -1285,6 +1290,107 @@ def _audio_slug(seed: str, idx: int) -> str:
     if not base:
         base = hashlib.md5(f"{seed}-{idx}".encode("utf-8")).hexdigest()[:12]
     return base[:48]
+
+
+_SENTENCE_RE = re.compile(r"[^。！？!?.]+[。！？!?.]?")
+
+
+def _prepare_tts_sentences(title: str, summary: str) -> list[str]:
+    sentences: list[str] = []
+    title_clean = (title or "").strip()
+    if title_clean:
+        sentences.append(f"标题：{title_clean}")
+    text = (summary or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not text.strip():
+        return sentences
+    for block in text.split("\n"):
+        blk = block.strip()
+        if not blk:
+            continue
+        matches = _SENTENCE_RE.findall(blk)
+        for sentence in matches:
+            seg = sentence.strip()
+            if seg:
+                sentences.append(seg)
+    return sentences
+
+
+def _force_chunk(sentence: str, cap: int) -> list[str]:
+    if len(sentence) <= cap:
+        return [sentence]
+    chunks = []
+    start = 0
+    while start < len(sentence):
+        chunk = sentence[start : start + cap]
+        chunks.append(chunk.strip())
+        start += cap
+    return [c for c in chunks if c]
+
+
+def _segments_from_sentences(sentences: list[str], cap: int, max_segments: int) -> list[str]:
+    cap = max(TTS_MIN_CHAR_LIMIT, min(cap, TTS_HARD_CHAR_LIMIT))
+    if not sentences:
+        return []
+
+    def aggregate(target_cap: int) -> list[str]:
+        combined: list[str] = []
+        current = ""
+        for sentence in sentences:
+            for piece in _force_chunk(sentence, target_cap):
+                seg = piece.strip()
+                if not seg:
+                    continue
+                if not current:
+                    current = seg
+                    continue
+                if len(current) + 1 + len(seg) <= target_cap:
+                    current = f"{current}\n{seg}"
+                else:
+                    combined.append(current.strip())
+                    current = seg
+        if current:
+            combined.append(current.strip())
+        return [seg for seg in combined if seg]
+
+    segments = aggregate(cap)
+    while len(segments) > max_segments and cap < TTS_HARD_CHAR_LIMIT:
+        cap = min(TTS_HARD_CHAR_LIMIT, cap + 60)
+        segments = aggregate(cap)
+
+    if len(segments) > max_segments:
+        merged: list[str] = []
+        chunk_size = max(1, math.ceil(len(segments) / max_segments))
+        for i in range(0, len(segments), chunk_size):
+            chunk = "\n".join(segments[i : i + chunk_size]).strip()
+            if not chunk:
+                continue
+            if len(chunk) > TTS_HARD_CHAR_LIMIT:
+                chunk = chunk[:TTS_HARD_CHAR_LIMIT].strip()
+            merged.append(chunk)
+        segments = merged[:max_segments]
+
+    return [seg.strip() for seg in segments if seg.strip()]
+
+
+def _split_text_for_tts(title: str, summary: str, cap: int, max_segments: int = TTS_MAX_SEGMENTS) -> list[str]:
+    sentences = _prepare_tts_sentences(title, summary)
+    return _segments_from_sentences(sentences, cap, max_segments)
+
+
+def _write_tts_source_text(text_dir: Path, slug: str, title: str, segments: list[str]) -> Path:
+    lines: list[str] = []
+    title_clean = (title or "").strip()
+    if title_clean:
+        lines.append(f"标题：{title_clean}")
+        lines.append("")
+    for idx, segment in enumerate(segments, start=1):
+        lines.append(f"[Segment {idx}]")
+        lines.append(segment.strip())
+        lines.append("")
+    payload = "\n".join(lines).strip() + "\n"
+    text_path = text_dir / f"{slug}.txt"
+    text_path.write_text(payload, encoding="utf-8")
+    return text_path
 
 
 def _deep_find_audio_url(node, visited=None):
@@ -1362,79 +1468,131 @@ def _extract_audio_url_from_response(response):
     return url, meta
 
 
-def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, voice_id: str, model_name: str, max_chars: int):
-    title_map = item.get("title_i18n") or {}
-    zh_title = (title_map.get("zh") or item.get("headline") or "").strip()
+def _synthesize_card_audio(
+    item: dict,
+    idx: int,
+    date_key: str,
+    api_key: str,
+    voice_id: str,
+    model_name: str,
+    max_chars: int,
+    audio_dir: Path,
+    text_dir: Path,
+) -> Optional[dict]:
     summary_map = item.get("summary_i18n") or {}
-    zh_summary = (summary_map.get("zh") or item.get("quick_read") or item.get("one_liner") or "").strip()
-    parts = [part for part in (zh_title, zh_summary) if part]
-    if not parts:
-        return None
-    text = _normalize_tts_text("\n".join(parts))
-    if not text:
-        return None
-    hard_limit = max(120, min(max_chars, TTS_HARD_CHAR_LIMIT))
-    if len(text) > hard_limit:
-        text = _truncate_for_tts(text, hard_limit)
-    if len(text) > hard_limit:
-        text = text[:hard_limit].strip()
-    max_chars = hard_limit
-    if not text:
+    zh_summary = (summary_map.get("zh") or "").strip()
+    if not zh_summary:
+        zh_summary = (item.get("quick_read") or item.get("one_liner") or "").strip()
+    if not zh_summary:
         return None
 
-    slug = _audio_slug(zh_title or item.get("headline") or f"item-{idx}", idx)
-    audio_dir = AUDIO_BASE_DIR / date_key
-    audio_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"{idx:02d}-{slug}.mp3"
-    dest_path = audio_dir / filename
+    title_seed = (item.get("headline") or "").strip()
+    if not title_seed:
+        title_map = item.get("title_i18n") or {}
+        title_seed = (title_map.get("zh") or title_map.get("en") or "").strip()
 
-    text_len = len(text)
-    try:
-        response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
-            model=model_name,
-            api_key=api_key,
-            text=text,
-            voice=voice_id,
-            language_type="Chinese",
-            stream=False,
+    normalized_summary = _normalize_tts_text(zh_summary)
+    if not normalized_summary:
+        return None
+
+    hard_limit = max(TTS_MIN_CHAR_LIMIT, min(max_chars, TTS_HARD_CHAR_LIMIT))
+    segments = _split_text_for_tts(title_seed, normalized_summary, hard_limit, TTS_MAX_SEGMENTS)
+    if not segments:
+        return None
+
+    slug = _audio_slug(title_seed or zh_summary or f"item-{idx}", idx)
+    text_stem = f"{idx:02d}-{slug}"
+
+    segments_meta: list[dict[str, Any]] = []
+
+    def cleanup_files() -> None:
+        for meta in segments_meta:
+            rel = meta.get("file", "")
+            if not isinstance(rel, str):
+                continue
+            rel_name = rel.split("/")[-1]
+            target = audio_dir / rel_name
+            try:
+                if target.exists():
+                    target.unlink()
+            except Exception:
+                pass
+
+    for seg_index, segment_text in enumerate(segments, start=1):
+        payload = _normalize_tts_text(segment_text)
+        if not payload:
+            continue
+        text_len = len(payload)
+        try:
+            response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+                model=model_name,
+                api_key=api_key,
+                text=payload,
+                voice=voice_id,
+                language_type="Chinese",
+                stream=False,
+            )
+        except Exception as exc:  # pragma: no cover - SDK/network errors
+            print(f"[TTS] DashScope synthesis failed ({slug} segment {seg_index}): {exc}")
+            cleanup_files()
+            return None
+
+        url, meta = _extract_audio_url_from_response(response)
+        if not isinstance(url, str) or not url:
+            details = []
+            if meta.get("code"):
+                details.append(f"code={meta['code']}")
+            if meta.get("message"):
+                details.append(f"message={meta['message']}")
+            keys = meta.get("output_keys") or meta.get("output_attrs")
+            if keys:
+                details.append(f"keys={keys}")
+            details.append(f"chars={text_len}")
+            suffix = f" ({'; '.join(str(x) for x in details)})" if details else ""
+            print(f"[TTS] DashScope returned no audio URL ({slug} segment {seg_index}){suffix}")
+            cleanup_files()
+            return None
+
+        filename = f"{text_stem}-s{seg_index:02d}.mp3" if len(segments) > 1 else f"{text_stem}.mp3"
+        dest_path = audio_dir / filename
+
+        try:
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            dest_path.write_bytes(resp.content)
+        except Exception as exc:
+            print(f"[TTS] Audio download failed ({slug} segment {seg_index}): {exc}")
+            cleanup_files()
+            return None
+
+        segments_meta.append(
+            {
+                "file": f"/data/ai/scholarpush/audio/{date_key}/{filename}",
+                "index": seg_index,
+                "text_hash": hashlib.sha1(payload.encode("utf-8")).hexdigest()[:12],
+                "chars": text_len,
+            }
         )
-    except Exception as exc:  # pragma: no cover - SDK/network errors
-        print(f"[TTS] DashScope synthesis failed ({slug}): {exc}")
+
+    if not segments_meta:
         return None
 
-    url, meta = _extract_audio_url_from_response(response)
-    if not isinstance(url, str) or not url:
-        details = []
-        if meta.get("code"):
-            details.append(f"code={meta['code']}")
-        if meta.get("message"):
-            details.append(f"message={meta['message']}")
-        keys = meta.get("output_keys") or meta.get("output_attrs")
-        if keys:
-            details.append(f"keys={keys}")
-        details.append(f"chars={text_len}")
-        suffix = f" ({'; '.join(str(x) for x in details)})" if details else ""
-        print(f"[TTS] DashScope returned no audio URL ({slug}){suffix}")
-        return None
-
-    try:
-        resp = requests.get(url, timeout=60)
-        resp.raise_for_status()
-        dest_path.write_bytes(resp.content)
-    except Exception as exc:
-        print(f"[TTS] Audio download failed ({slug}): {exc}")
-        return None
+    segments_meta.sort(key=lambda entry: int(entry.get("index", 0)))
+    text_path = _write_tts_source_text(text_dir, text_stem, title_seed, segments)
 
     if not item.get("id"):
         item["id"] = slug
 
-    text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+    primary_file = segments_meta[0]["file"]
     return {
-        "file": f"/data/ai/scholarpush/audio/{date_key}/{filename}",
+        "file": primary_file,
+        "segments": segments_meta,
+        "segment_count": len(segments_meta),
         "voice": voice_id,
         "model": model_name,
         "language": "zh",
-        "text_hash": text_hash,
+        "title": title_seed,
+        "text_source": f"/data/ai/scholarpush/tts_text/{date_key}/{text_path.name}",
     }
 
 
@@ -1463,15 +1621,35 @@ def _attach_scholarpush_audio(payload: dict, date_key: str) -> None:
         max_chars = int(os.getenv("SCHOLARPUSH_TTS_MAX_CHARS", str(TTS_DEFAULT_CHAR_LIMIT)) or str(TTS_DEFAULT_CHAR_LIMIT))
     except Exception:
         max_chars = TTS_DEFAULT_CHAR_LIMIT
-    AUDIO_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+    audio_day_dir = AUDIO_BASE_DIR / date_key
+    text_day_dir = TTS_TEXT_BASE_DIR / date_key
+    if audio_day_dir.exists():
+        shutil.rmtree(audio_day_dir, ignore_errors=True)
+    if text_day_dir.exists():
+        shutil.rmtree(text_day_dir, ignore_errors=True)
+    audio_day_dir.mkdir(parents=True, exist_ok=True)
+    text_day_dir.mkdir(parents=True, exist_ok=True)
 
     success = 0
+    total_segments = 0
     for idx, item in enumerate(items, start=1):
-        audio_meta = _synthesize_card_audio(item, idx, date_key, api_key, voice_id, model_name, max_chars)
+        audio_meta = _synthesize_card_audio(
+            item,
+            idx,
+            date_key,
+            api_key,
+            voice_id,
+            model_name,
+            max_chars,
+            audio_day_dir,
+            text_day_dir,
+        )
         if audio_meta:
             item.setdefault("audio", {})["zh"] = audio_meta
             success += 1
-    print(f"ScholarPush TTS generated {success}/{len(items)} clips")
+            total_segments += len(audio_meta.get("segments", []))
+    print(f"ScholarPush TTS generated {success}/{len(items)} cards ({total_segments} segments)")
 
 
 # ===== ScholarPush generation & validation =====
