@@ -1254,6 +1254,10 @@ def pick_and_write(entries, max_words=1100):
     return _fallback_draft(used, max_words=max_words)
 
 # ===== ScholarPush TTS helpers =====
+TTS_HARD_CHAR_LIMIT = 800
+TTS_DEFAULT_CHAR_LIMIT = 780
+
+
 def _normalize_tts_text(text: str) -> str:
     text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"\u3000", " ", text)
@@ -1369,8 +1373,12 @@ def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, vo
     text = _normalize_tts_text("\n".join(parts))
     if not text:
         return None
-    if len(text) > max_chars:
-        text = _truncate_for_tts(text, max_chars)
+    hard_limit = max(120, min(max_chars, TTS_HARD_CHAR_LIMIT))
+    if len(text) > hard_limit:
+        text = _truncate_for_tts(text, hard_limit)
+    if len(text) > hard_limit:
+        text = text[:hard_limit].strip()
+    max_chars = hard_limit
     if not text:
         return None
 
@@ -1380,6 +1388,7 @@ def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, vo
     filename = f"{idx:02d}-{slug}.mp3"
     dest_path = audio_dir / filename
 
+    text_len = len(text)
     try:
         response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
             model=model_name,
@@ -1403,6 +1412,7 @@ def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, vo
         keys = meta.get("output_keys") or meta.get("output_attrs")
         if keys:
             details.append(f"keys={keys}")
+        details.append(f"chars={text_len}")
         suffix = f" ({'; '.join(str(x) for x in details)})" if details else ""
         print(f"[TTS] DashScope returned no audio URL ({slug}){suffix}")
         return None
@@ -1449,7 +1459,10 @@ def _attach_scholarpush_audio(payload: dict, date_key: str) -> None:
         or os.getenv("DASHSCOPE_TTS_MODEL")
         or "qwen3-tts-flash"
     ).strip() or "qwen3-tts-flash"
-    max_chars = int(os.getenv("SCHOLARPUSH_TTS_MAX_CHARS", "900") or "900")
+    try:
+        max_chars = int(os.getenv("SCHOLARPUSH_TTS_MAX_CHARS", str(TTS_DEFAULT_CHAR_LIMIT)) or str(TTS_DEFAULT_CHAR_LIMIT))
+    except Exception:
+        max_chars = TTS_DEFAULT_CHAR_LIMIT
     AUDIO_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
     success = 0
