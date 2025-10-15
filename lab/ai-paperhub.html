@@ -294,9 +294,24 @@
   .hub-links { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
   .hub-links a { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: var(--hub-link); background: color-mix(in oklab, rgba(76,111,247,0.12), rgba(47,219,255,0.08) 50%); border: 1px solid color-mix(in oklab, var(--hub-tag-border), rgba(255,255,255,0.45) 24%); text-decoration: none; letter-spacing: 0.03em; transition: transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); }
+  .hub-links .hub-audio-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; letter-spacing: 0.03em; border: 1px solid color-mix(in oklab, var(--hub-tag-border), rgba(255,255,255,0.45) 24%); background: color-mix(in oklab, rgba(76,111,247,0.12), rgba(47,219,255,0.08) 50%); color: var(--hub-link); cursor: pointer; transition: transform 0.18s ease, color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05); appearance: none; text-decoration: none; }
+  .hub-links .hub-audio-btn .hub-audio-icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
+  .hub-links .hub-audio-btn .hub-audio-icon svg { width: 18px; height: 18px; display: block; fill: currentColor; }
+  .hub-links .hub-audio-btn .hub-audio-label { display: inline-flex; align-items: center; }
+  .hub-links .hub-audio-btn:hover { color: color-mix(in oklab, var(--hub-link), var(--hub-glint) 25%); transform: translateY(-1px); box-shadow: 0 10px 20px -14px rgba(32, 110, 255, 0.45); background: color-mix(in oklab, rgba(76,111,247,0.18), rgba(47,219,255,0.12) 55%); }
+  .hub-links .hub-audio-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklab, var(--hub-link), transparent 62%); transform: translateY(-1px); }
+  .hub-links .hub-audio-btn[data-state="playing"] { background: linear-gradient(180deg, var(--hub-primary), color-mix(in oklab, var(--hub-primary-strong), rgba(255,255,255,0.08) 20%)); color: #fff; box-shadow: 0 18px 34px -20px rgba(28, 63, 180, 0.48); border-color: color-mix(in oklab, var(--hub-primary-strong), rgba(255,255,255,0.16) 32%); }
+  .hub-links .hub-audio-btn[data-state="error"] { color: color-mix(in oklab, #dc2626, var(--hub-text-strong) 35%); border-color: color-mix(in oklab, #fca5a5, rgba(76,111,247,0.18) 25%); background: color-mix(in oklab, rgba(248,113,113,0.16), rgba(255,255,255,0.12) 45%); }
+  .hub-links .hub-audio-btn[data-state="loading"] .hub-audio-icon svg { animation: hubAudioSpin 1s linear infinite; opacity: 0.85; }
+  .hub-links .hub-audio-btn[data-state="playing"] .hub-audio-icon svg { animation: none; }
+  .hub-links .hub-audio-btn:disabled { opacity: 0.75; cursor: not-allowed; box-shadow: none; transform: none; }
   .hub-links a::after { content: "→"; font-size: 13px; transform: translateX(0); transition: transform 0.18s ease; }
   .hub-links a:hover { color: color-mix(in oklab, var(--hub-link), var(--hub-glint) 25%); transform: translateY(-1px); box-shadow: 0 10px 20px -14px rgba(32, 110, 255, 0.45); }
   .hub-links a:hover::after { transform: translateX(2px); }
+  @keyframes hubAudioSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    .hub-links .hub-audio-btn[data-state="loading"] .hub-audio-icon svg { animation: none; }
+  }
 
   .hub-card.milestone { padding: 28px 30px; gap: 16px; }
   .hub-card.milestone::before { background: linear-gradient(135deg, rgba(76,111,247,0.22) 0%, rgba(47,219,255,0.08) 55%, rgba(255,255,255,0.05) 100%); }
@@ -635,6 +650,10 @@
         hasMilestoneData: false
       };
 
+      const AUDIO_ICON_PLAY = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.32"></circle><path d="M10 8.5v7l5.5-3.5z" fill="currentColor"></path></svg>';
+      const AUDIO_ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.32"></circle><rect x="8.8" y="8" width="3.4" height="8" rx="1" fill="currentColor"></rect><rect x="12.8" y="8" width="3.4" height="8" rx="1" fill="currentColor"></rect></svg>';
+      const AUDIO_ICON_ERROR = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="none" stroke="currentColor" stroke-width="1.6" opacity="0.32"></circle><path d="M9.7 9.7l4.6 4.6M14.3 9.7l-4.6 4.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path></svg>';
+
       function getLang() {
         return document.documentElement.lang || localStorage.getItem('lang') || 'zh';
       }
@@ -658,6 +677,22 @@
         if (!map) return '';
         const lang = getLang();
         return map[lang] || map.en || map.zh || map.es || '';
+      }
+
+      function escapeHTML(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      function escapeAttr(value) {
+        return String(value ?? '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       function formatDate(iso) {
@@ -1016,6 +1051,197 @@
         return badges.join(' ');
       }
 
+      function highlightAudioInfo(item) {
+        if (!item || typeof item !== 'object') return null;
+        const bucket = item.audio;
+        if (!bucket || typeof bucket !== 'object') return null;
+        const zh = bucket.zh || bucket['zh-CN'] || bucket['zh_cn'] || bucket['zh-cn'];
+        if (!zh) return null;
+        if (typeof zh === 'string') {
+          return { url: zh, voice: '', language: 'zh' };
+        }
+        if (typeof zh === 'object') {
+          const file = zh.file || zh.url;
+          if (!file) return null;
+          return {
+            url: file,
+            voice: typeof zh.voice === 'string' ? zh.voice : '',
+            language: typeof zh.language === 'string' ? zh.language : (typeof zh.lang === 'string' ? zh.lang : 'zh')
+          };
+        }
+        return null;
+      }
+
+      function createHighlightAudio() {
+        let audioEl = null;
+        let currentBtn = null;
+        let currentSrc = '';
+        const selector = '[data-role="highlight-audio"]';
+
+        function ensureAudio() {
+          if (audioEl) return audioEl;
+          const el = new Audio();
+          el.preload = 'none';
+          el.addEventListener('playing', () => {
+            if (currentBtn) setState(currentBtn, 'playing');
+          });
+          el.addEventListener('pause', () => {
+            if (!currentBtn) return;
+            if (el.ended) return;
+            if (el.currentTime === 0) {
+              setState(currentBtn, 'idle');
+              return;
+            }
+            setState(currentBtn, 'paused');
+          });
+          el.addEventListener('ended', () => {
+            if (currentBtn) {
+              setState(currentBtn, 'idle');
+              currentBtn = null;
+            }
+            currentSrc = '';
+          });
+          el.addEventListener('loadstart', () => {
+            if (currentBtn) setState(currentBtn, 'loading');
+          });
+          el.addEventListener('waiting', () => {
+            if (currentBtn) setState(currentBtn, 'loading');
+          });
+          el.addEventListener('stalled', () => {
+            if (currentBtn) setState(currentBtn, 'loading');
+          });
+          el.addEventListener('error', () => {
+            if (currentBtn) setState(currentBtn, 'error');
+          });
+          audioEl = el;
+          return audioEl;
+        }
+
+        function baseLabel() {
+          return tr('paperhub_audio_label', {}, '语音导读');
+        }
+
+        function iconFor(state) {
+          if (state === 'playing') return AUDIO_ICON_PAUSE;
+          if (state === 'error') return AUDIO_ICON_ERROR;
+          return AUDIO_ICON_PLAY;
+        }
+
+        function setState(btn, state) {
+          if (!btn) return;
+          const iconWrap = btn.querySelector('.hub-audio-icon');
+          const desiredIcon = iconFor(state);
+          if (iconWrap && iconWrap.innerHTML !== desiredIcon) {
+            iconWrap.innerHTML = desiredIcon;
+          }
+          btn.dataset.state = state;
+          const title = btn.dataset.title || '';
+          let aria = '';
+          if (state === 'playing') aria = tr('paperhub_audio_pause_label', { title }, `暂停播报：${title}`);
+          else if (state === 'paused') aria = tr('paperhub_audio_resume_label', { title }, `继续播放：${title}`);
+          else if (state === 'loading') aria = tr('paperhub_audio_loading_label', { title }, `正在加载语音：${title}`);
+          else if (state === 'error') aria = tr('paperhub_audio_error_label', { title }, `音频暂不可用：${title}`);
+          else aria = tr('paperhub_audio_play_label', { title }, `播放语音：${title}`);
+          btn.setAttribute('aria-label', aria);
+          const voice = btn.dataset.voice || '';
+          const label = baseLabel();
+          btn.setAttribute('title', voice ? `${label} · ${voice}` : label);
+          const textNode = btn.querySelector('.hub-audio-label');
+          if (textNode) textNode.textContent = label;
+        }
+
+        function stop(resetRef = false) {
+          if (audioEl) {
+            audioEl.pause();
+            audioEl.currentTime = 0;
+          }
+          if (currentBtn) {
+            setState(currentBtn, 'idle');
+          }
+          if (resetRef) {
+            currentBtn = null;
+            currentSrc = '';
+          }
+        }
+
+        function toggle(btn) {
+          if (!btn) return;
+          const src = btn.dataset.audio;
+          if (!src) return;
+          const audio = ensureAudio();
+
+          if (currentBtn && currentBtn !== btn) {
+            setState(currentBtn, 'idle');
+          }
+
+          if (currentBtn === btn) {
+            if (audio.paused) {
+              setState(btn, 'loading');
+              audio.play().catch((error) => {
+                console.warn('Highlight audio resume failed', error);
+                setState(btn, 'error');
+              });
+            } else {
+              audio.pause();
+            }
+            return;
+          }
+
+          currentBtn = btn;
+          currentSrc = src;
+          setState(btn, 'loading');
+          if (audio.src !== src) {
+            audio.src = src;
+          }
+          audio.play().catch((error) => {
+            console.warn('Highlight audio play failed', error);
+            setState(btn, 'error');
+            currentBtn = null;
+            currentSrc = '';
+          });
+        }
+
+        function escapeSelector(value) {
+          if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+            return CSS.escape(value);
+          }
+          return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        }
+
+        function syncWithDOM(root) {
+          const scope = root || highlightList;
+          if (!scope) return;
+          if (currentBtn && !scope.contains(currentBtn)) {
+            currentBtn = null;
+          }
+          if (!currentSrc) return;
+          const audio = audioEl;
+          if (!audio) {
+            currentSrc = '';
+            return;
+          }
+          if (currentBtn) return;
+          const match = scope.querySelector(`${selector}[data-audio="${escapeSelector(currentSrc)}"]`);
+          if (match) {
+            currentBtn = match;
+            const state = audio.error ? 'error' : (audio.paused ? (audio.currentTime > 0 ? 'paused' : 'idle') : 'playing');
+            setState(match, state);
+            return;
+          }
+          stop(true);
+        }
+
+        function refreshLabels(root) {
+          const scope = root || highlightList || document;
+          scope.querySelectorAll(selector).forEach((btn) => {
+            const state = btn.dataset.state || 'idle';
+            setState(btn, state);
+          });
+        }
+
+        return { toggle, stop, refreshLabels, syncWithDOM };
+      }
+
       function bestLink(item) {
         const links = item.links || {};
         if (links.paper && links.paper !== 'N/A') return { label: tr('paperhub_link_paper', {}, '论文'), url: links.paper };
@@ -1025,6 +1251,20 @@
         return null;
       }
 
+      const highlightAudio = createHighlightAudio();
+
+      if (highlightList) {
+        highlightList.addEventListener('click', (event) => {
+          const origin = event.target;
+          if (!(origin instanceof Element)) return;
+          const btn = origin.closest('.hub-audio-btn');
+          if (!btn) return;
+          event.preventDefault();
+          event.stopPropagation();
+          highlightAudio.toggle(btn);
+        });
+      }
+
       function renderHighlights() {
         if (!highlightList) return;
         if (state.loadingHighlights) return;
@@ -1032,18 +1272,12 @@
         if (highlightEmpty) {
           highlightEmpty.textContent = tr('paperhub_empty_highlight', {}, '没有匹配的论文，换个关键词试试。');
         }
+
         const query = (highlightSearch?.value || '').trim().toLowerCase();
         const tags = Array.from(state.highlightFilters);
-        const isSearching = query || tags.length > 0;
+        const isSearching = Boolean(query) || tags.length > 0;
 
-        let dataToFilter;
-        if (isSearching) {
-          // When searching or filtering, use all data
-          dataToFilter = state.allHighlights;
-        } else {
-          // When no search/filter, show latest date data
-          dataToFilter = state.highlights;
-        }
+        const dataToFilter = isSearching ? state.allHighlights : state.highlights;
 
         const filtered = dataToFilter.filter((item) => {
           if (tags.length) {
@@ -1064,8 +1298,12 @@
         if (highlightEmpty) highlightEmpty.hidden = hasItems;
         if (!hasItems) {
           highlightList.innerHTML = '';
+          highlightAudio.syncWithDOM(highlightList);
           return;
         }
+
+        const audioButtonLabel = tr('paperhub_audio_label', {}, '语音导读');
+
         highlightList.innerHTML = filtered
           .map((item) => {
             const title = highlightTitle(item);
@@ -1086,6 +1324,16 @@
               .map((badge) => `<span class="hub-tag">${badge}</span>`)
               .join('');
             const badges = formatBadge(item);
+            const audioInfo = highlightAudioInfo(item);
+            let audioButton = '';
+            if (audioInfo && audioInfo.url) {
+              const playLabel = tr('paperhub_audio_play_label', { title }, `播放语音：${title}`);
+              const tooltip = audioInfo.voice ? `${audioButtonLabel} · ${audioInfo.voice}` : audioButtonLabel;
+              audioButton = `<button class="hub-audio-btn" type="button" data-role="highlight-audio" data-audio="${escapeAttr(audioInfo.url)}" data-title="${escapeAttr(title)}" data-voice="${escapeAttr(audioInfo.voice || '')}" data-state="idle" aria-label="${escapeAttr(playLabel)}" title="${escapeAttr(tooltip)}"><span class="hub-audio-icon" aria-hidden="true">${AUDIO_ICON_PLAY}</span><span class="hub-audio-label">${escapeHTML(audioButtonLabel)}</span></button>`;
+            }
+            const codeLink = (item.links && item.links.code && item.links.code !== 'N/A')
+              ? `<a href="${item.links.code}" target="_blank" rel="noopener">${tr('paperhub_link_code', {}, '代码')} →</a>`
+              : '';
             return `
               <article class="hub-card" data-id="${item.id || ''}">
                 <div class="hub-meta">
@@ -1099,11 +1347,14 @@
                 <div class="hub-tags">${tagsHtml}${kn}</div>
                 <div class="hub-links">
                   ${link ? `<a href="${link.url}" target="_blank" rel="noopener">${link.label} →</a>` : ''}
-                  ${(item.links && item.links.code && item.links.code !== 'N/A') ? `<a href="${item.links.code}" target="_blank" rel="noopener">${tr('paperhub_link_code', {}, '代码')} →</a>` : ''}
+                  ${audioButton}
+                  ${codeLink}
                 </div>
               </article>`;
           })
           .join('');
+        highlightAudio.refreshLabels(highlightList);
+        highlightAudio.syncWithDOM(highlightList);
       }
 
       function milestoneOverview(task) {
@@ -1521,6 +1772,8 @@
           renderMilestoneFilters(state.milestonesIndex);
         }
         renderHighlights();
+        highlightAudio.refreshLabels(highlightList);
+        highlightAudio.syncWithDOM(highlightList);
         renderMilestones();
       });
     })();

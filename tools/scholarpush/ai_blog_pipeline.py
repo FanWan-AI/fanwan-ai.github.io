@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, re, json, hashlib, subprocess, feedparser, requests, time
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 from datetime import datetime, timezone
 from datetime import timedelta
@@ -18,12 +19,18 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ai_llm import chat_once
 
+try:  # DashScope SDK provides TTS synthesis
+    import dashscope  # type: ignore
+except Exception:  # pragma: no cover - optional dependency
+    dashscope = None  # type: ignore
+
 # ===== 基础路径 =====
 SITE_BASE = ""  # 如你用子路径，可以填 "/wanfan.github.io"
 BLOG_DIR = "blog"
 DATA_DIR = "data/ai/blog"
 OG_DIR = "assets/og"
 TPL_PATH = "tools/templates/blog_post_template.html"
+AUDIO_BASE_DIR = Path("data/ai/scholarpush/audio")
 os.makedirs(BLOG_DIR, exist_ok=True)
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OG_DIR, exist_ok=True)
@@ -1246,6 +1253,132 @@ def pick_and_write(entries, max_words=1100):
         print("LLM unavailable, using fallback draft:", e)
     return _fallback_draft(used, max_words=max_words)
 
+# ===== ScholarPush TTS helpers =====
+def _normalize_tts_text(text: str) -> str:
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"\u3000", " ", text)
+    text = re.sub(r"[ \t\f\v]+", " ", text)
+    text = re.sub(r"\n{2,}", "\n", text)
+    text = re.sub(r" {2,}", " ", text)
+    return text.strip()
+
+
+def _truncate_for_tts(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    snippet = text[:limit]
+    for token in ("\n", "。", "！", "？", ".", "!", "?"):
+        idx = snippet.rfind(token)
+        if idx >= int(limit * 0.4):
+            return snippet[: idx + 1].strip()
+    return snippet.strip()
+
+
+def _audio_slug(seed: str, idx: int) -> str:
+    base = to_slug(seed or f"item-{idx}")
+    base = re.sub(r"[^A-Za-z0-9\-]+", "-", base)
+    base = base.strip("-")
+    if not base:
+        base = hashlib.md5(f"{seed}-{idx}".encode("utf-8")).hexdigest()[:12]
+    return base[:48]
+
+
+def _synthesize_card_audio(item: dict, idx: int, date_key: str, api_key: str, voice_id: str, model_name: str, max_chars: int):
+    title_map = item.get("title_i18n") or {}
+    zh_title = (title_map.get("zh") or item.get("headline") or "").strip()
+    summary_map = item.get("summary_i18n") or {}
+    zh_summary = (summary_map.get("zh") or item.get("quick_read") or item.get("one_liner") or "").strip()
+    parts = [part for part in (zh_title, zh_summary) if part]
+    if not parts:
+        return None
+    text = _normalize_tts_text("\n".join(parts))
+    if not text:
+        return None
+    if len(text) > max_chars:
+        text = _truncate_for_tts(text, max_chars)
+    if not text:
+        return None
+
+    slug = _audio_slug(zh_title or item.get("headline") or f"item-{idx}", idx)
+    audio_dir = AUDIO_BASE_DIR / date_key
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{idx:02d}-{slug}.mp3"
+    dest_path = audio_dir / filename
+
+    try:
+        response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+            model=model_name,
+            api_key=api_key,
+            text=text,
+            voice=voice_id,
+            language_type="Chinese",
+            stream=False,
+        )
+    except Exception as exc:  # pragma: no cover - SDK/network errors
+        print(f"[TTS] DashScope synthesis failed ({slug}): {exc}")
+        return None
+
+    output = getattr(response, "output", None)
+    audio = getattr(output, "audio", None)
+    url = getattr(audio, "url", None)
+    if not isinstance(url, str) or not url:
+        print(f"[TTS] DashScope returned no audio URL ({slug})")
+        return None
+
+    try:
+        resp = requests.get(url, timeout=60)
+        resp.raise_for_status()
+        dest_path.write_bytes(resp.content)
+    except Exception as exc:
+        print(f"[TTS] Audio download failed ({slug}): {exc}")
+        return None
+
+    if not item.get("id"):
+        item["id"] = slug
+
+    text_hash = hashlib.sha1(text.encode("utf-8")).hexdigest()[:12]
+    return {
+        "file": f"/data/ai/scholarpush/audio/{date_key}/{filename}",
+        "voice": voice_id,
+        "model": model_name,
+        "language": "zh",
+        "text_hash": text_hash,
+    }
+
+
+def _attach_scholarpush_audio(payload: dict, date_key: str) -> None:
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return
+    api_key = (os.getenv("DASHSCOPE_API_KEY") or "").strip()
+    if not api_key or dashscope is None:
+        reason = "dashscope SDK missing" if dashscope is None else "DASHSCOPE_API_KEY missing"
+        print(f"ScholarPush TTS skipped ({reason}).")
+        return
+    voice_id = (
+        os.getenv("SCHOLARPUSH_TTS_VOICE")
+        or os.getenv("SCHOLARPUSH_VOICE")
+        or os.getenv("VOICE")
+        or os.getenv("voice")
+        or ""
+    ).strip() or "Katerina"
+    model_name = (
+        os.getenv("SCHOLARPUSH_TTS_MODEL")
+        or os.getenv("DASHSCOPE_TTS_MODEL")
+        or "qwen3-tts-flash"
+    ).strip() or "qwen3-tts-flash"
+    max_chars = int(os.getenv("SCHOLARPUSH_TTS_MAX_CHARS", "900") or "900")
+    AUDIO_BASE_DIR.mkdir(parents=True, exist_ok=True)
+
+    success = 0
+    for idx, item in enumerate(items, start=1):
+        audio_meta = _synthesize_card_audio(item, idx, date_key, api_key, voice_id, model_name, max_chars)
+        if audio_meta:
+            item.setdefault("audio", {})["zh"] = audio_meta
+            success += 1
+    print(f"ScholarPush TTS generated {success}/{len(items)} clips")
+
+
 # ===== ScholarPush generation & validation =====
 def _validate_scholarpush(j: dict):
     assert isinstance(j, dict), "scholarpush root must be object"
@@ -2154,23 +2287,23 @@ def main():
         )
         base_dir = os.path.join("data/ai/scholarpush")
         os.makedirs(base_dir, exist_ok=True)
-        # write latest
-        sp_path = os.path.join(base_dir, "index.json")
-        with open(sp_path, "w", encoding="utf-8") as f:
-            json.dump(sp, f, ensure_ascii=False, indent=2)
-        # archive by date (CN day based on generated_at; ensure 08:00 CN)
         try:
-            # Force generated_at aligned to CN 08:00 for consistency
             sp["generated_at"] = _today_cn_08_utc_iso()
             dt = sp.get("generated_at")
-            # parse ISO robustly, then convert to Asia/Shanghai to get date
             dt_parsed = dtp.parse(dt)
             try:
                 cn = ZoneInfo("Asia/Shanghai")
             except Exception:
                 cn = dttz.gettz("Asia/Shanghai")
             d = dt_parsed.astimezone(cn).date()
-            day_fname = f"{d.isoformat()}.json"
+            day_key = d.isoformat()
+            _attach_scholarpush_audio(sp, day_key)
+
+            sp_path = os.path.join(base_dir, "index.json")
+            with open(sp_path, "w", encoding="utf-8") as f:
+                json.dump(sp, f, ensure_ascii=False, indent=2)
+
+            day_fname = f"{day_key}.json"
             day_path = os.path.join(base_dir, day_fname)
             with open(day_path, "w", encoding="utf-8") as f:
                 json.dump(sp, f, ensure_ascii=False, indent=2)
@@ -2183,8 +2316,8 @@ def main():
                         dates = []
             except Exception:
                 dates = []
-            if d.isoformat() not in dates:
-                dates.append(d.isoformat())
+            if day_key not in dates:
+                dates.append(day_key)
                 dates.sort(reverse=True)
             with open(dates_path, "w", encoding="utf-8") as df:
                 json.dump(dates, df, ensure_ascii=False, indent=2)
