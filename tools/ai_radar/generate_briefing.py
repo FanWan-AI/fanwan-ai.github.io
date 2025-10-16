@@ -23,6 +23,7 @@ Environment knobs (all optional):
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import sys
@@ -1028,6 +1029,10 @@ def _safe_filename(name: str) -> str:
     return sanitized or "segment"
 
 
+def _paragraph_key(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "").strip())
+
+
 def _download_audio(url: str, dest: Path) -> bool:
     if not requests:
         return False
@@ -1049,6 +1054,7 @@ def _synthesize_audio(
     voice: Optional[str],
     language: str,
     log: Dict[str, Any],
+    existing: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
     if not api_key or not dashscope:
@@ -1062,14 +1068,55 @@ def _synthesize_audio(
     bundle_dir.mkdir(parents=True, exist_ok=True)
 
     voice_env = voice or os.getenv("VOICE") or os.getenv("voice")
+    if (not voice_env) and isinstance(existing, dict):
+        stored_voice = str(existing.get("voice") or "").strip()
+        if stored_voice:
+            voice_env = stored_voice
     voice_id = (voice_env or "").strip() or "Katerina"
+
     language_type = "Chinese" if language.lower().startswith("zh") else "English"
+    if isinstance(existing, dict):
+        stored_lang = str(existing.get("language") or "").strip()
+        if stored_lang:
+            language_type = stored_lang
+
+    existing_map: Dict[str, Dict[str, Any]] = {}
+    existing_files: Set[str] = set()
+    if isinstance(existing, dict):
+        segments = existing.get("segments")
+        if isinstance(segments, list):
+            for seg in segments:
+                if not isinstance(seg, dict):
+                    continue
+                text = str(seg.get("text") or "").strip()
+                file_ref = str(seg.get("file") or "").strip()
+                if not text or not file_ref:
+                    continue
+                key = _paragraph_key(text)
+                if not key:
+                    continue
+                existing_map.setdefault(key, dict(seg))
+                filename = os.path.basename(file_ref)
+                if filename:
+                    existing_files.add(filename)
+
     entries: List[Dict[str, Any]] = []
-    success = 0
-    for idx, paragraph in enumerate(paragraphs, start=1):
+    generated = 0
+    reused = 0
+    for paragraph in paragraphs:
         text = paragraph.strip()
         if not text:
             continue
+        key = _paragraph_key(text)
+        seq_idx = len(entries) + 1
+        if key and key in existing_map:
+            seg = dict(existing_map[key])
+            seg["id"] = f"paragraph-{seq_idx}"
+            seg["text"] = text
+            entries.append(seg)
+            reused += 1
+            continue
+
         try:
             response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
                 model="qwen3-tts-flash",
@@ -1090,25 +1137,46 @@ def _synthesize_audio(
             log.setdefault("tts_errors", []).append("missing-audio-url")
             continue
 
-        filename = f"{idx:02d}-{_safe_filename(text[:32])}.mp3"
+        slug = _safe_filename(text[:32] or "segment")
+        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+        base = f"{seq_idx:02d}-{slug}-{digest}"
+        counter = 0
+        filename = f"{base}.mp3"
+        while filename in existing_files:
+            counter += 1
+            filename = f"{base}-{counter}.mp3"
+        existing_files.add(filename)
         audio_path = bundle_dir / filename
         if not _download_audio(url, audio_path):
             log.setdefault("tts_errors", []).append("download-failed")
+            existing_files.discard(filename)
             continue
 
-        success += 1
+        generated += 1
         entries.append(
             {
-                "id": f"paragraph-{idx}",
+                "id": f"paragraph-{seq_idx}",
                 "text": text,
                 "file": f"/data/ai/airadar/audio/{date_str}/{filename}",
             }
         )
 
-    log["tts_status"] = "success" if success else "error"
+    if entries:
+        log["tts_status"] = "success"
+    else:
+        log["tts_status"] = "error"
     log["tts_voice"] = voice_id
-    log["tts_count"] = success
-    return {"date": date_str, "voice": voice_id, "segments": entries, "language": language_type}
+    log["tts_count"] = generated
+    log["tts_reused"] = reused
+    log["tts_segments"] = len(entries)
+    return {
+        "date": date_str,
+        "voice": voice_id,
+        "segments": entries,
+        "language": language_type,
+        "generated": generated,
+        "reused": reused,
+    }
 
 
 def main() -> None:
@@ -1141,6 +1209,20 @@ def main() -> None:
 
     generated_dt = _parse_iso8601(latest.get("generated_at", ""))
     date_str = _bj_date(generated_dt)
+    existing_briefing: Optional[Dict[str, Any]] = None
+    existing_audio_meta: Optional[Dict[str, Any]] = None
+    existing_paragraphs: List[str] = []
+    existing_path = BRIEFINGS_DIR / f"{date_str}.json"
+    if existing_path.exists():
+        try:
+            existing_briefing = json.loads(existing_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing_briefing = None
+    if isinstance(existing_briefing, dict):
+        maybe_audio = existing_briefing.get("audio")
+        if isinstance(maybe_audio, dict):
+            existing_audio_meta = maybe_audio
+        existing_paragraphs = _script_paragraphs(existing_briefing.get("script") or {})
     stats = _collect_stats(items)
     prompt_data = _prompt_payload(date_str, mode, items, stats)
     force_template = os.getenv("BRIEFING_FORCE_TEMPLATE", "0").lower() in {"1", "true", "yes"}
@@ -1212,9 +1294,33 @@ def main() -> None:
         log["briefing_source"] = "template-non-chinese"
         log["llm_chinese_ratio"] = initial_ratio
     paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
+    combined_paragraphs: List[str] = []
+    seen_keys: Set[str] = set()
+    if existing_paragraphs:
+        for text in existing_paragraphs:
+            key = _paragraph_key(text)
+            if not key or key in seen_keys:
+                continue
+            combined_paragraphs.append(text)
+            seen_keys.add(key)
+    for text in paragraphs_for_tts:
+        key = _paragraph_key(text)
+        if not key or key in seen_keys:
+            continue
+        combined_paragraphs.append(text)
+        seen_keys.add(key)
+    if combined_paragraphs:
+        paragraphs_for_tts = combined_paragraphs
+        if isinstance(briefing.get("script"), dict):
+            briefing["script"]["paragraphs"] = combined_paragraphs
+        else:
+            briefing["script"] = {"paragraphs": combined_paragraphs}
+    elif paragraphs_for_tts and isinstance(briefing.get("script"), dict):
+        briefing["script"]["paragraphs"] = paragraphs_for_tts
+    briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
     log["chinese_ratio"] = _chinese_ratio(paragraphs_for_tts) if paragraphs_for_tts else 0.0
     voice_env = os.getenv("VOICE") or os.getenv("voice")
-    briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, voice_env, briefing.get("script", {}).get("language", "zh"), log)
+    briefing["audio"] = _synthesize_audio(paragraphs_for_tts, date_str, voice_env, briefing.get("script", {}).get("language", "zh"), log, existing_audio_meta)
     briefing["generation_log"] = log
 
     output_path = BRIEFINGS_DIR / f"{date_str}.json"
