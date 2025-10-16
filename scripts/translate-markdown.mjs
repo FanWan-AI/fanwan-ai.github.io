@@ -182,6 +182,20 @@ async function processPostDir(dir) {
   // Skip drafts
   if (/^(true|1)$/i.test(String(metaZh.draft || '').trim())) return;
 
+  // Detect existing translations up front to avoid redundant work.
+  const existingLangs = new Set();
+  for (const L of ['en', 'es']) {
+    try {
+      await fs.access(path.join(dir, `${L}.md`));
+      existingLangs.add(L);
+    } catch {}
+  }
+
+  if (!FORCE && existingLangs.has('en') && existingLangs.has('es')) {
+    console.log(`[translate] skip ${slug}: en.md and es.md already present`);
+    return;
+  }
+
   for (const L of ['en', 'es']) {
     const outPath = path.join(dir, `${L}.md`);
     let exists = false; let rawOut = '';
