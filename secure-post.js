@@ -301,7 +301,7 @@
         }
       }
 
-      let activeMain = secureMain;
+  let activeMain = secureMain;
       if (nextMain) {
         secureMain.replaceWith(nextMain);
         activeMain = nextMain;
@@ -316,6 +316,10 @@
         contentSlot.hidden = false;
         activeMain = secureMain;
       }
+
+      try {
+        activeMain.setAttribute('data-secure-unlocked', 'true');
+      } catch (_) {}
 
       try {
         const sections = activeMain ? activeMain.querySelectorAll('.section') : [];
