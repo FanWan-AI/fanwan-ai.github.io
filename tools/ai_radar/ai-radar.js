@@ -239,14 +239,14 @@ function setupBriefingAudio(scope, segments, lang){
   }
 
   if (speedEl){
-    currentRate = Number(parseFloat(speedEl.value) || 1.5);
+    currentRate = Number(parseFloat(speedEl.value) || 1.25);
     applySpeed(currentRate, true);
     speedEl.addEventListener('change', () => {
       const next = parseFloat(speedEl.value) || 1;
       applySpeed(next, true);
     });
   } else {
-    applySpeed(1.5, true);
+    applySpeed(1.25, true);
   }
 
   function highlight(){ /* paragraphs stay static */ }
@@ -780,7 +780,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
         { value: '1.75', label: '1.75×' },
         { value: '2', label: '2.0×' },
       ];
-      const defaultSpeed = '1.5';
+  const defaultSpeed = '1.25';
       const speedOptionsHtml = speedChoices.map(choice => {
         const selected = choice.value === defaultSpeed ? ' selected' : '';
         return `<option value="${choice.value}"${selected}>${choice.label}</option>`;
