@@ -95,6 +95,7 @@ function mdToHtml(md, { slug } = {}) {
   let inCode = false; let codeLang = '';
   const listStack = [];
   let liOpen = false;
+  let mathBlock = null; // { start: string, end: string, buffer: string[] }
 
   const getIndent = (s) => {
     const m = s.match(/^(\s*)/)[1] || '';
@@ -112,6 +113,13 @@ function mdToHtml(md, { slug } = {}) {
   };
   const closeList = () => { if (liOpen) { out.push('</li>'); liOpen = false; } const l = listStack.pop(); out.push(`</${l.type}>`); };
   const closeAllLists = () => { while (listStack.length) { closeList(); } };
+  const emitMathBlock = (startDelim, endDelim, buffer) => {
+    const raw = buffer.join('\n');
+    const normalized = raw.replace(/\r\n?/g, '\n');
+    const trimmedContent = normalized.replace(/^\n+|\n+$/g, '');
+    const safe = escapeHtml(trimmedContent);
+    out.push(`<div class="math-block" data-math="display">${startDelim}\n${safe}\n${endDelim}</div>`);
+  };
 
   const isHeading = (s) => /^(#{1,6})\s+/.test(s);
   const isBlockquote = (s) => /^>\s?/.test(s);
@@ -186,6 +194,7 @@ function mdToHtml(md, { slug } = {}) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
+    const trimmedFull = line.trim();
     const fence = line.match(/^```(.*)$/);
     if (fence) {
       if (!inCode) { inCode = true; codeLang = (fence[1]||'').trim(); closeAllLists(); out.push(`<pre><code class="language-${escapeHtml(codeLang)}">`); }
@@ -193,6 +202,43 @@ function mdToHtml(md, { slug } = {}) {
       continue;
     }
     if (inCode) { out.push(escapeHtml(line)); continue; }
+
+    if (mathBlock) {
+      if (trimmedFull === mathBlock.end) {
+        emitMathBlock(mathBlock.start, mathBlock.end, mathBlock.buffer);
+        mathBlock = null;
+      } else {
+        mathBlock.buffer.push(line.trimEnd());
+      }
+      continue;
+    }
+
+    if (trimmedFull === '$$' || trimmedFull === '\\[') {
+      mathBlock = { start: trimmedFull, end: trimmedFull === '\\[' ? '\\]' : '$$', buffer: [] };
+      continue;
+    }
+
+    if ((trimmedFull.startsWith('$$') && trimmedFull.endsWith('$$') && trimmedFull.length > 4) || (trimmedFull.startsWith('\\[') && trimmedFull.endsWith('\\]') && trimmedFull.length > 4)) {
+      const startDelim = trimmedFull.startsWith('$$') ? '$$' : '\\[';
+      const endDelim = startDelim === '$$' ? '$$' : '\\]';
+      const inner = trimmedFull.slice(startDelim.length, trimmedFull.length - endDelim.length);
+      emitMathBlock(startDelim, endDelim, [inner]);
+      continue;
+    }
+
+    if (trimmedFull.startsWith('$$') && !trimmedFull.endsWith('$$')) {
+      const remaining = trimmedFull.slice(2);
+      mathBlock = { start: '$$', end: '$$', buffer: [] };
+      if (remaining.trim()) mathBlock.buffer.push(remaining);
+      continue;
+    }
+
+    if (trimmedFull.startsWith('\\[') && !trimmedFull.endsWith('\\]')) {
+      const remaining = trimmedFull.slice(2);
+      mathBlock = { start: '\\[', end: '\\]', buffer: [] };
+      if (remaining.trim()) mathBlock.buffer.push(remaining);
+      continue;
+    }
 
     const indent = getIndent(line);
     const trimmed = line.trimStart();
@@ -273,6 +319,10 @@ function mdToHtml(md, { slug } = {}) {
     out.push(`<p>${inlineFmt(line.trim())}</p>`);
   }
   if (inCode) { out.push('</code></pre>'); }
+  if (mathBlock) {
+    emitMathBlock(mathBlock.start, mathBlock.end, mathBlock.buffer);
+    mathBlock = null;
+  }
   while (listStack.length) { closeList(); }
   return out.join('\n');
 }

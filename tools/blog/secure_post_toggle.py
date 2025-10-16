@@ -64,6 +64,48 @@ SECURE_CONFIG: Dict[str, Dict[str, Dict[str, object]]] = {
             ],
         },
     }
+    ,
+    "CIKMA": {
+        "zh": {
+            "file": ROOT / "blog/CIKMA.html",
+            "source": "../data/secure/CIKMA.zh.json",
+            "title": "认知启发的知识记忆架构",
+            "badge": "Protected · 内部",
+            "summary": "本文属于内部研究档案，全文需输入访问口令方可解锁。",
+            "meta": ["发布日期：2025-10-16", "阅读需密码验证"],
+            "hint": "系统将提示输入口令；验证通过后内容会在本地解密并恢复全部交互。",
+            "noscript": [
+                "本页内容已加密，需要启用 JavaScript 与 WebCrypto 才能解锁。",
+                "This post is encrypted client-side. Please enable JavaScript to decrypt it locally.",
+            ],
+        },
+        "en": {
+            "file": ROOT / "blog/CIKMA.en.html",
+            "source": "../data/secure/CIKMA.en.json",
+            "title": "Cognitively-Inspired Knowledge Memory Architecture",
+            "badge": "Protected · Internal",
+            "summary": "This internal research note is gated. Enter the shared passphrase to unlock the full article.",
+            "meta": ["Published: 2025-10-16", "Password required"],
+            "hint": "Enter the passphrase when prompted; the page decrypts locally after validation.",
+            "noscript": [
+                "This post is encrypted client-side. Enable JavaScript and WebCrypto support to view it.",
+                "Este artículo está cifrado en el navegador. Activa JavaScript para poder verlo.",
+            ],
+        },
+        "es": {
+            "file": ROOT / "blog/CIKMA.es.html",
+            "source": "../data/secure/CIKMA.es.json",
+            "title": "Arquitectura de Memoria de Conocimiento con Inspiración Cognitiva",
+            "badge": "Protegido · Interno",
+            "summary": "Este informe interno está protegido por contraseña. Introduce la clave compartida para desbloquearlo.",
+            "meta": ["Publicado: 2025-10-16", "Requiere contraseña"],
+            "hint": "Introduce la contraseña cuando se solicite; el contenido se descifrará localmente tras la validación.",
+            "noscript": [
+                "Este artículo está cifrado en el navegador. Activa JavaScript para poder verlo.",
+                "This post is encrypted client-side. Enable JavaScript and WebCrypto support to unlock it.",
+            ],
+        },
+    }
 }
 
 
