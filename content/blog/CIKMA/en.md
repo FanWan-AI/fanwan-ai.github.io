@@ -93,14 +93,20 @@ The design philosophy of the parametric track is "stable capability enhancement.
 
 In technical implementation, the parametric track uses the DoRA (Direction of Adaptation) method for parameter updates. Unlike traditional LoRA methods, DoRA decomposes weight matrices into magnitude and direction components, updating only the direction part. The mathematical representation of this method can be written as:
 
-    W = ||W|| · (W/||W||)
-    W' = ||W|| · (W/||W|| + ΔD)
+$$
+\begin{aligned}
+W &= \lVert W \rVert \cdot \frac{W}{\lVert W \rVert},\\
+W' &= \lVert W \rVert \cdot \left(\frac{W}{\lVert W \rVert} + \Delta D\right)
+\end{aligned}
+$$
 
 where ΔD is the directional update vector on the unit sphere. This update method ensures that the geometric structure of parameter changes is preserved, thereby improving the stability of multi-task learning.
 
 To further avoid mutual interference between different skill units, the DTDA framework introduces orthogonal subspace constraints. Specifically, different skill units (such as terminology disambiguation, regulatory interpretation, process orchestration, etc.) are assigned to approximately orthogonal low-dimensional subspaces. This constraint is implemented by adding an orthogonal regularization term to the training objective:
 
-    L_orthogonal = λ Σ_{i≠j} ||ΔD_i^T ΔD_j||_F^2
+$$
+L_{\text{orthogonal}} = \lambda \sum_{i \ne j} \left\lVert \Delta D_i^{\top} \Delta D_j \right\rVert_F^2
+$$
 
 This regularization term penalizes overlaps between directional updates of different skill units, ensuring they remain relatively independent in parameter space.
 
@@ -116,31 +122,45 @@ The specific implementation process can be divided into the following steps:
 
 First, knowledge entries are encoded through a stable sentence vector encoder. We choose multilingual, multi-domain adapted encoders (such as Sentence-BERT or E5) to ensure encoding stability and generalization. The encoding process can be represented as:
 
-    z_i = Encoder(knowledge_item_i)
+$$
+z_i = \operatorname{Encoder}(\text{knowledge\_item}_i)
+$$
 
 where z_i ∈ R^d_e is the vector representation of the i-th knowledge entry.
 
 Next, knowledge vectors are mapped to attention space through two sets of trainable linear projection matrices:
 
-    k_i = W_k z_i + b_k
-    v_i = W_v z_i + b_v
+$$
+\begin{aligned}
+k_i &= W_k z_i + b_k,\\
+v_i &= W_v z_i + b_v
+\end{aligned}
+$$
 
 Here, W_k ∈ R^{d_k × d_e} and W_v ∈ R^{d_v × d_e} are projection matrices for keys and values respectively, aligning knowledge vectors to the model's attention dimensions.
 
 During attention computation, KMU key-value pairs are concatenated with contextual key-value pairs:
 
-    K_total = [K_context; K_kmu]
-    V_total = [V_context; V_kmu]
+$$
+\begin{aligned}
+K_{\text{total}} &= [K_{\text{context}}; K_{\text{kmu}}],\\
+V_{\text{total}} &= [V_{\text{context}}; V_{\text{kmu}}]
+\end{aligned}
+$$
 
 The final attention output is computed through standard scaled dot-product attention:
 
-    Attention(Q, K_total, V_total) = softmax(QK_total^T / √d_k)V_total
+$$
+\operatorname{Attention}(Q, K_{\text{total}}, V_{\text{total}}) = \operatorname{softmax}\left(\frac{Q K_{\text{total}}^{\top}}{\sqrt{d_k}}\right) V_{\text{total}}
+$$
 
 To prevent KMUs from "monopolizing" too much attention weight in early training, we introduce a temperature annealing gating mechanism. Each KMU cluster is equipped with a learnable gating parameter g ∈ [0,1], implementing hard sampling through Gumbel-Softmax. The gating temperature decreases linearly from initial 2.0 to 0.5, ensuring KMU activation becomes gradually sparse and targeted.
 
 KMU training adopts a three-stage strategy. In the first stage (directional optimization), we freeze backbone model parameters and train only KMU projection matrices and gating parameters. The training objective includes task loss and evidence consistency regularization:
 
-    L_stage1 = L_task + λ_cite L_cite
+$$
+L_{\text{stage1}} = L_{\text{task}} + \lambda_{\text{cite}} L_{\text{cite}}
+$$
 
 where L_cite ensures that generated answers can correctly cite relevant KMU entries.
 
@@ -154,7 +174,9 @@ We employ Multi-relational Graph Neural Networks to learn representations of ent
 
 In R-GCN, entity representations are updated by aggregating information from their neighbor nodes:
 
-    h_i^{(l+1)} = σ(W_0^{(l)} h_i^{(l)} + Σ_{r∈R} Σ_{j∈N_i^r} (1/c_{i,r}) W_r^{(l)} h_j^{(l)})
+$$
+h_i^{(l+1)} = \sigma\left(W_0^{(l)} h_i^{(l)} + \sum_{r \in R} \sum_{j \in N_i^r} \frac{1}{c_{i,r}} W_r^{(l)} h_j^{(l)}\right)
+$$
 
 where h_i^{(l)} is the hidden representation of entity i at layer l, N_i^r is the set of neighbors connected to entity i through relation r, c_{i,r} is the normalization constant, and W_r^{(l)} is the relation-specific weight matrix for relation r.
 
@@ -174,7 +196,9 @@ Semantic pyramid construction employs recursive clustering and summarization met
 
 The clustering process uses multi-level similarity measures. Besides traditional cosine similarity, we also consider factors such as entity overlap, topic consistency, and temporal correlation. The similarity calculation formula is:
 
-    Sim(d_i, d_j) = α·cos(emb_i, emb_j) + β·entity_overlap(d_i, d_j) + γ·topic_consistency(d_i, d_j)
+$$
+\operatorname{Sim}(d_i, d_j) = \alpha \cdot \cos(\text{emb}_i, \text{emb}_j) + \beta \cdot \operatorname{entity\_overlap}(d_i, d_j) + \gamma \cdot \operatorname{topic\_consistency}(d_i, d_j)
+$$
 
 where α, β, γ are adjustable weight parameters optimized according to different application scenarios.
 
@@ -192,15 +216,21 @@ Router input features include multi-dimensional information. Query complexity is
 
 The router's core is a multi-task neural network that simultaneously predicts importance weights and trigger thresholds for three knowledge sources. The network architecture adopts shared bottom representation and task-specific output head design:
 
-    shared_repr = MLP_shared(input_features)
-    w_kmu = sigmoid(MLP_kmu(shared_repr))
-    w_graph = sigmoid(MLP_graph(shared_repr))
-    w_retr = sigmoid(MLP_retr(shared_repr))
-    thresholds = softplus(MLP_thresh(shared_repr))
+$$
+\begin{aligned}
+\operatorname{shared\_repr} &= \operatorname{MLP}_{\text{shared}}(\text{input\_features}),\\
+w_{\text{kmu}} &= \sigma\bigl(\operatorname{MLP}_{\text{kmu}}(\operatorname{shared\_repr})\bigr),\\
+w_{\text{graph}} &= \sigma\bigl(\operatorname{MLP}_{\text{graph}}(\operatorname{shared\_repr})\bigr),\\
+w_{\text{retr}} &= \sigma\bigl(\operatorname{MLP}_{\text{retr}}(\operatorname{shared\_repr})\bigr),\\
+\operatorname{thresholds} &= \operatorname{softplus}\bigl(\operatorname{MLP}_{\text{thresh}}(\operatorname{shared\_repr})\bigr)
+\end{aligned}
+$$
 
 Router training adopts multi-objective optimization strategies. Besides traditional task loss, we also introduce latency regularization and evidence cost regularization:
 
-    L_route = L_task + λ_cite L_cite + λ_latency L_latency + λ_cost L_cost + λ_quality L_quality
+$$
+L_{\text{route}} = L_{\text{task}} + \lambda_{\text{cite}} L_{\text{cite}} + \lambda_{\text{latency}} L_{\text{latency}} + \lambda_{\text{cost}} L_{\text{cost}} + \lambda_{\text{quality}} L_{\text{quality}}
+$$
 
 where L_latency penalizes high-latency routing decisions, L_cost controls computational costs of evidence acquisition, and L_quality optimizes output quality based on judge system feedback.
 
@@ -292,13 +322,17 @@ From a cognitive science perspective, we can understand the DTDA framework as co
 
 This correspondence is not merely analogical but can be characterized through specific mathematical models. We can define a cognitive load function C(q) to measure cognitive resources required for processing query q:
 
-    C(q) = α·C_fast(q) + β·C_slow(q)
+$$
+C(q) = \alpha \cdot C_{\text{fast}}(q) + \beta \cdot C_{\text{slow}}(q)
+$$
 
 where C_fast(q) represents cognitive load of the fast processing path (KMUs), and C_slow(q) represents cognitive load of the slow processing path (graphs + retrieval). The system's goal is to minimize total cognitive load while ensuring output quality.
 
 From an information theory perspective, we can analyze information capacity and compression efficiency of different knowledge representation methods. Let parametric knowledge capacity be C_p and non-parametric knowledge capacity be C_n, then total system knowledge capacity is:
 
-    C_total = C_p + C_n - I(P;N)
+$$
+C_{\text{total}} = C_p + C_n - I(P;N)
+$$
 
 where I(P;N) is mutual information between parametric and non-parametric knowledge. The system design goal is to maximize total knowledge capacity while satisfying latency and accuracy constraints.
 

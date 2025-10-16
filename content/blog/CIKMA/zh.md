@@ -94,14 +94,20 @@ DTDA框架的核心创新在于提出了一种运行时的双轨解耦架构，�
 
 在技术实现上，参数轨采用了DoRA（Direction of Adaptation）方法进行参数更新。与传统的LoRA方法不同，DoRA将权重矩阵分解为幅度和方向两个部分，只对方向部分进行更新。这种方法的数学表示可以写作：
 
-    W = ||W|| · (W/||W||)
-    W' = ||W|| · (W/||W|| + ΔD)
+$$
+\begin{aligned}
+W &= \lVert W \rVert \cdot \frac{W}{\lVert W \rVert},\\
+W' &= \lVert W \rVert \cdot \left(\frac{W}{\lVert W \rVert} + \Delta D\right)
+\end{aligned}
+$$
 
 其中，ΔD是在单位球面上的方向更新向量。这种更新方式确保了参数变化的几何结构得到保持，从而提高了多任务学习的稳定性。
 
 为了进一步避免不同技能单元之间的相互干扰，DTDA框架引入了正交子空间约束。具体而言，不同的技能单元（如术语消歧、法规解释、流程编排等）被分配到近似正交的低维子空间中。这种约束通过在训练目标中添加正交正则项来实现：
 
-    L_orthogonal = λ Σ_{i≠j} ||ΔD_i^T ΔD_j||_F^2
+$$
+L_{\text{orthogonal}} = \lambda \sum_{i \ne j} \left\lVert \Delta D_i^{\top} \Delta D_j \right\rVert_F^2
+$$
 
 这个正则项惩罚不同技能单元方向更新之间的重叠，从而确保它们在参数空间中保持相对独立。
 
@@ -117,31 +123,45 @@ KMUs的工作原理基于矩形注意力（Rectangular Attention）的概念。�
 
 首先，知识条目通过一个稳定的句向量编码器进行编码。我们选择多语言、多领域适配的编码器（如Sentence-BERT或E5），确保编码的稳定性和泛化性。编码过程可以表示为：
 
-    z_i = Encoder(knowledge_item_i)
+$$
+z_i = \operatorname{Encoder}(\text{knowledge\_item}_i)
+$$
 
-其中，z_i ∈ R^d_e 是第i个知识条目的向量表示。
+其中，$z_i ∈ R^d_e$ 是第i个知识条目的向量表示。
 
 接下来，通过两组可训练的线性投影矩阵将知识向量映射到注意力空间：
 
-    k_i = W_k z_i + b_k
-    v_i = W_v z_i + b_v
+$$
+\begin{aligned}
+k_i &= W_k z_i + b_k,\\
+v_i &= W_v z_i + b_v
+\end{aligned}
+$$
 
-这里，W_k ∈ R^{d_k × d_e} 和 W_v ∈ R^{d_v × d_e} 分别是键和值的投影矩阵，它们将知识向量对齐到模型的注意力维度。
+这里，$W_k ∈ R^{d_k × d_e}$ 和 $W_v ∈ R^{d_v × d_e}$ 分别是键和值的投影矩阵，它们将知识向量对齐到模型的注意力维度。
 
 在注意力计算阶段，KMU的键值对与上下文的键值对进行拼接：
 
-    K_total = [K_context; K_kmu]
-    V_total = [V_context; V_kmu]
+$$
+\begin{aligned}
+K_{\text{total}} &= [K_{\text{context}}; K_{\text{kmu}}],\\
+V_{\text{total}} &= [V_{\text{context}}; V_{\text{kmu}}]
+\end{aligned}
+$$
 
 最终的注意力输出通过标准的缩放点积注意力计算：
 
-    Attention(Q, K_total, V_total) = softmax(QK_total^T / √d_k)V_total
+$$
+\operatorname{Attention}(Q, K_{\text{total}}, V_{\text{total}}) = \operatorname{softmax}\left(\frac{Q K_{\text{total}}^{\top}}{\sqrt{d_k}}\right) V_{\text{total}}
+$$
 
 为了避免KMUs在训练早期"抢占"过多注意力权重，我们引入了温度退火门控机制。每个KMU簇都配备一个可学习的门控参数g ∈ [0,1]，通过Gumbel-Softmax实现硬化采样。门控温度从初始的2.0线性下降到0.5，确保KMUs的激活逐渐变得稀疏和有针对性。
 
 KMUs的训练采用三阶段策略。在第一阶段（定向优化），我们冻结主干模型参数，仅训练KMU的投影矩阵和门控参数。训练目标包括任务损失和证据一致性正则：
 
-    L_stage1 = L_task + λ_cite L_cite
+$$
+L_{\text{stage1}} = L_{\text{task}} + \lambda_{\text{cite}} L_{\text{cite}}
+$$
 
 其中，L_cite 确保生成的答案能够正确引用相关的KMU条目。
 
@@ -155,9 +175,11 @@ KMUs的训练采用三阶段策略。在第一阶段（定向优化），我们�
 
 在R-GCN中，实体的表示通过聚合其邻居节点的信息来更新：
 
-    h_i^{(l+1)} = σ(W_0^{(l)} h_i^{(l)} + Σ_{r∈R} Σ_{j∈N_i^r} (1/c_{i,r}) W_r^{(l)} h_j^{(l)})
+$$
+h_i^{(l+1)} = \sigma\left(W_0^{(l)} h_i^{(l)} + \sum_{r \in R} \sum_{j \in N_i^r} \frac{1}{c_{i,r}} W_r^{(l)} h_j^{(l)}\right)
+$$
 
-其中，h_i^{(l)} 是第l层中实体i的隐藏表示，N_i^r 是通过关系r与实体i相连的邻居集合，c_{i,r} 是归一化常数，W_r^{(l)} 是关系r特定的权重矩阵。
+其中，$h_i^{(l)}$ 是第l层中实体i的隐藏表示，$N_i^r$ 是通过关系r与实体i相连的邻居集合，$c_{i,r}$ 是归一化常数，$W_r^{(l)}$ 是关系$r$特定的权重矩阵。
 
 为了处理大规模知识图谱中的稀疏性问题，我们引入了关系权重共享机制。将相似的关系类型分组，并在组内共享权重参数，从而减少模型参数数量并提高训练效率。
 
@@ -175,9 +197,11 @@ KMUs的训练采用三阶段策略。在第一阶段（定向优化），我们�
 
 聚类过程使用多层次的相似度度量。除了传统的余弦相似度外，我们还考虑了实体重叠度、主题一致性和时间相关性等因素。相似度计算公式为：
 
-    Sim(d_i, d_j) = α·cos(emb_i, emb_j) + β·entity_overlap(d_i, d_j) + γ·topic_consistency(d_i, d_j)
+$$
+\operatorname{Sim}(d_i, d_j) = \alpha \cdot \cos(\text{emb}_i, \text{emb}_j) + \beta \cdot \operatorname{entity\_overlap}(d_i, d_j) + \gamma \cdot \operatorname{topic\_consistency}(d_i, d_j)
+$$
 
-其中，α、β、γ是可调节的权重参数，根据不同的应用场景进行优化。
+其中，$α$、$β$、$γ$是可调节的权重参数，根据不同的应用场景进行优化。
 
 在每个聚类层级，我们使用抽取式和生成式相结合的方法生成摘要。抽取式摘要通过TextRank算法识别聚类中最重要的句子，确保关键信息不会丢失。生成式摘要则使用专门训练的摘要模型，生成更加连贯和简洁的概述。两种摘要方法的结果通过加权融合得到最终的层级摘要。
 
@@ -193,17 +217,23 @@ KMUs的训练采用三阶段策略。在第一阶段（定向优化），我们�
 
 路由器的核心是一个多任务神经网络，同时预测三层知识源的重要性权重和触发阈值。网络架构采用共享底层表示和任务特定的输出头设计：
 
-    shared_repr = MLP_shared(input_features)
-    w_kmu = sigmoid(MLP_kmu(shared_repr))
-    w_graph = sigmoid(MLP_graph(shared_repr))
-    w_retr = sigmoid(MLP_retr(shared_repr))
-    thresholds = softplus(MLP_thresh(shared_repr))
+$$
+\begin{aligned}
+\operatorname{shared\_repr} &= \operatorname{MLP}_{\text{shared}}(\text{input\_features}),\\
+w_{\text{kmu}} &= \sigma\bigl(\operatorname{MLP}_{\text{kmu}}(\operatorname{shared\_repr})\bigr),\\
+w_{\text{graph}} &= \sigma\bigl(\operatorname{MLP}_{\text{graph}}(\operatorname{shared\_repr})\bigr),\\
+w_{\text{retr}} &= \sigma\bigl(\operatorname{MLP}_{\text{retr}}(\operatorname{shared\_repr})\bigr),\\
+\operatorname{thresholds} &= \operatorname{softplus}\bigl(\operatorname{MLP}_{\text{thresh}}(\operatorname{shared\_repr})\bigr)
+\end{aligned}
+$$
 
 路由器的训练采用多目标优化策略。除了传统的任务损失外，我们还引入了延迟正则项和证据成本正则项：
 
-    L_route = L_task + λ_cite L_cite + λ_latency L_latency + λ_cost L_cost + λ_quality L_quality
+$$
+L_{\text{route}} = L_{\text{task}} + \lambda_{\text{cite}} L_{\text{cite}} + \lambda_{\text{latency}} L_{\text{latency}} + \lambda_{\text{cost}} L_{\text{cost}} + \lambda_{\text{quality}} L_{\text{quality}}
+$$
 
-其中，L_latency 惩罚高延迟的路由决策，L_cost 控制证据获取的计算成本，L_quality 基于裁判系统的反馈优化输出质量。
+其中，$L_latency$ 惩罚高延迟的路由决策，$L_cost$ 控制证据获取的计算成本，$L_quality$ 基于裁判系统的反馈优化输出质量。
 
 路由器还具备在线学习能力。在实际部署中，系统会收集用户反馈和性能指标，并通过增量学习的方式持续优化路由策略。这种自适应能力使得系统能够根据实际的使用模式和性能要求进行动态调整。
 
@@ -293,15 +323,19 @@ DTDA框架的核心创新点可以总结为以下几个方面：
 
 这种对应关系不仅仅是类比，而是可以通过具体的数学模型来刻画。我们可以定义一个认知负载函数C(q)来衡量处理查询q所需的认知资源：
 
-    C(q) = α·C_fast(q) + β·C_slow(q)
+$$
+C(q) = \alpha \cdot C_{\text{fast}}(q) + \beta \cdot C_{\text{slow}}(q)
+$$
 
-其中，C_fast(q)表示快速处理路径（KMUs）的认知负载，C_slow(q)表示慢速处理路径（图谱+检索）的认知负载。系统的目标是在保证输出质量的前提下最小化总认知负载。
+其中，$C_{\text{fast}}(q)$表示快速处理路径（KMUs）的认知负载，$C_{\text{slow}}(q)$表示慢速处理路径（图谱+检索）的认知负载。系统的目标是在保证输出质量的前提下最小化总认知负载。
 
 从信息论的角度，我们可以分析不同知识表示方法的信息容量和压缩效率。设参数化知识的容量为C_p，非参数化知识的容量为C_n，则系统的总知识容量为：
 
-    C_total = C_p + C_n - I(P;N)
+$$
+C_{\text{total}} = C_p + C_n - I(P;N)
+$$
 
-其中，I(P;N)是参数化知识和非参数化知识之间的互信息。系统的设计目标是最大化总知识容量，同时满足延迟和准确性的约束条件。
+其中，$I(P;N)$是参数化知识和非参数化知识之间的互信息。系统的设计目标是最大化总知识容量，同时满足延迟和准确性的约束条件。
 
 #### 5.3.2 实验设计的科学化改进
 
@@ -495,3 +529,4 @@ DTDA框架的研究过程为LLM+RAG领域的发展提供了几个重要启示。
 [9] Anonymous. (2023). Semiparametric Language Models Are Scalable Continual Learners. *arXiv preprint*, DOI: 10.48550/arxiv.2303.01421.
 
 [10] Wang, Z., Gu, X., Gu, X., & Hu, J. (2024). Enhancing video anomaly detection with learnable memory network: a new approach to memory-based auto-encoders. *Computer Vision and Image Understanding*, DOI: 10.1016/j.cviu.2024.103946.
+
