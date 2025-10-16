@@ -172,7 +172,7 @@
     if (!secureMain) return;
     const source = secureMain.getAttribute('data-secure-source');
     if (!source) return;
-    const contentSlot = secureMain.querySelector('[data-secure-content]');
+  const contentSlot = secureMain.querySelector('[data-secure-content]');
     if (!contentSlot) return;
 
     const guardNodes = Array.from(secureMain.querySelectorAll('[data-secure-guard]'));
@@ -289,25 +289,51 @@
     function injectContent(html){
       if (unlocked) return;
       unlocked = true;
+      const slug = secureMain.getAttribute('data-secure-slug') || '';
       guardNodes.forEach(node => node.remove());
-      contentSlot.innerHTML = html;
-      contentSlot.hidden = false;
-      secureMain.classList.remove('secure-post--locked');
-      secureMain.classList.add('secure-post--unlocked');
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      let nextMain = null;
+      if (template.content.childElementCount === 1) {
+        const onlyChild = template.content.firstElementChild;
+        if (onlyChild && onlyChild.tagName && onlyChild.tagName.toLowerCase() === 'main') {
+          nextMain = onlyChild;
+        }
+      }
+
+      let activeMain = secureMain;
+      if (nextMain) {
+        secureMain.replaceWith(nextMain);
+        activeMain = nextMain;
+        ['data-secure-source','data-secure-slug','data-secure-lang','data-secure-home'].forEach(attr => nextMain.removeAttribute(attr));
+        nextMain.classList.remove('secure-post', 'secure-post--locked', 'secure-post--unlocked');
+      } else {
+        const fragment = template.content;
+        secureMain.innerHTML = '';
+        secureMain.appendChild(fragment);
+        secureMain.classList.remove('secure-post', 'secure-post--locked', 'secure-post--unlocked');
+        ['data-secure-source','data-secure-slug','data-secure-lang','data-secure-home'].forEach(attr => secureMain.removeAttribute(attr));
+        contentSlot.hidden = false;
+        activeMain = secureMain;
+      }
+
+      try {
+        const sections = activeMain ? activeMain.querySelectorAll('.section') : [];
+        sections.forEach(section => section.classList.add('visible'));
+        activeMain.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (_) {}
+
       overlay.close();
       window.dispatchEvent(new CustomEvent('secure-post:rehydrate', {
         detail: {
           source,
-          slug: secureMain.getAttribute('data-secure-slug') || ''
+          slug
         }
       }));
       try {
         if (typeof window.__fanwanBlogRefresh === 'function') {
           window.__fanwanBlogRefresh();
         }
-      } catch (_) {}
-      try {
-        contentSlot.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (_) {}
     }
 
