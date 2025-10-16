@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Sequence
+from collections import defaultdict, deque
+from typing import Deque, Dict, Iterable, List, Sequence
 
 try:  # optional dependency, fall back to urllib when missing
     import requests  # type: ignore
@@ -243,6 +245,55 @@ def _markdown_to_segments(body: str) -> List[str]:
     return [seg for seg in segments if seg]
 
 
+def _load_existing_records(slug: str, lang: str) -> Dict[str, Deque[Dict[str, str]]]:
+    meta_path = META_ROOT / f"{slug}.{lang}.json"
+    if not meta_path.exists():
+        return defaultdict(deque)
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return defaultdict(deque)
+    mapping: Dict[str, Deque[Dict[str, str]]] = defaultdict(deque)
+    counters: Dict[str, int] = defaultdict(int)
+    for record in data.get("segments", []):
+        text = record.get("text")
+        file_path = record.get("file")
+        source_text = record.get("source_text") or record.get("source") or text
+        if (
+            isinstance(text, str)
+            and text.strip()
+            and isinstance(file_path, str)
+            and file_path.strip()
+            and isinstance(source_text, str)
+            and source_text.strip()
+        ):
+            idx = counters[source_text]
+            counters[source_text] = idx + 1
+            mapping[source_text].append({
+                "text": text,
+                "file": file_path,
+                "source_text": source_text,
+                "source_index": record.get("source_index", idx),
+            })
+    return mapping
+
+
+def _make_unique_filename(text: str, used: set[str]) -> str:
+    base = _safe_filename(text[:32]) or "segment"
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:10]
+    candidate = f"{base}-{digest}.mp3"
+    counter = 1
+    while candidate in used:
+        counter += 1
+        candidate = f"{base}-{digest}-{counter}.mp3"
+    used.add(candidate)
+    return candidate
+
+
+def _relative_audio_path(slug: str, lang: str, filename: str) -> str:
+    return f"/data/blog/audio/{slug}/{lang}/{filename}"
+
+
 def _download_audio(url: str, dest: Path) -> bool:
     try:
         if requests:
@@ -270,52 +321,128 @@ def synthesize_segments(segments: Sequence[str], slug: str, lang: str, voice: st
 
     bundle_dir = AUDIO_ROOT / slug / lang
     bundle_dir.mkdir(parents=True, exist_ok=True)
-    for existing in bundle_dir.glob("*.mp3"):
-        try:
-            existing.unlink()
-        except Exception:
-            pass
-
     language_type = "Chinese" if lang.lower().startswith("zh") else "English"
-    records: List[Dict[str, str]] = []
+    existing_map = _load_existing_records(slug, lang)
+    used_filenames: set[str] = set()
+    for records in existing_map.values():
+        for record in records:
+            file_path = record.get("file")
+            if isinstance(file_path, str):
+                used_filenames.add(Path(file_path).name)
+    for existing_file in bundle_dir.glob("*.mp3"):
+        used_filenames.add(existing_file.name)
 
-    for idx, paragraph in enumerate(segments, start=1):
+    final_records: List[Dict[str, str]] = []
+    segment_counter = 0
+
+    chunk_counters: Dict[str, int] = defaultdict(int)
+
+    def append_record(text: str, rel_path: str, source_text: str) -> None:
+        nonlocal segment_counter
+        idx = chunk_counters[source_text]
+        chunk_counters[source_text] = idx + 1
+        segment_counter += 1
+        final_records.append({
+            "id": f"segment-{segment_counter}",
+            "text": text,
+            "file": rel_path,
+            "source_text": source_text,
+            "source_index": idx,
+        })
+
+    def synthesize_text(text: str, source_text: str, depth: int = 0) -> List[Dict[str, str]]:
+        text_clean = text.strip()
+        if not text_clean:
+            return []
+
+        # up to two attempts before considering fallback splitting
+        for attempt in range(2):
+            try:
+                response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+                    model="qwen3-tts-flash",
+                    api_key=api_key,
+                    text=text_clean,
+                    voice=voice,
+                    language_type=language_type,
+                    stream=False,
+                )
+            except Exception as exc:  # pragma: no cover
+                print(f"[warn] TTS request failed (attempt {attempt + 1}) for text chunk: {exc}")
+                continue
+
+            output = getattr(response, "output", None)
+            audio = getattr(output, "audio", None)
+            url = getattr(audio, "url", None)
+            if not isinstance(url, str) or not url:
+                print("[warn] Missing audio URL, will retry" if attempt == 0 else "[warn] Missing audio URL, will split text")
+                continue
+
+            filename = _make_unique_filename(text_clean, used_filenames)
+            dest_path = bundle_dir / filename
+            if not _download_audio(url, dest_path):
+                print("[warn] Failed to download audio, will retry" if attempt == 0 else "[warn] Failed to download audio, will split text")
+                continue
+
+            return [{"text": text_clean, "file": _relative_audio_path(slug, lang, filename), "source_text": source_text}]
+
+        # fallback: split into smaller pieces
+        if depth >= 4 or len(text_clean) <= 20:
+            print("[warn] Unable to synthesize text chunk even after retries; skipping:", text_clean[:80], "...")
+            return []
+
+        limit = max(60, len(text_clean) // 2)
+        parts = _split_long(text_clean, limit=limit)
+        if len(parts) < 2:
+            midpoint = max(1, len(text_clean) // 2)
+            parts = [text_clean[:midpoint], text_clean[midpoint:]]
+
+        sub_records: List[Dict[str, str]] = []
+        for part in parts:
+            part_clean = part.strip()
+            if not part_clean:
+                continue
+            sub_records.extend(synthesize_text(part_clean, source_text, depth + 1))
+        return sub_records
+
+    for paragraph in segments:
         text = paragraph.strip()
         if not text:
             continue
-        try:
-            response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
-                model="qwen3-tts-flash",
-                api_key=api_key,
-                text=text,
-                voice=voice,
-                language_type=language_type,
-                stream=False,
-            )
-        except Exception as exc:  # pragma: no cover - SDK raises on transport issues
-            print(f"[warn] TTS request failed for segment {idx}: {exc}")
+
+        reused = False
+        queue = existing_map.get(text)
+        while queue:
+            candidate = queue.popleft()
+            rel_path = candidate.get("file") if isinstance(candidate, dict) else None
+            spoken = candidate.get("text") if isinstance(candidate, dict) else None
+            if isinstance(rel_path, str) and isinstance(spoken, str):
+                fs_path = ROOT / rel_path.lstrip("/")
+                if fs_path.exists():
+                    used_filenames.add(Path(rel_path).name)
+                    append_record(spoken, rel_path, text)
+                    reused = True
+                    break
+        if reused:
             continue
 
-        output = getattr(response, "output", None)
-        audio = getattr(output, "audio", None)
-        url = getattr(audio, "url", None)
-        if not isinstance(url, str) or not url:
-            print(f"[warn] Missing audio URL for segment {idx}")
+        new_records = synthesize_text(text, text)
+        if not new_records:
             continue
+        for record in new_records:
+            used_filenames.add(Path(record["file"]).name)
+            spoken = record.get("text", "")
+            append_record(spoken, record["file"], text)
 
-        filename = f"{idx:02d}-{_safe_filename(text[:32])}.mp3"
-        dest_path = bundle_dir / filename
-        if not _download_audio(url, dest_path):
-            print(f"[warn] Failed to download audio for segment {idx}")
-            continue
+        # Remove unused audio files to keep directory tidy
+        referenced = {Path(rec["file"]).name for rec in final_records}
+        for mp3 in bundle_dir.glob("*.mp3"):
+            if mp3.name not in referenced:
+                try:
+                    mp3.unlink()
+                except Exception:
+                    pass
 
-        records.append({
-            "id": f"segment-{idx}",
-            "text": text,
-            "file": f"/data/blog/audio/{slug}/{lang}/{filename}",
-        })
-
-    return records
+    return final_records
 
 
 def main() -> None:

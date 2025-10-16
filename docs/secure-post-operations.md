@@ -34,6 +34,27 @@ node tools/secure-post/encrypt-post.mjs `
   --selector main `
   --inner
 
+node tools/secure-post/encrypt-post.mjs `
+  --input blog/CIKMA.html `
+  --output data/secure/CIKMA.zh.json `
+  --password zw2026 `
+  --selector main `
+  --inner
+
+node tools/secure-post/encrypt-post.mjs `
+  --input blog/CIKMA.en.html `
+  --output data/secure/CIKMA.en.json `
+  --password zw2026 `
+  --selector main `
+  --inner
+
+node tools/secure-post/encrypt-post.mjs `
+  --input blog/CIKMA.es.html `
+  --output data/secure/CIKMA.es.json `
+  --password zw2026 `
+  --selector main `
+  --inner
+
 # English
 node tools/secure-post/encrypt-post.mjs `
   --input blog/DTDA.en.html `
