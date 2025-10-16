@@ -63,6 +63,20 @@ async function readPostMeta(slug){
   return metaByLang;
 }
 
+const secureCache = new Map();
+
+async function isSecure(slug){
+  if (secureCache.has(slug)) return secureCache.get(slug);
+  const filePath = path.join(root, 'blog', `${slug}.html`);
+  let locked = false;
+  try {
+    const html = await fs.readFile(filePath, 'utf8');
+    locked = /data-secure-source="/.test(html);
+  } catch {}
+  secureCache.set(slug, locked);
+  return locked;
+}
+
 async function pickCover(slug, lang, metaCover){
   // Prefer meta cover if provided; if it's a site path, verify existence.
   if (metaCover) {
@@ -84,7 +98,20 @@ async function cardHtml(slug, metas){
   const srcZh = await pickCover(slug, 'zh', metas.zh?.cover);
   const srcEn = await pickCover(slug, 'en', metas.en?.cover);
   const srcEs = await pickCover(slug, 'es', metas.es?.cover);
-  return `        <article class="card post-card">
+  const secure = await isSecure(slug);
+  const articleClass = secure ? 'card post-card post-card--secure' : 'card post-card';
+  const articleData = secure ? ' data-post-secure="locked"' : '';
+  const secureBadge = secure
+    ? `
+          <span class="post-card-flag post-card-flag--secure" data-secure-flag aria-label="Protected post">
+            <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="8.5" width="13" height="9" rx="2.3"/><path d="M6.5 8.5v-1.8a3.5 3.5 0 0 1 7 0v1.8"/><path d="M10 12v2.4"/><circle cx="10" cy="12" r="1.1"/></g></svg>
+            <span class="i18n l-zh">加密</span>
+            <span class="i18n l-en">Locked</span>
+            <span class="i18n l-es">Protegido</span>
+          </span>`
+    : '';
+  return `        <article class="${articleClass}"${articleData}>
+${secureBadge}
           <a class="post-link" href="${hrefZh}" aria-label="${(metas.zh?.title||metas.en?.title||slug).replace(/"/g,'&quot;')}"
              data-href-zh="${hrefZh}"
              data-href-en="${hrefEn}"

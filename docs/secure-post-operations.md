@@ -85,6 +85,11 @@ python tools/blog/secure_post_toggle.py --slug DTDA --mode enable
 - Backups are written to `data/secure/backups/<slug>.<lang>.main.html` if they do not already exist.
 - The published HTML (`blog/DTDA*.html`) now contains the guard UI instead of the plaintext body.
 - After deployment readers see the overlay, enter the passphrase, and the decrypted payload (including the hero, audio player, table of contents, etc.) is rehydrated client-side.
+- Rebuild the blog index so the homepage lock badge stays in sync:
+
+  ```powershell
+  node scripts/build-blog-index.mjs
+  ```
 
 ## 4. Verify locally
 
@@ -104,6 +109,11 @@ python tools/blog/secure_post_toggle.py --slug DTDA --mode disable
 
 - The helper restores the original `<main>` from `data/secure/backups`. If the backup is missing you will be prompted to regenerate it.
 - Double-check the restored HTML and remove `secure-post.js` if it is no longer required on that page.
+- Refresh the blog index to remove the lock badge:
+
+  ```powershell
+  node scripts/build-blog-index.mjs
+  ```
 
 ## 6. Maintaining the config
 
