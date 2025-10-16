@@ -275,125 +275,141 @@ document.addEventListener('DOMContentLoaded', () => {
   })();
 
   /* Floating Table of Contents: auto-build from h2/h3 and attach a hover-expandable widget */
-  (function buildFloatingTOC(){
-    try {
-      // Only build on post pages (presence of .blog-post or many headings)
-      const isPost = document.body.classList.contains('blog-post') || document.querySelector('.i18n-block');
-      if (!isPost) return;
+  (function initFloatingTOC(){
+    let currentTOC = null;
+    let currentTab = null;
 
-      const headings = Array.from(document.querySelectorAll('.i18n-block h2, .i18n-block h3'))
-                        .filter(h => h.id || (h.textContent && h.textContent.trim().length));
-      if (!headings.length) return;
+    function collapseCurrent(){
+      if (!currentTOC) return;
+      currentTOC.classList.add('floating-toc--collapsed');
+      if (currentTab) currentTab.setAttribute('aria-expanded','false');
+    }
 
-      // Normalize: ensure each heading has an id
-      headings.forEach((h, i) => {
-        if (!h.id) {
-          const base = h.textContent.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g,'');
-          let id = base || `heading-${i}`;
-          // avoid collisions
-          let k = 1;
-          while (document.getElementById(id)) { id = `${base || 'heading'}-${k++}`; }
-          h.id = id;
+    function expandCurrent(){
+      if (!currentTOC) return;
+      currentTOC.classList.remove('floating-toc--collapsed');
+      if (currentTab) currentTab.setAttribute('aria-expanded','true');
+    }
+
+    function render(){
+      try {
+        if (currentTOC) {
+          currentTOC.remove();
+          currentTOC = null;
+          currentTab = null;
         }
-      });
 
-      // Build DOM
-      const toc = document.createElement('nav');
-      toc.className = 'floating-toc floating-toc--collapsed';
-      toc.setAttribute('aria-label','Table of contents');
-      toc.tabIndex = 0;
+        const isPost = document.body.classList.contains('blog-post') || document.querySelector('.i18n-block');
+        if (!isPost) return;
 
-      const panel = document.createElement('div'); panel.className = 'floating-toc__panel';
-      const tab = document.createElement('button'); tab.className = 'floating-toc__tab'; tab.type = 'button';
-      tab.title = '目录';
-      // Simplified content: a single span used as the icon canvas. Visual lines are drawn with CSS.
-      tab.innerHTML = `<span class="icon-line" aria-hidden="true"></span>`;
-      tab.setAttribute('aria-expanded','false');
+        const headings = Array.from(document.querySelectorAll('.i18n-block h2, .i18n-block h3'))
+                          .filter(h => h.id || (h.textContent && h.textContent.trim().length));
+        if (!headings.length) return;
 
-      const content = document.createElement('div'); content.className = 'floating-toc__content';
-      const title = document.createElement('div'); title.className = 'floating-toc__title'; title.textContent = '目录';
-      const list = document.createElement('ul'); list.className = 'floating-toc__list';
-
-      headings.forEach(h => {
-        const li = document.createElement('li');
-        li.tabIndex = 0;
-        li.setAttribute('data-level', h.tagName.toLowerCase() === 'h2' ? '2' : '3');
-        li.dataset.target = h.id;
-        li.textContent = (h.textContent || '').trim();
-        li.addEventListener('click', (e)=>{
-          e.preventDefault();
-          // compute target top taking into account a fixed header if present
-          const targetEl = document.getElementById(h.id);
-          if (targetEl) {
-            const rect = targetEl.getBoundingClientRect();
-            // detect fixed header by querying header element height (if present)
-            const header = document.querySelector('body > header, header');
-            const headerHeight = header ? header.getBoundingClientRect().height : 0;
-            const safeOffset = Math.min(headerHeight + 12, Math.round(window.innerHeight * 0.18));
-            const top = window.scrollY + rect.top - safeOffset;
-            window.scrollTo({ top: top, behavior: 'smooth' });
-          }
-          // Always collapse after the user selects a TOC entry (click-to-toggle UX)
-          toc.classList.add('floating-toc--collapsed');
-          tab.setAttribute('aria-expanded','false');
-          try { tab.focus(); } catch (e) {}
-        });
-        li.addEventListener('keydown', (ev)=>{ if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } });
-        list.appendChild(li);
-      });
-
-  content.appendChild(title);
-  content.appendChild(list);
-  // Keep the tab outside the sliding panel so the collapsed circular
-  // button remains visible even when the panel is translated off-screen.
-  panel.appendChild(content);
-  toc.appendChild(tab);
-  toc.appendChild(panel);
-      document.body.appendChild(toc);
-
-      // Interaction: tab toggles collapsed state on click (click-to-toggle UX).
-      // Keep the handler lightweight; keyboard activation via Enter/Space is wired below.
-      tab.addEventListener('click', ()=>{
-        const isCollapsed = toc.classList.contains('floating-toc--collapsed');
-        if (isCollapsed) { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); }
-        else { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); }
-      });
-
-      // Click-to-toggle: collapse when clicking/tapping outside the TOC.
-      function collapseToc(){ if (!toc.classList.contains('floating-toc--collapsed')) { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); } }
-      function expandToc(){ if (toc.classList.contains('floating-toc--collapsed')) { toc.classList.remove('floating-toc--collapsed'); tab.setAttribute('aria-expanded','true'); } }
-
-      // Keyboard: allow Enter/Space to toggle when the tab is focused
-      tab.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tab.click(); } });
-
-      // Outside click/tap collapses the TOC
-      document.addEventListener('click', (e) => { if (!toc.contains(e.target)) collapseToc(); });
-      document.addEventListener('touchstart', (e) => { if (!toc.contains(e.target)) collapseToc(); }, { passive: true });
-
-      // Global Escape: collapse and restore focus to the tab for accessibility
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { collapseToc(); try { tab.focus(); } catch (err) {} } });
-
-      // Highlight active heading on scroll (IntersectionObserver)
-      const items = Array.from(list.querySelectorAll('li'));
-      const idToItem = new Map(items.map(li => [li.dataset.target, li]));
-      const io = new IntersectionObserver((entries)=>{
-        entries.forEach(en=>{
-          const id = en.target.id;
-          const li = idToItem.get(id);
-          if (!li) return;
-          if (en.isIntersecting && en.intersectionRatio > 0.25) {
-            items.forEach(x=>x.classList.remove('active'));
-            li.classList.add('active');
+        headings.forEach((h, i) => {
+          if (!h.id) {
+            const base = h.textContent.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '-').replace(/^-+|-+$/g,'');
+            let id = base || `heading-${i}`;
+            let k = 1;
+            while (document.getElementById(id)) { id = `${base || 'heading'}-${k++}`; }
+            h.id = id;
           }
         });
-      }, { root: null, rootMargin: '0px 0px -60% 0px', threshold: [0.25, 0.5] });
 
-      headings.forEach(h => io.observe(h));
+        const toc = document.createElement('nav');
+        toc.className = 'floating-toc floating-toc--collapsed';
+        toc.setAttribute('aria-label','Table of contents');
+        toc.tabIndex = 0;
 
-      // Accessibility: allow closing via Escape when focused inside
-      toc.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { toc.classList.add('floating-toc--collapsed'); tab.setAttribute('aria-expanded','false'); tab.focus(); } });
+        const panel = document.createElement('div'); panel.className = 'floating-toc__panel';
+        const tab = document.createElement('button'); tab.className = 'floating-toc__tab'; tab.type = 'button';
+        tab.title = '目录';
+        tab.innerHTML = `<span class="icon-line" aria-hidden="true"></span>`;
+        tab.setAttribute('aria-expanded','false');
 
-    } catch (err) { console.warn('floating TOC init failed', err); }
+        const content = document.createElement('div'); content.className = 'floating-toc__content';
+        const title = document.createElement('div'); title.className = 'floating-toc__title'; title.textContent = '目录';
+        const list = document.createElement('ul'); list.className = 'floating-toc__list';
+
+        headings.forEach(h => {
+          const li = document.createElement('li');
+          li.tabIndex = 0;
+          li.setAttribute('data-level', h.tagName.toLowerCase() === 'h2' ? '2' : '3');
+          li.dataset.target = h.id;
+          li.textContent = (h.textContent || '').trim();
+          li.addEventListener('click', (e)=>{
+            e.preventDefault();
+            const targetEl = document.getElementById(h.id);
+            if (targetEl) {
+              const rect = targetEl.getBoundingClientRect();
+              const header = document.querySelector('body > header, header');
+              const headerHeight = header ? header.getBoundingClientRect().height : 0;
+              const safeOffset = Math.min(headerHeight + 12, Math.round(window.innerHeight * 0.18));
+              const top = window.scrollY + rect.top - safeOffset;
+              window.scrollTo({ top, behavior: 'smooth' });
+            }
+            collapseCurrent();
+            try { tab.focus(); } catch (err) {}
+          });
+          li.addEventListener('keydown', (ev)=>{ if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); li.click(); } });
+          list.appendChild(li);
+        });
+
+        content.appendChild(title);
+        content.appendChild(list);
+        panel.appendChild(content);
+        toc.appendChild(tab);
+        toc.appendChild(panel);
+        document.body.appendChild(toc);
+
+        tab.addEventListener('click', ()=>{
+          const isCollapsed = toc.classList.contains('floating-toc--collapsed');
+          if (isCollapsed) { expandCurrent(); }
+          else { collapseCurrent(); }
+        });
+        tab.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tab.click(); } });
+
+        const items = Array.from(list.querySelectorAll('li'));
+        const idToItem = new Map(items.map(li => [li.dataset.target, li]));
+        const io = new IntersectionObserver((entries)=>{
+          entries.forEach(en=>{
+            const id = en.target.id;
+            const li = idToItem.get(id);
+            if (!li) return;
+            if (en.isIntersecting && en.intersectionRatio > 0.25) {
+              items.forEach(x=>x.classList.remove('active'));
+              li.classList.add('active');
+            }
+          });
+        }, { root: null, rootMargin: '0px 0px -60% 0px', threshold: [0.25, 0.5] });
+
+        headings.forEach(h => io.observe(h));
+
+        toc.addEventListener('keydown', (e)=>{ if (e.key === 'Escape') { collapseCurrent(); try { tab.focus(); } catch (err) {} } });
+
+        currentTOC = toc;
+        currentTab = tab;
+        collapseCurrent();
+      } catch (err) { console.warn('floating TOC init failed', err); }
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!currentTOC) return;
+      if (!currentTOC.contains(e.target)) collapseCurrent();
+    });
+    document.addEventListener('touchstart', (e) => {
+      if (!currentTOC) return;
+      if (!currentTOC.contains(e.target)) collapseCurrent();
+    }, { passive: true });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') collapseCurrent();
+    });
+
+    render();
+    window.__fanwanBuildFloatingTOC = render;
+    window.addEventListener('secure-post:rehydrate', () => {
+      requestAnimationFrame(render);
+    });
   })();
   // Set current year in footer
   const yearSpan = document.getElementById('year');
@@ -1099,7 +1115,34 @@ document.addEventListener('DOMContentLoaded', () => {
       wrap.classList.add('post-audio-ready');
     }
 
-    // Initial sync: do critical visibility first, then defer heavier work
+    function refreshPost(){
+      syncLangBlocks();
+      syncPostHero();
+      updateTocLabel();
+      buildToc();
+      updateReadingTime();
+      initPostAudio();
+      try {
+        if (window.__fanwanBuildFloatingTOC) window.__fanwanBuildFloatingTOC();
+      } catch {}
+      try {
+        if (window.hljs && typeof window.hljs.highlightAll === 'function') window.hljs.highlightAll();
+      } catch {}
+      try {
+        if (window.renderMathInElement) {
+          const scope = document.querySelector('.container.prose') || isPost;
+          if (scope) {
+            window.renderMathInElement(scope, {
+              delimiters: [
+                { left: '$$', right: '$$', display: true },
+                { left: '$', right: '$', display: false }
+              ]
+            });
+          }
+        }
+      } catch {}
+    }
+
     syncLangBlocks();
     syncPostHero();
     initPostAudio();
@@ -1110,13 +1153,14 @@ document.addEventListener('DOMContentLoaded', () => {
       updateReadingTime();
       initPostAudio();
     });
-    // Rebuild when language changes
+
+    window.__fanwanBlogRefresh = refreshPost;
+
     window.addEventListener('language-changed', () => {
-      syncLangBlocks();
-      updateTocLabel();
-      buildToc();
-      updateReadingTime();
-      syncPostHero();
+      refreshPost();
+    });
+    window.addEventListener('secure-post:rehydrate', () => {
+      refreshPost();
     });
 
     // Share feature: WeChat QR, WhatsApp, Copy link, Native share (Download cover removed)
