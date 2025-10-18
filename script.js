@@ -87,18 +87,41 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       function parseCounterValue(payload){
-        if (!payload || typeof payload !== 'object') return 0;
-        const candidates = [
-          payload.value,
-          payload.count,
-          payload.views,
-          payload.total,
-          payload.data,
-          (payload.data && typeof payload.data === 'object') ? payload.data.value : undefined
-        ];
-        for (const raw of candidates){
-          const n = Number.parseInt(raw, 10);
-          if (Number.isFinite(n) && n >= 0) return n;
+        if (payload == null) return 0;
+        const seen = new Set();
+        const tryNumeric = (raw) => {
+          if (raw == null) return 0;
+          if (typeof raw === 'number') return Number.isFinite(raw) ? raw : 0;
+          if (typeof raw === 'string') {
+            const trimmed = raw.trim();
+            if (!trimmed) return 0;
+            const n = Number(trimmed);
+            return Number.isFinite(n) ? n : 0;
+          }
+          return 0;
+        };
+        const enqueueObject = (obj, queue) => {
+          if (!obj || typeof obj !== 'object') return;
+          if (seen.has(obj)) return;
+          seen.add(obj);
+          const priorityKeys = ['value','count','views','total','up_count','current','new_value','result','data'];
+          priorityKeys.forEach(key => {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) queue.push(obj[key]);
+          });
+          // Also inspect remaining enumerable values once prioritised keys handled
+          Object.keys(obj).forEach(key => {
+            if (!priorityKeys.includes(key)) queue.push(obj[key]);
+          });
+        };
+
+        const queue = [payload];
+        while (queue.length){
+          const item = queue.shift();
+          const num = tryNumeric(item);
+          if (Number.isFinite(num) && num > 0) return num;
+          if (typeof item === 'object' && item !== null){
+            enqueueObject(item, queue);
+          }
         }
         return 0;
       }
@@ -130,8 +153,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       // CountAPI helper (CounterAPI optional via workspace token)
-      const NS = 'fanwan-ai.github.io';
-      const KEY_UV = 'site_uv';
+  const NS = 'fanwan-ai.github.io';
+  const COUNTERAPI_DEFAULT_WORKSPACE = 'fanwan';
+  const KEY_UV = 'fanwan';
       const hasTagged = !!safeLocalGet('site_uv_tag');
       const tagVisitor = ()=>{ safeLocalSet('site_uv_tag', '1'); };
       // Basic fetch with timeout
@@ -154,8 +178,16 @@ document.addEventListener('DOMContentLoaded', () => {
         return fetchJson(url, 1400);
       }
       const counterSettings = (() => {
-        const workspace = readMeta('counterapi-workspace') || NS;
-        const counterName = readMeta('counterapi-counter') || KEY_UV;
+        const globalCfg = (() => {
+          try {
+            const cfg = window.__COUNTERAPI_CONFIG__;
+            return (cfg && typeof cfg === 'object') ? cfg : {};
+          } catch {
+            return {};
+          }
+        })();
+  const workspace = globalCfg.workspace || readMeta('counterapi-workspace') || COUNTERAPI_DEFAULT_WORKSPACE;
+        const counterName = globalCfg.counter || globalCfg.counterName || readMeta('counterapi-counter') || KEY_UV;
         // Token can be provided via a meta tag (<meta name="counterapi-token" ...>)
         // or injected onto window.__COUNTERAPI_TOKEN__ during deployment.
         const token = (typeof window.__COUNTERAPI_TOKEN__ === 'string' && window.__COUNTERAPI_TOKEN__.trim())
@@ -166,20 +198,24 @@ document.addEventListener('DOMContentLoaded', () => {
           token: (token || '').trim()
         };
       })();
-      const hasCounterAPICreds = Boolean(
-        counterSettings.token && counterSettings.workspace && counterSettings.counterName
+      const canUseCounterAPI = Boolean(
+        counterSettings.workspace && counterSettings.counterName
       );
       async function counterapi(method){
-        if (!hasCounterAPICreds) throw new Error('counterapi-disabled');
+        if (!canUseCounterAPI) throw new Error('counterapi-disabled');
         const base = 'https://api.counterapi.dev/v2';
         const path = `${base}/${encodeURIComponent(counterSettings.workspace)}/${encodeURIComponent(counterSettings.counterName)}`;
         const url = method === 'hit' ? `${path}/up` : path;
-        return fetchJson(url, 2000, {
-          headers: {
-            Authorization: `Bearer ${counterSettings.token}`,
-            Accept: 'application/json'
-          }
-        });
+        const headers = { Accept: 'application/json' };
+        if (counterSettings.token) {
+          headers.Authorization = `Bearer ${counterSettings.token}`;
+        }
+        const response = await fetchJson(url, 2000, { headers });
+        const code = response?.code;
+        if (code && code !== 200 && code !== '200') {
+          throw new Error(`counterapi-${code}`);
+        }
+        return response;
       }
 
       // Fallback: Busuanzi (popular in CN). Load mini script and read site UV.
@@ -235,7 +271,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 1) Fast path: race GET from both providers
         async function fastGet(){
           const tasks = [];
-          if (hasCounterAPICreds) tasks.push(counterapi('get'));
+          if (canUseCounterAPI) tasks.push(counterapi('get'));
           tasks.push(countapi('get', KEY_UV));
           const responses = await Promise.allSettled(tasks);
           const values = responses.map(r => {
@@ -260,7 +296,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 3) Increment once per visitor
         if (!hasTagged) {
           let inc = 0;
-          if (hasCounterAPICreds) {
+          if (canUseCounterAPI) {
             try {
               const a = await counterapi('hit');
               inc = parseCounterValue(a);
