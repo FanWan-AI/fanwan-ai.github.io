@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      // CountAPI/CounterAPI helpers
+  // CountAPI helper (CounterAPI removed: requires auth as of 2025-06)
       const NS = 'fanwan-ai.github.io';
       const KEY_UV = 'site_uv';
       const hasTagged = !!safeLocalGet('site_uv_tag');
@@ -122,12 +122,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const base = 'https://api.countapi.xyz';
         const url = method === 'hit' ? `${base}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(key)}`
                                      : `${base}/get/${encodeURIComponent(NS)}/${encodeURIComponent(key)}`;
-        return fetchJson(url, 1400);
-      }
-      async function counterapi(method, key){
-        const base = 'https://counterapi.dev/api';
-        const url = method === 'hit' ? `${base}/${encodeURIComponent(NS)}/${encodeURIComponent(key)}/increment`
-                                     : `${base}/${encodeURIComponent(NS)}/${encodeURIComponent(key)}`;
         return fetchJson(url, 1400);
       }
 
@@ -183,17 +177,13 @@ document.addEventListener('DOMContentLoaded', () => {
       async function getUV(){
         // 1) Fast path: race GET from both providers
         async function fastGet(){
-          const responses = await Promise.allSettled([
-            countapi('get', KEY_UV),
-            counterapi('get', KEY_UV)
-          ]);
-          const values = responses.map(r => {
-            if (r.status !== 'fulfilled') return 0;
-            const raw = r.value?.value ?? r.value?.count ?? r.value?.views;
+          try {
+            const res = await countapi('get', KEY_UV);
+            const raw = res?.value ?? res?.count ?? res?.views;
             return (Number.isFinite(raw) && raw > 0) ? raw : 0;
-          });
-          const best = values.filter(v => v > 0);
-          return best.length ? Math.max(...best) : 0;
+          } catch {
+            return 0;
+          }
         }
         // 2) If first visit on this browser, perform HIT in background to increment
         let shown = 0;
@@ -212,8 +202,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!hasTagged) {
           let inc = 0;
           try { const a = await countapi('hit', KEY_UV); inc = a?.value ?? a?.count ?? a?.views ?? 0; }
-          catch { try { const b = await counterapi('hit', KEY_UV); inc = b?.value ?? b?.count ?? b?.views ?? 0; } catch {}
-          }
+          catch {}
           if (inc > 0) {
             // Prefer incremented value if higher than shown
             const final = Math.max(shown || 0, inc);
