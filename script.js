@@ -77,6 +77,32 @@ document.addEventListener('DOMContentLoaded', () => {
       wrap.innerHTML = `<span class="counter-item">${line(initialVal, getLang())}</span>`;
       footerBox.appendChild(wrap);
 
+      // Utility helpers for counter providers
+      function readMeta(name){
+        try {
+          return (document.querySelector(`meta[name="${name}"]`)?.getAttribute('content') || '').trim();
+        } catch {
+          return '';
+        }
+      }
+
+      function parseCounterValue(payload){
+        if (!payload || typeof payload !== 'object') return 0;
+        const candidates = [
+          payload.value,
+          payload.count,
+          payload.views,
+          payload.total,
+          payload.data,
+          (payload.data && typeof payload.data === 'object') ? payload.data.value : undefined
+        ];
+        for (const raw of candidates){
+          const n = Number.parseInt(raw, 10);
+          if (Number.isFinite(n) && n >= 0) return n;
+        }
+        return 0;
+      }
+
       // Minimal count-up animation for the number only
       function countUp(el, to){
         try {
@@ -103,17 +129,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-  // CountAPI helper (CounterAPI removed: requires auth as of 2025-06)
+      // CountAPI helper (CounterAPI optional via workspace token)
       const NS = 'fanwan-ai.github.io';
       const KEY_UV = 'site_uv';
       const hasTagged = !!safeLocalGet('site_uv_tag');
       const tagVisitor = ()=>{ safeLocalSet('site_uv_tag', '1'); };
       // Basic fetch with timeout
-      async function fetchJson(url, timeoutMs = 1400){
+      async function fetchJson(url, timeoutMs = 1400, init){
         const ctl = new AbortController();
         const t = setTimeout(()=>ctl.abort(), timeoutMs);
         try {
-          const r = await fetch(url, { mode: 'cors', signal: ctl.signal });
+          const opts = { ...(init || {}) };
+          if (!('mode' in opts)) opts.mode = 'cors';
+          opts.signal = ctl.signal;
+          const r = await fetch(url, opts);
           if (!r.ok) throw new Error('net');
           return await r.json();
         } finally { clearTimeout(t); }
@@ -123,6 +152,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = method === 'hit' ? `${base}/hit/${encodeURIComponent(NS)}/${encodeURIComponent(key)}`
                                      : `${base}/get/${encodeURIComponent(NS)}/${encodeURIComponent(key)}`;
         return fetchJson(url, 1400);
+      }
+      const counterSettings = (() => {
+        const workspace = readMeta('counterapi-workspace') || NS;
+        const counterName = readMeta('counterapi-counter') || KEY_UV;
+        // Token can be provided via a meta tag (<meta name="counterapi-token" ...>)
+        // or injected onto window.__COUNTERAPI_TOKEN__ during deployment.
+        const token = (typeof window.__COUNTERAPI_TOKEN__ === 'string' && window.__COUNTERAPI_TOKEN__.trim())
+          || readMeta('counterapi-token');
+        return {
+          workspace: workspace.trim(),
+          counterName: counterName.trim(),
+          token: (token || '').trim()
+        };
+      })();
+      const hasCounterAPICreds = Boolean(
+        counterSettings.token && counterSettings.workspace && counterSettings.counterName
+      );
+      async function counterapi(method){
+        if (!hasCounterAPICreds) throw new Error('counterapi-disabled');
+        const base = 'https://api.counterapi.dev/v2';
+        const path = `${base}/${encodeURIComponent(counterSettings.workspace)}/${encodeURIComponent(counterSettings.counterName)}`;
+        const url = method === 'hit' ? `${path}/up` : path;
+        return fetchJson(url, 2000, {
+          headers: {
+            Authorization: `Bearer ${counterSettings.token}`,
+            Accept: 'application/json'
+          }
+        });
       }
 
       // Fallback: Busuanzi (popular in CN). Load mini script and read site UV.
@@ -177,13 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
       async function getUV(){
         // 1) Fast path: race GET from both providers
         async function fastGet(){
-          try {
-            const res = await countapi('get', KEY_UV);
-            const raw = res?.value ?? res?.count ?? res?.views;
-            return (Number.isFinite(raw) && raw > 0) ? raw : 0;
-          } catch {
-            return 0;
-          }
+          const tasks = [];
+          if (hasCounterAPICreds) tasks.push(counterapi('get'));
+          tasks.push(countapi('get', KEY_UV));
+          const responses = await Promise.allSettled(tasks);
+          const values = responses.map(r => {
+            if (r.status !== 'fulfilled') return 0;
+            return parseCounterValue(r.value);
+          }).filter(v => v > 0);
+          return values.length ? Math.max(...values) : 0;
         }
         // 2) If first visit on this browser, perform HIT in background to increment
         let shown = 0;
@@ -201,8 +260,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // 3) Increment once per visitor
         if (!hasTagged) {
           let inc = 0;
-          try { const a = await countapi('hit', KEY_UV); inc = a?.value ?? a?.count ?? a?.views ?? 0; }
-          catch {}
+          if (hasCounterAPICreds) {
+            try {
+              const a = await counterapi('hit');
+              inc = parseCounterValue(a);
+            } catch {}
+          }
+          if (inc <= 0) {
+            try {
+              const b = await countapi('hit', KEY_UV);
+              inc = parseCounterValue(b);
+            } catch {}
+          }
           if (inc > 0) {
             // Prefer incremented value if higher than shown
             const final = Math.max(shown || 0, inc);
