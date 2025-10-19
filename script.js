@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
       function parseCounterValue(payload){
         if (payload == null) return 0;
         const seen = new Set();
+        const ignoreKeys = new Set(['code','status','http_status','http_code']);
         const tryNumeric = (raw) => {
           if (raw == null) return 0;
           if (typeof raw === 'number') return Number.isFinite(raw) ? raw : 0;
@@ -105,22 +106,32 @@ document.addEventListener('DOMContentLoaded', () => {
           if (seen.has(obj)) return;
           seen.add(obj);
           const priorityKeys = ['value','count','views','total','up_count','current','new_value','result','data'];
+          const prioritized = [];
           priorityKeys.forEach(key => {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) queue.push(obj[key]);
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+              prioritized.push({ value: obj[key], key });
+            }
           });
-          // Also inspect remaining enumerable values once prioritised keys handled
+          for (let i = prioritized.length - 1; i >= 0; i -= 1) {
+            queue.unshift(prioritized[i]);
+          }
           Object.keys(obj).forEach(key => {
-            if (!priorityKeys.includes(key)) queue.push(obj[key]);
+            if (!priorityKeys.includes(key)) {
+              queue.push({ value: obj[key], key });
+            }
           });
         };
 
-        const queue = [payload];
-        while (queue.length){
-          const item = queue.shift();
-          const num = tryNumeric(item);
-          if (Number.isFinite(num) && num > 0) return num;
-          if (typeof item === 'object' && item !== null){
-            enqueueObject(item, queue);
+        const queue = [{ value: payload, key: null }];
+        while (queue.length) {
+          const current = queue.shift();
+          const num = tryNumeric(current?.value);
+          const keyName = (current?.key || '').toString().toLowerCase();
+          if (Number.isFinite(num) && num > 0 && !ignoreKeys.has(keyName)) {
+            return num;
+          }
+          if (current && typeof current.value === 'object' && current.value !== null) {
+            enqueueObject(current.value, queue);
           }
         }
         return 0;
@@ -270,15 +281,20 @@ document.addEventListener('DOMContentLoaded', () => {
       async function getUV(){
         // 1) Fast path: race GET from both providers
         async function fastGet(){
-          const tasks = [];
-          if (canUseCounterAPI) tasks.push(counterapi('get'));
-          tasks.push(countapi('get', KEY_UV));
-          const responses = await Promise.allSettled(tasks);
-          const values = responses.map(r => {
-            if (r.status !== 'fulfilled') return 0;
-            return parseCounterValue(r.value);
-          }).filter(v => v > 0);
-          return values.length ? Math.max(...values) : 0;
+          let primary = 0;
+          if (canUseCounterAPI) {
+            try {
+              const response = await counterapi('get');
+              primary = parseCounterValue(response);
+              if (primary > 0) return primary;
+            } catch {}
+          }
+          try {
+            const fallback = await countapi('get', KEY_UV);
+            const parsed = parseCounterValue(fallback);
+            if (parsed > primary) return parsed;
+          } catch {}
+          return primary > 0 ? primary : 0;
         }
         // 2) If first visit on this browser, perform HIT in background to increment
         let shown = 0;
