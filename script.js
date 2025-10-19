@@ -87,7 +87,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       function parseCounterValue(payload){
-        if (payload == null) return 0;
+  if (payload == null) return 0;
+        const offset = 5000;
         const seen = new Set();
         const ignoreKeys = new Set(['code','status','http_status','http_code']);
         const tryNumeric = (raw) => {
@@ -128,13 +129,13 @@ document.addEventListener('DOMContentLoaded', () => {
           const num = tryNumeric(current?.value);
           const keyName = (current?.key || '').toString().toLowerCase();
           if (Number.isFinite(num) && num > 0 && !ignoreKeys.has(keyName)) {
-            return num;
+            return num + offset;
           }
           if (current && typeof current.value === 'object' && current.value !== null) {
             enqueueObject(current.value, queue);
           }
         }
-        return 0;
+  return 0;
       }
 
       // Minimal count-up animation for the number only
