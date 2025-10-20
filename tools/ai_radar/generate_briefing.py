@@ -16,7 +16,7 @@ Environment knobs (all optional):
     BRIEFING_ITEMS            number of news items or "all" (overrides BRIEFING_TOP_K, defaults to all)
     BRIEFING_TOP_K            legacy integer override (ignored when BRIEFING_ITEMS is set)
     BRIEFING_MODE             default "narrative_script"
-    BRIEFING_MAX_TOKENS       default 2200
+    BRIEFING_MAX_TOKENS       default 4096
     BRIEFING_SOURCE_BLACKLIST comma-separated hostnames to skip
     BRIEFING_FORCE_TEMPLATE   set to 1 to skip LLM and use template
 """
@@ -93,6 +93,9 @@ BRIEFINGS_DIR.mkdir(parents=True, exist_ok=True)
 AUDIO_DIR = DATA_DIR / "audio"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
+DEBUG_DIR = DATA_DIR / "debug"
+DEBUG_DIR.mkdir(parents=True, exist_ok=True)
+
 
 @dataclass
 class NewsItem:
@@ -128,6 +131,33 @@ def _env_list(name: str) -> List[str]:
     if not raw:
         return []
     return [chunk.strip().lower() for chunk in raw.split(",") if chunk.strip()]
+
+
+def _auto_item_cap(total: int) -> Optional[int]:
+    raw = (os.getenv("BRIEFING_AUTO_CAP") or "").strip().lower()
+    if not raw:
+        cap = 18
+    elif raw in {"0", "off", "none", "no", "disable", "disabled"}:
+        return None
+    elif raw in {"all", "max", "unlimited"}:
+        return total
+    else:
+        match = re.search(r"-?\d+", raw)
+        if not match:
+            cap = 18
+        else:
+            try:
+                cap = int(match.group(0))
+            except ValueError:
+                cap = 18
+    if cap <= 0:
+        return None
+    return min(total, cap)
+
+
+def _default_max_tokens(total_items: int) -> int:
+    base = 1200 + max(0, total_items) * 180
+    return min(6144, max(1600, base))
 
 
 def _parse_briefing_limit(raw: str, total: int) -> Optional[int]:
@@ -958,9 +988,84 @@ def _merge_briefings(primary: Dict[str, Any], fallback: Dict[str, Any]) -> Dict[
     return base
 
 
+def _ensure_segment_coverage(briefing: Dict[str, Any], items: List[NewsItem], log: Dict[str, Any]) -> None:
+    script = briefing.get("script") if isinstance(briefing, dict) else None
+    if not isinstance(script, dict):
+        return
+    segments = script.get("segments") if isinstance(script.get("segments"), list) else []
+    if not segments:
+        return
+    covered: Set[str] = set()
+    for seg in segments:
+        if not isinstance(seg, dict):
+            continue
+        ids = seg.get("covered_ids")
+        if isinstance(ids, list):
+            for raw in ids:
+                cid = str(raw or "").strip()
+                if cid:
+                    covered.add(cid)
+    missing_items = [it for it in items if it.id not in covered]
+    if not missing_items:
+        return
+
+    item_by_section: Dict[str, List[NewsItem]] = {}
+    for it in missing_items:
+        item_by_section.setdefault(_classify(it), []).append(it)
+
+    existing_tags: Dict[str, Dict[str, Any]] = {}
+    for seg in segments:
+        if isinstance(seg, dict) and isinstance(seg.get("tag"), str):
+            existing_tags.setdefault(seg["tag"], seg)
+
+    def _append_to_segment(seg: Dict[str, Any], item: NewsItem, section: str) -> None:
+        ids = seg.setdefault("covered_ids", [])
+        if not isinstance(ids, list):
+            ids = []
+        if item.id not in ids:
+            ids.append(item.id)
+            seg["covered_ids"] = ids
+        fact_text = str(seg.get("fact") or "").strip()
+        addition = _normalize_text(item.title_cn or item.title, 60)
+        if fact_text:
+            if addition not in fact_text:
+                seg["fact"] = _normalize_text(fact_text + " " + addition, 200)
+        else:
+            seg["fact"] = f"{section}板块重点关注{addition}。"
+        existing_hosts = set(filter(None, (seg.get("source_host") or "").split(",")))
+        if item.source_host:
+            existing_hosts.add(item.source_host)
+        if existing_hosts:
+            seg["source_host"] = ",".join(sorted(existing_hosts))
+        if not seg.get("impact"):
+            seg["impact"] = THEME_LINES.get(section, "请持续关注相关动向。")
+
+    for section, grouped in item_by_section.items():
+        target = existing_tags.get(section)
+        if not target:
+            target = {
+                "id": f"section-{len(segments) + 1}",
+                "tag": section,
+                "fact": "",
+                "impact": THEME_LINES.get(section, "请持续关注相关动向。"),
+                "source_host": "",
+                "covered_ids": [],
+            }
+            segments.append(target)
+            existing_tags[section] = target
+        for item in grouped:
+            _append_to_segment(target, item, section)
+
+    script["segments"] = segments
+    paragraphs = _script_paragraphs(script)
+    script["paragraphs"] = paragraphs
+    briefing["script_text"] = _compose_script_text(script)
+    log.setdefault("llm_repaired_missing_ids", len(missing_items))
+
+
 def _generation_log(start: float, llm_used: bool, items: List[NewsItem], model_hint: Optional[str]) -> Dict[str, Any]:
     return {
-        "generated_at": datetime.utcnow().replace(tzinfo=timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "duration_ms": int((time.time() - start) * 1000),
         "llm_used": llm_used,
         "model_hint": model_hint or "auto",
@@ -976,6 +1081,16 @@ def _model_hint() -> Optional[str]:
         if val:
             return val
     return None
+
+
+def _write_llm_debug(date_str: str, content: str) -> Optional[str]:
+    try:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = DEBUG_DIR / f"briefing-raw-{date_str}-{timestamp}.txt"
+        path.write_text(content, encoding="utf-8")
+        return str(path)
+    except Exception:
+        return None
 
 
 def write_json(path: Path, data: Dict[str, Any]) -> None:
@@ -1033,6 +1148,36 @@ def _paragraph_key(text: str) -> str:
     return re.sub(r"\s+", " ", (text or "").strip())
 
 
+def _split_text_for_tts(text: str, limit: int = 600) -> List[str]:
+    cleaned = (text or "").strip()
+    if len(cleaned) <= limit:
+        return [cleaned] if cleaned else []
+    pieces = re.split(r"(?<=[。！？!?；;])\s*", cleaned)
+    chunks: List[str] = []
+    current = ""
+    for piece in pieces:
+        part = piece.strip()
+        if not part:
+            continue
+        candidate = f"{current} {part}".strip()
+        if len(candidate) <= limit:
+            current = candidate
+        else:
+            if current:
+                chunks.append(current)
+            if len(part) <= limit:
+                current = part
+            else:
+                for i in range(0, len(part), limit):
+                    segment = part[i : i + limit].strip()
+                    if segment:
+                        chunks.append(segment)
+                current = ""
+    if current:
+        chunks.append(current)
+    return chunks
+
+
 def _download_audio(url: str, dest: Path) -> bool:
     if not requests:
         return False
@@ -1072,9 +1217,14 @@ def _synthesize_audio(
         stored_voice = str(existing.get("voice") or "").strip()
         if stored_voice:
             voice_env = stored_voice
-    voice_id = (voice_env or "").strip() or "Katerina"
-
     language_type = "Chinese" if language.lower().startswith("zh") else "English"
+    default_voice = "Cherry" if language_type == "Chinese" else "Alex"
+    voice_id = (voice_env or "").strip() or default_voice
+    if language_type == "Chinese" and voice_id.lower() in {"alex", "alloy"}:
+        voice_id = "Cherry"
+    if language_type != "Chinese" and voice_id.lower() == "cherry":
+        voice_id = "Alex"
+
     if isinstance(existing, dict):
         stored_lang = str(existing.get("language") or "").strip()
         if stored_lang:
@@ -1107,59 +1257,83 @@ def _synthesize_audio(
         text = paragraph.strip()
         if not text:
             continue
-        key = _paragraph_key(text)
-        seq_idx = len(entries) + 1
-        if key and key in existing_map:
-            seg = dict(existing_map[key])
-            seg["id"] = f"paragraph-{seq_idx}"
-            seg["text"] = text
-            entries.append(seg)
-            reused += 1
+        chunks = _split_text_for_tts(text, 600)
+        if not chunks:
             continue
+        if len(chunks) == 1:
+            key = _paragraph_key(text)
+            seq_idx = len(entries) + 1
+            if key and key in existing_map:
+                seg = dict(existing_map[key])
+                seg["id"] = f"paragraph-{seq_idx}"
+                seg["text"] = text
+                entries.append(seg)
+                reused += 1
+                continue
+        else:
+            log.setdefault("tts_split_lengths", []).extend(len(chunk) for chunk in chunks)
 
-        try:
-            response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
-                model="qwen3-tts-flash",
-                api_key=api_key,
-                text=text,
-                voice=voice_id,
-                language_type=language_type,
-                stream=False,
+        for idx, chunk in enumerate(chunks, start=1):
+            seq_idx = len(entries) + 1
+            entry_id = f"paragraph-{seq_idx}"
+            if len(chunks) > 1:
+                entry_id = f"{entry_id}-p{idx}"
+
+            if len(chunks) == 1:
+                key = _paragraph_key(text)
+                if key and key in existing_map:
+                    seg = dict(existing_map[key])
+                    seg["id"] = entry_id
+                    seg["text"] = chunk
+                    entries.append(seg)
+                    reused += 1
+                    continue
+
+            try:
+                response = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+                    model="qwen3-tts-flash",
+                    api_key=api_key,
+                    text=chunk,
+                    voice=voice_id,
+                    language_type=language_type,
+                    stream=False,
+                )
+            except Exception as exc:  # pragma: no cover - SDK errors
+                log.setdefault("tts_errors", []).append(str(exc))
+                continue
+
+            output = getattr(response, "output", None)
+            audio = getattr(output, "audio", None)
+            url = getattr(audio, "url", None)
+            if not isinstance(url, str) or not url:
+                log.setdefault("tts_errors", []).append("missing-audio-url")
+                continue
+
+            slug_source = chunk if len(chunks) == 1 else f"{text[:24]}-{idx}"
+            slug = _safe_filename(slug_source[:32] or "segment")
+            digest_source = f"{chunk}-{idx}" if len(chunks) > 1 else chunk
+            digest = hashlib.sha1(digest_source.encode("utf-8")).hexdigest()[:8]
+            base = f"{seq_idx:02d}-{slug}-{digest}"
+            counter = 0
+            filename = f"{base}.mp3"
+            while filename in existing_files:
+                counter += 1
+                filename = f"{base}-{counter}.mp3"
+            existing_files.add(filename)
+            audio_path = bundle_dir / filename
+            if not _download_audio(url, audio_path):
+                log.setdefault("tts_errors", []).append("download-failed")
+                existing_files.discard(filename)
+                continue
+
+            generated += 1
+            entries.append(
+                {
+                    "id": entry_id,
+                    "text": chunk,
+                    "file": f"/data/ai/airadar/audio/{date_str}/{filename}",
+                }
             )
-        except Exception as exc:  # pragma: no cover - SDK errors
-            log.setdefault("tts_errors", []).append(str(exc))
-            continue
-
-        output = getattr(response, "output", None)
-        audio = getattr(output, "audio", None)
-        url = getattr(audio, "url", None)
-        if not isinstance(url, str) or not url:
-            log.setdefault("tts_errors", []).append("missing-audio-url")
-            continue
-
-        slug = _safe_filename(text[:32] or "segment")
-        digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
-        base = f"{seq_idx:02d}-{slug}-{digest}"
-        counter = 0
-        filename = f"{base}.mp3"
-        while filename in existing_files:
-            counter += 1
-            filename = f"{base}-{counter}.mp3"
-        existing_files.add(filename)
-        audio_path = bundle_dir / filename
-        if not _download_audio(url, audio_path):
-            log.setdefault("tts_errors", []).append("download-failed")
-            existing_files.discard(filename)
-            continue
-
-        generated += 1
-        entries.append(
-            {
-                "id": f"paragraph-{seq_idx}",
-                "text": text,
-                "file": f"/data/ai/airadar/audio/{date_str}/{filename}",
-            }
-        )
 
     if entries:
         log["tts_status"] = "success"
@@ -1201,6 +1375,18 @@ def main() -> None:
             top_k = min(total_items, max(4, limit_value))
         else:
             top_k = total_items
+    original_top_k = top_k
+    auto_cap_info: Optional[Dict[str, Any]] = None
+    if not limit_from_env:
+        auto_cap = _auto_item_cap(total_items)
+        if auto_cap is not None and top_k > auto_cap:
+            auto_cap_info = {
+                "total_items": total_items,
+                "original_top_k": original_top_k,
+                "applied_top_k": auto_cap,
+            }
+            top_k = auto_cap
+            print(f"[ai-radar] auto item cap applied: {original_top_k} -> {top_k}")
     mode = (os.getenv("BRIEFING_MODE") or "narrative_script").strip() or "narrative_script"
     blacklist = _env_list("BRIEFING_SOURCE_BLACKLIST")
     items = _select_top(raw_items, top_k, blacklist)
@@ -1211,7 +1397,6 @@ def main() -> None:
     date_str = _bj_date(generated_dt)
     existing_briefing: Optional[Dict[str, Any]] = None
     existing_audio_meta: Optional[Dict[str, Any]] = None
-    existing_paragraphs: List[str] = []
     existing_path = BRIEFINGS_DIR / f"{date_str}.json"
     if existing_path.exists():
         try:
@@ -1222,7 +1407,6 @@ def main() -> None:
         maybe_audio = existing_briefing.get("audio")
         if isinstance(maybe_audio, dict):
             existing_audio_meta = maybe_audio
-        existing_paragraphs = _script_paragraphs(existing_briefing.get("script") or {})
     stats = _collect_stats(items)
     prompt_data = _prompt_payload(date_str, mode, items, stats)
     force_template = os.getenv("BRIEFING_FORCE_TEMPLATE", "0").lower() in {"1", "true", "yes"}
@@ -1238,23 +1422,49 @@ def main() -> None:
         llm_status = "skipped-no-client"
 
     briefing: Dict[str, Any]
+    log: Dict[str, Any] = {}
     start = time.time()
     llm_ok = False
     if not force_template and chat_once:
         prompt = _build_prompt(prompt_data)
-        max_tokens = _env_int("BRIEFING_MAX_TOKENS", 2200)
+        default_tokens = _default_max_tokens(len(items))
+        max_tokens = _env_int("BRIEFING_MAX_TOKENS", default_tokens)
         try:
-            raw = chat_once(prompt, system="You craft accurate Chinese news briefings in JSON.", temperature=0.2, max_tokens=max_tokens, want_json=True)
-            text = raw.strip().strip("` ")
+            raw = chat_once(
+                prompt,
+                system="You craft accurate Chinese news briefings in JSON.",
+                temperature=0.2,
+                max_tokens=max_tokens,
+                want_json=True,
+            )
+            text = raw.strip()
+            if text.startswith("```"):
+                text = text.strip("` ")
+            debug_path = _write_llm_debug(date_str, text)
+            if debug_path:
+                log["llm_raw_path"] = debug_path
             briefing = json.loads(text)
             briefing = _merge_briefings(briefing, fallback_briefing)
             expected_ids = [it.id for it in items]
             ok, reason = _validate_briefing(briefing, date_str, expected_ids)
             if not ok:
-                print(f"[ai-radar] briefing validation failed ({reason}); falling back to template")
-                briefing = fallback_briefing
-                llm_status = f"validation-failed:{reason}"
-                llm_error = reason
+                if reason == "segment-coverage-missing":
+                    log["llm_repair_attempt"] = reason
+                    _ensure_segment_coverage(briefing, items, log)
+                    ok, second_reason = _validate_briefing(briefing, date_str, expected_ids)
+                    if ok:
+                        llm_ok = True
+                        llm_status = "success"
+                    else:
+                        print(f"[ai-radar] briefing validation failed ({second_reason}); falling back to template")
+                        briefing = fallback_briefing
+                        llm_status = f"validation-failed:{second_reason}"
+                        llm_error = second_reason
+                else:
+                    print(f"[ai-radar] briefing validation failed ({reason}); falling back to template")
+                    briefing = fallback_briefing
+                    llm_status = f"validation-failed:{reason}"
+                    llm_error = reason
             else:
                 llm_ok = True
                 llm_status = "success"
@@ -1284,7 +1494,9 @@ def main() -> None:
         # Ensure script_text reflects potential fallback adjustments
         briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
 
-    log = _generation_log(start, llm_ok, items, model_hint)
+    log.update(_generation_log(start, llm_ok, items, model_hint))
+    if auto_cap_info:
+        log["item_cap"] = auto_cap_info
     log["llm_status"] = llm_status
     log["briefing_source"] = "llm" if llm_ok else "template"
     log["force_template"] = force_template
@@ -1294,29 +1506,20 @@ def main() -> None:
         log["briefing_source"] = "template-non-chinese"
         log["llm_chinese_ratio"] = initial_ratio
     paragraphs_for_tts = _script_paragraphs(briefing.get("script") or {})
-    combined_paragraphs: List[str] = []
+    unique_paragraphs: List[str] = []
     seen_keys: Set[str] = set()
-    if existing_paragraphs:
-        for text in existing_paragraphs:
-            key = _paragraph_key(text)
-            if not key or key in seen_keys:
-                continue
-            combined_paragraphs.append(text)
-            seen_keys.add(key)
     for text in paragraphs_for_tts:
         key = _paragraph_key(text)
         if not key or key in seen_keys:
             continue
-        combined_paragraphs.append(text)
+        unique_paragraphs.append(text)
         seen_keys.add(key)
-    if combined_paragraphs:
-        paragraphs_for_tts = combined_paragraphs
+    if unique_paragraphs:
+        paragraphs_for_tts = unique_paragraphs
         if isinstance(briefing.get("script"), dict):
-            briefing["script"]["paragraphs"] = combined_paragraphs
+            briefing["script"]["paragraphs"] = unique_paragraphs
         else:
-            briefing["script"] = {"paragraphs": combined_paragraphs}
-    elif paragraphs_for_tts and isinstance(briefing.get("script"), dict):
-        briefing["script"]["paragraphs"] = paragraphs_for_tts
+            briefing["script"] = {"paragraphs": unique_paragraphs}
     briefing["script_text"] = _compose_script_text(briefing.get("script") or {})
     log["chinese_ratio"] = _chinese_ratio(paragraphs_for_tts) if paragraphs_for_tts else 0.0
     voice_env = os.getenv("VOICE") or os.getenv("voice")
