@@ -43,9 +43,9 @@ def _build_messages(prompt: str, system: Optional[str]) -> List[Dict[str, str]]:
     return msgs
 
 
-# Configurable HTTP timeouts and retrying session
-CONNECT_TIMEOUT = int(os.getenv("LLM_CONN_TIMEOUT", "20"))
-READ_TIMEOUT = int(os.getenv("LLM_READ_TIMEOUT", "180"))
+# Configurable HTTP timeouts and retrying session. Treat empty env vars as unset.
+CONNECT_TIMEOUT = int(_env("LLM_CONN_TIMEOUT", "20"))
+READ_TIMEOUT = int(_env("LLM_READ_TIMEOUT", "180"))
 _session = requests.Session()
 _retry = Retry(
     total=2,
