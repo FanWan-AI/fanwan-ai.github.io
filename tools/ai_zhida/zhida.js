@@ -395,7 +395,7 @@
 
   function autoResizeInput() {
     el.input.style.height = 'auto';
-    el.input.style.height = Math.min(el.input.scrollHeight, 220) + 'px';
+    el.input.style.height = Math.min(el.input.scrollHeight, 56) + 'px';
   }
 
   function handleInputKeydown(event) {
