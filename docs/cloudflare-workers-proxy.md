@@ -193,6 +193,6 @@ connect-src 'self' https://api.countapi.xyz https://counterapi.dev https://api.c
 
 - Worker 源码（本仓库示例）：`tools/deepseek-proxy-worker.js`
 - 需要编辑的页面：`lab/ai-zhida.html`
-- 相关 JS 客户端：`assets/js/zhida.js`（会从 `<body data-proxy-endpoint>` 读取代理地址，并通过 SSE 流式消费）
+- 相关 JS 客户端：`tools/ai_zhida/zhida.js`（会从 `<body data-proxy-endpoint>` 读取代理地址，并通过 SSE 流式消费）
 
 祝部署顺利！

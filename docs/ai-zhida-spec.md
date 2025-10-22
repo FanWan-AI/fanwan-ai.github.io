@@ -107,7 +107,7 @@
 
 ### 5.1 前端（静态页 + 原生 JS）
 - 语言与框架：延续站点约定，纯原生 JS + `style.css`，少量 vendor 库（仅前端可用、无打包器）。
-- 模块划分（建议新建 `assets/js/zhida.js`）：
+- 模块划分（建议新建 `tools/ai_zhida/zhida.js`）：
   - ChatState：管理消息数组、当前流式请求、重试/停止、持久化。
   - FileStore：管理已上传文件的原始 `File`、解析状态与纯文本缓存。
   - TextExtractor：针对 PDF/Docx/XLSX/TXT 的提取器（基于浏览器库/轻量实现）。
@@ -194,7 +194,7 @@
 ## 7. 页面与文件清单（拟新增）
 
 - `lab/ai-zhida.html`：新页面（Hero、聊天区、侧栏）。
-- `assets/js/zhida.js`：前端逻辑（聊天、上传、检索、SSE）。
+- `tools/ai_zhida/zhida.js`：前端逻辑（聊天、上传、检索、SSE）。
 - `assets/css/zhida.css`（可选）：如需独立样式补充。
 - `assets/vendor/`：
   - `pdfjs/`（精简构建，仅取文本）
