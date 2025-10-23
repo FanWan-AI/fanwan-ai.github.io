@@ -611,10 +611,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const sections = Array.from(document.querySelectorAll('.section'));
     if (!sections.length) return;
 
+    const root = document.documentElement;
+    const enableAnimations = () => {
+      try { root.setAttribute('data-section-anim', 'enabled'); } catch {}
+    };
+    const disableAnimations = () => {
+      try { root.removeAttribute('data-section-anim'); } catch {}
+    };
+
     function showAll(){
       sections.forEach(section => {
         section.classList.add('visible');
       });
+      disableAnimations();
     }
 
     if (typeof window === 'undefined' || typeof window.IntersectionObserver !== 'function') {
@@ -623,6 +632,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     try {
+      enableAnimations();
       const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
