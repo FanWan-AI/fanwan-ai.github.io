@@ -1,4 +1,4 @@
-const CACHE_NAME = 'fw-site-v6';
+const CACHE_NAME = 'fw-site-v7';
 const ASSETS = [
   './',
   './index.html',

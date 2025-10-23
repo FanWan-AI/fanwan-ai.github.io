@@ -606,19 +606,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   })();
 
-  // Fade‑in sections as they scroll into view
-  const observer = new IntersectionObserver(entries => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('visible');
-        observer.unobserve(entry.target);
-      }
-    });
-  }, { threshold: 0.1 });
+  // Fade‑in sections as they scroll into view (with graceful fallback)
+  (function revealSections(){
+    const sections = Array.from(document.querySelectorAll('.section'));
+    if (!sections.length) return;
 
-  document.querySelectorAll('.section').forEach(section => {
-    observer.observe(section);
-  });
+    function showAll(){
+      sections.forEach(section => {
+        section.classList.add('visible');
+      });
+    }
+
+    if (typeof window === 'undefined' || typeof window.IntersectionObserver !== 'function') {
+      showAll();
+      return;
+    }
+
+    try {
+      const observer = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+
+      sections.forEach(section => observer.observe(section));
+    } catch (err) {
+      console.warn('section observer setup failed; revealing sections immediately', err);
+      showAll();
+    }
+  })();
 
   // Blog enhancements: lang-block toggle, auto TOC from active lang, highlight + reading time
   (function enhanceBlog(){
