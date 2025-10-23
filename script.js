@@ -611,6 +611,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const sections = Array.from(document.querySelectorAll('.section'));
     if (!sections.length) return;
 
+    const pending = new Set(sections);
+    let fallbackTimer = null;
     const root = document.documentElement;
     const enableAnimations = () => {
       try { root.setAttribute('data-section-anim', 'enabled'); } catch {}
@@ -619,11 +621,19 @@ document.addEventListener('DOMContentLoaded', () => {
       try { root.removeAttribute('data-section-anim'); } catch {}
     };
 
+    const cancelFallback = () => {
+      if (!fallbackTimer) return;
+      clearTimeout(fallbackTimer);
+      fallbackTimer = null;
+    };
+
     function showAll(){
       sections.forEach(section => {
         section.classList.add('visible');
       });
+      pending.clear();
       disableAnimations();
+      cancelFallback();
     }
 
     if (typeof window === 'undefined' || typeof window.IntersectionObserver !== 'function') {
@@ -631,13 +641,28 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const scheduleFallback = () => {
+      if (fallbackTimer) return;
+      fallbackTimer = window.setTimeout(() => {
+        if (!pending.size) return;
+        console.warn('section observer fallback triggered; revealing sections immediately');
+        showAll();
+      }, 1600);
+    };
+
     try {
       enableAnimations();
+      scheduleFallback();
       const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (entry.isIntersecting) {
             entry.target.classList.add('visible');
+            pending.delete(entry.target);
             observer.unobserve(entry.target);
+            if (!pending.size) {
+              cancelFallback();
+              disableAnimations();
+            }
           }
         });
       }, { threshold: 0.1 });
