@@ -63,7 +63,91 @@
     return;
   }
 
+  class DeepSeekClient {
+    constructor(endpointUrl) {
+      this.endpoint = endpointUrl;
+      this.controller = null;
+    }
+
+    cancel() {
+      if (this.controller) {
+        this.controller.abort();
+      }
+      this.controller = null;
+    }
+
+    async streamChat(payload, handlers) {
+      if (!this.endpoint) {
+        throw new Error('Missing proxy endpoint');
+      }
+      this.cancel();
+      this.controller = new AbortController();
+      const signal = this.controller.signal;
+      const headers = Object.assign({ 'Content-Type': 'application/json' }, windowConfig.headers || {});
+      try {
+        const response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+          signal
+        });
+
+        if (!response.ok) {
+          const err = await parseError(response);
+          handlers && handlers.onError && handlers.onError(err);
+          throw err;
+        }
+
+        const contentType = (response.headers.get('content-type') || '').toLowerCase();
+        if (!response.body || contentType.indexOf('text/event-stream') === -1) {
+          const data = await response.json().catch(() => ({}));
+          handlers && handlers.onStart && handlers.onStart();
+          const text = extractDelta(data);
+          if (text) {
+            handlers && handlers.onDelta && handlers.onDelta(text);
+          }
+          handlers && handlers.onComplete && handlers.onComplete();
+          return;
+        }
+
+        handlers && handlers.onStart && handlers.onStart();
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let doneStreaming = false;
+
+        while (!doneStreaming) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const result = processBuffer(buffer, handlers);
+          buffer = result.buffer;
+          doneStreaming = result.done;
+        }
+
+        if (buffer && !doneStreaming) {
+          processBuffer(buffer, handlers);
+        }
+
+        handlers && handlers.onComplete && handlers.onComplete();
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw error;
+        }
+        const err = error && error.code ? error : new Error(t('ai_qa_error_network'));
+        err.code = err.code || 'network';
+        handlers && handlers.onError && handlers.onError(err);
+        throw err;
+      } finally {
+        this.controller = null;
+      }
+    }
+  }
+
   let toastTimer = null;
+  let lastFocusedElement = null;
+  let settingsFocusTrapListener = null;
   const client = new DeepSeekClient(endpoint);
 
   init();
@@ -462,9 +546,12 @@
   }
 
   function handleChooseFileClick() {
-    if (el.fileInput) {
-      el.fileInput.click();
+    if (!el.fileInput) return;
+    if (state.files.length >= MAX_FILES) {
+      notify(format(t('ai_qa_file_limit_reached'), { count: String(MAX_FILES) }), 'warning');
+      return;
     }
+    el.fileInput.click();
   }
 
   function handleFileSelect(event) {
@@ -483,10 +570,15 @@
 
   function openSettingsPanel() {
     if (!el.settingsPanel || state.settingsOpen) return;
+    lastFocusedElement = document.activeElement && typeof document.activeElement.focus === 'function' ? document.activeElement : null;
     el.settingsPanel.hidden = false;
     el.settingsPanel.setAttribute('aria-hidden', 'false');
     body.classList.add('zhida-settings-open');
     state.settingsOpen = true;
+    if (el.settingsSheet) {
+      el.settingsSheet.addEventListener('keydown', handleSettingsKeydown);
+    }
+    activateSettingsFocusTrap();
     focusSettingsPanel();
   }
 
@@ -496,9 +588,18 @@
     el.settingsPanel.setAttribute('aria-hidden', 'true');
     body.classList.remove('zhida-settings-open');
     state.settingsOpen = false;
-    if (el.settingsBtn) {
-      el.settingsBtn.focus();
+    deactivateSettingsFocusTrap();
+    if (el.settingsSheet) {
+      el.settingsSheet.removeEventListener('keydown', handleSettingsKeydown);
     }
+    if (el.settingsBtn) {
+      if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+        lastFocusedElement.focus();
+      } else {
+        el.settingsBtn.focus();
+      }
+    }
+    lastFocusedElement = null;
   }
 
   function handleGlobalKeydown(event) {
@@ -509,11 +610,56 @@
   }
 
   function focusSettingsPanel() {
-    if (!el.settingsSheet) return;
-    const focusable = el.settingsSheet.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    const focusable = getSettingsFocusableElements();
     if (!focusable.length) return;
     const target = focusable[0];
     window.requestAnimationFrame(() => target.focus());
+  }
+
+  function getSettingsFocusableElements() {
+    if (!el.settingsSheet) return [];
+    const candidates = el.settingsSheet.querySelectorAll('button, input, select, textarea, [tabindex]:not([tabindex="-1"])');
+    return Array.from(candidates).filter(node => !node.disabled && node.tabIndex !== -1 && node.getAttribute('aria-hidden') !== 'true' && isElementVisible(node));
+  }
+
+  function activateSettingsFocusTrap() {
+    if (!el.settingsSheet || settingsFocusTrapListener) return;
+    settingsFocusTrapListener = function(event) {
+      if (!state.settingsOpen) return;
+      if (!el.settingsSheet.contains(event.target)) {
+        const focusable = getSettingsFocusableElements();
+        if (!focusable.length) return;
+        focusable[0].focus();
+        event.preventDefault();
+      }
+    };
+    document.addEventListener('focus', settingsFocusTrapListener, true);
+  }
+
+  function deactivateSettingsFocusTrap() {
+    if (!settingsFocusTrapListener) return;
+    document.removeEventListener('focus', settingsFocusTrapListener, true);
+    settingsFocusTrapListener = null;
+  }
+
+  function handleSettingsKeydown(event) {
+    if (event.key !== 'Tab') return;
+    const focusable = getSettingsFocusableElements();
+    if (!focusable.length) {
+      event.preventDefault();
+      return;
+    }
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+      return;
+    }
+    if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
   }
 
   function processFiles(files) {
@@ -550,7 +696,16 @@
   function renderFileList() {
     if (!el.fileList) return;
     el.fileList.innerHTML = '';
-    el.fileList.classList.toggle('is-empty', state.files.length === 0);
+    const isEmpty = state.files.length === 0;
+    el.fileList.classList.toggle('is-empty', isEmpty);
+    body.classList.toggle('zhida-has-files', !isEmpty);
+    if (isEmpty) {
+      const placeholder = document.createElement('span');
+      placeholder.className = 'zhida-file-list-empty';
+      placeholder.textContent = t('ai_qa_file_list_empty');
+      el.fileList.appendChild(placeholder);
+      return;
+    }
     state.files.forEach(file => {
       const chip = document.createElement('span');
       chip.className = 'zhida-file-chip';
@@ -732,6 +887,11 @@
     });
   }
 
+  function isElementVisible(node) {
+    if (!node) return false;
+    return !!(node.offsetWidth || node.offsetHeight || (typeof node.getClientRects === 'function' && node.getClientRects().length));
+  }
+
   function storageGet(key) {
     try {
       return window.localStorage.getItem(key);
@@ -796,88 +956,6 @@
       return choice.message.content;
     }
     return '';
-  }
-
-  class DeepSeekClient {
-    constructor(endpointUrl) {
-      this.endpoint = endpointUrl;
-      this.controller = null;
-    }
-
-    cancel() {
-      if (this.controller) {
-        this.controller.abort();
-      }
-      this.controller = null;
-    }
-
-    async streamChat(payload, handlers) {
-      if (!this.endpoint) {
-        throw new Error('Missing proxy endpoint');
-      }
-      this.cancel();
-      this.controller = new AbortController();
-      const signal = this.controller.signal;
-      const headers = Object.assign({ 'Content-Type': 'application/json' }, windowConfig.headers || {});
-      try {
-        const response = await fetch(this.endpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-          signal
-        });
-
-        if (!response.ok) {
-          const err = await parseError(response);
-          handlers && handlers.onError && handlers.onError(err);
-          throw err;
-        }
-
-        const contentType = (response.headers.get('content-type') || '').toLowerCase();
-        if (!response.body || contentType.indexOf('text/event-stream') === -1) {
-          const data = await response.json().catch(() => ({}));
-          handlers && handlers.onStart && handlers.onStart();
-          const text = extractDelta(data);
-          if (text) {
-            handlers && handlers.onDelta && handlers.onDelta(text);
-          }
-          handlers && handlers.onComplete && handlers.onComplete();
-          return;
-        }
-
-        handlers && handlers.onStart && handlers.onStart();
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
-        let doneStreaming = false;
-
-        while (!doneStreaming) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const result = processBuffer(buffer, handlers);
-          buffer = result.buffer;
-          doneStreaming = result.done;
-        }
-
-        if (buffer && !doneStreaming) {
-          processBuffer(buffer, handlers);
-        }
-
-        handlers && handlers.onComplete && handlers.onComplete();
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          throw error;
-        }
-        const err = error && error.code ? error : new Error(t('ai_qa_error_network'));
-        err.code = err.code || 'network';
-        handlers && handlers.onError && handlers.onError(err);
-        throw err;
-      } finally {
-        this.controller = null;
-      }
-    }
   }
 
   function processBuffer(buffer, handlers) {
