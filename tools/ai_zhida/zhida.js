@@ -14,6 +14,7 @@
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const SUPPORTED_EXT = ['pdf', 'txt', 'md', 'docx', 'xlsx'];
+  const VIEW_STATE_KEY = 'zhida:view';
   const STORAGE = {
     HISTORY: 'zhida:messages:v1',
     SETTINGS: 'zhida:settings:v1'
@@ -23,6 +24,8 @@
     en: "You are the AI Q&A assistant on Fan Wan's site. Reply concisely, prefer English when unsure, and cite sources when available.",
     es: 'Eres el asistente AI Respuestas del sitio de Fan Wan. Responde con concisión, prioriza el español cuando sea posible y cita las fuentes disponibles.'
   };
+  const DEFAULT_MATHJAX_SRC = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';
+  const MATH_MARKERS = ['\\(', '\\[', '$$', '\\begin{'];
 
   const state = {
     messages: [],
@@ -42,7 +45,6 @@
     stopBtn: document.querySelector('[data-action="stop"]'),
     clearBtn: document.querySelector('[data-action="clear"]'),
     statusText: document.querySelector('[data-status-text]'),
-    proxyWarning: document.querySelector('[data-proxy-warning]'),
     toast: document.querySelector('[data-chat-error]'),
     fileInput: document.querySelector('[data-file-input]'),
     chooseFileBtn: document.querySelector('[data-action="choose-file"]'),
@@ -58,6 +60,7 @@
     settingsClose: document.querySelector('[data-settings-close]'),
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
   };
+  const stageEl = document.querySelector('.zhida-stage');
 
   if (!el.messages || !el.form || !el.input) {
     return;
@@ -148,6 +151,8 @@
   let toastTimer = null;
   let lastFocusedElement = null;
   let settingsFocusTrapListener = null;
+  let mathTypesetTimer = null;
+  let mathJaxLoadingPromise = null;
   const client = new DeepSeekClient(endpoint);
 
   init();
@@ -160,12 +165,7 @@
     renderFileList();
     bindEvents();
     refreshControls();
-    if (!endpoint) {
-      toggleProxyWarning(true);
-      notify(t('ai_qa_proxy_missing'), 'warning');
-    } else {
-      setStatus('ready');
-    }
+    setStatus('ready');
   }
 
   function bindEvents() {
@@ -301,6 +301,7 @@
 
   function renderMessages() {
     el.messages.innerHTML = '';
+    let hasMath = false;
     state.messages.forEach((msg, index) => {
       const wrapper = document.createElement('div');
       wrapper.className = `zhida-message zhida-message--${msg.role}`;
@@ -325,17 +326,20 @@
       if (index === state.messages.length - 1) {
         wrapper.scrollIntoView({ block: 'end' });
       }
+
+      if (!hasMath && msg && typeof msg.content === 'string' && containsMathMarkers(msg.content)) {
+        hasMath = true;
+      }
     });
+
+    if (hasMath) {
+      scheduleMathTypeset();
+    }
   }
 
   function renderText(container, content) {
     container.innerHTML = '';
-    const lines = String(content || '').split('\n');
-    lines.forEach(line => {
-      const p = document.createElement('p');
-      p.textContent = line;
-      container.appendChild(p);
-    });
+    renderMarkdown(container, String(content || ''));
     if (!container.children.length) {
       const p = document.createElement('p');
       p.textContent = '';
@@ -343,12 +347,206 @@
     }
   }
 
+  function renderMarkdown(container, markdown) {
+    const lines = String(markdown || '').replace(/\r\n?/g, '\n').split('\n');
+    let index = 0;
+    while (index < lines.length) {
+      const rawLine = lines[index];
+      const trimmed = rawLine.trim();
+      if (!trimmed) {
+        index += 1;
+        continue;
+      }
+
+      if (/^```/.test(trimmed)) {
+        const fence = trimmed.slice(3).trim();
+        const codeLines = [];
+        index += 1;
+        while (index < lines.length && !/^```/.test(lines[index].trim())) {
+          codeLines.push(lines[index]);
+          index += 1;
+        }
+        if (index < lines.length) {
+          index += 1;
+        }
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        if (fence) {
+          code.setAttribute('data-language', fence.toLowerCase());
+        }
+        code.textContent = codeLines.join('\n');
+        pre.appendChild(code);
+        container.appendChild(pre);
+        continue;
+      }
+
+      const ruleCandidate = trimmed.replace(/\s+/g, '');
+      if (/^(-{3,}|_{3,}|\*{3,})$/.test(ruleCandidate)) {
+        container.appendChild(document.createElement('hr'));
+        index += 1;
+        continue;
+      }
+
+      if (/^#{1,6}\s+/.test(trimmed)) {
+        const level = trimmed.match(/^#{1,6}/)[0].length;
+        const text = trimmed.slice(level).trim();
+        const heading = document.createElement('h' + level);
+        heading.innerHTML = parseInline(text);
+        container.appendChild(heading);
+        index += 1;
+        continue;
+      }
+
+      if (/^>\s?/.test(trimmed)) {
+        const quoteLines = [];
+        while (index < lines.length && /^>\s?/.test(lines[index].trim())) {
+          quoteLines.push(lines[index].replace(/^ {0,3}>\s?/, ''));
+          index += 1;
+        }
+        const blockquote = document.createElement('blockquote');
+        renderMarkdown(blockquote, quoteLines.join('\n'));
+        container.appendChild(blockquote);
+        continue;
+      }
+
+      if (/^[-*+]\s+/.test(trimmed)) {
+        const list = document.createElement('ul');
+        while (index < lines.length) {
+          const current = lines[index];
+          const currentTrim = current.trim();
+          if (!currentTrim || !/^[-*+]\s+/.test(currentTrim)) {
+            break;
+          }
+          const item = document.createElement('li');
+          item.innerHTML = parseInline(currentTrim.replace(/^[-*+]\s+/, ''));
+          list.appendChild(item);
+          index += 1;
+        }
+        container.appendChild(list);
+        continue;
+      }
+
+      if (/^\d+\.\s+/.test(trimmed)) {
+        const list = document.createElement('ol');
+        while (index < lines.length) {
+          const current = lines[index];
+          const currentTrim = current.trim();
+          if (!currentTrim || !/^\d+\.\s+/.test(currentTrim)) {
+            break;
+          }
+          const item = document.createElement('li');
+          item.innerHTML = parseInline(currentTrim.replace(/^\d+\.\s+/, ''));
+          list.appendChild(item);
+          index += 1;
+        }
+        container.appendChild(list);
+        continue;
+      }
+
+      const paragraphLines = [];
+      while (index < lines.length) {
+        const current = lines[index];
+        const currentTrim = current.trim();
+        if (!currentTrim) {
+          index += 1;
+          break;
+        }
+        if (paragraphLines.length && isBlockToken(currentTrim)) {
+          break;
+        }
+        if (!paragraphLines.length && isBlockToken(currentTrim)) {
+          break;
+        }
+        paragraphLines.push(current);
+        index += 1;
+      }
+      if (!paragraphLines.length) {
+        continue;
+      }
+      const paragraph = document.createElement('p');
+      const paragraphText = paragraphLines.join('\n').trim();
+      paragraph.innerHTML = parseInline(paragraphText);
+      container.appendChild(paragraph);
+      continue;
+    }
+  }
+
+  function isBlockToken(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return false;
+    if (/^```/.test(trimmed)) return true;
+    if (/^#{1,6}\s+/.test(trimmed)) return true;
+    if (/^>\s?/.test(trimmed)) return true;
+    if (/^[-*+]\s+/.test(trimmed)) return true;
+    if (/^\d+\.\s+/.test(trimmed)) return true;
+    if (/^(-{3,}|_{3,}|\*{3,})$/.test(trimmed.replace(/\s+/g, ''))) return true;
+    return false;
+  }
+
+  function parseInline(text) {
+    if (!text) return '';
+    const codeTokens = [];
+    let result = String(text).replace(/`([^`]+?)`/g, function(_, code) {
+      const token = `@@CODE${codeTokens.length}@@`;
+      codeTokens.push(escapeHtml(code));
+      return token;
+    });
+    result = escapeHtml(result);
+    result = result.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    result = result.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    result = result.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    result = result.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+    result = result.replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+    result = result.replace(/!\[[^\]]*\]\([^)]*\)/g, '');
+    result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, href) {
+      const cleanHref = sanitizeUrl(href);
+      if (!cleanHref) return label;
+      return '<a href="' + cleanHref + '" target="_blank" rel="nofollow noopener noreferrer">' + label + '</a>';
+    });
+    codeTokens.forEach((code, idx) => {
+      result = result.replace(new RegExp('@@CODE' + idx + '@@', 'g'), '<code>' + code + '</code>');
+    });
+    result = result.replace(/\n/g, '<br />');
+    return result;
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function escapeAttribute(value) {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function sanitizeUrl(url) {
+    if (!url) return '';
+    const trimmed = url.trim();
+    if (!trimmed) return '';
+    const lower = trimmed.toLowerCase();
+    if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
+      return '';
+    }
+    if (!/^https?:/i.test(trimmed) && !trimmed.startsWith('mailto:') && !trimmed.startsWith('#')) {
+      return '';
+    }
+    return escapeAttribute(trimmed);
+  }
+
   function handleSend(event) {
     event.preventDefault();
     if (state.streaming) return;
     if (!endpoint) {
-      toggleProxyWarning(true);
-      notify(t('ai_qa_proxy_missing'), 'warning');
+      notify(t('ai_qa_error_generic'), 'error');
       return;
     }
     const value = el.input.value.trim();
@@ -363,6 +561,7 @@
     };
     state.messages.push(userMessage);
     persistMessages();
+    ensureChatView();
     el.input.value = '';
     autoResizeInput();
     renderMessages();
@@ -784,11 +983,6 @@
     }
   }
 
-  function toggleProxyWarning(show) {
-    if (!el.proxyWarning) return;
-    el.proxyWarning.hidden = !show;
-  }
-
   function notify(message, variant = 'error') {
     if (!el.toast || !message) return;
     clearTimeout(toastTimer);
@@ -892,6 +1086,110 @@
     return !!(node.offsetWidth || node.offsetHeight || (typeof node.getClientRects === 'function' && node.getClientRects().length));
   }
 
+  function containsMathMarkers(text) {
+    if (text == null) return false;
+    const value = String(text);
+    for (let index = 0; index < MATH_MARKERS.length; index += 1) {
+      if (value.indexOf(MATH_MARKERS[index]) !== -1) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function scheduleMathTypeset() {
+    if (!el.messages) return;
+    if (mathTypesetTimer != null) {
+      clearTimeout(mathTypesetTimer);
+    }
+    mathTypesetTimer = window.setTimeout(() => {
+      mathTypesetTimer = null;
+      typesetMathIfNeeded();
+    }, 120);
+  }
+
+  function typesetMathIfNeeded() {
+    if (!el.messages) return;
+    const hasMath = state.messages.some(msg => msg && typeof msg.content === 'string' && containsMathMarkers(msg.content));
+    if (!hasMath) {
+      return;
+    }
+    ensureMathJax()
+      .then(() => {
+        if (!window.MathJax) return;
+        if (typeof window.MathJax.typesetClear === 'function') {
+          window.MathJax.typesetClear([el.messages]);
+        }
+        if (typeof window.MathJax.typesetPromise === 'function') {
+          return window.MathJax.typesetPromise([el.messages]);
+        }
+        if (typeof window.MathJax.typeset === 'function') {
+          window.MathJax.typeset([el.messages]);
+        }
+      })
+      .catch(error => {
+        console.error('MathJax error', error);
+      });
+  }
+
+  function ensureMathJax() {
+    if (window.MathJax && window.MathJax.startup && window.MathJax.startup.promise) {
+      return window.MathJax.startup.promise;
+    }
+    if (mathJaxLoadingPromise) {
+      return mathJaxLoadingPromise;
+    }
+    mathJaxLoadingPromise = new Promise((resolve, reject) => {
+      setupMathJaxConfig();
+      const script = document.createElement('script');
+      script.async = true;
+      script.src = getMathJaxSrc();
+      script.setAttribute('data-mathjax-loader', 'true');
+      script.onload = () => {
+        const ready = window.MathJax && window.MathJax.startup && window.MathJax.startup.promise
+          ? window.MathJax.startup.promise
+          : Promise.resolve();
+        ready.then(() => resolve()).catch(reject);
+      };
+      script.onerror = () => {
+        mathJaxLoadingPromise = null;
+        reject(new Error('Failed to load MathJax'));
+      };
+      document.head.appendChild(script);
+    });
+    return mathJaxLoadingPromise;
+  }
+
+  function setupMathJaxConfig() {
+    const config = window.MathJax || {};
+    config.tex = Object.assign({
+      inlineMath: [['\\(', '\\)'], ['$', '$']],
+      displayMath: [['\\[', '\\]'], ['$$', '$$']],
+      processEscapes: true
+    }, config.tex || {});
+    config.options = Object.assign({
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+    }, config.options || {});
+    config.svg = Object.assign({
+      fontCache: 'global'
+    }, config.svg || {});
+    config.startup = Object.assign({
+      typeset: false
+    }, config.startup || {});
+    window.MathJax = config;
+  }
+
+  function getMathJaxSrc() {
+    if (windowConfig.mathJaxSrc) {
+      return windowConfig.mathJaxSrc;
+    }
+    const attr = body.getAttribute('data-mathjax-src');
+    if (attr) {
+      return attr;
+    }
+    return DEFAULT_MATHJAX_SRC;
+  }
+
   function storageGet(key) {
     try {
       return window.localStorage.getItem(key);
@@ -904,6 +1202,13 @@
     try {
       window.localStorage.setItem(key, value);
     } catch (_) {}
+  }
+
+  function ensureChatView() {
+    if (stageEl && stageEl.getAttribute('data-view') !== 'chat') {
+      stageEl.setAttribute('data-view', 'chat');
+    }
+    storageSet(VIEW_STATE_KEY, 'chat');
   }
 
   function getExtension(name) {
