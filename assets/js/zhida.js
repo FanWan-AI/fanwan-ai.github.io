@@ -395,7 +395,7 @@
 
   function autoResizeInput() {
     el.input.style.height = 'auto';
-    el.input.style.height = Math.min(el.input.scrollHeight, 220) + 'px';
+    el.input.style.height = Math.min(el.input.scrollHeight, 96) + 'px';
   }
 
   function handleInputKeydown(event) {
@@ -557,9 +557,23 @@
       chip.dataset.status = file.status;
       chip.title = `${file.name} · ${formatBytes(file.size)}`;
 
+      const icon = document.createElement('span');
+      icon.className = 'zhida-file-chip-icon';
+      icon.textContent = fileBadge(file.type);
+
+      const textWrap = document.createElement('span');
+      textWrap.className = 'zhida-file-chip-text';
+
       const name = document.createElement('span');
       name.className = 'zhida-file-chip-name';
       name.textContent = truncate(file.name, 40);
+
+      const meta = document.createElement('span');
+      meta.className = 'zhida-file-chip-meta';
+      meta.textContent = formatBytes(file.size);
+
+      textWrap.appendChild(name);
+      textWrap.appendChild(meta);
 
       const status = document.createElement('span');
       status.className = 'zhida-file-chip-status';
@@ -572,7 +586,8 @@
       remove.setAttribute('aria-label', t('ai_qa_file_remove'));
       remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="sr-only">' + t('ai_qa_file_remove') + '</span>';
 
-      chip.appendChild(name);
+      chip.appendChild(icon);
+      chip.appendChild(textWrap);
       chip.appendChild(status);
       chip.appendChild(remove);
       el.fileList.appendChild(chip);
@@ -741,6 +756,12 @@
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+  }
+
+  function fileBadge(ext) {
+    const safe = String(ext || '').trim().slice(0, 3).toUpperCase();
+    if (safe) return safe;
+    return 'FILE';
   }
 
   function createId() {
