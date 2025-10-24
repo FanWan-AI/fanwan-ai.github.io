@@ -19,11 +19,28 @@
     HISTORY: 'zhida:messages:v1',
     SETTINGS: 'zhida:settings:v1'
   };
+  const SESSION_SCOPED_KEYS = [STORAGE.HISTORY, VIEW_STATE_KEY];
+  const storageFallback = Object.create(null);
   const DEFAULT_PROMPTS = {
-    zh: '你是万凡网站的 AI 智答助手，请优先使用中文，回答保持简洁并在引用资料时标注来源。',
-    en: "You are the AI Q&A assistant on Fan Wan's site. Reply concisely, prefer English when unsure, and cite sources when available.",
-    es: 'Eres el asistente AI Respuestas del sitio de Fan Wan. Responde con concisión, prioriza el español cuando sea posible y cita las fuentes disponibles.'
+    zh: '你是万凡网站的 AI 智答助手。默认使用简体中文回复，并保持简洁、有条理；只有在用户明确要求使用其他语言（如“请用英文回答”）时才切换到对方指定的语言。引用资料时请标注来源。',
+    en: "You are the AI Q&A assistant on Fan Wan's site. Respond in English by default with concise, well-structured answers. Switch to another language only when the user explicitly asks (e.g., 'Please reply in Spanish'), and cite sources when available.",
+    es: 'Eres el asistente de preguntas y respuestas del sitio de Fan Wan. Responde en español por defecto con mensajes concisos y organizados; solo cambia a otro idioma cuando el usuario lo solicite explícitamente (por ejemplo, “Responde en inglés”). Cita las fuentes cuando sea posible.'
   };
+  const LEGACY_PROMPTS = {
+    zh: ['你是万凡网站的 AI 智答助手，请优先使用中文，回答保持简洁并在引用资料时标注来源。'],
+    en: ["You are the AI Q&A assistant on Fan Wan's site. Reply concisely, prefer English when unsure, and cite sources when available."],
+    es: ['Eres el asistente AI Respuestas del sitio de Fan Wan. Responde con concisión, prioriza el español cuando sea posible y cita las fuentes disponibles.']
+  };
+
+  function isKnownSystemPrompt(value) {
+    if (!value) return false;
+    const trimmed = String(value).trim();
+    if (!trimmed) return false;
+    if (Object.values(DEFAULT_PROMPTS).some(prompt => prompt === trimmed)) {
+      return true;
+    }
+    return Object.values(LEGACY_PROMPTS).some(list => Array.isArray(list) && list.includes(trimmed));
+  }
   const DEFAULT_MATHJAX_SRC = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';
   const MATH_MARKERS = ['\\(', '\\[', '$$', '\\begin{'];
 
@@ -217,36 +234,55 @@
   function loadSettings() {
     const lang = getLang();
     const raw = storageGet(STORAGE.SETTINGS);
-    let settings = null;
+    let stored = null;
     if (raw) {
       try {
-        settings = JSON.parse(raw);
+        stored = JSON.parse(raw);
       } catch (_) {
-        settings = null;
+        stored = null;
       }
     }
-    if (!settings) {
-      settings = {
-        temperature: DEFAULT_TEMP,
-        maxTokens: DEFAULT_MAX_TOKENS,
-        systemPrompt: DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh,
-        mode: 'chat'
-      };
-    }
-    state.mode = settings.mode === 'rag' ? 'rag' : 'chat';
-    if (el.temperature && typeof settings.temperature === 'number') {
+
+  const newDefault = DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
+
+  const storedPrompt = stored && typeof stored.systemPrompt === 'string' ? stored.systemPrompt.trim() : '';
+  const isCustomPrompt = storedPrompt && !isKnownSystemPrompt(storedPrompt);
+  const shouldResetPrompt = !storedPrompt || (!isCustomPrompt && storedPrompt !== newDefault);
+
+  const temperatureValue = stored ? Number(stored.temperature) : NaN;
+  const temperature = Number.isFinite(temperatureValue) ? temperatureValue : DEFAULT_TEMP;
+  const maxTokensValue = stored ? Number(stored.maxTokens) : NaN;
+  const maxTokens = Number.isFinite(maxTokensValue) ? Math.min(Math.max(maxTokensValue, 256), 4096) : DEFAULT_MAX_TOKENS;
+  const systemPrompt = shouldResetPrompt ? newDefault : (storedPrompt || newDefault);
+    const mode = stored && stored.mode === 'rag' ? 'rag' : 'chat';
+
+    const settings = {
+      temperature,
+      maxTokens,
+      systemPrompt,
+      mode,
+      lang
+    };
+
+    state.mode = settings.mode;
+
+    if (el.temperature) {
       el.temperature.value = String(settings.temperature);
       updateTemperatureDisplay(settings.temperature);
     }
-    if (el.maxTokens && typeof settings.maxTokens === 'number') {
+    if (el.maxTokens) {
       el.maxTokens.value = String(settings.maxTokens);
     }
     if (el.systemPrompt) {
-      el.systemPrompt.value = settings.systemPrompt || DEFAULT_PROMPTS[lang] || '';
+      el.systemPrompt.value = settings.systemPrompt || '';
     }
+
     el.modeInputs.forEach(radio => {
       radio.checked = radio.value === state.mode;
     });
+
+    // Persist the resolved defaults so the active language stays in sync.
+    persistSettings();
   }
 
   function persistSettings() {
@@ -254,7 +290,8 @@
       temperature: getTemperature(),
       maxTokens: getMaxTokens(),
       systemPrompt: getSystemPrompt(),
-      mode: state.mode
+      mode: state.mode,
+      lang: getLang()
     };
     storageSet(STORAGE.SETTINGS, JSON.stringify(settings));
   }
@@ -801,6 +838,7 @@
 
   function openSettingsPanel() {
     if (!el.settingsPanel || state.settingsOpen) return;
+    loadSettings();
     lastFocusedElement = document.activeElement && typeof document.activeElement.focus === 'function' ? document.activeElement : null;
     el.settingsPanel.hidden = false;
     el.settingsPanel.setAttribute('aria-hidden', 'false');
@@ -1220,17 +1258,110 @@
   }
 
   function storageGet(key) {
+    if (isSessionScopedKey(key)) {
+      const sessionStore = getSessionStorage();
+      if (sessionStore) {
+        try {
+          const existing = sessionStore.getItem(key);
+          if (existing != null) {
+            return existing;
+          }
+        } catch (_) {}
+      }
+
+      const migrated = migrateLegacyValue(key, sessionStore);
+      if (migrated != null) {
+        return migrated;
+      }
+
+      return hasFallbackValue(key) ? storageFallback[key] : null;
+    }
+
+    const localStore = getLocalStorage();
+    if (localStore) {
+      try {
+        return localStore.getItem(key);
+      } catch (_) {}
+    }
+    return hasFallbackValue(key) ? storageFallback[key] : null;
+  }
+
+  function storageSet(key, value) {
+    const strValue = value == null ? '' : String(value);
+
+    if (isSessionScopedKey(key)) {
+      const sessionStore = getSessionStorage();
+      if (sessionStore) {
+        try {
+          sessionStore.setItem(key, strValue);
+          return;
+        } catch (_) {}
+      }
+      storageFallback[key] = strValue;
+      const legacyStore = getLocalStorage();
+      if (legacyStore) {
+        try { legacyStore.removeItem(key); } catch (_) {}
+      }
+      return;
+    }
+
+    const localStore = getLocalStorage();
+    if (localStore) {
+      try {
+        localStore.setItem(key, strValue);
+        return;
+      } catch (_) {}
+    }
+    storageFallback[key] = strValue;
+  }
+
+  function isSessionScopedKey(key) {
+    return SESSION_SCOPED_KEYS.indexOf(key) !== -1;
+  }
+
+  function hasFallbackValue(key) {
+    return Object.prototype.hasOwnProperty.call(storageFallback, key);
+  }
+
+  function getSessionStorage() {
     try {
-      return window.localStorage.getItem(key);
+      return window.sessionStorage;
     } catch (_) {
       return null;
     }
   }
 
-  function storageSet(key, value) {
+  function getLocalStorage() {
     try {
-      window.localStorage.setItem(key, value);
-    } catch (_) {}
+      return window.localStorage;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function migrateLegacyValue(key, sessionStore) {
+    const legacyStore = getLocalStorage();
+    if (!legacyStore) {
+      return null;
+    }
+    let legacyValue = null;
+    try {
+      legacyValue = legacyStore.getItem(key);
+    } catch (_) {
+      legacyValue = null;
+    }
+    if (legacyValue == null) {
+      return null;
+    }
+    try { legacyStore.removeItem(key); } catch (_) {}
+    if (sessionStore) {
+      try {
+        sessionStore.setItem(key, legacyValue);
+        return legacyValue;
+      } catch (_) {}
+    }
+    storageFallback[key] = legacyValue;
+    return legacyValue;
   }
 
   function ensureChatView() {

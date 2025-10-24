@@ -220,10 +220,71 @@
 
       var VIEW_KEY = 'zhida:view'; // 'chat' once user has chatted
       var HISTORY_KEY = 'zhida:messages:v1';
+      var sessionFallback = Object.create(null);
 
-      function safeGet(k){ try { return localStorage.getItem(k); } catch(_) { return null; } }
-      function safeSet(k,v){ try { localStorage.setItem(k,v); } catch(_) {} }
-      function safeRemove(k){ try { localStorage.removeItem(k); } catch(_) {} }
+      function getSessionStore(){ try { return window.sessionStorage; } catch(_) { return null; } }
+      function getLocalStore(){ try { return window.localStorage; } catch(_) { return null; } }
+      function hasFallback(k){ return Object.prototype.hasOwnProperty.call(sessionFallback, k); }
+
+      function migrateLegacyValue(key, sessionStore){
+        var legacy = getLocalStore();
+        if (!legacy) return null;
+        var legacyValue = null;
+        try { legacyValue = legacy.getItem(key); } catch(_) { legacyValue = null; }
+        if (legacyValue == null) return null;
+        try { legacy.removeItem(key); } catch(_) {}
+        if (sessionStore) {
+          try {
+            sessionStore.setItem(key, legacyValue);
+            return legacyValue;
+          } catch(_) {}
+        }
+        sessionFallback[key] = legacyValue;
+        return legacyValue;
+      }
+
+      function safeGet(k){
+        var sessionStore = getSessionStore();
+        if (sessionStore) {
+          try {
+            var existing = sessionStore.getItem(k);
+            if (existing != null) return existing;
+          } catch(_) {}
+        }
+        var migrated = migrateLegacyValue(k, sessionStore);
+        if (migrated != null) return migrated;
+        return hasFallback(k) ? sessionFallback[k] : null;
+      }
+
+      function safeSet(k,v){
+        var str = v == null ? '' : String(v);
+        var sessionStore = getSessionStore();
+        if (sessionStore) {
+          try {
+            sessionStore.setItem(k, str);
+            return;
+          } catch(_) {}
+        }
+        sessionFallback[k] = str;
+        var legacy = getLocalStore();
+        if (legacy) {
+          try { legacy.removeItem(k); } catch(_) {}
+        }
+      }
+
+      function safeRemove(k){
+        var sessionStore = getSessionStore();
+        if (sessionStore) {
+          try { sessionStore.removeItem(k); } catch(_) {}
+        }
+        var legacy = getLocalStore();
+        if (legacy) {
+          try { legacy.removeItem(k); } catch(_) {}
+        }
+        if (hasFallback(k)) {
+          delete sessionFallback[k];
+        }
+      }
 
       function hasUserHistory(){
         try {
