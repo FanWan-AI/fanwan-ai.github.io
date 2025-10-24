@@ -289,12 +289,19 @@
   }
 
   function ensureWelcomeMessage() {
-    if (!state.messages.length || state.messages[0].role !== 'assistant') {
-      state.messages.unshift({
-        role: 'assistant',
-        content: t('ai_qa_welcome'),
-        createdAt: Date.now()
-      });
+    if (!state.messages.length) {
+      return;
+    }
+    const welcomeText = t('ai_qa_welcome');
+    const originalLength = state.messages.length;
+    state.messages = state.messages.filter(msg => {
+      if (!msg || msg.role !== 'assistant') {
+        return true;
+      }
+      const content = typeof msg.content === 'string' ? msg.content.trim() : '';
+      return content !== welcomeText;
+    });
+    if (state.messages.length !== originalLength) {
       persistMessages();
     }
   }
@@ -895,14 +902,11 @@
   function renderFileList() {
     if (!el.fileList) return;
     el.fileList.innerHTML = '';
-    const isEmpty = state.files.length === 0;
-    el.fileList.classList.toggle('is-empty', isEmpty);
-    body.classList.toggle('zhida-has-files', !isEmpty);
-    if (isEmpty) {
-      const placeholder = document.createElement('span');
-      placeholder.className = 'zhida-file-list-empty';
-      placeholder.textContent = t('ai_qa_file_list_empty');
-      el.fileList.appendChild(placeholder);
+    const hasFiles = state.files.length > 0;
+    el.fileList.classList.toggle('is-empty', !hasFiles);
+    el.fileList.hidden = !hasFiles;
+    body.classList.toggle('zhida-has-files', hasFiles);
+    if (!hasFiles) {
       return;
     }
     state.files.forEach(file => {
