@@ -170,7 +170,9 @@
 
   function bindEvents() {
     el.form.addEventListener('submit', handleSend);
-    el.clearBtn.addEventListener('click', handleClear);
+    if (el.clearBtn) {
+      el.clearBtn.addEventListener('click', handleClear);
+    }
     el.stopBtn.addEventListener('click', handleStop);
     el.input.addEventListener('input', autoResizeInput);
     el.input.addEventListener('keydown', handleInputKeydown);
@@ -998,16 +1000,16 @@
   }
 
   function setStatus(status) {
-    if (!el.statusText) return;
-    const spans = el.statusText.querySelectorAll('[data-state]');
-    spans.forEach(span => {
-      span.hidden = span.getAttribute('data-state') !== status;
-    });
     if (status === 'error') {
       body.classList.add('zhida-error');
     } else {
       body.classList.remove('zhida-error');
     }
+    if (!el.statusText) return;
+    const spans = el.statusText.querySelectorAll('[data-state]');
+    spans.forEach(span => {
+      span.hidden = span.getAttribute('data-state') !== status;
+    });
   }
 
   function notify(message, variant = 'error') {
