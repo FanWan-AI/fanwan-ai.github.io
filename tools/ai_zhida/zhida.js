@@ -387,6 +387,29 @@
         continue;
       }
 
+      if (/^(?: {4}|\t)/.test(rawLine)) {
+        const codeLines = [];
+        while (index < lines.length) {
+          const current = lines[index];
+          if (!current.trim()) {
+            codeLines.push('');
+            index += 1;
+            continue;
+          }
+          if (!/^(?: {4}|\t)/.test(current)) {
+            break;
+          }
+          codeLines.push(current.replace(/^(?: {4}|\t)/, ''));
+          index += 1;
+        }
+        const pre = document.createElement('pre');
+        const code = document.createElement('code');
+        code.textContent = codeLines.join('\n');
+        pre.appendChild(code);
+        container.appendChild(pre);
+        continue;
+      }
+
       const ruleCandidate = trimmed.replace(/\s+/g, '');
       if (/^(-{3,}|_{3,}|\*{3,})$/.test(ruleCandidate)) {
         container.appendChild(document.createElement('hr'));
