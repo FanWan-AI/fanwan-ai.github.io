@@ -145,15 +145,30 @@ function preflightHeaders(env, origin) {
 }
 
 function isOriginAllowed(env, origin) {
-  if (!origin) return false;
-  const list = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (list.includes(origin)) {
+  const incoming = normalizeOrigin(origin);
+  if (!incoming) {
+    return false;
+  }
+  const list = (env.ALLOWED_ORIGINS || '').split(',').map(s => normalizeOrigin(s)).filter(Boolean);
+  if (list.includes(incoming)) {
     return true;
   }
-  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(origin)) {
+  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(incoming)) {
     return true;
   }
   return false;
+}
+
+function normalizeOrigin(value) {
+  if (!value) {
+    return '';
+  }
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch (_) {
+    return String(value).trim().replace(/\/+$/, '');
+  }
 }
 
 function isDevOrigin(origin) {

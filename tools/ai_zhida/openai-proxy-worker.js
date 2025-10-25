@@ -151,18 +151,41 @@ function preflightHeaders(env, origin) {
 }
 
 function isOriginAllowed(env, origin) {
-  if (!origin) return false;
+  const incoming = normalizeOrigin(origin);
+  if (!incoming) {
+    return false;
+  }
   const allowList = (env.ALLOWED_ORIGINS || '')
     .split(',')
-    .map(item => item.trim())
+    .map(item => normalizeOrigin(item))
     .filter(Boolean);
-  if (allowList.includes(origin)) {
+  if (allowList.includes(incoming)) {
     return true;
   }
-  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(origin)) {
+  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(incoming)) {
     return true;
+  }
+  if (env.DEBUG === '1') {
+    console.log('CORS block', {
+      origin,
+      normalized: incoming,
+      allowList,
+      allowDevOrigins: env.ALLOW_DEV_ORIGINS === '1'
+    });
   }
   return false;
+}
+
+function normalizeOrigin(value) {
+  if (!value) {
+    return '';
+  }
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch (_) {
+    return String(value).trim().replace(/\/+$/, '');
+  }
 }
 
 function isDevOrigin(origin) {
