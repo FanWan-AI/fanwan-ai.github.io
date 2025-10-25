@@ -1523,18 +1523,19 @@
       messages,
       max_tokens: getMaxTokens()
     };
+    const supportsDocuments = modelSupportsDocuments(model);
 
     if (modelSupportsTemperature(model)) {
       payload.temperature = getTemperature();
     }
-    if (docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
+    if (supportsDocuments && docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
       payload.mode = 'rag';
       payload.documents = docContext.snippets.map(snippet => ({
         id: snippet.fileId + ':' + snippet.index,
         name: snippet.fileName,
         content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
       }));
-    } else if (shouldUseDocumentMode()) {
+    } else if (supportsDocuments && shouldUseDocumentMode()) {
       payload.mode = 'rag';
     }
     if (state.activePayloadOverrides && typeof state.activePayloadOverrides === 'object') {
@@ -2199,6 +2200,14 @@
       return true;
     }
     return !name.startsWith('gpt-5');
+  }
+
+  function modelSupportsDocuments(model) {
+    const provider = getProviderConfig(model);
+    if (provider && Object.prototype.hasOwnProperty.call(provider, 'supportsDocuments')) {
+      return !!provider.supportsDocuments;
+    }
+    return true;
   }
 
   function normalizeModel(value) {
