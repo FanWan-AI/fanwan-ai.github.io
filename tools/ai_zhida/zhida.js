@@ -14,6 +14,12 @@
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const SUPPORTED_EXT = ['pdf', 'txt', 'md', 'docx', 'xlsx'];
+  const rawDefaultModel = typeof windowConfig.model === 'string' && windowConfig.model.trim() ? windowConfig.model.trim() : 'deepseek-chat';
+  const MODEL_OPTIONS = ['deepseek-chat', 'chatgpt', 'qwen'];
+  if (MODEL_OPTIONS.indexOf(rawDefaultModel) === -1) {
+    MODEL_OPTIONS.unshift(rawDefaultModel);
+  }
+  const DEFAULT_MODEL = rawDefaultModel;
   const VIEW_STATE_KEY = 'zhida:view';
   const STORAGE = {
     HISTORY: 'zhida:messages:v1',
@@ -46,8 +52,8 @@
 
   const state = {
     messages: [],
-    files: [],
-    mode: 'chat',
+  files: [],
+  model: DEFAULT_MODEL,
     streaming: false,
     assistantIndex: null,
     settingsOpen: false
@@ -65,8 +71,8 @@
     toast: document.querySelector('[data-chat-error]'),
     fileInput: document.querySelector('[data-file-input]'),
     chooseFileBtn: document.querySelector('[data-action="choose-file"]'),
-    fileList: document.querySelector('[data-file-list]'),
-    modeInputs: document.querySelectorAll('[data-mode-input]'),
+  fileList: document.querySelector('[data-file-list]'),
+  modelSelect: document.querySelector('[data-model-select]'),
     temperature: document.querySelector('[data-temperature]'),
     temperatureValue: document.querySelector('[data-temperature-value]'),
     maxTokens: document.querySelector('[data-max-tokens]'),
@@ -78,6 +84,7 @@
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
   };
   const stageEl = document.querySelector('.zhida-stage');
+  const INPUT_MIN_HEIGHT = 44;
 
   if (!el.messages || !el.form || !el.input) {
     return;
@@ -193,7 +200,9 @@
     el.stopBtn.addEventListener('click', handleStop);
     el.input.addEventListener('input', autoResizeInput);
     el.input.addEventListener('keydown', handleInputKeydown);
-    el.modeInputs.forEach(radio => radio.addEventListener('change', handleModeChange));
+    if (el.modelSelect) {
+      el.modelSelect.addEventListener('change', handleModelChange);
+    }
     if (el.temperature) {
       el.temperature.addEventListener('input', handleTemperatureChange);
     }
@@ -243,28 +252,29 @@
       }
     }
 
-  const newDefault = DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
+    const newDefault = DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
 
-  const storedPrompt = stored && typeof stored.systemPrompt === 'string' ? stored.systemPrompt.trim() : '';
-  const isCustomPrompt = storedPrompt && !isKnownSystemPrompt(storedPrompt);
-  const shouldResetPrompt = !storedPrompt || (!isCustomPrompt && storedPrompt !== newDefault);
+    const storedPrompt = stored && typeof stored.systemPrompt === 'string' ? stored.systemPrompt.trim() : '';
+    const isCustomPrompt = storedPrompt && !isKnownSystemPrompt(storedPrompt);
+    const shouldResetPrompt = !storedPrompt || (!isCustomPrompt && storedPrompt !== newDefault);
 
-  const temperatureValue = stored ? Number(stored.temperature) : NaN;
-  const temperature = Number.isFinite(temperatureValue) ? temperatureValue : DEFAULT_TEMP;
-  const maxTokensValue = stored ? Number(stored.maxTokens) : NaN;
-  const maxTokens = Number.isFinite(maxTokensValue) ? Math.min(Math.max(maxTokensValue, 256), 4096) : DEFAULT_MAX_TOKENS;
-  const systemPrompt = shouldResetPrompt ? newDefault : (storedPrompt || newDefault);
-    const mode = stored && stored.mode === 'rag' ? 'rag' : 'chat';
+    const temperatureValue = stored ? Number(stored.temperature) : NaN;
+    const temperature = Number.isFinite(temperatureValue) ? temperatureValue : DEFAULT_TEMP;
+    const maxTokensValue = stored ? Number(stored.maxTokens) : NaN;
+    const maxTokens = Number.isFinite(maxTokensValue) ? Math.min(Math.max(maxTokensValue, 256), 4096) : DEFAULT_MAX_TOKENS;
+    const systemPrompt = shouldResetPrompt ? newDefault : (storedPrompt || newDefault);
+    const storedModel = stored && typeof stored.model === 'string' ? stored.model.trim() : '';
+    const model = normalizeModel(storedModel);
 
     const settings = {
       temperature,
       maxTokens,
       systemPrompt,
-      mode,
+      model,
       lang
     };
 
-    state.mode = settings.mode;
+    state.model = settings.model || DEFAULT_MODEL;
 
     if (el.temperature) {
       el.temperature.value = String(settings.temperature);
@@ -276,10 +286,9 @@
     if (el.systemPrompt) {
       el.systemPrompt.value = settings.systemPrompt || '';
     }
-
-    el.modeInputs.forEach(radio => {
-      radio.checked = radio.value === state.mode;
-    });
+    if (el.modelSelect) {
+      el.modelSelect.value = state.model;
+    }
 
     // Persist the resolved defaults so the active language stays in sync.
     persistSettings();
@@ -290,7 +299,7 @@
       temperature: getTemperature(),
       maxTokens: getMaxTokens(),
       systemPrompt: getSystemPrompt(),
-      mode: state.mode,
+      model: getActiveModel(),
       lang: getLang()
     };
     storageSet(STORAGE.SETTINGS, JSON.stringify(settings));
@@ -733,21 +742,23 @@
       messages.push({ role: msg.role, content: msg.content });
     });
     const payload = {
-      model: windowConfig.model || 'deepseek-chat',
+      model: getActiveModel(),
       stream: true,
       messages,
       temperature: getTemperature(),
       max_tokens: getMaxTokens()
     };
-    if (state.mode === 'rag') {
+    if (shouldUseDocumentMode()) {
       payload.mode = 'rag';
     }
     return payload;
   }
 
   function autoResizeInput() {
+    if (!el.input) return;
     el.input.style.height = 'auto';
-    el.input.style.height = Math.min(el.input.scrollHeight, 96) + 'px';
+    const next = Math.min(Math.max(el.input.scrollHeight, INPUT_MIN_HEIGHT), 96);
+    el.input.style.height = next + 'px';
   }
 
   function handleInputKeydown(event) {
@@ -757,16 +768,12 @@
     }
   }
 
-  function handleModeChange(event) {
-    if (!event.target.checked) return;
-    state.mode = event.target.value === 'rag' ? 'rag' : 'chat';
-    persistSettings();
-    if (state.mode === 'rag') {
-      notify(t('ai_qa_docs_coming_soon'), 'warning');
-    } else {
-      clearNotification();
-      setStatus('ready');
+  function handleModelChange(event) {
+    state.model = normalizeModel(event.target.value);
+    if (el.modelSelect) {
+      el.modelSelect.value = state.model;
     }
+    persistSettings();
   }
 
   function handleTemperatureChange(event) {
@@ -1099,6 +1106,34 @@
     if (value) return value;
     const lang = getLang();
     return DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
+  }
+
+  function getActiveModel() {
+    if (state && typeof state.model === 'string' && state.model) {
+      return state.model;
+    }
+    return DEFAULT_MODEL;
+  }
+
+  function normalizeModel(value) {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (trimmed && MODEL_OPTIONS.indexOf(trimmed) !== -1) {
+      return trimmed;
+    }
+    return DEFAULT_MODEL;
+  }
+
+  function shouldUseDocumentMode() {
+    if (!Array.isArray(state.files) || !state.files.length) {
+      return false;
+    }
+    for (let index = 0; index < state.files.length; index += 1) {
+      const status = state.files[index] && state.files[index].status;
+      if (status && (status === 'ready' || status === 'processed' || status === 'complete' || status === 'success')) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function getErrorMessage(error) {
