@@ -43,7 +43,7 @@
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const DEFAULT_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'xls', 'xlsx', 'json', 'html'];
-    const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
+  const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
     ? windowConfig.allowedFileExtensions.map(ext => String(ext || '').toLowerCase().replace(/^[.]/, '')).filter(Boolean)
     : DEFAULT_EXTENSIONS;
   const MODEL_OPTIONS = Array.isArray(windowConfig.modelOptions) && windowConfig.modelOptions.length
@@ -321,6 +321,8 @@
   let lastFocusedElement = null;
   let settingsFocusTrapListener = null;
   let mathTypesetTimer = null;
+  let mathTypesetInFlight = false;
+  const mathPendingMessages = new Set();
   let mathJaxLoadingPromise = null;
   const client = new DeepSeekClient(endpoint);
 
@@ -553,7 +555,15 @@
     }
 
     while (el.messages.children.length > messageCount) {
-      el.messages.removeChild(el.messages.lastElementChild);
+      const removed = el.messages.lastElementChild;
+      if (!removed) {
+        break;
+      }
+      const removedId = removed.getAttribute ? removed.getAttribute('data-message-id') : null;
+      if (removedId) {
+        mathPendingMessages.delete(removedId);
+      }
+      el.messages.removeChild(removed);
     }
 
     if (state.autoStick) {
@@ -573,6 +583,121 @@
       p.textContent = '';
       container.appendChild(p);
     }
+  }
+
+  function trackMathForMessage(wrapper, message, content) {
+    if (!wrapper || !message || !message.id) {
+      return;
+    }
+    const signature = computeMathSignature(content);
+    wrapper.__mathSignature = signature;
+    if (signatureHasMath(signature)) {
+      markMessageForMath(message.id);
+    } else {
+      mathPendingMessages.delete(message.id);
+    }
+  }
+
+  function markMessageForMath(messageId) {
+    if (!messageId) {
+      return;
+    }
+    mathPendingMessages.add(messageId);
+    scheduleMathTypeset();
+  }
+
+  function computeMathSignature(content) {
+    if (!content) {
+      return '';
+    }
+    let source = String(content);
+    let envCount = 0;
+    let blockCount = 0;
+    let bracketCount = 0;
+    let parenCount = 0;
+
+    source = source.replace(/\\begin\{([^}]+)\}([\s\S]+?)\\end\{\1\}/g, () => {
+      envCount += 1;
+      return ' ';
+    });
+    source = source.replace(/\$\$([\s\S]+?)\$\$/g, () => {
+      blockCount += 1;
+      return ' ';
+    });
+    source = source.replace(/\\\[([\s\S]+?)\\\]/g, () => {
+      bracketCount += 1;
+      return ' ';
+    });
+    source = source.replace(/\\\(([\s\S]+?)\\\)/g, () => {
+      parenCount += 1;
+      return ' ';
+    });
+
+    const inlineCount = countInlineMathSegments(source);
+    if (!inlineCount && !blockCount && !parenCount && !bracketCount && !envCount) {
+      return '';
+    }
+    return [inlineCount, blockCount, parenCount, bracketCount, envCount].join(':');
+  }
+
+  function countInlineMathSegments(source) {
+    if (!source) {
+      return 0;
+    }
+    let count = 0;
+    let index = 0;
+    const length = source.length;
+    while (index < length) {
+      const char = source[index];
+      if (char === '\\') {
+        index += 2;
+        continue;
+      }
+      if (char === '$') {
+        if (source[index + 1] === '$') {
+          index += 2;
+          continue;
+        }
+        let end = index + 1;
+        let found = false;
+        while (end < length) {
+          const endChar = source[end];
+          if (endChar === '\\') {
+            end += 2;
+            continue;
+          }
+          if (endChar === '$') {
+            if (end === index + 1) {
+              break;
+            }
+            count += 1;
+            index = end + 1;
+            found = true;
+            break;
+          }
+          end += 1;
+        }
+        if (!found) {
+          index += 1;
+        }
+        continue;
+      }
+      index += 1;
+    }
+    return count;
+  }
+
+  function signatureHasMath(signature) {
+    if (!signature) {
+      return false;
+    }
+    const parts = signature.split(':');
+    for (let index = 0; index < parts.length; index += 1) {
+      if (Number(parts[index] || 0) > 0) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function buildMessageElement(message) {
@@ -664,12 +789,13 @@
 
     const nextContent = typeof message.content === 'string' ? message.content : '';
     const previousContent = wrapper.__zhidaContent || '';
-    if (previousContent !== nextContent) {
+    const contentChanged = previousContent !== nextContent;
+    if (contentChanged) {
       renderText(text, nextContent);
       wrapper.__zhidaContent = nextContent;
-      return true;
     }
-    return false;
+    trackMathForMessage(wrapper, message, nextContent);
+    return contentChanged;
   }
 
   function updateMessageContent(message) {
@@ -1507,9 +1633,9 @@
       remove.setAttribute('aria-label', t('ai_qa_file_remove'));
       remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="sr-only">' + t('ai_qa_file_remove') + '</span>';
 
-    chip.appendChild(icon);
-    chip.appendChild(textWrap);
-    chip.appendChild(remove);
+      chip.appendChild(icon);
+      chip.appendChild(textWrap);
+      chip.appendChild(remove);
       el.fileList.appendChild(chip);
     });
   }
@@ -1925,84 +2051,70 @@
         return true;
       }
     }
-    if (hasInlineMath(value)) {
-      return true;
-    }
-    return false;
-  }
-
-  function hasInlineMath(value) {
-    if (!value) {
+    if (value.indexOf('$') === -1) {
       return false;
     }
-    let index = 0;
-    const length = value.length;
-    while (index < length) {
-      const char = value[index];
-      if (char === '\\') {
-        index += 2;
-        continue;
-      }
-      if (char === '$') {
-        if (value[index + 1] === '$') {
-          index += 2;
-          continue;
-        }
-        let end = index + 1;
-        while (end < length) {
-          const endChar = value[end];
-          if (endChar === '\\') {
-            end += 2;
-            continue;
-          }
-          if (endChar === '$') {
-            if (end === index + 1) {
-              break;
-            }
-            return true;
-          }
-          end += 1;
-        }
-        index += 1;
-        continue;
-      }
-      index += 1;
-    }
-    return false;
+    return signatureHasMath(computeMathSignature(value));
   }
 
   function scheduleMathTypeset() {
     if (!el.messages) return;
-    if (mathTypesetTimer != null) {
-      clearTimeout(mathTypesetTimer);
+    if (!mathPendingMessages.size) return;
+    if (mathTypesetTimer != null || mathTypesetInFlight) {
+      return;
     }
-    mathTypesetTimer = window.setTimeout(() => {
+    const raf = typeof window.requestAnimationFrame === 'function'
+      ? window.requestAnimationFrame.bind(window)
+      : function(callback) { return window.setTimeout(callback, 16); };
+    mathTypesetTimer = raf(() => {
       mathTypesetTimer = null;
       typesetMathIfNeeded();
-    }, 120);
+    });
   }
 
   function typesetMathIfNeeded() {
     if (!el.messages) return;
-    const hasMath = state.messages.some(msg => msg && typeof msg.content === 'string' && containsMathMarkers(msg.content));
-    if (!hasMath) {
+    if (!mathPendingMessages.size) return;
+    if (mathTypesetInFlight) return;
+
+    const pendingIds = Array.from(mathPendingMessages);
+    mathPendingMessages.clear();
+
+    const targets = pendingIds
+      .map(id => {
+        const node = el.messages.querySelector(`[data-message-id="${id}"] .zhida-message-text`);
+        return node || null;
+      })
+      .filter(Boolean);
+
+    if (!targets.length) {
       return;
     }
+
+    mathTypesetInFlight = true;
+
     ensureMathJax()
       .then(() => {
         if (!window.MathJax) return;
         if (typeof window.MathJax.typesetClear === 'function') {
-          window.MathJax.typesetClear([el.messages]);
+          window.MathJax.typesetClear(targets);
         }
         if (typeof window.MathJax.typesetPromise === 'function') {
-          return window.MathJax.typesetPromise([el.messages]);
+          return window.MathJax.typesetPromise(targets);
         }
         if (typeof window.MathJax.typeset === 'function') {
-          window.MathJax.typeset([el.messages]);
+          window.MathJax.typeset(targets);
         }
+        return null;
       })
       .catch(error => {
         console.error('MathJax error', error);
+      })
+      .finally(() => {
+        mathTypesetInFlight = false;
+        if (mathPendingMessages.size) {
+          scheduleMathTypeset();
+        }
       });
   }
 
