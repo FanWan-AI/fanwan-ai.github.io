@@ -5,6 +5,34 @@
     return;
   }
 
+  document.documentElement.setAttribute('data-zhida-lock', 'true');
+  document.documentElement.style.overflow = 'hidden';
+  document.body.style.overflow = 'hidden';
+
+  function lockHorizontalScroll() {
+    const doc = document.documentElement;
+    const body = document.body;
+    const currentX = window.pageXOffset || (doc && doc.scrollLeft) || (body && body.scrollLeft) || 0;
+    if (!currentX) {
+      return;
+    }
+    const currentY = window.pageYOffset || (doc && doc.scrollTop) || (body && body.scrollTop) || 0;
+    try {
+      window.scrollTo({ top: currentY, left: 0, behavior: 'auto' });
+    } catch (_) {
+      window.scrollTo(0, currentY);
+    }
+    if (doc) {
+      doc.scrollLeft = 0;
+    }
+    if (body) {
+      body.scrollLeft = 0;
+    }
+  }
+
+  window.addEventListener('scroll', lockHorizontalScroll, { passive: true });
+  lockHorizontalScroll();
+
   const body = document.body;
   const windowConfig = window.ZHIDA_CONFIG || {};
   const proxyAttr = body.getAttribute('data-proxy-endpoint') || '';
@@ -80,6 +108,7 @@
     chooseFileBtn: document.querySelector('[data-action="choose-file"]'),
     fileList: document.querySelector('[data-file-list]'),
     modelSelect: document.querySelector('[data-model-select]'),
+  composerDock: document.querySelector('.zhida-composer-dock'),
     temperature: document.querySelector('[data-temperature]'),
     temperatureValue: document.querySelector('[data-temperature-value]'),
     maxTokens: document.querySelector('[data-max-tokens]'),
@@ -90,6 +119,32 @@
     settingsClose: document.querySelector('[data-settings-close]'),
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
   };
+
+  function isMessagesNearBottom() {
+    if (!el.messages) {
+      return true;
+    }
+    const { scrollTop, scrollHeight, clientHeight } = el.messages;
+    if (!scrollHeight || scrollHeight <= clientHeight + 8) {
+      return true;
+    }
+    return scrollHeight - clientHeight - scrollTop <= 160;
+  }
+
+  function scrollMessagesToBottom(smooth) {
+    if (!el.messages) {
+      return;
+    }
+    const target = el.messages.scrollHeight;
+    lockHorizontalScroll();
+    if (typeof el.messages.scrollTo === 'function') {
+      try {
+        el.messages.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' });
+        return;
+      } catch (_) {}
+    }
+    el.messages.scrollTop = target;
+  }
   const stageEl = document.querySelector('.zhida-stage');
   const docPipeline = window.ZhidaDocs && typeof window.ZhidaDocs.createPipeline === 'function'
     ? window.ZhidaDocs.createPipeline()
@@ -366,6 +421,10 @@
   }
 
   function renderMessages() {
+    if (!el.messages) {
+      return;
+    }
+    const shouldStick = isMessagesNearBottom();
     el.messages.innerHTML = '';
     let hasMath = false;
     state.messages.forEach((msg, index) => {
@@ -389,31 +448,14 @@
       wrapper.appendChild(bubble);
       el.messages.appendChild(wrapper);
 
-      if (index === state.messages.length - 1) {
-        requestAnimationFrame(() => {
-          const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement && document.documentElement.clientHeight || 0);
-          if (!viewportHeight) {
-            return;
-          }
-          const rect = wrapper.getBoundingClientRect();
-          const cushion = 96; // keep the composer visible below the latest reply
-          if (rect.bottom > viewportHeight - cushion) {
-            const currentX = window.pageXOffset || document.documentElement.scrollLeft || 0;
-            const currentY = window.pageYOffset || document.documentElement.scrollTop || 0;
-            const targetY = currentY + rect.bottom - (viewportHeight - cushion);
-            try {
-              window.scrollTo({ top: targetY, left: currentX, behavior: 'smooth' });
-            } catch (_) {
-              window.scrollTo(currentX, targetY);
-            }
-          }
-        });
-      }
-
       if (!hasMath && msg && typeof msg.content === 'string' && containsMathMarkers(msg.content)) {
         hasMath = true;
       }
     });
+
+    if (shouldStick) {
+      scrollMessagesToBottom(true);
+    }
 
     if (hasMath) {
       scheduleMathTypeset();
