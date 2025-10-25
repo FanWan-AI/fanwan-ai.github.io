@@ -34,6 +34,7 @@
   lockHorizontalScroll();
 
   const body = document.body;
+  body.classList.add('zhida-chat-empty');
   const windowConfig = window.ZHIDA_CONFIG || {};
   const proxyAttr = body.getAttribute('data-proxy-endpoint') || '';
   const endpoint = (windowConfig.endpoint || proxyAttr || '').trim();
@@ -91,7 +92,9 @@
     model: DEFAULT_MODEL,
     streaming: false,
     assistantIndex: null,
-    settingsOpen: false
+    settingsOpen: false,
+    autoStick: true,
+    manualScrollIntent: false
   };
 
   const el = {
@@ -108,7 +111,7 @@
     chooseFileBtn: document.querySelector('[data-action="choose-file"]'),
     fileList: document.querySelector('[data-file-list]'),
     modelSelect: document.querySelector('[data-model-select]'),
-  composerDock: document.querySelector('.zhida-composer-dock'),
+    composerDock: document.querySelector('.zhida-composer-dock'),
     temperature: document.querySelector('[data-temperature]'),
     temperatureValue: document.querySelector('[data-temperature-value]'),
     maxTokens: document.querySelector('[data-max-tokens]'),
@@ -120,30 +123,101 @@
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
   };
 
-  function isMessagesNearBottom() {
-    if (!el.messages) {
-      return true;
-    }
-    const { scrollTop, scrollHeight, clientHeight } = el.messages;
-    if (!scrollHeight || scrollHeight <= clientHeight + 8) {
-      return true;
-    }
-    return scrollHeight - clientHeight - scrollTop <= 160;
+  function syncChatStateClasses() {
+    const hasMessages = state.messages.length > 0;
+    body.classList.toggle('zhida-chat-active', hasMessages);
+    body.classList.toggle('zhida-chat-empty', !hasMessages);
   }
 
   function scrollMessagesToBottom(smooth) {
     if (!el.messages) {
       return;
     }
-    const target = el.messages.scrollHeight;
-    lockHorizontalScroll();
-    if (typeof el.messages.scrollTo === 'function') {
-      try {
-        el.messages.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' });
+    const scheduleScroll = () => {
+      const metrics = captureScrollMetrics();
+      if (!metrics || metrics.bottomGap <= 2) {
         return;
-      } catch (_) {}
+      }
+      lockHorizontalScroll();
+      const target = metrics.scrollHeight;
+      if (typeof el.messages.scrollTo === 'function') {
+        try {
+          el.messages.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'auto' });
+          return;
+        } catch (_) {}
+      }
+      el.messages.scrollTop = target;
+    };
+
+    if (smooth) {
+      requestAnimationFrame(() => requestAnimationFrame(scheduleScroll));
+    } else {
+      requestAnimationFrame(scheduleScroll);
     }
-    el.messages.scrollTop = target;
+  }
+
+  function captureScrollMetrics() {
+    if (!el.messages) {
+      return null;
+    }
+    const { scrollTop, scrollHeight, clientHeight } = el.messages;
+    const bottomGap = Math.max(0, scrollHeight - clientHeight - scrollTop);
+    return { scrollTop, scrollHeight, clientHeight, bottomGap };
+  }
+
+  function hasOverflow(metrics) {
+    if (!metrics) {
+      return false;
+    }
+    return metrics.scrollHeight > metrics.clientHeight + 2;
+  }
+
+  function setAutoStick(value) {
+    const next = !!value;
+    if (state.autoStick === next) {
+      body.classList.toggle('zhida-scroll-away', !next);
+      return;
+    }
+    state.autoStick = next;
+    body.classList.toggle('zhida-scroll-away', !next);
+    if (next) {
+      state.manualScrollIntent = false;
+    }
+  }
+
+  function handleMessagesInteraction(event) {
+    state.manualScrollIntent = true;
+    if (!state.autoStick) {
+      return;
+    }
+    if (event && event.type === 'wheel' && event.deltaY < 0) {
+      setAutoStick(false);
+    }
+  }
+
+  function handleMessagesScroll() {
+    const metrics = captureScrollMetrics();
+    if (!metrics) {
+      return;
+    }
+    if (!hasOverflow(metrics)) {
+      state.manualScrollIntent = false;
+      setAutoStick(true);
+      return;
+    }
+    const distance = metrics.bottomGap;
+    if (distance <= SCROLL_STICK_THRESHOLD) {
+      state.manualScrollIntent = false;
+      setAutoStick(true);
+      return;
+    }
+    if (state.manualScrollIntent && distance > MANUAL_SCROLL_DELTA) {
+      setAutoStick(false);
+      return;
+    }
+    if (distance >= SCROLL_UNSTICK_THRESHOLD) {
+      setAutoStick(false);
+    }
   }
   const stageEl = document.querySelector('.zhida-stage');
   const docPipeline = window.ZhidaDocs && typeof window.ZhidaDocs.createPipeline === 'function'
@@ -151,6 +225,10 @@
     : null;
   const READY_FILE_STATUSES = { ready: true, success: true, complete: true, processed: true };
   const INPUT_MIN_HEIGHT = 44;
+  const SCROLL_STICK_THRESHOLD = 72;
+  const SCROLL_UNSTICK_THRESHOLD = 160;
+  const MANUAL_SCROLL_DELTA = 6;
+  const PASSIVE_EVENT_OPTIONS = { passive: true };
 
   if (!el.messages || !el.form || !el.input) {
     return;
@@ -259,6 +337,12 @@
   }
 
   function bindEvents() {
+    if (el.messages) {
+      el.messages.addEventListener('scroll', handleMessagesScroll, PASSIVE_EVENT_OPTIONS);
+      el.messages.addEventListener('wheel', handleMessagesInteraction, PASSIVE_EVENT_OPTIONS);
+      el.messages.addEventListener('touchstart', handleMessagesInteraction, PASSIVE_EVENT_OPTIONS);
+      el.messages.addEventListener('pointerdown', handleMessagesInteraction, PASSIVE_EVENT_OPTIONS);
+    }
     el.form.addEventListener('submit', handleSend);
     if (el.clearBtn) {
       el.clearBtn.addEventListener('click', handleClear);
@@ -304,6 +388,7 @@
     }
     document.addEventListener('keydown', handleGlobalKeydown);
     autoResizeInput();
+    handleMessagesScroll();
   }
 
   function loadSettings() {
@@ -379,22 +464,46 @@
     }
     try {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        state.messages = parsed.slice(-60).map(item => ({
-          role: item.role === 'assistant' ? 'assistant' : 'user',
-          content: typeof item.content === 'string' ? item.content : '',
-          createdAt: item.createdAt || Date.now()
-        }));
+        if (Array.isArray(parsed)) {
+          state.messages = parsed.slice(-60).map(item => ({
+            id: typeof item.id === 'string' && item.id ? item.id : createMessageId(),
+            role: item.role === 'assistant' ? 'assistant' : 'user',
+            content: typeof item.content === 'string' ? item.content : '',
+            createdAt: item.createdAt || Date.now()
+          }));
       } else {
         state.messages = [];
       }
     } catch (_) {
       state.messages = [];
     }
+
+    if (ensureMessageIds(state.messages)) {
+      persistMessages();
+    }
+  }
+
+  function ensureMessageIds(list) {
+    let changed = false;
+    if (!Array.isArray(list)) {
+      return changed;
+    }
+    list.forEach(msg => {
+      if (!msg) {
+        return;
+      }
+      if (typeof msg.id !== 'string' || !msg.id) {
+        msg.id = createMessageId();
+        changed = true;
+      }
+    });
+    return changed;
   }
 
   function persistMessages() {
+    ensureMessageIds(state.messages);
     const payload = state.messages.slice(-60).map(msg => ({
+      id: msg.id,
       role: msg.role,
       content: msg.content,
       createdAt: msg.createdAt || Date.now()
@@ -421,40 +530,33 @@
   }
 
   function renderMessages() {
+    syncChatStateClasses();
     if (!el.messages) {
       return;
     }
-    const shouldStick = isMessagesNearBottom();
-    el.messages.innerHTML = '';
+
     let hasMath = false;
-    state.messages.forEach((msg, index) => {
-      const wrapper = document.createElement('div');
-      wrapper.className = `zhida-message zhida-message--${msg.role}`;
+    const messageCount = state.messages.length;
 
-      const avatar = document.createElement('span');
-      avatar.className = 'zhida-message-avatar';
-      avatar.setAttribute('aria-hidden', 'true');
-      avatar.innerHTML = msg.role === 'assistant' ? assistantIcon() : userIcon();
-
-      const bubble = document.createElement('div');
-      bubble.className = 'zhida-message-bubble';
-
-      const text = document.createElement('div');
-      text.className = 'zhida-message-text';
-      renderText(text, msg.content);
-
-      bubble.appendChild(text);
-      wrapper.appendChild(avatar);
-      wrapper.appendChild(bubble);
-      el.messages.appendChild(wrapper);
-
-      if (!hasMath && msg && typeof msg.content === 'string' && containsMathMarkers(msg.content)) {
+    for (let index = 0; index < messageCount; index += 1) {
+      const message = state.messages[index];
+      const referenceNode = el.messages.children[index] || null;
+      const wrapper = ensureMessageElement(message, referenceNode);
+      const contentChanged = updateMessageElement(wrapper, message);
+      if (!hasMath && message && typeof message.content === 'string' && containsMathMarkers(message.content)) {
         hasMath = true;
       }
-    });
+      if (contentChanged && !hasMath && message && typeof message.content === 'string' && containsMathMarkers(message.content)) {
+        hasMath = true;
+      }
+    }
 
-    if (shouldStick) {
-      scrollMessagesToBottom(true);
+    while (el.messages.children.length > messageCount) {
+      el.messages.removeChild(el.messages.lastElementChild);
+    }
+
+    if (state.autoStick) {
+      scrollMessagesToBottom(!state.streaming);
     }
 
     if (hasMath) {
@@ -470,6 +572,118 @@
       p.textContent = '';
       container.appendChild(p);
     }
+  }
+
+  function buildMessageElement(message) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'zhida-message';
+    wrapper.dataset.messageId = message.id || '';
+    wrapper.dataset.role = message.role || 'user';
+
+    const avatar = document.createElement('span');
+    avatar.className = 'zhida-message-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.dataset.role = message.role || 'user';
+    avatar.innerHTML = (message.role === 'assistant' ? assistantIcon() : userIcon());
+
+    const bubble = document.createElement('div');
+    bubble.className = 'zhida-message-bubble';
+
+    const text = document.createElement('div');
+    text.className = 'zhida-message-text';
+    bubble.appendChild(text);
+
+    wrapper.appendChild(avatar);
+    wrapper.appendChild(bubble);
+    return wrapper;
+  }
+
+  function ensureMessageElement(message, referenceNode) {
+    if (!el.messages) {
+      return null;
+    }
+    let node = null;
+    if (message && message.id) {
+      node = el.messages.querySelector(`[data-message-id="${message.id}"]`);
+    }
+    if (!node) {
+      node = buildMessageElement(message);
+      el.messages.insertBefore(node, referenceNode);
+      return node;
+    }
+    if (referenceNode !== node) {
+      el.messages.insertBefore(node, referenceNode);
+    }
+    return node;
+  }
+
+  function updateMessageElement(wrapper, message) {
+    if (!wrapper || !message) {
+      return false;
+    }
+
+    const role = message.role === 'assistant' ? 'assistant' : 'user';
+    wrapper.dataset.messageId = message.id || '';
+    wrapper.dataset.role = role;
+    wrapper.className = `zhida-message zhida-message--${role}`;
+
+    if (message.streaming) {
+      wrapper.dataset.streaming = 'true';
+      wrapper.classList.add('zhida-message--streaming');
+    } else {
+      wrapper.removeAttribute('data-streaming');
+      wrapper.classList.remove('zhida-message--streaming');
+    }
+
+    let avatar = wrapper.querySelector('.zhida-message-avatar');
+    if (!avatar) {
+      avatar = document.createElement('span');
+      avatar.className = 'zhida-message-avatar';
+      avatar.setAttribute('aria-hidden', 'true');
+      wrapper.insertBefore(avatar, wrapper.firstChild);
+    }
+    if (avatar.dataset.role !== role) {
+      avatar.dataset.role = role;
+      avatar.innerHTML = role === 'assistant' ? assistantIcon() : userIcon();
+    }
+
+    let bubble = wrapper.querySelector('.zhida-message-bubble');
+    if (!bubble) {
+      bubble = document.createElement('div');
+      bubble.className = 'zhida-message-bubble';
+      wrapper.appendChild(bubble);
+    }
+
+    let text = bubble.querySelector('.zhida-message-text');
+    if (!text) {
+      text = document.createElement('div');
+      text.className = 'zhida-message-text';
+      bubble.appendChild(text);
+    }
+
+    const nextContent = typeof message.content === 'string' ? message.content : '';
+    const previousContent = wrapper.__zhidaContent || '';
+    if (previousContent !== nextContent) {
+      renderText(text, nextContent);
+      wrapper.__zhidaContent = nextContent;
+      return true;
+    }
+    return false;
+  }
+
+  function updateMessageContent(message) {
+    if (!message || !message.id || !el.messages) {
+      return false;
+    }
+    let node = el.messages.querySelector(`[data-message-id="${message.id}"]`);
+    if (!node) {
+      renderMessages();
+      node = el.messages.querySelector(`[data-message-id="${message.id}"]`);
+      if (!node) {
+        return false;
+      }
+    }
+    return updateMessageElement(node, message);
   }
 
   function renderMarkdown(container, markdown) {
@@ -703,6 +917,7 @@
     clearNotification();
 
     const userMessage = {
+      id: createMessageId(),
       role: 'user',
       content: value,
       createdAt: Date.now()
@@ -710,12 +925,15 @@
     state.messages.push(userMessage);
     persistMessages();
     ensureChatView();
+    setAutoStick(true);
+    state.manualScrollIntent = false;
     el.input.value = '';
     autoResizeInput();
     renderMessages();
 
     const payload = buildPayload();
     const assistantMessage = {
+      id: createMessageId(),
       role: 'assistant',
       content: '',
       createdAt: Date.now(),
@@ -725,6 +943,8 @@
     state.assistantIndex = state.messages.length - 1;
     setStatus('streaming');
     setStreaming(true);
+    setAutoStick(true);
+    state.manualScrollIntent = false;
     renderMessages();
 
     client.streamChat(payload, {
@@ -750,6 +970,8 @@
     state.messages = [];
     ensureWelcomeMessage();
     persistMessages();
+    setAutoStick(true);
+    state.manualScrollIntent = false;
     renderMessages();
     setStatus('ready');
     clearNotification();
@@ -777,16 +999,29 @@
     const assistant = state.messages[state.assistantIndex];
     if (!assistant) return;
     assistant.content += chunk;
-    renderMessages();
+    const updated = updateMessageContent(assistant);
+    if (!updated) {
+      return;
+    }
+    if (state.autoStick) {
+      scrollMessagesToBottom(false);
+    }
+    if (containsMathMarkers(assistant.content)) {
+      scheduleMathTypeset();
+    }
   }
 
   function finalizeAssistant(interrupted) {
+    let removedAssistant = false;
     if (state.assistantIndex != null) {
       const assistant = state.messages[state.assistantIndex];
       if (assistant) {
         assistant.streaming = false;
         if (interrupted && !assistant.content.trim()) {
           state.messages.splice(state.assistantIndex, 1);
+          removedAssistant = true;
+        } else {
+          updateMessageContent(assistant);
         }
       }
     }
@@ -796,7 +1031,15 @@
       setStatus('ready');
     }
     persistMessages();
-    renderMessages();
+    if (removedAssistant) {
+      renderMessages();
+    } else {
+      syncChatStateClasses();
+      if (state.autoStick) {
+        scrollMessagesToBottom(true);
+      }
+      scheduleMathTypeset();
+    }
   }
 
   function buildPayload() {
@@ -1760,6 +2003,10 @@
     const safe = String(ext || '').trim().slice(0, 3).toUpperCase();
     if (safe) return safe;
     return 'FILE';
+  }
+
+  function createMessageId() {
+    return 'm_' + Math.random().toString(36).slice(2, 10);
   }
 
   function createId() {
