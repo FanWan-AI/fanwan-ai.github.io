@@ -43,7 +43,7 @@
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
   const DEFAULT_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'xls', 'xlsx', 'json', 'html'];
-  const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
+    const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
     ? windowConfig.allowedFileExtensions.map(ext => String(ext || '').toLowerCase().replace(/^[.]/, '')).filter(Boolean)
     : DEFAULT_EXTENSIONS;
   const MODEL_OPTIONS = Array.isArray(windowConfig.modelOptions) && windowConfig.modelOptions.length
@@ -85,6 +85,7 @@
   }
   const DEFAULT_MATHJAX_SRC = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';
   const MATH_MARKERS = ['\\(', '\\[', '$$', '\\begin{'];
+  const TABLE_PIPE_PLACEHOLDER = '@@PIPE@@';
 
   const state = {
     messages: [],
@@ -805,6 +806,13 @@
         continue;
       }
 
+      const tableMatch = parseMarkdownTable(lines, index);
+      if (tableMatch) {
+        container.appendChild(tableMatch.element);
+        index = tableMatch.nextIndex;
+        continue;
+      }
+
       const paragraphLines = [];
       while (index < lines.length) {
         const current = lines[index];
@@ -831,6 +839,146 @@
       container.appendChild(paragraph);
       continue;
     }
+  }
+
+  function parseMarkdownTable(lines, startIndex) {
+    if (!Array.isArray(lines) || startIndex >= lines.length - 1) {
+      return null;
+    }
+    const headerLine = lines[startIndex];
+    const separatorLine = lines[startIndex + 1];
+    if (!isTableRowCandidate(headerLine) || !isTableSeparatorLine(separatorLine)) {
+      return null;
+    }
+    const headerCells = splitTableCells(headerLine);
+    if (headerCells.length < 2) {
+      return null;
+    }
+    const separatorCells = splitTableCells(separatorLine);
+    const tableRows = [];
+    let nextIndex = startIndex + 2;
+    while (nextIndex < lines.length) {
+      const raw = lines[nextIndex];
+      if (!raw.trim()) {
+        break;
+      }
+      if (!isTableRowCandidate(raw)) {
+        break;
+      }
+      tableRows.push(splitTableCells(raw));
+      nextIndex += 1;
+    }
+
+    const maxBodyColumns = tableRows.reduce((max, row) => Math.max(max, row.length), 0);
+    const columnCount = Math.max(headerCells.length, separatorCells.length, maxBodyColumns);
+    if (!columnCount) {
+      return null;
+    }
+    const alignments = buildTableAlignments(separatorCells, columnCount);
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'zhida-table-wrapper';
+    const table = document.createElement('table');
+    table.className = 'zhida-table';
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    for (let col = 0; col < columnCount; col += 1) {
+      const th = document.createElement('th');
+      th.innerHTML = parseInline(headerCells[col] != null ? headerCells[col] : '');
+      applyTableAlignment(th, alignments[col]);
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (tableRows.length) {
+      tableRows.forEach(cells => {
+        const tr = document.createElement('tr');
+        for (let col = 0; col < columnCount; col += 1) {
+          const td = document.createElement('td');
+          td.innerHTML = parseInline(cells[col] != null ? cells[col] : '');
+          applyTableAlignment(td, alignments[col]);
+          tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+      });
+    }
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+
+    return { element: wrapper, nextIndex };
+  }
+
+  function splitTableCells(line) {
+    if (line == null) {
+      return [];
+    }
+    const placeholder = TABLE_PIPE_PLACEHOLDER;
+    const normalized = String(line).trim().replace(/^\|/, '').replace(/\|$/, '');
+    if (!normalized) {
+      return [''];
+    }
+    return normalized
+      .replace(/\\\|/g, placeholder)
+      .split('|')
+      .map(cell => cell.replace(new RegExp(placeholder, 'g'), '|').trim());
+  }
+
+  function isTableRowCandidate(line) {
+    if (!line || !line.trim()) {
+      return false;
+    }
+    if (String(line).indexOf('|') === -1) {
+      return false;
+    }
+    const cells = splitTableCells(line);
+    return cells.length > 1;
+  }
+
+  function isTableSeparatorLine(line) {
+    if (!line || !line.trim()) {
+      return false;
+    }
+    const cells = splitTableCells(line);
+    if (!cells.length) {
+      return false;
+    }
+    return cells.every(cell => {
+      const token = cell.replace(/\s+/g, '');
+      return /^:?[-]{3,}:?$/.test(token);
+    });
+  }
+
+  function buildTableAlignments(cells, columnCount) {
+    const alignments = [];
+    for (let index = 0; index < columnCount; index += 1) {
+      alignments.push(resolveTableAlignment(cells[index] || ''));
+    }
+    return alignments;
+  }
+
+  function resolveTableAlignment(token) {
+    const value = String(token || '').trim();
+    const hasStartColon = value.startsWith(':');
+    const hasEndColon = value.endsWith(':');
+    if (hasStartColon && hasEndColon) {
+      return 'center';
+    }
+    if (hasEndColon) {
+      return 'right';
+    }
+    if (hasStartColon) {
+      return 'left';
+    }
+    return '';
+  }
+
+  function applyTableAlignment(cell, alignment) {
+    if (!cell || !alignment) {
+      return;
+    }
+    cell.style.textAlign = alignment;
   }
 
   function isBlockToken(line) {
@@ -1776,6 +1924,49 @@
       if (value.indexOf(MATH_MARKERS[index]) !== -1) {
         return true;
       }
+    }
+    if (hasInlineMath(value)) {
+      return true;
+    }
+    return false;
+  }
+
+  function hasInlineMath(value) {
+    if (!value) {
+      return false;
+    }
+    let index = 0;
+    const length = value.length;
+    while (index < length) {
+      const char = value[index];
+      if (char === '\\') {
+        index += 2;
+        continue;
+      }
+      if (char === '$') {
+        if (value[index + 1] === '$') {
+          index += 2;
+          continue;
+        }
+        let end = index + 1;
+        while (end < length) {
+          const endChar = value[end];
+          if (endChar === '\\') {
+            end += 2;
+            continue;
+          }
+          if (endChar === '$') {
+            if (end === index + 1) {
+              break;
+            }
+            return true;
+          }
+          end += 1;
+        }
+        index += 1;
+        continue;
+      }
+      index += 1;
     }
     return false;
   }
