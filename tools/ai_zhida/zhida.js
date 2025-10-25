@@ -85,6 +85,7 @@
   }
   const DEFAULT_MATHJAX_SRC = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';
   const MATH_MARKERS = ['\\(', '\\[', '$$', '\\begin{'];
+  const MATH_FENCE_LANGUAGES = ['math', 'latex', 'tex', 'katex'];
   const TABLE_PIPE_PLACEHOLDER = '@@PIPE@@';
 
   const state = {
@@ -700,6 +701,39 @@
     return false;
   }
 
+  function isMathLanguage(language) {
+    if (!language) {
+      return false;
+    }
+    const value = String(language).trim().toLowerCase();
+    if (!value) {
+      return false;
+    }
+    return MATH_FENCE_LANGUAGES.indexOf(value) !== -1;
+  }
+
+  function isLikelyMathContent(content) {
+    if (!content) {
+      return false;
+    }
+    return signatureHasMath(computeMathSignature(String(content)));
+  }
+
+  function isLikelyMathBlock(content, fence) {
+    if (isMathLanguage(fence)) {
+      return true;
+    }
+    return isLikelyMathContent(content);
+  }
+
+  function createMathBlockElement(content) {
+    const block = document.createElement('div');
+    block.className = 'zhida-math-block';
+    block.setAttribute('data-math-block', 'true');
+    block.textContent = String(content != null ? content : '');
+    return block;
+  }
+
   function buildMessageElement(message) {
     const wrapper = document.createElement('div');
     wrapper.className = 'zhida-message';
@@ -835,12 +869,17 @@
         if (index < lines.length) {
           index += 1;
         }
+        const blockContent = codeLines.join('\n');
+        if (isLikelyMathBlock(blockContent, fence)) {
+          container.appendChild(createMathBlockElement(blockContent));
+          continue;
+        }
         const pre = document.createElement('pre');
         const code = document.createElement('code');
         if (fence) {
           code.setAttribute('data-language', fence.toLowerCase());
         }
-        code.textContent = codeLines.join('\n');
+        code.textContent = blockContent;
         pre.appendChild(code);
         container.appendChild(pre);
         continue;
@@ -861,9 +900,14 @@
           codeLines.push(current.replace(/^(?: {4}|\t)/, ''));
           index += 1;
         }
+        const blockContent = codeLines.join('\n');
+        if (isLikelyMathBlock(blockContent)) {
+          container.appendChild(createMathBlockElement(blockContent));
+          continue;
+        }
         const pre = document.createElement('pre');
         const code = document.createElement('code');
-        code.textContent = codeLines.join('\n');
+        code.textContent = blockContent;
         pre.appendChild(code);
         container.appendChild(pre);
         continue;
@@ -1124,7 +1168,7 @@
     const codeTokens = [];
     let result = String(text).replace(/`([^`]+?)`/g, function(_, code) {
       const token = `@@CODE${codeTokens.length}@@`;
-      codeTokens.push(escapeHtml(code));
+      codeTokens.push(code);
       return token;
     });
     result = escapeHtml(result);
@@ -1140,7 +1184,10 @@
       return '<a href="' + cleanHref + '" target="_blank" rel="nofollow noopener noreferrer">' + label + '</a>';
     });
     codeTokens.forEach((code, idx) => {
-      result = result.replace(new RegExp('@@CODE' + idx + '@@', 'g'), '<code>' + code + '</code>');
+      const replacement = isLikelyMathContent(code)
+        ? renderMathInlineString(code)
+        : '<code>' + escapeHtml(code) + '</code>';
+      result = result.replace(new RegExp('@@CODE' + idx + '@@', 'g'), replacement);
     });
     result = result.replace(/\n/g, '<br />');
     return result;
@@ -1153,6 +1200,10 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  function renderMathInlineString(content) {
+    return '<span class="zhida-math-inline" data-math-inline="true">' + escapeHtml(String(content != null ? content : '')) + '</span>';
   }
 
   function escapeAttribute(value) {
