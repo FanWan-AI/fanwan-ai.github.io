@@ -37,7 +37,8 @@
   body.classList.add('zhida-chat-empty');
   const windowConfig = window.ZHIDA_CONFIG || {};
   const proxyAttr = body.getAttribute('data-proxy-endpoint') || '';
-  const endpoint = (windowConfig.endpoint || proxyAttr || '').trim();
+  const providerMap = (windowConfig.providers && typeof windowConfig.providers === 'object') ? windowConfig.providers : {};
+  const FALLBACK_ENDPOINT = (windowConfig.endpoint || proxyAttr || '').trim();
   const DEFAULT_TEMP = typeof windowConfig.defaultTemperature === 'number' ? windowConfig.defaultTemperature : 0.7;
   const DEFAULT_MAX_TOKENS = typeof windowConfig.defaultMaxTokens === 'number' ? windowConfig.defaultMaxTokens : 1024;
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
@@ -46,9 +47,18 @@
   const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
     ? windowConfig.allowedFileExtensions.map(ext => String(ext || '').toLowerCase().replace(/^[.]/, '')).filter(Boolean)
     : DEFAULT_EXTENSIONS;
+  const providerModels = Object.keys(providerMap).filter(key => key && key !== 'default');
   const MODEL_OPTIONS = Array.isArray(windowConfig.modelOptions) && windowConfig.modelOptions.length
     ? windowConfig.modelOptions.slice()
-    : ['deepseek-chat'];
+    : (providerModels.length ? providerModels.slice() : ['deepseek-chat']);
+  providerModels.forEach(modelKey => {
+    if (MODEL_OPTIONS.indexOf(modelKey) === -1) {
+      MODEL_OPTIONS.push(modelKey);
+    }
+  });
+  if (!MODEL_OPTIONS.length) {
+    MODEL_OPTIONS.push('deepseek-chat');
+  }
   const rawDefaultModel = typeof windowConfig.defaultModel === 'string' && windowConfig.defaultModel.trim()
     ? windowConfig.defaultModel.trim()
     : MODEL_OPTIONS[0];
@@ -96,7 +106,13 @@
     assistantIndex: null,
     settingsOpen: false,
     autoStick: true,
-    manualScrollIntent: false
+    manualScrollIntent: false,
+    settings: null,
+    settingsDraft: null,
+    settingsDirty: false,
+    activeEndpoint: null,
+    activeHeaders: null,
+    activePayloadOverrides: null
   };
 
   const el = {
@@ -122,8 +138,66 @@
     settingsPanel: document.querySelector('[data-settings-panel]'),
     settingsOverlay: document.querySelector('[data-settings-overlay]'),
     settingsClose: document.querySelector('[data-settings-close]'),
-    settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
+    settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet'),
+    settingsSave: document.querySelector('[data-settings-save]')
   };
+
+  function getProviderConfig(model) {
+    if (model && providerMap && Object.prototype.hasOwnProperty.call(providerMap, model)) {
+      return providerMap[model];
+    }
+    if (providerMap && providerMap.default) {
+      return providerMap.default;
+    }
+    return null;
+  }
+
+  function resolveEndpointForModel(model) {
+    const provider = getProviderConfig(model);
+    if (provider && typeof provider.endpoint === 'string') {
+      const trimmed = provider.endpoint.trim();
+      if (trimmed) {
+        return trimmed;
+      }
+    }
+    return FALLBACK_ENDPOINT;
+  }
+
+  function resolveHeadersForModel(model) {
+    const headers = {};
+    if (windowConfig.headers && typeof windowConfig.headers === 'object') {
+      Object.assign(headers, windowConfig.headers);
+    }
+    const provider = getProviderConfig(model);
+    if (provider && provider.headers && typeof provider.headers === 'object') {
+      Object.assign(headers, provider.headers);
+    }
+    return Object.keys(headers).length ? cloneConfig(headers) : null;
+  }
+
+  function resolvePayloadOverrides(model) {
+    const provider = getProviderConfig(model);
+    if (provider && provider.payloadDefaults && typeof provider.payloadDefaults === 'object') {
+      return cloneConfig(provider.payloadDefaults);
+    }
+    return null;
+  }
+
+  function applyActiveModelConfig() {
+    const model = getActiveModel();
+    const endpoint = resolveEndpointForModel(model);
+    const headers = resolveHeadersForModel(model);
+    const payloadOverrides = resolvePayloadOverrides(model);
+    state.activeEndpoint = endpoint;
+    state.activeHeaders = headers;
+    state.activePayloadOverrides = payloadOverrides;
+    client.setEndpoint(endpoint);
+    client.setHeaders(headers);
+  }
+
+  function hasActiveEndpoint() {
+    return !!(state.activeEndpoint && String(state.activeEndpoint).trim());
+  }
 
   function syncChatStateClasses() {
     const hasMessages = state.messages.length > 0;
@@ -236,10 +310,23 @@
     return;
   }
 
-  class DeepSeekClient {
-    constructor(endpointUrl) {
-      this.endpoint = endpointUrl;
+  class ChatClient {
+    constructor(endpointUrl, headers) {
+      this.endpoint = endpointUrl || '';
+      this.headers = typeof headers === 'function' ? headers : (headers && typeof headers === 'object' ? cloneConfig(headers) : null);
       this.controller = null;
+    }
+
+    setEndpoint(endpointUrl) {
+      this.endpoint = typeof endpointUrl === 'string' ? endpointUrl : '';
+    }
+
+    setHeaders(headers) {
+      if (typeof headers === 'function') {
+        this.headers = headers;
+        return;
+      }
+      this.headers = headers && typeof headers === 'object' ? cloneConfig(headers) : null;
     }
 
     cancel() {
@@ -256,11 +343,17 @@
       this.cancel();
       this.controller = new AbortController();
       const signal = this.controller.signal;
-      const headers = Object.assign({ 'Content-Type': 'application/json' }, windowConfig.headers || {});
+      const headerBag = Object.assign({ 'Content-Type': 'application/json' }, windowConfig.headers && typeof windowConfig.headers === 'object' ? windowConfig.headers : {});
+      const dynamicHeaders = typeof this.headers === 'function' ? this.headers() : this.headers;
+      if (dynamicHeaders && typeof dynamicHeaders === 'object') {
+        Object.keys(dynamicHeaders).forEach(key => {
+          headerBag[key] = dynamicHeaders[key];
+        });
+      }
       try {
         const response = await fetch(this.endpoint, {
           method: 'POST',
-          headers,
+          headers: headerBag,
           body: JSON.stringify(payload),
           signal
         });
@@ -325,7 +418,8 @@
   let mathTypesetInFlight = false;
   const mathPendingMessages = new Set();
   let mathJaxLoadingPromise = null;
-  const client = new DeepSeekClient(endpoint);
+  const client = new ChatClient(null, null);
+  applyActiveModelConfig();
 
   init();
 
@@ -390,6 +484,9 @@
     if (el.settingsClose) {
       el.settingsClose.addEventListener('click', closeSettingsPanel);
     }
+    if (el.settingsSave) {
+      el.settingsSave.addEventListener('click', handleSettingsSave);
+    }
     document.addEventListener('keydown', handleGlobalKeydown);
     autoResizeInput();
     handleMessagesScroll();
@@ -414,10 +511,10 @@
     const shouldResetPrompt = !storedPrompt || (!isCustomPrompt && storedPrompt !== newDefault);
 
     const temperatureValue = stored ? Number(stored.temperature) : NaN;
-    const temperature = Number.isFinite(temperatureValue) ? temperatureValue : DEFAULT_TEMP;
+    const temperature = clampTemperature(Number.isFinite(temperatureValue) ? temperatureValue : DEFAULT_TEMP);
     const maxTokensValue = stored ? Number(stored.maxTokens) : NaN;
-    const maxTokens = Number.isFinite(maxTokensValue) ? Math.min(Math.max(maxTokensValue, 256), 4096) : DEFAULT_MAX_TOKENS;
-    const systemPrompt = shouldResetPrompt ? newDefault : (storedPrompt || newDefault);
+    const maxTokens = clampMaxTokens(Number.isFinite(maxTokensValue) ? maxTokensValue : DEFAULT_MAX_TOKENS);
+    const systemPrompt = shouldResetPrompt ? newDefault : resolveSystemPrompt(storedPrompt, lang);
     const storedModel = stored && typeof stored.model === 'string' ? stored.model.trim() : '';
     const model = normalizeModel(storedModel);
 
@@ -429,34 +526,26 @@
       lang
     };
 
+    state.settings = Object.assign({}, settings);
+    state.settingsDraft = Object.assign({}, settings);
     state.model = settings.model || DEFAULT_MODEL;
+    state.settingsDirty = false;
 
-    if (el.temperature) {
-      el.temperature.value = String(settings.temperature);
-      updateTemperatureDisplay(settings.temperature);
-    }
-    if (el.maxTokens) {
-      el.maxTokens.value = String(settings.maxTokens);
-    }
-    if (el.systemPrompt) {
-      el.systemPrompt.value = settings.systemPrompt || '';
-    }
-    if (el.modelSelect) {
-      el.modelSelect.value = state.model;
-    }
-
-    // Persist the resolved defaults so the active language stays in sync.
-    persistSettings();
+    applyActiveModelConfig();
+    applySettingsDraftToInputs();
+    syncSettingsDirtyFlag();
   }
 
   function persistSettings() {
-    const settings = {
-      temperature: getTemperature(),
-      maxTokens: getMaxTokens(),
-      systemPrompt: getSystemPrompt(),
-      model: getActiveModel(),
-      lang: getLang()
+    const lang = getLang();
+    const base = state.settings || {
+      temperature: DEFAULT_TEMP,
+      maxTokens: DEFAULT_MAX_TOKENS,
+      systemPrompt: resolveSystemPrompt('', lang),
+      model: DEFAULT_MODEL,
+      lang
     };
+    const settings = Object.assign({}, base, { lang });
     storageSet(STORAGE.SETTINGS, JSON.stringify(settings));
   }
 
@@ -1232,10 +1321,24 @@
   function handleSend(event) {
     event.preventDefault();
     if (state.streaming) return;
+    let endpoint = state.activeEndpoint;
     if (!endpoint) {
-      notify(t('ai_qa_error_generic'), 'error');
+      endpoint = resolveEndpointForModel(getActiveModel());
+      state.activeEndpoint = endpoint;
+    }
+    if (!endpoint) {
+      notify(t('ai_qa_error_model_unconfigured'), 'error');
       return;
     }
+    const headers = state.activeHeaders || resolveHeadersForModel(getActiveModel());
+    if (!state.activeHeaders && headers) {
+      state.activeHeaders = headers;
+    }
+    if (!state.activePayloadOverrides) {
+      state.activePayloadOverrides = resolvePayloadOverrides(getActiveModel());
+    }
+    client.setEndpoint(endpoint);
+    client.setHeaders(headers);
     const value = el.input.value.trim();
     if (!value) return;
 
@@ -1400,6 +1503,9 @@
     } else if (shouldUseDocumentMode()) {
       payload.mode = 'rag';
     }
+    if (state.activePayloadOverrides && typeof state.activePayloadOverrides === 'object') {
+      applyPayloadOverrides(payload, state.activePayloadOverrides);
+    }
     return payload;
   }
 
@@ -1418,31 +1524,160 @@
   }
 
   function handleModelChange(event) {
-    state.model = normalizeModel(event.target.value);
+    const next = normalizeModel(event.target.value);
     if (el.modelSelect) {
-      el.modelSelect.value = state.model;
+      el.modelSelect.value = next;
     }
-    persistSettings();
+    updateSettingsDraft({ model: next });
   }
 
   function handleTemperatureChange(event) {
-    const value = Number(event.target.value);
+    const value = clampTemperature(event.target.value);
+    if (el.temperature) {
+      el.temperature.value = String(value);
+    }
     updateTemperatureDisplay(value);
-    persistSettings();
+    updateSettingsDraft({ temperature: value });
   }
 
   function updateTemperatureDisplay(value) {
     if (!el.temperatureValue) return;
-    const safe = Number.isFinite(value) ? value : DEFAULT_TEMP;
+    const safe = clampTemperature(value);
     el.temperatureValue.textContent = safe.toFixed(1);
   }
 
   function handleMaxTokensChange() {
-    persistSettings();
+    if (!el.maxTokens) return;
+    const value = clampMaxTokens(parseInt(el.maxTokens.value, 10));
+    el.maxTokens.value = String(value);
+    updateSettingsDraft({ maxTokens: value });
   }
 
   function handleSystemPromptChange() {
+    if (!el.systemPrompt) return;
+    updateSettingsDraft({ systemPrompt: el.systemPrompt.value });
+  }
+
+  function handleSettingsSave() {
+    if (!state.settingsDraft) {
+      return;
+    }
+    const lang = getLang();
+    const nextSettings = {
+      temperature: clampTemperature(state.settingsDraft.temperature),
+      maxTokens: clampMaxTokens(state.settingsDraft.maxTokens),
+      systemPrompt: resolveSystemPrompt(state.settingsDraft.systemPrompt, lang),
+      model: normalizeModel(state.settingsDraft.model),
+      lang
+    };
+
+    state.settings = Object.assign({}, nextSettings);
+    state.settingsDraft = Object.assign({}, nextSettings);
+    state.model = nextSettings.model;
+    state.settingsDirty = false;
+
+    applySettingsDraftToInputs();
+    updateTemperatureDisplay(nextSettings.temperature);
+    applyActiveModelConfig();
+    refreshControls();
     persistSettings();
+    syncSettingsDirtyFlag();
+  }
+
+  function updateSettingsDraft(patch) {
+    if (!patch || typeof patch !== 'object') {
+      return;
+    }
+    if (!state.settingsDraft) {
+      state.settingsDraft = state.settings ? Object.assign({}, state.settings) : {
+        temperature: DEFAULT_TEMP,
+        maxTokens: DEFAULT_MAX_TOKENS,
+        systemPrompt: resolveSystemPrompt('', getLang()),
+        model: DEFAULT_MODEL,
+        lang: getLang()
+      };
+    }
+    Object.assign(state.settingsDraft, patch);
+    syncSettingsDirtyFlag();
+  }
+
+  function applySettingsDraftToInputs() {
+    if (!state.settingsDraft) {
+      return;
+    }
+    if (el.temperature) {
+      el.temperature.value = String(clampTemperature(state.settingsDraft.temperature));
+    }
+    updateTemperatureDisplay(state.settingsDraft.temperature);
+    if (el.maxTokens) {
+      el.maxTokens.value = String(clampMaxTokens(state.settingsDraft.maxTokens));
+    }
+    if (el.systemPrompt) {
+      el.systemPrompt.value = typeof state.settingsDraft.systemPrompt === 'string'
+        ? state.settingsDraft.systemPrompt
+        : '';
+    }
+    if (el.modelSelect) {
+      el.modelSelect.value = normalizeModel(state.settingsDraft.model);
+    }
+  }
+
+  function syncSettingsDirtyFlag() {
+    if (!state.settingsDraft || !state.settings) {
+      state.settingsDirty = !!state.settingsDraft && !state.settings;
+      syncSettingsSaveState();
+      return;
+    }
+    const baseLang = state.settings.lang || getLang();
+    const draftTemperature = clampTemperature(state.settingsDraft.temperature);
+    const draftMaxTokens = clampMaxTokens(state.settingsDraft.maxTokens);
+    const draftPrompt = resolveSystemPrompt(state.settingsDraft.systemPrompt, baseLang);
+    const draftModel = normalizeModel(state.settingsDraft.model);
+
+    const savedTemperature = clampTemperature(state.settings.temperature);
+    const savedMaxTokens = clampMaxTokens(state.settings.maxTokens);
+    const savedPrompt = resolveSystemPrompt(state.settings.systemPrompt, baseLang);
+    const savedModel = normalizeModel(state.settings.model);
+
+    state.settingsDirty = (
+      draftTemperature !== savedTemperature ||
+      draftMaxTokens !== savedMaxTokens ||
+      draftPrompt !== savedPrompt ||
+      draftModel !== savedModel
+    );
+    syncSettingsSaveState();
+  }
+
+  function syncSettingsSaveState() {
+    if (!el.settingsSave) {
+      return;
+    }
+    el.settingsSave.disabled = !state.settingsDirty;
+  }
+
+  function clampTemperature(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+      return DEFAULT_TEMP;
+    }
+    return Math.min(Math.max(num, 0), 1);
+  }
+
+  function clampMaxTokens(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+      return DEFAULT_MAX_TOKENS;
+    }
+    return Math.min(Math.max(Math.round(num), 256), 4096);
+  }
+
+  function resolveSystemPrompt(value, lang) {
+    const locale = typeof lang === 'string' && lang.trim() ? lang.trim().slice(0, 2) : getLang();
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (trimmed) {
+      return trimmed;
+    }
+    return DEFAULT_PROMPTS[locale] || DEFAULT_PROMPTS.zh;
   }
 
   function handleDragOver(event) {
@@ -1804,7 +2039,7 @@
 
   function refreshControls() {
     if (el.sendBtn) {
-      el.sendBtn.disabled = !endpoint;
+      el.sendBtn.disabled = !hasActiveEndpoint();
     }
     if (el.stopBtn) {
       el.stopBtn.hidden = true;
@@ -1820,7 +2055,7 @@
       el.stopBtn.disabled = !value;
     }
     if (el.sendBtn) {
-      el.sendBtn.disabled = value || !endpoint;
+      el.sendBtn.disabled = value || !hasActiveEndpoint();
     }
   }
 
@@ -1865,26 +2100,24 @@
   }
 
   function getTemperature() {
-    if (!el.temperature) return DEFAULT_TEMP;
-    const value = Number(el.temperature.value);
-    return Number.isFinite(value) ? value : DEFAULT_TEMP;
+    if (state.settings && Number.isFinite(state.settings.temperature)) {
+      return clampTemperature(state.settings.temperature);
+    }
+    return DEFAULT_TEMP;
   }
 
   function getMaxTokens() {
-    if (!el.maxTokens) return DEFAULT_MAX_TOKENS;
-    const value = parseInt(el.maxTokens.value, 10);
-    if (Number.isNaN(value)) return DEFAULT_MAX_TOKENS;
-    return Math.min(Math.max(value, 256), 4096);
+    if (state.settings && Number.isFinite(state.settings.maxTokens)) {
+      return clampMaxTokens(state.settings.maxTokens);
+    }
+    return DEFAULT_MAX_TOKENS;
   }
 
   function getSystemPrompt() {
-    if (!el.systemPrompt) {
-      const lang = getLang();
-      return DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
+    const lang = state.settings ? state.settings.lang || getLang() : getLang();
+    if (state.settings && typeof state.settings.systemPrompt === 'string') {
+      return resolveSystemPrompt(state.settings.systemPrompt, lang);
     }
-    const value = el.systemPrompt.value.trim();
-    if (value) return value;
-    const lang = getLang();
     return DEFAULT_PROMPTS[lang] || DEFAULT_PROMPTS.zh;
   }
 
@@ -1901,6 +2134,49 @@
       return trimmed;
     }
     return DEFAULT_MODEL;
+  }
+
+  function applyPayloadOverrides(target, overrides) {
+    if (!target || !overrides) {
+      return target;
+    }
+    Object.keys(overrides).forEach(key => {
+      if (!Object.prototype.hasOwnProperty.call(overrides, key)) {
+        return;
+      }
+      const overrideValue = overrides[key];
+      if (overrideValue === undefined) {
+        return;
+      }
+      if (overrideValue && typeof overrideValue === 'object' && !Array.isArray(overrideValue)) {
+        const baseValue = target[key];
+        if (!baseValue || typeof baseValue !== 'object' || Array.isArray(baseValue)) {
+          target[key] = {};
+        }
+        applyPayloadOverrides(target[key], overrideValue);
+        return;
+      }
+      if (Array.isArray(overrideValue)) {
+        target[key] = overrideValue.slice();
+        return;
+      }
+      target[key] = overrideValue;
+    });
+    return target;
+  }
+
+  function cloneConfig(value) {
+    if (Array.isArray(value)) {
+      return value.map(item => cloneConfig(item));
+    }
+    if (value && typeof value === 'object') {
+      const result = {};
+      Object.keys(value).forEach(key => {
+        result[key] = cloneConfig(value[key]);
+      });
+      return result;
+    }
+    return value;
   }
 
   function shouldUseDocumentMode() {

@@ -54,7 +54,25 @@
   <script defer src="../script.js"></script>
   <script defer src="../tools/ai_zhida/doc_pipeline.js"></script>
   <script>
-    window.ZHIDA_CONFIG = window.ZHIDA_CONFIG || {};
+    (function configureZhida(){
+      var base = window.ZHIDA_CONFIG && typeof window.ZHIDA_CONFIG === 'object' ? window.ZHIDA_CONFIG : {};
+      var providers = base.providers && typeof base.providers === 'object' ? base.providers : {};
+      window.ZHIDA_CONFIG = Object.assign({}, base, {
+        defaultModel: base.defaultModel || 'deepseek-chat',
+        modelOptions: Array.isArray(base.modelOptions) && base.modelOptions.length ? base.modelOptions : ['deepseek-chat', 'gpt-5'],
+        providers: Object.assign({}, providers, {
+          'deepseek-chat': Object.assign({
+            endpoint: 'https://deepseek-proxy.fan-wan-uk.workers.dev/chat'
+          }, providers['deepseek-chat'] || {}),
+          'gpt-5': Object.assign({
+            endpoint: 'https://openai-proxy.fan-wan-uk.workers.dev/chat',
+            payloadDefaults: {
+              stream_options: { include_usage: true }
+            }
+          }, providers['gpt-5'] || {})
+        })
+      });
+    })();
   </script>
   <script defer src="../tools/ai_zhida/zhida.js"></script>
 </head>
@@ -174,8 +192,7 @@
           <label for="zhida-model" data-i18n="ai_qa_model_label">模型选择</label>
           <select id="zhida-model" data-model-select>
             <option value="deepseek-chat" data-i18n="ai_qa_model_deepseek">DeepSeek</option>
-            <option value="chatgpt" data-i18n="ai_qa_model_chatgpt">ChatGPT</option>
-            <option value="qwen" data-i18n="ai_qa_model_qwen">Qwen</option>
+            <option value="gpt-5" data-i18n="ai_qa_model_gpt5">OpenAI GPT-5</option>
           </select>
         </div>
         <div class="zhida-setting">
@@ -195,7 +212,11 @@
         </div>
       </div>
       <footer class="zhida-settings-footer">
-        <button type="button" class="zhida-settings-clear" data-action="clear" data-i18n="ai_qa_clear">清空会话</button>
+        <div class="zhida-settings-footer-actions">
+          <button type="button" class="zhida-settings-save" data-settings-save data-i18n="ai_qa_save_settings">保存设置</button>
+          <button type="button" class="zhida-settings-clear" data-action="clear" data-i18n="ai_qa_clear">清空会话</button>
+        </div>
+        <p class="zhida-settings-note" data-i18n="ai_qa_settings_save_hint">修改后需点击「保存设置」才会生效</p>
       </footer>
     </div>
   </div>
