@@ -94,7 +94,20 @@ export default {
         if (!upstreamResp.ok) {
           const text = await upstreamResp.text();
           if (env.DEBUG === '1') console.log('Upstream error', upstreamResp.status, text);
-          return json({ error: 'Upstream error', status: upstreamResp.status, body: text }, upstreamResp.status, corsHeaders(env, origin));
+          let payload = null;
+          try {
+            payload = text ? JSON.parse(text) : null;
+          } catch (_) {
+            payload = null;
+          }
+          const errorPayload = payload && payload.error ? payload : {
+            error: {
+              message: payload && typeof payload === 'object' && payload.message ? payload.message : (text || 'Upstream error'),
+              code: payload && typeof payload === 'object' && payload.code ? payload.code : 'upstream_error',
+              status: upstreamResp.status
+            }
+          };
+          return json(errorPayload, upstreamResp.status, corsHeaders(env, origin));
         }
 
         // Pass-through SSE stream
