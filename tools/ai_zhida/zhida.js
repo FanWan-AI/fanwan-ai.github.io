@@ -390,7 +390,24 @@
       el.messages.appendChild(wrapper);
 
       if (index === state.messages.length - 1) {
-        wrapper.scrollIntoView({ block: 'end' });
+        requestAnimationFrame(() => {
+          const viewportHeight = Math.max(window.innerHeight || 0, document.documentElement && document.documentElement.clientHeight || 0);
+          if (!viewportHeight) {
+            return;
+          }
+          const rect = wrapper.getBoundingClientRect();
+          const cushion = 96; // keep the composer visible below the latest reply
+          if (rect.bottom > viewportHeight - cushion) {
+            const currentX = window.pageXOffset || document.documentElement.scrollLeft || 0;
+            const currentY = window.pageYOffset || document.documentElement.scrollTop || 0;
+            const targetY = currentY + rect.bottom - (viewportHeight - cushion);
+            try {
+              window.scrollTo({ top: targetY, left: currentX, behavior: 'smooth' });
+            } catch (_) {
+              window.scrollTo(currentX, targetY);
+            }
+          }
+        });
       }
 
       if (!hasMath && msg && typeof msg.content === 'string' && containsMathMarkers(msg.content)) {
