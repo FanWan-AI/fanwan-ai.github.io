@@ -6,7 +6,7 @@
 //   OPENAI_API_KEY        -> Bearer token for OpenAI (do not prefix with "Bearer"; worker will handle it)
 // Optional env vars (wrangler.toml [vars]):
 //   OPENAI_BASE_URL       -> default "https://api.openai.com/v1/chat/completions"
-//   DEFAULT_MODEL         -> default "gpt-5"
+//   DEFAULT_MODEL         -> default "gpt-4.1"
 //   ALLOWED_ORIGINS       -> comma-separated allow list for CORS (e.g. "https://fanwan-ai.github.io")
 //   ALLOW_DEV_ORIGINS     -> set to "1" to allow localhost/private-network origins (dev only)
 //   MAX_TOKENS            -> optional server-side cap for max_tokens / max_completion_tokens
@@ -52,11 +52,17 @@ export default {
         }
 
         const upstreamUrl = (env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions').trim();
-        const model = (payload && payload.model) || env.DEFAULT_MODEL || 'gpt-5';
-        const temperature = clampNumber(payload?.temperature, 0, 2, 0.7);
+        const model = (payload && payload.model) || env.DEFAULT_MODEL || 'gpt-4.1';
+        const hasTemperature = typeof payload?.temperature === 'number' && !Number.isNaN(payload.temperature);
+        const temperature = hasTemperature ? clampNumber(payload.temperature, 0, 2, payload.temperature) : undefined;
         const maxTokensCap = env.MAX_TOKENS ? parseInt(env.MAX_TOKENS, 10) : undefined;
-        const requestedMaxTokens = payload?.max_tokens ?? payload?.max_completion_tokens;
-        const maxTokens = clampNumber(requestedMaxTokens, 1, maxTokensCap || undefined, payload?.max_tokens || payload?.max_completion_tokens || 1024);
+        const requestedMaxTokens = payload?.max_completion_tokens ?? payload?.max_tokens;
+        const effectiveMaxTokens = clampNumber(
+          requestedMaxTokens,
+          1,
+          maxTokensCap || undefined,
+          payload?.max_completion_tokens || payload?.max_tokens || 1024
+        );
 
         const messages = Array.isArray(payload?.messages) ? payload.messages : [];
         if (messages.length === 0) {
@@ -66,16 +72,18 @@ export default {
         const upstreamBody = {
           ...payload,
           model,
-          temperature,
           stream: payload?.stream !== false,
         };
 
-        if (maxTokensCap) {
-          upstreamBody.max_tokens = maxTokens;
-          upstreamBody.max_completion_tokens = maxTokens;
-        } else if (requestedMaxTokens != null) {
-          upstreamBody.max_tokens = maxTokens;
-          upstreamBody.max_completion_tokens = maxTokens;
+        if (hasTemperature) {
+          upstreamBody.temperature = temperature;
+        } else {
+          delete upstreamBody.temperature;
+        }
+
+        delete upstreamBody.max_tokens;
+        if (requestedMaxTokens != null || maxTokensCap) {
+          upstreamBody.max_completion_tokens = effectiveMaxTokens;
         }
 
         if (payload && Object.prototype.hasOwnProperty.call(payload, 'api_key')) {

@@ -1433,7 +1433,7 @@
       const activeEndpoint = state.activeEndpoint || resolveEndpointForModel(getActiveModel());
       if (typeof activeEndpoint === 'string' && activeEndpoint.indexOf('gpt-proxy') !== -1) {
         const origin = window.location && window.location.origin ? window.location.origin : 'unknown-origin';
-        message = 'GPT-5 代理连接失败：请检查 Cloudflare Worker 是否允许来源 ' + origin + '。';
+  message = 'OpenAI 代理连接失败：请检查 Cloudflare Worker 是否允许来源 ' + origin + '。';
         console.warn('[zhida] GPT proxy network failure – origin may not be allowlisted.', {
           origin,
           endpoint: activeEndpoint,
@@ -1516,13 +1516,17 @@
       }
       messages.push({ role: msg.role, content: msg.content });
     });
+    const model = getActiveModel();
     const payload = {
-      model: getActiveModel(),
+      model,
       stream: true,
       messages,
-      temperature: getTemperature(),
       max_tokens: getMaxTokens()
     };
+
+    if (modelSupportsTemperature(model)) {
+      payload.temperature = getTemperature();
+    }
     if (docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
       payload.mode = 'rag';
       payload.documents = docContext.snippets.map(snippet => ({
@@ -2187,6 +2191,14 @@
       return state.model;
     }
     return DEFAULT_MODEL;
+  }
+
+  function modelSupportsTemperature(model) {
+    const name = typeof model === 'string' ? model.trim().toLowerCase() : '';
+    if (!name) {
+      return true;
+    }
+    return !name.startsWith('gpt-5');
   }
 
   function normalizeModel(value) {
