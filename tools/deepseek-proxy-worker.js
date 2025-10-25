@@ -9,6 +9,7 @@
 //   UPSTREAM_URL       -> default "https://api.deepseek.com/chat/completions" (or vendor-compatible endpoint)
 //   DEFAULT_MODEL      -> default "deepseek-reasoner" (override to your chosen model)
 //   ALLOWED_ORIGINS    -> comma-separated list of allowed origins for CORS (e.g., "https://fanwan-ai.github.io,https://yourdomain.com")
+//   ALLOW_DEV_ORIGINS  -> set to "1" to allow localhost/private-network origins while debugging
 //   MAX_TOKENS         -> optional cap for max_tokens (e.g., "2048")
 //   DEBUG              -> set to "1" for basic request logging (not for production)
 
@@ -146,8 +147,48 @@ function preflightHeaders(env, origin) {
 function isOriginAllowed(env, origin) {
   if (!origin) return false;
   const list = (env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
-  // Exact match only to avoid wildcard risks
-  return list.includes(origin);
+  if (list.includes(origin)) {
+    return true;
+  }
+  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(origin)) {
+    return true;
+  }
+  return false;
+}
+
+function isDevOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    const protocol = url.protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return false;
+    }
+    const hostname = url.hostname || '';
+    if (!hostname) {
+      return false;
+    }
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+      return true;
+    }
+    if (hostname.endsWith('.local')) {
+      return true;
+    }
+    if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) {
+      return true;
+    }
+    if (hostname.startsWith('172.')) {
+      const parts = hostname.split('.');
+      if (parts.length >= 2) {
+        const second = parseInt(parts[1], 10);
+        if (!Number.isNaN(second) && second >= 16 && second <= 31) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
 }
 
 // Best-effort in-memory sliding window per instance

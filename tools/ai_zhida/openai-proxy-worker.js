@@ -8,6 +8,7 @@
 //   OPENAI_BASE_URL       -> default "https://api.openai.com/v1/chat/completions"
 //   DEFAULT_MODEL         -> default "gpt-5"
 //   ALLOWED_ORIGINS       -> comma-separated allow list for CORS (e.g. "https://fanwan-ai.github.io")
+//   ALLOW_DEV_ORIGINS     -> set to "1" to allow localhost/private-network origins (dev only)
 //   MAX_TOKENS            -> optional server-side cap for max_tokens / max_completion_tokens
 //   OPENAI_ORG            -> optional organisation header
 //   OPENAI_PROJECT        -> optional project header
@@ -155,10 +156,48 @@ function isOriginAllowed(env, origin) {
     .split(',')
     .map(item => item.trim())
     .filter(Boolean);
-  if (!allowList.length) {
+  if (allowList.includes(origin)) {
+    return true;
+  }
+  if (env.ALLOW_DEV_ORIGINS === '1' && isDevOrigin(origin)) {
+    return true;
+  }
+  return false;
+}
+
+function isDevOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    const protocol = url.protocol;
+    if (protocol !== 'http:' && protocol !== 'https:') {
+      return false;
+    }
+    const hostname = url.hostname || '';
+    if (!hostname) {
+      return false;
+    }
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]') {
+      return true;
+    }
+    if (hostname.endsWith('.local')) {
+      return true;
+    }
+    if (hostname.startsWith('10.') || hostname.startsWith('192.168.')) {
+      return true;
+    }
+    if (hostname.startsWith('172.')) {
+      const parts = hostname.split('.');
+      if (parts.length >= 2) {
+        const second = parseInt(parts[1], 10);
+        if (!Number.isNaN(second) && second >= 16 && second <= 31) {
+          return true;
+        }
+      }
+    }
+    return false;
+  } catch (_) {
     return false;
   }
-  return allowList.includes(origin);
 }
 
 const RATE_MAP = new Map();

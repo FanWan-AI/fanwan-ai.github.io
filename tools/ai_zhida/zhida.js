@@ -142,6 +142,28 @@
     settingsSave: document.querySelector('[data-settings-save]')
   };
 
+  refreshSettingsActionRefs();
+
+  function refreshSettingsActionRefs() {
+    if (!el.settingsPanel) {
+      return;
+    }
+    const scopedSave = el.settingsPanel.querySelector('[data-settings-save]');
+    const scopedClear = el.settingsPanel.querySelector('[data-action="clear"]');
+    el.settingsSave = scopedSave || el.settingsSave || null;
+    el.clearBtn = scopedClear || el.clearBtn || null;
+  }
+
+  function getSettingsSaveButton() {
+    if (el.settingsPanel) {
+      const current = el.settingsPanel.querySelector('[data-settings-save]');
+      if (current && current !== el.settingsSave) {
+        el.settingsSave = current;
+      }
+    }
+    return el.settingsSave || null;
+  }
+
   function getProviderConfig(model) {
     if (model && providerMap && Object.prototype.hasOwnProperty.call(providerMap, model)) {
       return providerMap[model];
@@ -442,9 +464,6 @@
       el.messages.addEventListener('pointerdown', handleMessagesInteraction, PASSIVE_EVENT_OPTIONS);
     }
     el.form.addEventListener('submit', handleSend);
-    if (el.clearBtn) {
-      el.clearBtn.addEventListener('click', handleClear);
-    }
     el.stopBtn.addEventListener('click', handleStop);
     el.input.addEventListener('input', autoResizeInput);
     el.input.addEventListener('keydown', handleInputKeydown);
@@ -484,15 +503,14 @@
     if (el.settingsClose) {
       el.settingsClose.addEventListener('click', closeSettingsPanel);
     }
-    if (el.settingsSave) {
-      el.settingsSave.addEventListener('click', handleSettingsSave);
-    }
+    document.addEventListener('click', handleDocumentClick);
     document.addEventListener('keydown', handleGlobalKeydown);
     autoResizeInput();
     handleMessagesScroll();
   }
 
   function loadSettings() {
+    refreshSettingsActionRefs();
     const lang = getLang();
     const raw = storageGet(STORAGE.SETTINGS);
     let stored = null;
@@ -1410,7 +1428,19 @@
       finalizeAssistant(true);
       return;
     }
-    const message = getErrorMessage(error);
+    let message = getErrorMessage(error);
+    if (error && error.code === 'network') {
+      const activeEndpoint = state.activeEndpoint || resolveEndpointForModel(getActiveModel());
+      if (typeof activeEndpoint === 'string' && activeEndpoint.indexOf('gpt-proxy') !== -1) {
+        const origin = window.location && window.location.origin ? window.location.origin : 'unknown-origin';
+        message = 'GPT-5 代理连接失败：请检查 Cloudflare Worker 是否允许来源 ' + origin + '。';
+        console.warn('[zhida] GPT proxy network failure – origin may not be allowlisted.', {
+          origin,
+          endpoint: activeEndpoint,
+          error
+        });
+      }
+    }
     if (state.assistantIndex != null) {
       const assistant = state.messages[state.assistantIndex];
       if (assistant && !assistant.content.trim()) {
@@ -1528,6 +1558,9 @@
     if (el.modelSelect) {
       el.modelSelect.value = next;
     }
+    state.model = next;
+    applyActiveModelConfig();
+    refreshControls();
     updateSettingsDraft({ model: next });
   }
 
@@ -1558,7 +1591,33 @@
     updateSettingsDraft({ systemPrompt: el.systemPrompt.value });
   }
 
-  function handleSettingsSave() {
+  function handleDocumentClick(event) {
+    if (!event || !el.settingsPanel) {
+      return;
+    }
+    const target = event.target;
+    if (!target || !el.settingsPanel.contains(target)) {
+      return;
+    }
+    const saveButton = target.closest('[data-settings-save]');
+    if (saveButton) {
+      event.preventDefault();
+      refreshSettingsActionRefs();
+      handleSettingsSave();
+      return;
+    }
+    const clearButton = target.closest('[data-action="clear"]');
+    if (clearButton) {
+      event.preventDefault();
+      refreshSettingsActionRefs();
+      handleClear();
+    }
+  }
+
+  function handleSettingsSave(event) {
+    if (event) {
+      event.preventDefault();
+    }
     if (!state.settingsDraft) {
       return;
     }
@@ -1649,10 +1708,11 @@
   }
 
   function syncSettingsSaveState() {
-    if (!el.settingsSave) {
+    const saveButton = getSettingsSaveButton();
+    if (!saveButton) {
       return;
     }
-    el.settingsSave.disabled = !state.settingsDirty;
+    saveButton.disabled = !state.settingsDirty;
   }
 
   function clampTemperature(value) {
@@ -1730,6 +1790,7 @@
   function openSettingsPanel() {
     if (!el.settingsPanel || state.settingsOpen) return;
     loadSettings();
+    refreshSettingsActionRefs();
     lastFocusedElement = document.activeElement && typeof document.activeElement.focus === 'function' ? document.activeElement : null;
     el.settingsPanel.hidden = false;
     el.settingsPanel.setAttribute('aria-hidden', 'false');
