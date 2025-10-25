@@ -13,13 +13,21 @@
   const DEFAULT_MAX_TOKENS = typeof windowConfig.defaultMaxTokens === 'number' ? windowConfig.defaultMaxTokens : 1024;
   const MAX_FILES = typeof windowConfig.maxFiles === 'number' ? windowConfig.maxFiles : 6;
   const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
-  const SUPPORTED_EXT = ['pdf', 'txt', 'md', 'docx', 'xlsx'];
-  const rawDefaultModel = typeof windowConfig.model === 'string' && windowConfig.model.trim() ? windowConfig.model.trim() : 'deepseek-chat';
-  const MODEL_OPTIONS = ['deepseek-chat', 'chatgpt', 'qwen'];
+  const DEFAULT_EXTENSIONS = ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md', 'csv', 'xls', 'xlsx', 'json', 'html'];
+  const SUPPORTED_EXT = Array.isArray(windowConfig.allowedFileExtensions) && windowConfig.allowedFileExtensions.length
+    ? windowConfig.allowedFileExtensions.map(ext => String(ext || '').toLowerCase().replace(/^[.]/, '')).filter(Boolean)
+    : DEFAULT_EXTENSIONS;
+  const MODEL_OPTIONS = Array.isArray(windowConfig.modelOptions) && windowConfig.modelOptions.length
+    ? windowConfig.modelOptions.slice()
+    : ['deepseek-chat'];
+  const rawDefaultModel = typeof windowConfig.defaultModel === 'string' && windowConfig.defaultModel.trim()
+    ? windowConfig.defaultModel.trim()
+    : MODEL_OPTIONS[0];
   if (MODEL_OPTIONS.indexOf(rawDefaultModel) === -1) {
     MODEL_OPTIONS.unshift(rawDefaultModel);
   }
   const DEFAULT_MODEL = rawDefaultModel;
+  const DOC_CONTEXT_SNIPPET_LIMIT = 900;
   const VIEW_STATE_KEY = 'zhida:view';
   const STORAGE = {
     HISTORY: 'zhida:messages:v1',
@@ -39,8 +47,7 @@
   };
 
   function isKnownSystemPrompt(value) {
-    if (!value) return false;
-    const trimmed = String(value).trim();
+    const trimmed = typeof value === 'string' ? value.trim() : '';
     if (!trimmed) return false;
     if (Object.values(DEFAULT_PROMPTS).some(prompt => prompt === trimmed)) {
       return true;
@@ -52,8 +59,8 @@
 
   const state = {
     messages: [],
-  files: [],
-  model: DEFAULT_MODEL,
+    files: [],
+    model: DEFAULT_MODEL,
     streaming: false,
     assistantIndex: null,
     settingsOpen: false
@@ -71,8 +78,8 @@
     toast: document.querySelector('[data-chat-error]'),
     fileInput: document.querySelector('[data-file-input]'),
     chooseFileBtn: document.querySelector('[data-action="choose-file"]'),
-  fileList: document.querySelector('[data-file-list]'),
-  modelSelect: document.querySelector('[data-model-select]'),
+    fileList: document.querySelector('[data-file-list]'),
+    modelSelect: document.querySelector('[data-model-select]'),
     temperature: document.querySelector('[data-temperature]'),
     temperatureValue: document.querySelector('[data-temperature-value]'),
     maxTokens: document.querySelector('[data-max-tokens]'),
@@ -84,6 +91,10 @@
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet')
   };
   const stageEl = document.querySelector('.zhida-stage');
+  const docPipeline = window.ZhidaDocs && typeof window.ZhidaDocs.createPipeline === 'function'
+    ? window.ZhidaDocs.createPipeline()
+    : null;
+  const READY_FILE_STATUSES = { ready: true, success: true, complete: true, processed: true };
   const INPUT_MIN_HEIGHT = 44;
 
   if (!el.messages || !el.form || !el.input) {
@@ -735,9 +746,13 @@
     if (system) {
       messages.push({ role: 'system', content: system });
     }
+    const docContext = buildDocumentContext();
     state.messages.forEach((msg, index) => {
       if (index === state.assistantIndex && msg.streaming) {
         return;
+      }
+      if (docContext && docContext.text && index === state.messages.length - 1 && msg.role === 'user') {
+        messages.push({ role: 'system', content: docContext.text });
       }
       messages.push({ role: msg.role, content: msg.content });
     });
@@ -748,7 +763,14 @@
       temperature: getTemperature(),
       max_tokens: getMaxTokens()
     };
-    if (shouldUseDocumentMode()) {
+    if (docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
+      payload.mode = 'rag';
+      payload.documents = docContext.snippets.map(snippet => ({
+        id: snippet.fileId + ':' + snippet.index,
+        name: snippet.fileName,
+        content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
+      }));
+    } else if (shouldUseDocumentMode()) {
       payload.mode = 'rag';
     }
     return payload;
@@ -961,12 +983,18 @@
         size: file.size,
         type: ext,
         status: 'pending',
-        file
+        progress: 0,
+        file,
+        error: null,
+        chunks: [],
+        stats: null,
+        preview: ''
       });
     }
     if (!accepted.length) return;
     state.files = state.files.concat(accepted);
     renderFileList();
+    accepted.forEach(startFileProcessing);
   }
 
   function renderFileList() {
@@ -982,8 +1010,14 @@
     state.files.forEach(file => {
       const chip = document.createElement('span');
       chip.className = 'zhida-file-chip';
-      chip.dataset.status = file.status;
-      chip.title = `${file.name} · ${formatBytes(file.size)}`;
+      const displayStatus = normalizeFileStatus(file.status);
+      chip.dataset.status = displayStatus;
+      chip.title = buildFileTitle(file);
+      if (file.status === 'error') {
+        chip.dataset.error = 'true';
+      } else {
+        chip.removeAttribute('data-error');
+      }
 
       const icon = document.createElement('span');
       icon.className = 'zhida-file-chip-icon';
@@ -1000,12 +1034,21 @@
       meta.className = 'zhida-file-chip-meta';
       meta.textContent = formatBytes(file.size);
 
-      textWrap.appendChild(name);
-      textWrap.appendChild(meta);
+      const header = document.createElement('span');
+      header.className = 'zhida-file-chip-header';
+      header.appendChild(name);
+      header.appendChild(meta);
 
-      const status = document.createElement('span');
-      status.className = 'zhida-file-chip-status';
-      status.textContent = t('ai_qa_file_status_pending');
+      const progress = document.createElement('span');
+      progress.className = 'zhida-file-chip-progress';
+      const progressBar = document.createElement('span');
+      progressBar.className = 'zhida-file-chip-progress-bar';
+      const progressValue = typeof file.progress === 'number' ? Math.max(0, Math.min(100, Math.round(file.progress))) : 0;
+      progressBar.style.width = progressValue + '%';
+      progress.appendChild(progressBar);
+
+      textWrap.appendChild(header);
+      textWrap.appendChild(progress);
 
       const remove = document.createElement('button');
       remove.type = 'button';
@@ -1014,12 +1057,122 @@
       remove.setAttribute('aria-label', t('ai_qa_file_remove'));
       remove.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5 5 19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg><span class="sr-only">' + t('ai_qa_file_remove') + '</span>';
 
-      chip.appendChild(icon);
-      chip.appendChild(textWrap);
-      chip.appendChild(status);
-      chip.appendChild(remove);
+    chip.appendChild(icon);
+    chip.appendChild(textWrap);
+    chip.appendChild(remove);
       el.fileList.appendChild(chip);
     });
+  }
+
+  function startFileProcessing(fileDescriptor) {
+    if (!fileDescriptor || !fileDescriptor.id) {
+      return;
+    }
+    if (!docPipeline) {
+      const message = t('ai_qa_error_docs_unavailable');
+      updateFileState(fileDescriptor.id, { status: 'error', progress: 0, error: message });
+      notify(message, 'error');
+      return;
+    }
+    docPipeline.process(fileDescriptor, {
+      onStatus(status) {
+        updateFileState(fileDescriptor.id, { status: status || 'processing' });
+      },
+      onProgress(progress) {
+        updateFileState(fileDescriptor.id, { progress });
+      },
+      onComplete(result) {
+        updateFileState(fileDescriptor.id, {
+          status: 'ready',
+          progress: 100,
+          chunks: Array.isArray(result && result.chunks) ? result.chunks : [],
+          stats: result && result.stats ? result.stats : null,
+          preview: result && result.preview ? result.preview : '',
+          error: null,
+          file: null
+        });
+      },
+      onError(error) {
+        const base = format(t('ai_qa_error_file_parse'), { name: fileDescriptor.name || '' });
+        const message = error && error.message ? base + ' — ' + error.message : base;
+        updateFileState(fileDescriptor.id, { status: 'error', progress: 0, error: message, file: null });
+        notify(message, 'error');
+      }
+    });
+  }
+
+  function updateFileState(id, patch) {
+    const target = state.files.find(item => item.id === id);
+    if (!target) {
+      return;
+    }
+    if (patch && Object.prototype.hasOwnProperty.call(patch, 'progress')) {
+      const value = Number(patch.progress);
+      patch.progress = Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 0;
+    }
+    Object.assign(target, patch || {});
+    renderFileList();
+  }
+
+  function normalizeFileStatus(status) {
+    if (!status) {
+      return 'pending';
+    }
+    const value = String(status).toLowerCase();
+    switch (value) {
+      case 'success':
+      case 'complete':
+      case 'processed':
+      case 'parsed':
+      case 'finished':
+      case 'uploaded':
+      case 'done':
+        return 'ready';
+      case 'parsing':
+      case 'analyzing':
+      case 'scanning':
+      case 'indexing':
+      case 'uploading':
+        return 'processing';
+      default:
+        return value;
+    }
+  }
+
+  function getFileStatusLabel(file, progressValue) {
+    const status = normalizeFileStatus(file && file.status);
+    const statusKey = getFileStatusKey(status);
+    const base = t(statusKey);
+    const percent = typeof progressValue === 'number' ? progressValue : 0;
+    const showPercent = ['pending', 'reading', 'processing'].includes(status) && percent > 0 && percent < 100;
+    const text = showPercent ? base + ' · ' + percent + '%' : base;
+    const title = file && file.error ? file.error : '';
+    return { text, title };
+  }
+
+  function getFileStatusKey(status) {
+    const normalized = normalizeFileStatus(status);
+    switch (normalized) {
+      case 'reading':
+        return 'ai_qa_file_status_reading';
+      case 'processing':
+        return 'ai_qa_file_status_processing';
+      case 'ready':
+        return 'ai_qa_file_status_ready';
+      case 'error':
+        return 'ai_qa_file_status_error';
+      default:
+        return 'ai_qa_file_status_pending';
+    }
+  }
+
+  function buildFileTitle(file) {
+    if (!file) return '';
+    let title = `${file.name} · ${formatBytes(file.size)}`;
+    if (file.status === 'error' && file.error) {
+      title += '\n' + file.error;
+    }
+    return title;
   }
 
   function refreshControls() {
@@ -1127,13 +1280,139 @@
     if (!Array.isArray(state.files) || !state.files.length) {
       return false;
     }
-    for (let index = 0; index < state.files.length; index += 1) {
-      const status = state.files[index] && state.files[index].status;
-      if (status && (status === 'ready' || status === 'processed' || status === 'complete' || status === 'success')) {
-        return true;
+    return state.files.some(file => {
+      if (!file) return false;
+      const status = normalizeFileStatus(file.status);
+      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks) && file.chunks.length > 0;
+    });
+  }
+
+  function buildDocumentContext() {
+    if (!shouldUseDocumentMode()) {
+      return null;
+    }
+    const lastUser = getLastUserMessage();
+    if (!lastUser || !lastUser.content || !lastUser.content.trim()) {
+      return null;
+    }
+    const ranked = rankDocumentChunks(lastUser.content, 6);
+    if (!ranked.length) {
+      return null;
+    }
+    const header = 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
+    const sections = ranked.map((item, index) => {
+      const label = `[Doc ${index + 1}: ${item.fileName} · Section ${item.index + 1}]`;
+      return label + '\n' + trimSnippet(item.content, DOC_CONTEXT_SNIPPET_LIMIT);
+    });
+    return {
+      text: header + '\n\n' + sections.join('\n\n'),
+      snippets: ranked
+    };
+  }
+
+  function getLastUserMessage() {
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const message = state.messages[index];
+      if (message && message.role === 'user') {
+        return message;
       }
     }
-    return false;
+    return null;
+  }
+
+  function rankDocumentChunks(question, limit) {
+    const tokens = tokenizeForRanking(question);
+    if (!tokens.length) {
+      return [];
+    }
+    const readyFiles = state.files.filter(file => {
+      if (!file) return false;
+      const status = normalizeFileStatus(file.status);
+      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks);
+    });
+    const scored = [];
+    readyFiles.forEach(file => {
+      file.chunks.forEach((chunk, index) => {
+        const score = computeChunkScore(tokens, chunk);
+        if (score > 0) {
+          scored.push({
+            fileId: file.id,
+            fileName: file.name,
+            content: chunk.content,
+            score,
+            index
+          });
+        }
+      });
+    });
+    if (!scored.length) {
+      return [];
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const maxItems = typeof limit === 'number' && limit > 0 ? limit : 5;
+    return scored.slice(0, maxItems);
+  }
+
+  function computeChunkScore(questionTokens, chunk) {
+    if (!chunk || !questionTokens.length) {
+      return 0;
+    }
+    const freq = ensureChunkTermFrequency(chunk);
+    let score = 0;
+    for (let i = 0; i < questionTokens.length; i += 1) {
+      const token = questionTokens[i];
+      if (freq[token]) {
+        score += freq[token];
+      }
+    }
+    if (!score) {
+      return 0;
+    }
+    const normaliser = Math.sqrt(chunk.tokenCount || Object.keys(freq).length || 1);
+    return score / normaliser;
+  }
+
+  function ensureChunkTermFrequency(chunk) {
+    if (chunk.termFreq) {
+      return chunk.termFreq;
+    }
+    const tokens = tokenizeForRanking(chunk.content);
+    const freq = Object.create(null);
+    tokens.forEach(token => {
+      freq[token] = (freq[token] || 0) + 1;
+    });
+    chunk.termFreq = freq;
+    chunk.tokenCount = tokens.length;
+    return freq;
+  }
+
+  function tokenizeForRanking(input) {
+    const value = (input || '').toLowerCase();
+    const matches = value.match(/[a-z0-9\u4e00-\u9fa5]+/g);
+    if (!matches) {
+      return [];
+    }
+    const tokens = [];
+    for (let i = 0; i < matches.length; i += 1) {
+      const token = matches[i];
+      if (/^[\u4e00-\u9fa5]+$/.test(token)) {
+        for (let j = 0; j < token.length; j += 1) {
+          tokens.push(token[j]);
+        }
+      } else {
+        tokens.push(token);
+      }
+    }
+    return tokens;
+  }
+
+  function trimSnippet(text, limit) {
+    if (!text) return '';
+    const boundary = typeof limit === 'number' && limit > 0 ? limit : DOC_CONTEXT_SNIPPET_LIMIT;
+    if (text.length <= boundary) {
+      return text.trim();
+    }
+    return text.slice(0, Math.max(0, boundary - 1)).trimEnd() + '…';
   }
 
   function getErrorMessage(error) {
