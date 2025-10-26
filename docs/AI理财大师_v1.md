@@ -316,7 +316,7 @@ export const rollWindowAndArchive = async (arr, n, archDir, pickMonth = x => x.d
 > 依据你的要求，**页面控制脚本放在 `tools/wealth/wealth.js`**，用 `<script type="module" src="/tools/wealth/wealth.js">` 引入即可。
 
 ### 7.1 页面骨架 `lab/ai-wealth.html`
-
+ai-wealth.html 需要保持导航按 page hero部分和其他页面一致 且整体页面风格要符合整个个人网站的风格
 ```html
 <section class="container">
   <header class="mb-6">
