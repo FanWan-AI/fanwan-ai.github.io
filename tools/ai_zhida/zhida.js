@@ -118,6 +118,20 @@
   const MAX_RAG_SNIPPETS_DEFAULT = 8;
   const MAX_RAG_SNIPPETS_COVERAGE = 18;
   const MAX_RAG_SNIPPETS_UPPER = 20;
+  const WEB_SEARCH_NEGATION_PATTERNS = [
+    /不(?:用|要|需)?(?:联网|上网)/i,
+    /无需联网/i,
+    /离线回答/i,
+    /#no[-_]?web/i,
+    /no\s*(?:need\s*)?web/i,
+    /offline\s+(?:mode|answer)/i
+  ];
+  const rawWebSearchConfig = windowConfig.webSearch && typeof windowConfig.webSearch === 'object'
+    ? windowConfig.webSearch
+    : null;
+  const WEB_SEARCH_CONFIG = normalizeWebSearchConfig(rawWebSearchConfig);
+  const WEB_SEARCH_AVAILABLE = !!(WEB_SEARCH_CONFIG && WEB_SEARCH_CONFIG.endpoint);
+  const WEB_SEARCH_DEFAULT_ENABLED = WEB_SEARCH_AVAILABLE && !!WEB_SEARCH_CONFIG.defaultEnabled;
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -146,7 +160,9 @@
     settingsDirty: false,
     activeEndpoint: null,
     activeHeaders: null,
-    activePayloadOverrides: null
+    activePayloadOverrides: null,
+    webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED,
+    lastWebContext: null
   };
 
   const el = {
@@ -173,7 +189,9 @@
     settingsOverlay: document.querySelector('[data-settings-overlay]'),
     settingsClose: document.querySelector('[data-settings-close]'),
     settingsSheet: document.querySelector('[data-settings-panel] .zhida-settings-sheet'),
-    settingsSave: document.querySelector('[data-settings-save]')
+    settingsSave: document.querySelector('[data-settings-save]'),
+    webSearchToggle: document.querySelector('[data-web-search-toggle]'),
+    webSearchNote: document.querySelector('[data-web-search-note]')
   };
 
   refreshSettingsActionRefs();
@@ -467,6 +485,85 @@
     }
   }
 
+  class WebSearchClient {
+    constructor(config) {
+      this.endpoint = config.endpoint;
+      this.maxResults = clampSearchLimit(config.maxResults);
+      this.freshness = config.freshness || '';
+      this.region = config.region || '';
+      this.timeoutMs = clampSearchTimeout(config.timeoutMs);
+      this.method = (config.method || 'POST').toUpperCase() === 'GET' ? 'GET' : 'POST';
+      this.headers = config.headers ? cloneConfig(config.headers) : null;
+    }
+
+    buildHeaders() {
+      const headers = this.headers ? cloneConfig(this.headers) : {};
+      if (this.method === 'POST' && !headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      return headers;
+    }
+
+    async search(rawQuery, options) {
+      const query = typeof rawQuery === 'string' ? rawQuery.trim() : '';
+      if (!query) {
+        return { query: '', results: [] };
+      }
+      const opts = options && typeof options === 'object' ? options : {};
+      const limit = clampSearchLimit(opts.maxResults != null ? opts.maxResults : this.maxResults);
+      const payload = {
+        query,
+        maxResults: limit,
+        freshness: typeof opts.freshness === 'string' && opts.freshness ? opts.freshness : this.freshness,
+        region: typeof opts.region === 'string' && opts.region ? opts.region : this.region,
+        safeSearch: opts.safeSearch
+      };
+
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      let timer = null;
+      if (controller && this.timeoutMs > 0) {
+        timer = setTimeout(() => controller.abort(), this.timeoutMs);
+      }
+
+      try {
+        const requestInit = {
+          method: this.method,
+          headers: this.buildHeaders(),
+          signal: controller ? controller.signal : undefined
+        };
+        let url = this.endpoint;
+        if (this.method === 'GET') {
+          const urlObj = new URL(this.endpoint, window.location.origin);
+          urlObj.searchParams.set('q', query);
+          urlObj.searchParams.set('maxResults', String(limit));
+          if (payload.freshness) urlObj.searchParams.set('freshness', payload.freshness);
+          if (payload.region) urlObj.searchParams.set('region', payload.region);
+          url = urlObj.toString();
+        } else {
+          requestInit.body = JSON.stringify(payload);
+        }
+
+        const response = await fetch(url, requestInit);
+        if (!response.ok) {
+          throw await parseSearchError(response);
+        }
+        const data = await response.json();
+        return normalizeWebSearchResults(query, data, limit);
+      } catch (error) {
+        if (error && error.name === 'AbortError') {
+          const timeoutError = new Error(t('ai_qa_web_search_timeout'));
+          timeoutError.code = 'timeout';
+          throw timeoutError;
+        }
+        throw error;
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      }
+    }
+  }
+
   let toastTimer = null;
   let lastFocusedElement = null;
   let settingsFocusTrapListener = null;
@@ -475,6 +572,7 @@
   const mathPendingMessages = new Set();
   let mathJaxLoadingPromise = null;
   const client = new ChatClient(null, null);
+  const webSearchClient = WEB_SEARCH_AVAILABLE ? new WebSearchClient(WEB_SEARCH_CONFIG) : null;
   applyActiveModelConfig();
 
   init();
@@ -513,6 +611,9 @@
     }
     if (el.systemPrompt) {
       el.systemPrompt.addEventListener('input', handleSystemPromptChange);
+    }
+    if (el.webSearchToggle) {
+      el.webSearchToggle.addEventListener('change', handleWebSearchToggleChange);
     }
     if (el.app) {
       el.app.addEventListener('dragover', handleDragOver);
@@ -569,18 +670,22 @@
     const systemPrompt = shouldResetPrompt ? newDefault : resolveSystemPrompt(storedPrompt, lang);
     const storedModel = stored && typeof stored.model === 'string' ? stored.model.trim() : '';
     const model = normalizeModel(storedModel);
+    const storedWebSearch = stored && typeof stored.webSearchEnabled === 'boolean' ? stored.webSearchEnabled : WEB_SEARCH_DEFAULT_ENABLED;
+    const webSearchEnabled = WEB_SEARCH_AVAILABLE ? storedWebSearch : false;
 
     const settings = {
       temperature,
       maxTokens,
       systemPrompt,
       model,
+      webSearchEnabled,
       lang
     };
 
     state.settings = Object.assign({}, settings);
     state.settingsDraft = Object.assign({}, settings);
     state.model = settings.model || DEFAULT_MODEL;
+    state.webSearchEnabled = settings.webSearchEnabled;
     state.settingsDirty = false;
 
     applyActiveModelConfig();
@@ -595,9 +700,13 @@
       maxTokens: DEFAULT_MAX_TOKENS,
       systemPrompt: resolveSystemPrompt('', lang),
       model: DEFAULT_MODEL,
+      webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED,
       lang
     };
-    const settings = Object.assign({}, base, { lang });
+    const settings = Object.assign({}, base, {
+      lang,
+      webSearchEnabled: WEB_SEARCH_AVAILABLE ? !!base.webSearchEnabled : false
+    });
     storageSet(STORAGE.SETTINGS, JSON.stringify(settings));
   }
 
@@ -614,7 +723,9 @@
             id: typeof item.id === 'string' && item.id ? item.id : createMessageId(),
             role: item.role === 'assistant' ? 'assistant' : 'user',
             content: typeof item.content === 'string' ? item.content : '',
-            createdAt: item.createdAt || Date.now()
+            createdAt: item.createdAt || Date.now(),
+            kind: typeof item.kind === 'string' ? item.kind : null,
+            skipInHistory: !!item.skipInHistory
           }));
       } else {
         state.messages = [];
@@ -651,7 +762,9 @@
       id: msg.id,
       role: msg.role,
       content: msg.content,
-      createdAt: msg.createdAt || Date.now()
+      createdAt: msg.createdAt || Date.now(),
+      kind: msg.kind || null,
+      skipInHistory: !!msg.skipInHistory
     }));
     storageSet(STORAGE.HISTORY, JSON.stringify(payload));
   }
@@ -926,7 +1039,11 @@
     const role = message.role === 'assistant' ? 'assistant' : 'user';
     wrapper.dataset.messageId = message.id || '';
     wrapper.dataset.role = role;
+    wrapper.dataset.kind = message.kind || '';
     wrapper.className = `zhida-message zhida-message--${role}`;
+    if (message.kind === 'search') {
+      wrapper.classList.add('zhida-message--search');
+    }
 
     if (message.streaming) {
       wrapper.dataset.streaming = 'true';
@@ -943,9 +1060,15 @@
       avatar.setAttribute('aria-hidden', 'true');
       wrapper.insertBefore(avatar, wrapper.firstChild);
     }
-    if (avatar.dataset.role !== role) {
-      avatar.dataset.role = role;
-      avatar.innerHTML = role === 'assistant' ? assistantIcon() : userIcon();
+    avatar.dataset.role = role;
+    const iconType = message.kind === 'search' ? 'search' : role;
+    if (avatar.dataset.iconType !== iconType) {
+      avatar.dataset.iconType = iconType;
+      if (iconType === 'search') {
+        avatar.innerHTML = searchIcon();
+      } else {
+        avatar.innerHTML = role === 'assistant' ? assistantIcon() : userIcon();
+      }
     }
 
     let bubble = wrapper.querySelector('.zhida-message-bubble');
@@ -1370,7 +1493,7 @@
     return escapeAttribute(trimmed);
   }
 
-  function handleSend(event) {
+  async function handleSend(event) {
     event.preventDefault();
     if (state.streaming) return;
     let endpoint = state.activeEndpoint;
@@ -1411,7 +1534,15 @@
     autoResizeInput();
     renderMessages();
 
-    const payload = buildPayload();
+    let webContext = null;
+    try {
+      webContext = await maybeRunWebSearch(userMessage.content);
+    } catch (error) {
+      console.error('[zhida] web search failed', error);
+    }
+
+    const payload = buildPayload(webContext);
+    state.lastWebContext = webContext;
     const assistantMessage = {
       id: createMessageId(),
       role: 'assistant',
@@ -1438,6 +1569,58 @@
       }
       console.error(error);
     });
+  }
+
+  async function maybeRunWebSearch(prompt) {
+    if (!shouldRunWebSearch(prompt)) {
+      return null;
+    }
+    if (!webSearchClient) {
+      return null;
+    }
+    const searchMessage = createSearchMessage(t('ai_qa_web_search_progress'));
+    state.messages.push(searchMessage);
+    setAutoStick(true);
+    state.manualScrollIntent = false;
+    renderMessages();
+    if (state.autoStick) {
+      scrollMessagesToBottom(true);
+    }
+    try {
+      const result = await webSearchClient.search(prompt, {
+        maxResults: WEB_SEARCH_CONFIG.maxResults,
+        freshness: WEB_SEARCH_CONFIG.freshness,
+        region: WEB_SEARCH_CONFIG.region
+      });
+      const context = buildWebSearchContext(result);
+      const display = formatWebSearchMessage(context);
+      searchMessage.content = display || t('ai_qa_web_search_empty');
+      searchMessage.meta = { webSearch: result };
+      updateMessageContent(searchMessage);
+      persistMessages();
+      return context;
+    } catch (error) {
+      const isTimeout = error && error.code === 'timeout';
+      const base = isTimeout ? t('ai_qa_web_search_timeout') : t('ai_qa_web_search_error');
+      const detail = error && error.message ? ' - ' + error.message : '';
+      searchMessage.content = base + detail;
+      searchMessage.meta = { error: true };
+      updateMessageContent(searchMessage);
+      persistMessages();
+      console.error('[zhida] web search error', error);
+      return null;
+    }
+  }
+
+  function createSearchMessage(initialText) {
+    return {
+      id: createMessageId(),
+      role: 'assistant',
+      content: initialText || '',
+      createdAt: Date.now(),
+      kind: 'search',
+      skipInHistory: true
+    };
   }
 
   function handleStop() {
@@ -1534,19 +1717,26 @@
     }
   }
 
-  function buildPayload() {
+  function buildPayload(webContext) {
     const messages = [];
     const system = getSystemPrompt();
     if (system) {
       messages.push({ role: 'system', content: system });
     }
     const docContext = buildDocumentContext();
+    const lastUserIndex = findLastUserMessageIndex();
     state.messages.forEach((msg, index) => {
       if (index === state.assistantIndex && msg.streaming) {
         return;
       }
-      if (docContext && docContext.text && index === state.messages.length - 1 && msg.role === 'user') {
+      if (msg && msg.skipInHistory) {
+        return;
+      }
+      if (docContext && docContext.text && index === lastUserIndex && msg.role === 'user') {
         messages.push({ role: 'system', content: docContext.text });
+      }
+      if (webContext && webContext.summary && index === lastUserIndex && msg.role === 'user') {
+        messages.push({ role: 'system', content: webContext.summary });
       }
       messages.push({ role: msg.role, content: msg.content });
     });
@@ -1562,41 +1752,73 @@
     if (modelSupportsTemperature(model)) {
       payload.temperature = getTemperature();
     }
-    if (supportsDocuments && docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
-      payload.mode = 'rag';
-      if (docContext.coverage) {
-        payload.context_mode = 'coverage';
+    if (supportsDocuments) {
+      const documents = [];
+      if (docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
+        documents.push(...docContext.snippets.map(snippet => {
+          const chunk = snippet.chunk || null;
+          const doc = {
+            id: snippet.fileId + ':' + snippet.index,
+            name: snippet.fileName,
+            content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
+          };
+          const metadata = {};
+          const pages = getChunkPageRange(chunk);
+          if (pages && pages.length) {
+            metadata.pages = pages;
+          }
+          if (chunk && chunk.source && typeof chunk.source.section === 'string' && chunk.source.section.trim()) {
+            metadata.section = chunk.source.section.trim();
+          }
+          if (chunk && chunk.source && Array.isArray(chunk.source.tags) && chunk.source.tags.length) {
+            metadata.tags = chunk.source.tags.slice(0, 3);
+          }
+          if (Object.keys(metadata).length) {
+            doc.metadata = metadata;
+          }
+          return doc;
+        }));
       }
-      payload.documents = docContext.snippets.map(snippet => {
-        const chunk = snippet.chunk || null;
-        const doc = {
-          id: snippet.fileId + ':' + snippet.index,
-          name: snippet.fileName,
-          content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
-        };
-        const metadata = {};
-        const pages = getChunkPageRange(chunk);
-        if (pages && pages.length) {
-          metadata.pages = pages;
+      if (webContext && Array.isArray(webContext.documents) && webContext.documents.length) {
+        documents.push(...webContext.documents);
+      }
+      if (documents.length) {
+        payload.mode = 'rag';
+        if (docContext && docContext.coverage) {
+          payload.context_mode = 'coverage';
         }
-        if (chunk && chunk.source && typeof chunk.source.section === 'string' && chunk.source.section.trim()) {
-          metadata.section = chunk.source.section.trim();
-        }
-        if (chunk && chunk.source && Array.isArray(chunk.source.tags) && chunk.source.tags.length) {
-          metadata.tags = chunk.source.tags.slice(0, 3);
-        }
-        if (Object.keys(metadata).length) {
-          doc.metadata = metadata;
-        }
-        return doc;
-      });
-    } else if (supportsDocuments && shouldUseDocumentMode()) {
-      payload.mode = 'rag';
+        payload.documents = documents;
+      } else if (shouldUseDocumentMode()) {
+        payload.mode = 'rag';
+      }
+    }
+    if (webContext && webContext.query) {
+      payload.web_search = {
+        query: webContext.query,
+        fetched_at: webContext.fetchedAt || null,
+        total: typeof webContext.total === 'number' ? webContext.total : null
+      };
     }
     if (state.activePayloadOverrides && typeof state.activePayloadOverrides === 'object') {
       applyPayloadOverrides(payload, state.activePayloadOverrides);
     }
     return payload;
+  }
+
+  function findLastUserMessageIndex() {
+    for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+      const msg = state.messages[index];
+      if (!msg || msg.skipInHistory) {
+        continue;
+      }
+      if (index === state.assistantIndex && msg.streaming) {
+        continue;
+      }
+      if (msg.role === 'user') {
+        return index;
+      }
+    }
+    return -1;
   }
 
   function autoResizeInput() {
@@ -1651,6 +1873,164 @@
     updateSettingsDraft({ systemPrompt: el.systemPrompt.value });
   }
 
+  function handleWebSearchToggleChange() {
+    if (!el.webSearchToggle) {
+      return;
+    }
+    if (!WEB_SEARCH_AVAILABLE) {
+      el.webSearchToggle.checked = false;
+      updateSettingsDraft({ webSearchEnabled: false });
+      return;
+    }
+    updateSettingsDraft({ webSearchEnabled: !!el.webSearchToggle.checked });
+  }
+
+  function shouldRunWebSearch(prompt) {
+    if (!WEB_SEARCH_AVAILABLE || !webSearchClient) {
+      return false;
+    }
+    if (!state.webSearchEnabled) {
+      return false;
+    }
+    const value = typeof prompt === 'string' ? prompt.trim() : '';
+    if (!value) {
+      return false;
+    }
+    for (let i = 0; i < WEB_SEARCH_NEGATION_PATTERNS.length; i += 1) {
+      if (WEB_SEARCH_NEGATION_PATTERNS[i].test(value)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function formatWebSearchMessage(context) {
+    if (!context || !Array.isArray(context.results)) {
+      return '';
+    }
+    if (!context.results.length) {
+      return t('ai_qa_web_search_empty');
+    }
+    const title = '### ' + t('ai_qa_web_search_results_title');
+    const sections = context.results.map((item, index) => formatWebSearchLine(item, index));
+    return title + '\n\n' + sections.join('\n\n');
+  }
+
+  function formatWebSearchLine(item, index) {
+    if (!item) {
+      return '';
+    }
+    const position = index + 1;
+    const anchorLabel = item.title || item.url || ('Result ' + position);
+    const safeUrl = item.url ? sanitizeUrl(item.url) : '';
+    const link = safeUrl ? '[' + anchorLabel + '](' + safeUrl + ')' : anchorLabel;
+    const source = item.source ? ' — ' + item.source : '';
+    const snippet = item.snippet ? '\n> ' + trimSnippet(item.snippet, 240) : '';
+    return position + '. ' + link + source + snippet;
+  }
+
+  function buildWebSearchContext(raw) {
+    const query = raw && typeof raw.query === 'string' ? raw.query : '';
+    const results = Array.isArray(raw && raw.results) ? raw.results : [];
+    const fetchedAt = raw && raw.fetchedAt ? raw.fetchedAt : new Date().toISOString();
+    const summary = buildWebSearchSystemPrompt(results, fetchedAt, query);
+    const documents = results.map((item, index) => buildWebSearchDocument(item, index, fetchedAt));
+    return {
+      query,
+      results,
+      fetchedAt,
+      total: raw && typeof raw.total === 'number' ? raw.total : null,
+      summary,
+      documents: documents.filter(Boolean)
+    };
+  }
+
+  function buildWebSearchSystemPrompt(results, fetchedAt, query) {
+    if (!Array.isArray(results) || !results.length) {
+      return '';
+    }
+    const lang = getLang();
+    const isZh = lang === 'zh';
+    const isoTime = formatIsoTimestamp(fetchedAt);
+    const header = isZh
+      ? `联网检索结果（${isoTime} UTC），请引用必要的来源作答：`
+      : `Web search results (${isoTime} UTC). Cite relevant sources in your answer.`;
+    const queryLine = query ? (isZh ? `查询：${query}` : `Query: ${query}`) : '';
+    const lines = results.map((item, index) => {
+      if (!item) {
+        return '';
+      }
+      const parts = [];
+      const name = item.title || item.url || ('Result ' + (index + 1));
+      const source = item.source ? ` (source: ${item.source})` : '';
+      parts.push(`${index + 1}. ${name}${source}`);
+      if (item.snippet) {
+        parts.push((isZh ? '摘要：' : 'Summary: ') + trimSnippet(item.snippet, 320));
+      }
+      if (item.url) {
+        parts.push('URL: ' + item.url);
+      }
+      if (item.publishedAt) {
+        parts.push((isZh ? '发布时间：' : 'Published: ') + item.publishedAt);
+      }
+      return parts.join('\n');
+    }).filter(Boolean);
+    const payload = [header];
+    if (queryLine) {
+      payload.push(queryLine);
+    }
+    payload.push('');
+    return payload.concat(lines).join('\n');
+  }
+
+  function buildWebSearchDocument(item, index, fetchedAt) {
+    if (!item) {
+      return null;
+    }
+    const lines = [];
+    if (item.title) {
+      lines.push(item.title);
+    }
+    if (item.snippet) {
+      lines.push(trimSnippet(item.snippet, DOC_CONTEXT_SNIPPET_LIMIT));
+    }
+    if (item.url) {
+      lines.push('URL: ' + item.url);
+    }
+    if (item.source) {
+      lines.push('Source: ' + item.source);
+    }
+    if (item.publishedAt) {
+      lines.push('Published: ' + item.publishedAt);
+    }
+    const metadata = {
+      url: item.url || undefined,
+      source: item.source || undefined,
+      fetched_at: fetchedAt,
+      published_at: item.publishedAt || undefined,
+      type: 'web'
+    };
+    Object.keys(metadata).forEach(key => {
+      if (metadata[key] == null) {
+        delete metadata[key];
+      }
+    });
+    return {
+      id: 'web-' + (index + 1),
+      name: item.title || item.url || ('web-' + (index + 1)),
+      content: lines.join('\n'),
+      metadata: Object.keys(metadata).length ? metadata : undefined
+    };
+  }
+
+  function formatIsoTimestamp(value) {
+    try {
+      return value ? new Date(value).toISOString() : new Date().toISOString();
+    } catch (_) {
+      return new Date().toISOString();
+    }
+  }
+
   function handleDocumentClick(event) {
     if (!event || !el.settingsPanel) {
       return;
@@ -1687,12 +2067,14 @@
       maxTokens: clampMaxTokens(state.settingsDraft.maxTokens),
       systemPrompt: resolveSystemPrompt(state.settingsDraft.systemPrompt, lang),
       model: normalizeModel(state.settingsDraft.model),
+      webSearchEnabled: WEB_SEARCH_AVAILABLE ? !!state.settingsDraft.webSearchEnabled : false,
       lang
     };
 
     state.settings = Object.assign({}, nextSettings);
     state.settingsDraft = Object.assign({}, nextSettings);
     state.model = nextSettings.model;
+    state.webSearchEnabled = nextSettings.webSearchEnabled;
     state.settingsDirty = false;
 
     applySettingsDraftToInputs();
@@ -1713,7 +2095,8 @@
         maxTokens: DEFAULT_MAX_TOKENS,
         systemPrompt: resolveSystemPrompt('', getLang()),
         model: DEFAULT_MODEL,
-        lang: getLang()
+        lang: getLang(),
+        webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED
       };
     }
     Object.assign(state.settingsDraft, patch);
@@ -1739,6 +2122,13 @@
     if (el.modelSelect) {
       el.modelSelect.value = normalizeModel(state.settingsDraft.model);
     }
+    if (el.webSearchToggle) {
+      el.webSearchToggle.checked = !!state.settingsDraft.webSearchEnabled;
+      el.webSearchToggle.disabled = !WEB_SEARCH_AVAILABLE;
+    }
+    if (el.webSearchNote) {
+      el.webSearchNote.hidden = WEB_SEARCH_AVAILABLE;
+    }
   }
 
   function syncSettingsDirtyFlag() {
@@ -1752,17 +2142,20 @@
     const draftMaxTokens = clampMaxTokens(state.settingsDraft.maxTokens);
     const draftPrompt = resolveSystemPrompt(state.settingsDraft.systemPrompt, baseLang);
     const draftModel = normalizeModel(state.settingsDraft.model);
+    const draftSearch = WEB_SEARCH_AVAILABLE ? !!state.settingsDraft.webSearchEnabled : false;
 
     const savedTemperature = clampTemperature(state.settings.temperature);
     const savedMaxTokens = clampMaxTokens(state.settings.maxTokens);
     const savedPrompt = resolveSystemPrompt(state.settings.systemPrompt, baseLang);
     const savedModel = normalizeModel(state.settings.model);
+    const savedSearch = WEB_SEARCH_AVAILABLE ? !!state.settings.webSearchEnabled : false;
 
     state.settingsDirty = (
       draftTemperature !== savedTemperature ||
       draftMaxTokens !== savedMaxTokens ||
       draftPrompt !== savedPrompt ||
-      draftModel !== savedModel
+      draftModel !== savedModel ||
+      (WEB_SEARCH_AVAILABLE && draftSearch !== savedSearch)
     );
     syncSettingsSaveState();
   }
@@ -2459,6 +2852,132 @@
       return result;
     }
     return value;
+  }
+
+  function normalizeWebSearchConfig(raw) {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    const endpoint = typeof raw.endpoint === 'string' ? raw.endpoint.trim() : '';
+    if (!endpoint) {
+      return null;
+    }
+    return {
+      endpoint,
+      maxResults: clampSearchLimit(raw.maxResults != null ? raw.maxResults : 6),
+      freshness: typeof raw.freshness === 'string' ? raw.freshness : '',
+      region: typeof raw.region === 'string' ? raw.region : '',
+      timeoutMs: clampSearchTimeout(raw.timeoutMs != null ? raw.timeoutMs : 8000),
+      headers: raw.headers && typeof raw.headers === 'object' ? cloneConfig(raw.headers) : null,
+      method: typeof raw.method === 'string' ? raw.method.trim().toUpperCase() : 'POST',
+      defaultEnabled: !!raw.defaultEnabled
+    };
+  }
+
+  function clampSearchLimit(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+      return 6;
+    }
+    return Math.min(Math.max(Math.round(num), 1), 10);
+  }
+
+  function clampSearchTimeout(value) {
+    const num = Number(value);
+    if (!Number.isFinite(num)) {
+      return 8000;
+    }
+    return Math.min(Math.max(Math.round(num), 2000), 20000);
+  }
+
+  async function parseSearchError(response) {
+    let message = response.status + ' ' + (response.statusText || 'Error');
+    try {
+      const data = await response.json();
+      if (data && typeof data === 'object') {
+        if (typeof data.error === 'string' && data.error) {
+          message = data.error;
+        } else if (data.error && typeof data.error.message === 'string') {
+          message = data.error.message;
+        }
+      }
+    } catch (_) {
+      // ignore JSON parse errors
+    }
+    const error = new Error(message);
+    error.code = 'web-search';
+    error.status = response.status;
+    return error;
+  }
+
+  function normalizeWebSearchResults(query, data, limit) {
+    const max = clampSearchLimit(limit);
+    const rawList = extractWebSearchResults(data);
+    const results = [];
+    const seen = new Set();
+    for (let i = 0; i < rawList.length && results.length < max; i += 1) {
+      const normalized = normalizeSearchResult(rawList[i]);
+      if (!normalized) {
+        continue;
+      }
+      const dedupeKey = normalized.url || normalized.title;
+      if (dedupeKey && seen.has(dedupeKey)) {
+        continue;
+      }
+      if (dedupeKey) {
+        seen.add(dedupeKey);
+      }
+      results.push(normalized);
+    }
+    return {
+      query,
+      results,
+      fetchedAt: new Date().toISOString(),
+      total: data && typeof data.total === 'number' ? data.total : null
+    };
+  }
+
+  function extractWebSearchResults(payload) {
+    if (!payload) {
+      return [];
+    }
+    if (Array.isArray(payload.results)) {
+      return payload.results;
+    }
+    if (payload.web && Array.isArray(payload.web.results)) {
+      return payload.web.results;
+    }
+    if (Array.isArray(payload.data)) {
+      return payload.data;
+    }
+    return [];
+  }
+
+  function normalizeSearchResult(entry) {
+    if (!entry) {
+      return null;
+    }
+    const rawUrl = typeof entry.url === 'string' && entry.url.trim() ? entry.url.trim() : (typeof entry.link === 'string' ? entry.link.trim() : '');
+    if (!/^https?:/i.test(rawUrl)) {
+      return null;
+    }
+    const snippet = sanitizeSearchSnippet(entry.snippet || entry.description || entry.summary || '');
+    const normalized = {
+      title: entry.title && String(entry.title).trim() ? String(entry.title).trim() : '',
+      url: rawUrl,
+      snippet: snippet ? trimSnippet(snippet, 360) : '',
+      source: entry.source || (entry.meta_url && entry.meta_url.hostname) || entry.publisher || '',
+      publishedAt: entry.publishedAt || (entry.age && entry.age.iso8601) || entry.date || null,
+      score: typeof entry.score === 'number' ? entry.score : null
+    };
+    return normalized;
+  }
+
+  function sanitizeSearchSnippet(value) {
+    if (!value) {
+      return '';
+    }
+    return String(value).replace(/\s+/g, ' ').trim();
   }
 
   function shouldUseDocumentMode() {
@@ -3262,6 +3781,10 @@
 
   function userIcon() {
     return '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4z"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></g></svg>';
+  }
+
+  function searchIcon() {
+    return '<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.35-3.35"/></g></svg>';
   }
 
   function parseError(response) {
