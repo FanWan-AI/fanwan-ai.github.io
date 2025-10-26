@@ -27,6 +27,7 @@ style.textContent = `
 .wealth-pulse-item h5 { margin: 0; font-size: 1.05rem; color: var(--text-strong, #0f172a); }
 .wealth-pulse-facts, .wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.55; color: var(--text, #1f2937); }
 .wealth-empty { font-size: 0.95rem; color: var(--muted, #4b5563); text-align: center; padding: 36px 0; }
+.wealth-panel__title { margin: 0 0 6px; font-size: 1.2rem; font-weight: 700; color: var(--text-strong, #0f172a); }
 `;
 document.head.appendChild(style);
 
@@ -84,7 +85,12 @@ function renderNotice(name, message) {
   const banner = document.createElement("div");
   banner.className = "wealth-notice";
   banner.textContent = message;
-  target.prepend(banner);
+  const heading = target.querySelector(".wealth-panel__title");
+  if (heading) {
+    heading.insertAdjacentElement("afterend", banner);
+  } else {
+    target.prepend(banner);
+  }
 }
 
 function pickLang(obj) {
@@ -162,7 +168,15 @@ function createDailyCard(entry, isToday) {
 }
 
 function renderDaily(data) {
+  const existingNotice = dailyContainer.querySelector(".wealth-notice");
   dailyContainer.innerHTML = "";
+  const heading = document.createElement("h2");
+  heading.className = "wealth-panel__title";
+  heading.textContent = "每日理财课";
+  dailyContainer.append(heading);
+  if (existingNotice) {
+    dailyContainer.append(existingNotice);
+  }
   if (!Array.isArray(data) || !data.length) {
     const empty = document.createElement("p");
     empty.className = "wealth-empty";
@@ -247,7 +261,15 @@ function renderDaily(data) {
 }
 
 function renderPulse(data) {
+  const existingNotice = pulseContainer.querySelector(".wealth-notice");
   pulseContainer.innerHTML = "";
+  const heading = document.createElement("h2");
+  heading.className = "wealth-panel__title";
+  heading.textContent = "市场快讯";
+  pulseContainer.append(heading);
+  if (existingNotice) {
+    pulseContainer.append(existingNotice);
+  }
   if (!Array.isArray(data) || !data.length) {
     const empty = document.createElement("p");
     empty.className = "wealth-empty";

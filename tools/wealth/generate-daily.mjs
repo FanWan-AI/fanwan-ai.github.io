@@ -165,12 +165,12 @@ Audience: Financial beginners seeking easy wins.
 `; }
 
 async function callLLM(prompt) {
-  const apiKey = process.env.LLM_API_KEY;
+  const apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing LLM_API_KEY environment variable");
+    throw new Error("Missing LLM_API_KEY or DEEPSEEK_API_KEY environment variable");
   }
-  const baseURL = process.env.LLM_BASE_URL || "https://api.openai.com/v1";
-  const model = process.env.LLM_MODEL || "gpt-4o-mini";
+  const baseURL = process.env.LLM_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
+  const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-chat";
 
   const response = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",
