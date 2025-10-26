@@ -84,6 +84,35 @@
     en: ["You are the AI Q&A assistant on Fan Wan's site. Reply concisely, prefer English when unsure, and cite sources when available."],
     es: ['Eres el asistente AI Respuestas del sitio de Fan Wan. Responde con concisión, prioriza el español cuando sea posible y cita las fuentes disponibles.']
   };
+  const QUESTION_SYNONYMS = Object.freeze({
+    '论文': ['paper', 'article', 'work', 'study'],
+    '总结': ['summary', 'overview', 'abstract'],
+    '概括': ['summary', 'overview'],
+    '介绍': ['introduction', 'overview'],
+    '贡献': ['contribution', 'contributions', 'novelty'],
+    '动机': ['motivation', 'motives'],
+    '方法': ['method', 'approach', 'technique'],
+    '实验': ['experiment', 'experiments', 'evaluation'],
+    '结果': ['result', 'results', 'finding', 'findings'],
+    '结论': ['conclusion', 'conclusions'],
+    '未来': ['future', 'future work'],
+    '局限': ['limitation', 'limitations', 'weakness'],
+    '关键': ['key', 'highlight'],
+    '创新': ['innovation', 'novelty'],
+    '摘要': ['abstract', 'summary'],
+    '背景': ['background', 'context'],
+    '相关': ['related', 'related work'],
+    '数据': ['data', 'dataset'],
+    '性能': ['performance'],
+    '优势': ['advantage', 'benefit'],
+    '缺点': ['limitation', 'drawback'],
+    '理论': ['theory', 'theoretical'],
+    '实践': ['practice', 'practical'],
+    '应用': ['application', 'applications']
+  });
+  const GENERIC_QUERY_TOKENS = new Set(['paper', 'article', 'study', 'work', 'document']);
+  const FALLBACK_CHUNKS_PER_FILE = 2;
+  const MIN_SCORE_THRESHOLD = 0.12;
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -1530,11 +1559,29 @@
     }
     if (supportsDocuments && docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
       payload.mode = 'rag';
-      payload.documents = docContext.snippets.map(snippet => ({
-        id: snippet.fileId + ':' + snippet.index,
-        name: snippet.fileName,
-        content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
-      }));
+      payload.documents = docContext.snippets.map(snippet => {
+        const chunk = snippet.chunk || null;
+        const doc = {
+          id: snippet.fileId + ':' + snippet.index,
+          name: snippet.fileName,
+          content: trimSnippet(snippet.content, DOC_CONTEXT_SNIPPET_LIMIT)
+        };
+        const metadata = {};
+        const pages = getChunkPageRange(chunk);
+        if (pages && pages.length) {
+          metadata.pages = pages;
+        }
+        if (chunk && chunk.source && typeof chunk.source.section === 'string' && chunk.source.section.trim()) {
+          metadata.section = chunk.source.section.trim();
+        }
+        if (chunk && chunk.source && Array.isArray(chunk.source.tags) && chunk.source.tags.length) {
+          metadata.tags = chunk.source.tags.slice(0, 3);
+        }
+        if (Object.keys(metadata).length) {
+          doc.metadata = metadata;
+        }
+        return doc;
+      });
     } else if (supportsDocuments && shouldUseDocumentMode()) {
       payload.mode = 'rag';
     }
@@ -2312,7 +2359,9 @@
     }
     const header = 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
     const sections = ranked.map((item, index) => {
-      const label = `[Doc ${index + 1}: ${item.fileName} · Section ${item.index + 1}]`;
+      const chunk = item.chunk || null;
+      const sourceLabel = formatChunkSourceLabel(chunk);
+      const label = `[Doc ${index + 1}: ${item.fileName}${sourceLabel ? ' · ' + sourceLabel : ''}]`;
       return label + '\n' + trimSnippet(item.content, DOC_CONTEXT_SNIPPET_LIMIT);
     });
     return {
@@ -2333,35 +2382,50 @@
 
   function rankDocumentChunks(question, limit) {
     const tokens = tokenizeForRanking(question);
-    if (!tokens.length) {
-      return [];
+    const expanded = dedupeArray(expandQuestionTokens(tokens));
+    if (!expanded.length) {
+      return buildFallbackSelections([], limit);
     }
+
     const readyFiles = state.files.filter(file => {
       if (!file) return false;
       const status = normalizeFileStatus(file.status);
-      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks);
+      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks) && file.chunks.length > 0;
     });
+
     const scored = [];
     readyFiles.forEach(file => {
       file.chunks.forEach((chunk, index) => {
-        const score = computeChunkScore(tokens, chunk);
+        const score = computeChunkScore(expanded, chunk);
         if (score > 0) {
           scored.push({
             fileId: file.id,
             fileName: file.name,
             content: chunk.content,
             score,
-            index
+            index,
+            chunk
           });
         }
       });
     });
-    if (!scored.length) {
-      return [];
-    }
-    scored.sort((a, b) => b.score - a.score);
+
     const maxItems = typeof limit === 'number' && limit > 0 ? limit : 5;
-    return scored.slice(0, maxItems);
+
+    if (!scored.length) {
+      return buildFallbackSelections(readyFiles, maxItems);
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    const topScore = scored[0].score;
+    const threshold = Math.max(topScore * 0.35, MIN_SCORE_THRESHOLD);
+    const filtered = scored.filter(item => item.score >= threshold).slice(0, maxItems);
+
+    if (!filtered.length) {
+      return buildFallbackSelections(readyFiles, maxItems);
+    }
+
+    return filtered;
   }
 
   function computeChunkScore(questionTokens, chunk) {
@@ -2380,7 +2444,8 @@
       return 0;
     }
     const normaliser = Math.sqrt(chunk.tokenCount || Object.keys(freq).length || 1);
-    return score / normaliser;
+    const weight = chunk.weight && Number.isFinite(chunk.weight) ? chunk.weight : 1;
+    return (score / normaliser) * weight;
   }
 
   function ensureChunkTermFrequency(chunk) {
@@ -2395,6 +2460,169 @@
     chunk.termFreq = freq;
     chunk.tokenCount = tokens.length;
     return freq;
+  }
+
+  function expandQuestionTokens(tokens) {
+    if (!Array.isArray(tokens) || !tokens.length) {
+      return [];
+    }
+    const expanded = tokens.slice();
+    tokens.forEach(token => {
+      if (QUESTION_SYNONYMS[token]) {
+        Array.prototype.push.apply(expanded, QUESTION_SYNONYMS[token]);
+      }
+      if (token.length > 3 && token.endsWith('s')) {
+        expanded.push(token.slice(0, -1));
+      }
+    });
+    if (tokens.some(token => GENERIC_QUERY_TOKENS.has(token))) {
+      expanded.push('overview', 'summary', 'abstract');
+    }
+    return expanded;
+  }
+
+  function dedupeArray(list) {
+    if (!Array.isArray(list) || !list.length) {
+      return [];
+    }
+    const seen = new Set();
+    const result = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const value = list[i];
+      if (value == null) {
+        continue;
+      }
+      const key = String(value).toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(key);
+    }
+    return result;
+  }
+
+  function buildFallbackSelections(files, limit) {
+    const maxItems = typeof limit === 'number' && limit > 0 ? limit : 5;
+    const available = Array.isArray(files) && files.length ? files : state.files;
+    const fallbacks = [];
+
+    available.forEach(file => {
+      if (!file || !Array.isArray(file.chunks) || !file.chunks.length) {
+        return;
+      }
+      const chunks = chooseFallbackChunks(file.chunks, maxItems);
+      chunks.forEach(entry => {
+        fallbacks.push({
+          fileId: file.id,
+          fileName: file.name,
+          content: entry.content,
+          score: entry.score,
+          index: entry.index,
+          chunk: entry.chunk,
+          fallback: true
+        });
+      });
+    });
+
+    fallbacks.sort((a, b) => {
+      const aPage = getChunkFirstPage(a.chunk);
+      const bPage = getChunkFirstPage(b.chunk);
+      if (aPage != null && bPage != null && aPage !== bPage) {
+        return aPage - bPage;
+      }
+      return a.index - b.index;
+    });
+
+    return fallbacks.slice(0, maxItems);
+  }
+
+  function chooseFallbackChunks(chunks, limit) {
+    const result = [];
+    if (!Array.isArray(chunks) || !chunks.length) {
+      return result;
+    }
+    const headCount = Math.min(FALLBACK_CHUNKS_PER_FILE, Math.max(1, limit));
+    const candidates = chunks.map((chunk, index) => ({ chunk, index })).filter(entry => entry.chunk && entry.chunk.content);
+    candidates.sort((a, b) => {
+      const weightA = a.chunk.weight && Number.isFinite(a.chunk.weight) ? a.chunk.weight : 1;
+      const weightB = b.chunk.weight && Number.isFinite(b.chunk.weight) ? b.chunk.weight : 1;
+      if (weightB !== weightA) {
+        return weightB - weightA;
+      }
+      const pageA = getChunkFirstPage(a.chunk);
+      const pageB = getChunkFirstPage(b.chunk);
+      if (pageA != null && pageB != null && pageA !== pageB) {
+        return pageA - pageB;
+      }
+      return a.index - b.index;
+    });
+    for (let i = 0; i < candidates.length && result.length < headCount; i += 1) {
+      const entry = candidates[i];
+      result.push({
+        content: entry.chunk.content,
+        chunk: entry.chunk,
+        index: entry.index,
+        score: entry.chunk.weight ? Math.max(0.05, Math.min(entry.chunk.weight, 1.2)) : 0.05
+      });
+    }
+    return result;
+  }
+
+  function formatChunkSourceLabel(chunk) {
+    if (!chunk || !chunk.source) {
+      return '';
+    }
+    const source = chunk.source;
+    if (Array.isArray(source.pages) && source.pages.length) {
+      const min = source.pages[0];
+      const max = source.pages[source.pages.length - 1];
+      if (min != null && max != null) {
+        if (min === max) {
+          return 'Page ' + min;
+        }
+        return 'Pages ' + min + '-' + max;
+      }
+    }
+    if (typeof source.section === 'string' && source.section.trim()) {
+      return source.section.trim();
+    }
+    if (Array.isArray(source.tags) && source.tags.length) {
+      return source.tags[0];
+    }
+    return '';
+  }
+
+  function getChunkFirstPage(chunk) {
+    if (!chunk || !chunk.source) {
+      return null;
+    }
+    if (Array.isArray(chunk.source.pages) && chunk.source.pages.length) {
+      return chunk.source.pages[0];
+    }
+    if (Number.isFinite(chunk.source.firstPage)) {
+      return chunk.source.firstPage;
+    }
+    if (Number.isFinite(chunk.source.page)) {
+      return chunk.source.page;
+    }
+    return null;
+  }
+
+  function getChunkPageRange(chunk) {
+    if (!chunk || !chunk.source) {
+      return null;
+    }
+    if (Array.isArray(chunk.source.pages) && chunk.source.pages.length) {
+      return chunk.source.pages.slice();
+    }
+    if (Number.isFinite(chunk.source.firstPage)) {
+      return [chunk.source.firstPage];
+    }
+    if (Number.isFinite(chunk.source.page)) {
+      return [chunk.source.page];
+    }
+    return null;
   }
 
   function tokenizeForRanking(input) {
