@@ -1,4 +1,5 @@
 import { promises as fs } from "fs";
+import fsSync from "fs";
 import path from "path";
 import crypto from "crypto";
 import Ajv from "ajv";
@@ -16,6 +17,41 @@ const ajv = new Ajv({
   strict: false
 });
 addFormats(ajv);
+
+loadDotEnv();
+
+function loadDotEnv(envFile = ".env") {
+  if (process.env.__WEALTH_ENV_LOADED__ === "true") {
+    return;
+  }
+  const envPath = path.resolve(process.cwd(), envFile);
+  if (!fsSync.existsSync(envPath)) {
+    return;
+  }
+  const raw = fsSync.readFileSync(envPath, "utf8");
+  const lines = raw.split(/\r?\n/);
+  for (const line of lines) {
+    if (!line || line.trim().startsWith("#")) continue;
+    const match = line.match(/^\s*([^=\s#]+)\s*=\s*(.*)\s*$/);
+    if (!match) continue;
+    const key = match[1];
+    if (!key) continue;
+    let value = match[2] ?? "";
+    // Strip inline comments when they are separated by space or tab.
+    const commentIndex = value.search(/\s#/);
+    if (commentIndex >= 0) {
+      value = value.slice(0, commentIndex);
+    }
+    value = value.trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+  process.env.__WEALTH_ENV_LOADED__ = "true";
+}
 
 export const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
