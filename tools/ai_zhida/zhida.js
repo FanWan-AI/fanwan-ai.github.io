@@ -111,8 +111,13 @@
     '应用': ['application', 'applications']
   });
   const GENERIC_QUERY_TOKENS = new Set(['paper', 'article', 'study', 'work', 'document']);
-  const FALLBACK_CHUNKS_PER_FILE = 2;
+  const COVERAGE_PRIMARY_KEYWORDS = ['所有', '全部', '整篇', '全文', '完整', '全篇', '全部内容', '整部', 'full', 'entire', 'whole', 'complete', 'everything'];
+  const COVERAGE_SECONDARY_KEYWORDS = ['片段', '段落', '段', '内容', 'context', 'snippets', 'snippet', 'fragments', 'fragment', 'sections', 'section', '信息', '细节'];
+  const FALLBACK_CHUNKS_PER_FILE = 3;
   const MIN_SCORE_THRESHOLD = 0.12;
+  const MAX_RAG_SNIPPETS_DEFAULT = 8;
+  const MAX_RAG_SNIPPETS_COVERAGE = 18;
+  const MAX_RAG_SNIPPETS_UPPER = 20;
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -1559,6 +1564,9 @@
     }
     if (supportsDocuments && docContext && Array.isArray(docContext.snippets) && docContext.snippets.length) {
       payload.mode = 'rag';
+      if (docContext.coverage) {
+        payload.context_mode = 'coverage';
+      }
       payload.documents = docContext.snippets.map(snippet => {
         const chunk = snippet.chunk || null;
         const doc = {
@@ -1963,7 +1971,8 @@
         error: null,
         chunks: [],
         stats: null,
-        preview: ''
+        preview: '',
+        detail: null
       });
     }
     if (!accepted.length) return;
@@ -2007,7 +2016,7 @@
 
       const meta = document.createElement('span');
       meta.className = 'zhida-file-chip-meta';
-      meta.textContent = formatBytes(file.size);
+  meta.textContent = buildFileMeta(file);
 
       const header = document.createElement('span');
       header.className = 'zhida-file-chip-header';
@@ -2082,6 +2091,9 @@
       onProgress(progress) {
         updateFileState(fileDescriptor.id, { progress });
       },
+      onDetail(detail) {
+        updateFileDetail(fileDescriptor.id, detail);
+      },
       onComplete(result) {
         updateFileState(fileDescriptor.id, {
           status: 'ready',
@@ -2112,7 +2124,82 @@
       patch.progress = Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : 0;
     }
     Object.assign(target, patch || {});
+    if (patch) {
+      if (Array.isArray(patch.chunks)) {
+        if (!target.detail) {
+          target.detail = createFileDetailState();
+        }
+        target.detail.chunkCount = patch.chunks.length;
+      }
+      if (patch.stats && typeof patch.stats === 'object') {
+        if (!target.detail) {
+          target.detail = createFileDetailState();
+        }
+        if (Number.isFinite(patch.stats.pageCount)) {
+          target.detail.pageCount = Math.max(target.detail.pageCount || 0, Math.floor(patch.stats.pageCount));
+        }
+        if (Number.isFinite(patch.stats.chunkCount)) {
+          target.detail.chunkCount = Math.max(target.detail.chunkCount || 0, Math.floor(patch.stats.chunkCount));
+        }
+      }
+    }
     renderFileList();
+  }
+
+  function updateFileDetail(id, detail) {
+    if (!detail) {
+      return;
+    }
+    const target = state.files.find(item => item.id === id);
+    if (!target) {
+      return;
+    }
+    if (!target.detail) {
+      target.detail = createFileDetailState();
+    }
+    const store = target.detail;
+    switch (detail.type) {
+      case 'page':
+        if (Number.isFinite(detail.current)) {
+          store.pagesProcessed = Math.max(store.pagesProcessed || 0, Math.floor(detail.current));
+        }
+        if (Number.isFinite(detail.total)) {
+          store.pageCount = Math.max(store.pageCount || 0, Math.floor(detail.total));
+        }
+        break;
+      case 'pagesComplete':
+        if (Number.isFinite(detail.total)) {
+          store.pageCount = Math.max(store.pageCount || 0, Math.floor(detail.total));
+        }
+        break;
+      case 'segments':
+        if (Number.isFinite(detail.count)) {
+          store.segmentCount = Math.max(store.segmentCount || 0, Math.floor(detail.count));
+        }
+        break;
+      case 'chunks':
+        if (Number.isFinite(detail.count)) {
+          store.chunkCount = Math.max(store.chunkCount || 0, Math.floor(detail.count));
+        }
+        break;
+      case 'stats':
+        if (detail.stats && typeof detail.stats === 'object') {
+          target.stats = Object.assign({}, target.stats || {}, detail.stats);
+        }
+        break;
+      default:
+        break;
+    }
+    renderFileList();
+  }
+
+  function createFileDetailState() {
+    return {
+      pagesProcessed: 0,
+      pageCount: null,
+      segmentCount: 0,
+      chunkCount: 0
+    };
   }
 
   function normalizeFileStatus(status) {
@@ -2173,7 +2260,47 @@
     if (file.status === 'error' && file.error) {
       title += '\n' + file.error;
     }
+    if (file.stats && Number.isFinite(file.stats.pageCount)) {
+      title += `\nPages: ${file.stats.pageCount}`;
+    }
+    if (file.stats && Number.isFinite(file.stats.chunkCount)) {
+      title += ` · Chunks: ${file.stats.chunkCount}`;
+    }
     return title;
+  }
+
+  function buildFileMeta(file) {
+    if (!file) {
+      return '';
+    }
+    const detail = file.detail || {};
+    if (file.status === 'ready' && file.stats) {
+      const parts = [];
+      if (Number.isFinite(file.stats.pageCount)) {
+        parts.push(file.stats.pageCount + ' pages');
+      }
+      if (Number.isFinite(file.stats.chunkCount)) {
+        parts.push(file.stats.chunkCount + ' chunks');
+      }
+      parts.push(formatBytes(file.size));
+      return parts.join(' · ');
+    }
+    if (detail.pagesProcessed) {
+      const total = detail.pageCount || detail.pagesProcessed;
+      const parts = ['Pg ' + detail.pagesProcessed + '/' + (total || '?')];
+      if (detail.chunkCount) {
+        parts.push(detail.chunkCount + ' chunks');
+      }
+      parts.push(formatBytes(file.size));
+      return parts.join(' · ');
+    }
+    if (detail.chunkCount) {
+      return detail.chunkCount + ' chunks · ' + formatBytes(file.size);
+    }
+    if (detail.segmentCount) {
+      return detail.segmentCount + ' segments · ' + formatBytes(file.size);
+    }
+    return formatBytes(file.size);
   }
 
   function refreshControls() {
@@ -2345,6 +2472,90 @@
     });
   }
 
+  function getReadyFiles() {
+    return state.files.filter(file => {
+      if (!file) return false;
+      const status = normalizeFileStatus(file.status);
+      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks) && file.chunks.length > 0;
+    });
+  }
+
+  function getReadyDocumentStats() {
+    const files = getReadyFiles();
+    let chunkCount = 0;
+    const pages = new Set();
+    files.forEach(file => {
+      if (Array.isArray(file.chunks)) {
+        chunkCount += file.chunks.length;
+        file.chunks.forEach(chunk => {
+          const range = getChunkPageRange(chunk);
+          if (range) {
+            range.forEach(page => {
+              if (Number.isFinite(page)) {
+                pages.add(page);
+              }
+            });
+          }
+        });
+      }
+      if (file.stats && Number.isFinite(file.stats.pageCount)) {
+        for (let i = 1; i <= file.stats.pageCount; i += 1) {
+          pages.add(i);
+        }
+      }
+    });
+    return {
+      fileCount: files.length,
+      chunkCount,
+      pageCount: pages.size || null
+    };
+  }
+
+  function determineSnippetLimit(coverageMode, stats) {
+    const baseChunks = stats && Number.isFinite(stats.chunkCount) ? stats.chunkCount : 0;
+    if (coverageMode) {
+      let limit = MAX_RAG_SNIPPETS_COVERAGE;
+      if (baseChunks) {
+        limit = Math.max(10, Math.ceil(baseChunks * 0.35));
+      }
+      return Math.max(1, Math.min(limit, baseChunks || limit, MAX_RAG_SNIPPETS_UPPER));
+    }
+    if (!baseChunks) {
+      return MAX_RAG_SNIPPETS_DEFAULT;
+    }
+    if (baseChunks <= 10) {
+      return Math.min(10, baseChunks);
+    }
+    if (baseChunks <= 24) {
+      return 10;
+    }
+    if (baseChunks <= 60) {
+      return 12;
+    }
+    const limit = 14;
+    return Math.max(1, Math.min(limit, baseChunks, MAX_RAG_SNIPPETS_UPPER));
+  }
+
+  function isCoverageRequest(question) {
+    if (!question) {
+      return false;
+    }
+    const text = String(question).toLowerCase();
+    const zh = String(question);
+    const hasPrimary = COVERAGE_PRIMARY_KEYWORDS.some(token => text.includes(token) || zh.indexOf(token) !== -1);
+    if (!hasPrimary) {
+      return /全文|整篇|所有片段|全部片段|全部内容|完整内容/.test(zh) || /all snippets|all fragments|entire document|full document|whole paper/.test(text);
+    }
+    const hasSecondary = COVERAGE_SECONDARY_KEYWORDS.some(token => text.includes(token) || zh.indexOf(token) !== -1);
+    if (hasSecondary) {
+      return true;
+    }
+    if (/全文|整篇|完整|全部内容/.test(zh)) {
+      return true;
+    }
+    return /entire document|whole paper|full paper|complete paper/.test(text);
+  }
+
   function buildDocumentContext() {
     if (!shouldUseDocumentMode()) {
       return null;
@@ -2353,11 +2564,16 @@
     if (!lastUser || !lastUser.content || !lastUser.content.trim()) {
       return null;
     }
-    const ranked = rankDocumentChunks(lastUser.content, 6);
+    const coverageMode = isCoverageRequest(lastUser.content);
+    const docStats = getReadyDocumentStats();
+    const snippetLimit = determineSnippetLimit(coverageMode, docStats);
+    const ranked = rankDocumentChunks(lastUser.content, snippetLimit, coverageMode);
     if (!ranked.length) {
       return null;
     }
-    const header = 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
+    const header = coverageMode
+      ? 'The user requested comprehensive coverage of the supplied documents. Use these snippets to summarise the full content and cite each source explicitly.'
+      : 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
     const sections = ranked.map((item, index) => {
       const chunk = item.chunk || null;
       const sourceLabel = formatChunkSourceLabel(chunk);
@@ -2366,7 +2582,8 @@
     });
     return {
       text: header + '\n\n' + sections.join('\n\n'),
-      snippets: ranked
+      snippets: ranked,
+      coverage: coverageMode
     };
   }
 
@@ -2380,18 +2597,14 @@
     return null;
   }
 
-  function rankDocumentChunks(question, limit) {
+  function rankDocumentChunks(question, limit, coverageMode) {
     const tokens = tokenizeForRanking(question);
     const expanded = dedupeArray(expandQuestionTokens(tokens));
     if (!expanded.length) {
-      return buildFallbackSelections([], limit);
+      return buildFallbackSelections([], limit, coverageMode);
     }
 
-    const readyFiles = state.files.filter(file => {
-      if (!file) return false;
-      const status = normalizeFileStatus(file.status);
-      return READY_FILE_STATUSES[status] && Array.isArray(file.chunks) && file.chunks.length > 0;
-    });
+    const readyFiles = getReadyFiles();
 
     const scored = [];
     readyFiles.forEach(file => {
@@ -2413,16 +2626,19 @@
     const maxItems = typeof limit === 'number' && limit > 0 ? limit : 5;
 
     if (!scored.length) {
-      return buildFallbackSelections(readyFiles, maxItems);
+      return buildFallbackSelections(readyFiles, maxItems, coverageMode);
     }
 
     scored.sort((a, b) => b.score - a.score);
+    if (coverageMode) {
+      return scored.slice(0, maxItems);
+    }
     const topScore = scored[0].score;
     const threshold = Math.max(topScore * 0.35, MIN_SCORE_THRESHOLD);
     const filtered = scored.filter(item => item.score >= threshold).slice(0, maxItems);
 
     if (!filtered.length) {
-      return buildFallbackSelections(readyFiles, maxItems);
+      return buildFallbackSelections(readyFiles, maxItems, coverageMode);
     }
 
     return filtered;
@@ -2502,16 +2718,19 @@
     return result;
   }
 
-  function buildFallbackSelections(files, limit) {
+  function buildFallbackSelections(files, limit, coverageMode) {
     const maxItems = typeof limit === 'number' && limit > 0 ? limit : 5;
-    const available = Array.isArray(files) && files.length ? files : state.files;
+  const available = Array.isArray(files) && files.length ? files : getReadyFiles();
     const fallbacks = [];
 
     available.forEach(file => {
       if (!file || !Array.isArray(file.chunks) || !file.chunks.length) {
         return;
       }
-      const chunks = chooseFallbackChunks(file.chunks, maxItems);
+      const perFileLimit = coverageMode
+        ? Math.max(1, Math.ceil(maxItems / Math.max(1, available.length)))
+        : Math.min(FALLBACK_CHUNKS_PER_FILE, Math.max(1, maxItems));
+      const chunks = chooseFallbackChunks(file.chunks, perFileLimit, coverageMode);
       chunks.forEach(entry => {
         fallbacks.push({
           fileId: file.id,
@@ -2537,36 +2756,94 @@
     return fallbacks.slice(0, maxItems);
   }
 
-  function chooseFallbackChunks(chunks, limit) {
+  function chooseFallbackChunks(chunks, limit, coverageMode) {
     const result = [];
     if (!Array.isArray(chunks) || !chunks.length) {
       return result;
     }
-    const headCount = Math.min(FALLBACK_CHUNKS_PER_FILE, Math.max(1, limit));
-    const candidates = chunks.map((chunk, index) => ({ chunk, index })).filter(entry => entry.chunk && entry.chunk.content);
+    const sampleLimit = Math.max(1, Math.min(limit, chunks.length));
+    const candidates = chunks
+      .map((chunk, index) => ({ chunk, index }))
+      .filter(entry => entry.chunk && entry.chunk.content);
+    if (!candidates.length) {
+      return result;
+    }
+    if (coverageMode) {
+      candidates.sort((a, b) => compareByPageThenIndex(a.chunk, b.chunk, a.index, b.index));
+      if (candidates.length <= sampleLimit) {
+        candidates.forEach(entry => result.push(buildFallbackEntry(entry)));
+        return result;
+      }
+      const usedIndices = new Set();
+      const usedKeys = new Set();
+      const step = sampleLimit > 1 ? (candidates.length - 1) / (sampleLimit - 1) : candidates.length;
+      for (let i = 0; i < sampleLimit; i += 1) {
+        const idx = Math.min(candidates.length - 1, Math.round(i * step));
+        const entry = candidates[idx];
+        const key = buildCoverageKey(entry.chunk, entry.index);
+        if (usedKeys.has(key)) {
+          continue;
+        }
+        usedKeys.add(key);
+        usedIndices.add(entry.index);
+        result.push(buildFallbackEntry(entry));
+      }
+      if (result.length < sampleLimit) {
+        for (let i = 0; i < candidates.length && result.length < sampleLimit; i += 1) {
+          const entry = candidates[i];
+          const key = buildCoverageKey(entry.chunk, entry.index);
+          if (usedKeys.has(key) || usedIndices.has(entry.index)) {
+            continue;
+          }
+          usedKeys.add(key);
+          usedIndices.add(entry.index);
+          result.push(buildFallbackEntry(entry));
+        }
+      }
+      return result;
+    }
+
     candidates.sort((a, b) => {
       const weightA = a.chunk.weight && Number.isFinite(a.chunk.weight) ? a.chunk.weight : 1;
       const weightB = b.chunk.weight && Number.isFinite(b.chunk.weight) ? b.chunk.weight : 1;
       if (weightB !== weightA) {
         return weightB - weightA;
       }
-      const pageA = getChunkFirstPage(a.chunk);
-      const pageB = getChunkFirstPage(b.chunk);
-      if (pageA != null && pageB != null && pageA !== pageB) {
-        return pageA - pageB;
-      }
-      return a.index - b.index;
+      return compareByPageThenIndex(a.chunk, b.chunk, a.index, b.index);
     });
-    for (let i = 0; i < candidates.length && result.length < headCount; i += 1) {
-      const entry = candidates[i];
-      result.push({
-        content: entry.chunk.content,
-        chunk: entry.chunk,
-        index: entry.index,
-        score: entry.chunk.weight ? Math.max(0.05, Math.min(entry.chunk.weight, 1.2)) : 0.05
-      });
+    for (let i = 0; i < candidates.length && result.length < sampleLimit; i += 1) {
+      result.push(buildFallbackEntry(candidates[i]));
     }
     return result;
+  }
+
+  function compareByPageThenIndex(chunkA, chunkB, indexA, indexB) {
+    const pageA = getChunkFirstPage(chunkA);
+    const pageB = getChunkFirstPage(chunkB);
+    if (pageA != null && pageB != null && pageA !== pageB) {
+      return pageA - pageB;
+    }
+    return (indexA || 0) - (indexB || 0);
+  }
+
+  function buildFallbackEntry(entry) {
+    const weight = entry.chunk && entry.chunk.weight && Number.isFinite(entry.chunk.weight)
+      ? Math.min(entry.chunk.weight, 1.3)
+      : 0.05;
+    return {
+      content: entry.chunk.content,
+      chunk: entry.chunk,
+      index: entry.index,
+      score: Math.max(0.05, weight)
+    };
+  }
+
+  function buildCoverageKey(chunk, index) {
+    const page = getChunkFirstPage(chunk);
+    if (Number.isFinite(page)) {
+      return 'page-' + page;
+    }
+    return 'idx-' + index;
   }
 
   function formatChunkSourceLabel(chunk) {

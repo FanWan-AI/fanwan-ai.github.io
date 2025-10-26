@@ -34,16 +34,23 @@
         safeStatus(hooks, 'reading');
         safeProgress(hooks, 2);
 
-        const extraction = await extractText(file, ext, progress => {
-          safeProgress(hooks, Math.min(70, Math.max(5, Math.round(progress * 0.7))));
-        });
+        const extraction = await extractText(
+          file,
+          ext,
+          progress => {
+            safeProgress(hooks, Math.min(75, Math.max(5, Math.round(progress * 0.75))));
+          },
+          detail => safeDetail(hooks, detail)
+        );
 
         safeStatus(hooks, 'processing');
-        safeProgress(hooks, 78);
+        safeProgress(hooks, 82);
 
         const normalised = normaliseExtraction(extraction);
         const chunks = buildChunks(normalised.segments, settings);
         const stats = buildStats(normalised.text, chunks, file, normalised.meta);
+        safeDetail(hooks, { type: 'chunks', count: chunks.length });
+        safeDetail(hooks, { type: 'stats', stats });
 
         safeProgress(hooks, 100);
         safeStatus(hooks, 'ready');
@@ -63,27 +70,31 @@
     return { process };
   }
 
-  async function extractText(file, ext, onProgress) {
+  async function extractText(file, ext, onProgress, onDetail) {
     const lowerExt = ext || '';
     if (lowerExt.includes('pdf')) {
-      return extractPdfText(file, onProgress);
+      return extractPdfText(file, onProgress, onDetail);
     }
     if (lowerExt.includes('doc')) {
-      return extractDocxText(file, onProgress);
+      return extractDocxText(file, onProgress, onDetail);
     }
     if (lowerExt.includes('sheet') || lowerExt.includes('excel') || lowerExt.includes('xls')) {
-      return extractXlsxText(file, onProgress);
+      return extractXlsxText(file, onProgress, onDetail);
     }
     const simpleExt = (file.name || '').split('.').pop();
     if (simpleExt === 'txt' || simpleExt === 'md' || simpleExt === 'csv' || simpleExt === 'json') {
       const text = await readFileAsText(file, onProgress);
-      return { text };
+      const segments = splitPlainTextSegments(text);
+      safeCall(onDetail, { type: 'segments', count: segments.length });
+      return { text, segments };
     }
     const fallback = await readFileAsText(file, onProgress);
-    return { text: fallback };
+    const segments = splitPlainTextSegments(fallback);
+    safeCall(onDetail, { type: 'segments', count: segments.length });
+    return { text: fallback, segments };
   }
 
-  async function extractPdfText(file, onProgress) {
+  async function extractPdfText(file, onProgress, onDetail) {
     const buffer = await readFileAsArrayBuffer(file, progress => safeCall(onProgress, progress));
     const pdfjs = await ensurePdfJs();
     const uint8 = new Uint8Array(buffer);
@@ -104,10 +115,14 @@
       if (parsed.segments && parsed.segments.length) {
         Array.prototype.push.apply(segments, parsed.segments);
       }
-      safeCall(onProgress, 30 + Math.round((pageNumber / pageCount) * 60));
+  const progressShare = pageCount ? Math.round((pageNumber / pageCount) * 60) : Math.min(60, pageNumber * 5);
+  safeCall(onProgress, 30 + progressShare);
+      safeCall(onDetail, { type: 'page', current: pageNumber, total: pageCount });
     }
 
     const text = pageTexts.join('\n\n');
+    safeCall(onDetail, { type: 'pagesComplete', total: pageCount });
+    safeCall(onDetail, { type: 'segments', count: segments.length });
 
     return {
       text,
@@ -118,19 +133,21 @@
     };
   }
 
-  async function extractDocxText(file, onProgress) {
+  async function extractDocxText(file, onProgress, onDetail) {
     const buffer = await readFileAsArrayBuffer(file, progress => safeCall(onProgress, progress));
     const mammoth = await ensureMammoth();
     const result = await mammoth.extractRawText({ arrayBuffer: buffer });
     safeCall(onProgress, 95);
     const text = (result && result.value) || '';
+    const segments = splitPlainTextSegments(text);
+    safeCall(onDetail, { type: 'segments', count: segments.length });
     return {
       text,
-      segments: splitPlainTextSegments(text)
+      segments
     };
   }
 
-  async function extractXlsxText(file, onProgress) {
+  async function extractXlsxText(file, onProgress, onDetail) {
     const buffer = await readFileAsArrayBuffer(file, progress => safeCall(onProgress, progress));
     const XLSX = await ensureXlsx();
     const workbook = XLSX.read(buffer, { type: 'array' });
@@ -167,6 +184,7 @@
     });
 
     safeCall(onProgress, 98);
+    safeCall(onDetail, { type: 'segments', count: segments.length });
 
     return {
       text: parts.join('\n\n'),
@@ -861,6 +879,13 @@
   function safeProgress(hooks, progress) {
     const safe = Math.max(0, Math.min(100, Math.round(progress)));
     safeCall(hooks && hooks.onProgress, safe);
+  }
+
+  function safeDetail(hooks, detail) {
+    if (!detail) {
+      return;
+    }
+    safeCall(hooks && hooks.onDetail, detail);
   }
 
   global.ZhidaDocs = Object.assign({}, global.ZhidaDocs, {
