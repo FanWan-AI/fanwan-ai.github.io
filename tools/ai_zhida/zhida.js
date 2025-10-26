@@ -1967,6 +1967,9 @@
       header.appendChild(name);
       header.appendChild(meta);
 
+      const progressWrap = document.createElement('span');
+      progressWrap.className = 'zhida-file-chip-progress-wrap';
+
       const progress = document.createElement('span');
       progress.className = 'zhida-file-chip-progress';
       const progressBar = document.createElement('span');
@@ -1975,8 +1978,31 @@
       progressBar.style.width = progressValue + '%';
       progress.appendChild(progressBar);
 
+      const indicator = document.createElement('span');
+      indicator.className = 'zhida-file-chip-status-indicator';
+      indicator.setAttribute('aria-hidden', 'true');
+      if (displayStatus === 'ready') {
+        indicator.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.3 10.6 3.7 8l1.06-1.06L6.3 8.48l4.94-4.94L12.3 4.6z" fill="currentColor"></path></svg>';
+        indicator.dataset.label = t('ai_qa_file_status_ready');
+      } else if (displayStatus === 'error') {
+        indicator.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 6.586 4.707 3.293 3.293 4.707 6.586 8l-3.293 3.293 1.414 1.414L8 9.414l3.293 3.293 1.414-1.414L9.414 8l3.293-3.293-1.414-1.414z" fill="currentColor"></path></svg>';
+        indicator.dataset.label = t('ai_qa_file_status_error');
+      } else if (displayStatus === 'processing') {
+        indicator.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5a6.5 6.5 0 1 0 6.46 7.215.75.75 0 0 0-1.488-.158A5 5 0 1 1 8 3.5a.75.75 0 0 0 0-1.5Z" fill="currentColor"></path></svg>';
+        indicator.dataset.label = t('ai_qa_file_status_processing');
+      }
+
+      if (indicator.dataset.label) {
+        indicator.removeAttribute('aria-hidden');
+        indicator.setAttribute('role', 'img');
+        indicator.setAttribute('aria-label', indicator.dataset.label);
+      }
+
+      progressWrap.appendChild(progress);
+      progressWrap.appendChild(indicator);
+
       textWrap.appendChild(header);
-      textWrap.appendChild(progress);
+      textWrap.appendChild(progressWrap);
 
       const remove = document.createElement('button');
       remove.type = 'button';
