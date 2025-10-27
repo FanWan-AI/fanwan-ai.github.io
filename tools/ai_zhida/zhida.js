@@ -132,6 +132,42 @@
   const WEB_SEARCH_CONFIG = normalizeWebSearchConfig(rawWebSearchConfig);
   const WEB_SEARCH_AVAILABLE = !!(WEB_SEARCH_CONFIG && WEB_SEARCH_CONFIG.endpoint);
   const WEB_SEARCH_DEFAULT_ENABLED = WEB_SEARCH_AVAILABLE && !!WEB_SEARCH_CONFIG.defaultEnabled;
+  const SITE_CORPUS_DOC_PATH = '/data/ai/siteAI/bus/doc_chunk.jsonl';
+  const SITE_CORPUS_ENTITY_PATH = '/data/ai/siteAI/bus/entity_card.jsonl';
+  const SITE_CORPUS_REGISTRY_PATH = '/data/ai/siteAI/content_registry.json';
+  const SITE_SOURCE_LABELS = Object.freeze({
+    scholarpush: 'Scholarpush Papers',
+    modelswatch_hf: 'Modelswatch · Hugging Face',
+    modelswatch_gh: 'Modelswatch · GitHub',
+    airadar: 'AI Radar News',
+    wealth_pulse: 'Market Pulse',
+    site_docs: 'Site Pages'
+  });
+  const SITE_SOURCE_TAGS = Object.freeze({
+    scholarpush: 'papers',
+    modelswatch_hf: 'models',
+    modelswatch_gh: 'repos',
+    airadar: 'news_ai',
+    wealth_pulse: 'news_finance',
+    site_docs: 'pages'
+  });
+  const SITE_SOURCE_BASE_WEIGHTS = Object.freeze({
+    scholarpush: 1.15,
+    modelswatch_hf: 1.08,
+    modelswatch_gh: 1.05,
+    airadar: 1.1,
+    wealth_pulse: 1.05,
+    site_docs: 0.92
+  });
+  const SITE_SCOPE_DEFINITIONS = Object.freeze({
+    all: ['scholarpush', 'modelswatch_hf', 'modelswatch_gh', 'airadar', 'wealth_pulse', 'site_docs'],
+    papers: ['scholarpush'],
+    models: ['modelswatch_hf', 'modelswatch_gh'],
+    news_ai: ['airadar'],
+    news_finance: ['wealth_pulse'],
+    pages: ['site_docs']
+  });
+  const SITE_SCOPE_DEFAULT = 'all';
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -162,7 +198,8 @@
     activeHeaders: null,
     activePayloadOverrides: null,
     webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED,
-    lastWebContext: null
+    lastWebContext: null,
+    siteCorpus: createSiteCorpusState()
   };
 
   const el = {
@@ -583,6 +620,7 @@
     ensureWelcomeMessage();
     renderMessages();
     renderFileList();
+    ensureSiteCorpusLoading();
     bindEvents();
     refreshControls();
     setStatus('ready');
@@ -642,6 +680,447 @@
     document.addEventListener('keydown', handleGlobalKeydown);
     autoResizeInput();
     handleMessagesScroll();
+  }
+
+  function ensureSiteCorpusLoading() {
+    if (!state.siteCorpus) {
+      state.siteCorpus = createSiteCorpusState();
+    }
+    const corpus = state.siteCorpus;
+    if (corpus.ready || corpus.loadingPromise) {
+      return corpus.loadingPromise || Promise.resolve();
+    }
+    corpus.loading = true;
+    corpus.error = null;
+    body.classList.add('zhida-corpus-loading');
+    const promise = loadSiteCorpus()
+      .catch(error => {
+        corpus.error = error instanceof Error ? error : new Error(String(error));
+        console.error('[zhida] site corpus load failed', corpus.error);
+        notify('Site knowledge base failed to load. You can still upload files manually.', 'warning');
+        return null;
+      })
+      .finally(() => {
+        corpus.loading = false;
+        corpus.loadingPromise = null;
+        body.classList.remove('zhida-corpus-loading');
+        body.classList.remove('zhida-corpus-ready');
+        body.classList.remove('zhida-corpus-unavailable');
+        if (corpus.ready) {
+          body.classList.add('zhida-corpus-ready');
+        } else {
+          body.classList.add('zhida-corpus-unavailable');
+        }
+      });
+    corpus.loadingPromise = promise;
+    return promise;
+  }
+
+  async function loadSiteCorpus() {
+    const corpus = state.siteCorpus || createSiteCorpusState();
+    state.siteCorpus = corpus;
+    const [docText, entityText, registry] = await Promise.all([
+      fetchSiteCorpusText(SITE_CORPUS_DOC_PATH, true),
+      fetchSiteCorpusText(SITE_CORPUS_ENTITY_PATH, false),
+      fetchSiteCorpusJson(SITE_CORPUS_REGISTRY_PATH)
+    ]);
+    const parsedDocs = buildSiteCorpusFiles(docText);
+    corpus.files = parsedDocs.files;
+    corpus.stats = {
+      chunkCount: parsedDocs.chunkCount,
+      fileCount: parsedDocs.files.length,
+      parseErrors: parsedDocs.parseErrors
+    };
+    corpus.availableSources = parsedDocs.availableSources;
+    corpus.entities = entityText ? parseSiteCorpusEntities(entityText) : null;
+    corpus.registry = registry || null;
+    corpus.enabledSources = ensureEnabledSiteSources(corpus.activeScopes, parsedDocs.availableSources);
+    corpus.ready = parsedDocs.chunkCount > 0;
+    corpus.lastLoadedAt = new Date().toISOString();
+    if (parsedDocs.parseErrors > 0) {
+      console.warn('[zhida] site corpus skipped lines', parsedDocs.parseErrors);
+    }
+    if (!corpus.ready) {
+      throw new Error('Site knowledge base is empty.');
+    }
+    return corpus;
+  }
+
+  async function fetchSiteCorpusText(path, required) {
+    try {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) {
+        if (required) {
+          throw new Error('HTTP ' + response.status);
+        }
+        return '';
+      }
+      return await response.text();
+    } catch (error) {
+      if (required) {
+        throw error;
+      }
+      console.warn('[zhida] optional site corpus resource failed', path, error);
+      return '';
+    }
+  }
+
+  async function fetchSiteCorpusJson(path) {
+    try {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) {
+        return null;
+      }
+      return await response.json();
+    } catch (error) {
+      console.warn('[zhida] optional site corpus json failed', path, error);
+      return null;
+    }
+  }
+
+  function buildSiteCorpusFiles(docText) {
+    const filesBySource = new Map();
+    const availableSources = new Set();
+    let chunkCount = 0;
+    let parseErrors = 0;
+    if (typeof docText !== 'string' || !docText.trim()) {
+      return { files: [], chunkCount: 0, parseErrors: 0, availableSources: [] };
+    }
+    const lines = docText.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line || !line.trim()) {
+        continue;
+      }
+      let raw = null;
+      try {
+        raw = JSON.parse(line);
+      } catch (error) {
+        parseErrors += 1;
+        continue;
+      }
+      const chunk = normaliseSiteDocChunk(raw);
+      if (!chunk) {
+        continue;
+      }
+      availableSources.add(chunk.siteSource);
+      let file = filesBySource.get(chunk.siteSource);
+      if (!file) {
+        file = createSiteVirtualFile(chunk.siteSource);
+        filesBySource.set(chunk.siteSource, file);
+      }
+      ensureChunkTermFrequency(chunk);
+      file.chunks.push(chunk);
+      chunkCount += 1;
+    }
+    const files = Array.from(filesBySource.values());
+    files.forEach(file => {
+      file.stats = { chunkCount: file.chunks.length };
+    });
+    files.sort(compareSiteFiles);
+    return {
+      files,
+      chunkCount,
+      parseErrors,
+      availableSources: Array.from(availableSources)
+    };
+  }
+
+  function parseSiteCorpusEntities(text) {
+    const map = new Map();
+    if (typeof text !== 'string' || !text.trim()) {
+      return { count: 0, map };
+    }
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      if (!line || !line.trim()) {
+        continue;
+      }
+      try {
+        const entry = JSON.parse(line);
+        if (entry && entry.entityId) {
+          map.set(entry.entityId, entry);
+        }
+      } catch (error) {
+        continue;
+      }
+    }
+    return { count: map.size, map };
+  }
+
+  function normaliseSiteDocChunk(raw) {
+    if (!raw || typeof raw !== 'object') {
+      return null;
+    }
+    const sourceId = typeof raw.source === 'string' && raw.source.trim() ? raw.source.trim() : 'site_docs';
+    const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+    const text = typeof raw.text === 'string' ? raw.text.trim() : '';
+    if (!title && !text) {
+      return null;
+    }
+    let combined = text;
+    if (title) {
+      const lowerTitle = title.toLowerCase();
+      const startsWithTitle = combined
+        ? combined.slice(0, lowerTitle.length).toLowerCase() === lowerTitle
+        : false;
+      if (!combined) {
+        combined = title;
+      } else if (!startsWithTitle) {
+        combined = title + '\n' + combined;
+      }
+    }
+    if (!combined) {
+      combined = title;
+    }
+    const meta = raw.meta && typeof raw.meta === 'object' ? Object.assign({}, raw.meta) : {};
+    if (title && !meta.title) {
+      meta.title = title;
+    }
+    const chunk = {
+      content: combined.trim(),
+      lang: normalizeLangCode(raw.lang || meta.lang || ''),
+      url: typeof raw.url === 'string' ? raw.url.trim() : '',
+      meta,
+      docId: raw.docId || buildSiteDocId(sourceId, raw),
+      chunkId: raw.chunkId || meta.chunk_id || null,
+      siteSource: sourceId,
+      site: true,
+      source: buildSiteChunkSource(raw, title, sourceId)
+    };
+    chunk.weight = computeSiteChunkWeight(sourceId, meta, chunk.lang, raw.type);
+    if (!chunk.chunkId) {
+      chunk.chunkId = 'c' + Math.random().toString(36).slice(2, 8);
+    }
+    return chunk.content ? chunk : null;
+  }
+
+  function buildSiteChunkSource(raw, title, sourceId) {
+    const result = {};
+    if (title) {
+      result.section = title;
+    }
+    const tags = [];
+    const baseTag = SITE_SOURCE_TAGS[sourceId] || sourceId;
+    if (baseTag) {
+      tags.push(baseTag);
+    }
+    if (raw && raw.type) {
+      tags.push(String(raw.type));
+    }
+    const metaTags = raw && raw.meta && Array.isArray(raw.meta.tags) ? raw.meta.tags : [];
+    metaTags.forEach(tag => {
+      if (typeof tag === 'string') {
+        tags.push(tag.trim());
+      }
+    });
+    const cleanedTags = uniqueStrings(tags, 4);
+    if (cleanedTags.length) {
+      result.tags = cleanedTags;
+    }
+    if (raw && raw.meta && Array.isArray(raw.meta.pages) && raw.meta.pages.length) {
+      result.pages = raw.meta.pages.slice(0, 6);
+    }
+    if (raw && raw.meta && Number.isFinite(raw.meta.first_page)) {
+      result.firstPage = raw.meta.first_page;
+    }
+    return result;
+  }
+
+  function computeSiteChunkWeight(sourceId, meta, lang, type) {
+    let weight = SITE_SOURCE_BASE_WEIGHTS[sourceId] || 1;
+    const timeWeight = meta && typeof meta.time_weight === 'number' ? meta.time_weight : null;
+    if (timeWeight != null && timeWeight > 0) {
+      weight *= 0.6 + Math.min(1.35, timeWeight * 1.25 + 0.4);
+    }
+    const hotness = meta && typeof meta.hotness === 'number' ? meta.hotness : null;
+    if (hotness != null && hotness > 0) {
+      weight *= 0.85 + Math.min(1.25, hotness * 0.5);
+    }
+    if (lang === 'zh') {
+      weight *= 1.05;
+    } else if (lang === 'es') {
+      weight *= 1.02;
+    }
+    if (type === 'page_section') {
+      weight *= 0.92;
+    }
+    return Math.max(0.35, Math.min(weight, 2.4));
+  }
+
+  function createSiteVirtualFile(sourceId) {
+    return {
+      id: 'site:' + sourceId,
+      name: formatSiteSourceName(sourceId),
+      status: 'ready',
+      siteSource: sourceId,
+      builtin: true,
+      hidden: true,
+      chunks: [],
+      stats: null
+    };
+  }
+
+  function compareSiteFiles(a, b) {
+    const order = SITE_SCOPE_DEFINITIONS.all;
+    const indexA = order.indexOf(a.siteSource);
+    const indexB = order.indexOf(b.siteSource);
+    if (indexA !== -1 && indexB !== -1 && indexA !== indexB) {
+      return indexA - indexB;
+    }
+    if (indexA !== -1 && indexB === -1) {
+      return -1;
+    }
+    if (indexB !== -1 && indexA === -1) {
+      return 1;
+    }
+    return a.name.localeCompare(b.name);
+  }
+
+  function buildSiteDocId(sourceId, raw) {
+    const base = raw && raw.docId ? String(raw.docId) : '';
+    if (base) {
+      return base;
+    }
+    const url = raw && raw.url ? String(raw.url) : '';
+    if (url) {
+      return sourceId + ':' + url.slice(-24);
+    }
+    const canonical = raw && raw.meta && raw.meta.canonical_id ? String(raw.meta.canonical_id) : '';
+    if (canonical) {
+      return canonical;
+    }
+    return sourceId + ':' + Math.random().toString(36).slice(2, 10);
+  }
+
+  function ensureEnabledSiteSources(scopes, availableSources) {
+    const enabled = new Set();
+    const scopeList = Array.isArray(scopes) && scopes.length ? scopes : [SITE_SCOPE_DEFAULT];
+    scopeList.forEach(scope => {
+      const key = typeof scope === 'string' ? scope.toLowerCase() : '';
+      if (SITE_SCOPE_DEFINITIONS[key]) {
+        SITE_SCOPE_DEFINITIONS[key].forEach(source => enabled.add(source));
+      } else if (key) {
+        enabled.add(key);
+      }
+    });
+    if (!enabled.size && Array.isArray(availableSources)) {
+      availableSources.forEach(source => enabled.add(source));
+    }
+    if (!enabled.size) {
+      SITE_SCOPE_DEFINITIONS[SITE_SCOPE_DEFAULT].forEach(source => enabled.add(source));
+    }
+    return Array.from(enabled);
+  }
+
+  function getEnabledSiteSources() {
+    if (!state.siteCorpus) {
+      return SITE_SCOPE_DEFINITIONS[SITE_SCOPE_DEFAULT].slice();
+    }
+    const list = state.siteCorpus.enabledSources && state.siteCorpus.enabledSources.length
+      ? state.siteCorpus.enabledSources.slice()
+      : null;
+    if (list && list.length) {
+      return list;
+    }
+    if (Array.isArray(state.siteCorpus.availableSources) && state.siteCorpus.availableSources.length) {
+      return state.siteCorpus.availableSources.slice();
+    }
+    return SITE_SCOPE_DEFINITIONS[SITE_SCOPE_DEFAULT].slice();
+  }
+
+  function isSiteSourceEnabled(sourceId) {
+    if (!sourceId) {
+      return true;
+    }
+    const enabled = getEnabledSiteSources();
+    if (!enabled.length) {
+      return true;
+    }
+    return enabled.indexOf(sourceId) !== -1;
+  }
+
+  function detectQuestionLanguage(question) {
+    if (!question) {
+      return '';
+    }
+    const text = String(question);
+    if (/[\u4e00-\u9fa5]/.test(text)) {
+      return 'zh';
+    }
+    if (/[ñáéíóúü¡¿]/i.test(text)) {
+      return 'es';
+    }
+    if (/[a-z]/i.test(text)) {
+      return 'en';
+    }
+    return '';
+  }
+
+  function normalizeLangCode(value) {
+    if (!value) {
+      return '';
+    }
+    const str = String(value).toLowerCase();
+    if (str.length >= 2) {
+      return str.slice(0, 2);
+    }
+    return str;
+  }
+
+  function formatSiteSourceName(sourceId) {
+    if (SITE_SOURCE_LABELS[sourceId]) {
+      return SITE_SOURCE_LABELS[sourceId];
+    }
+    return sourceId
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\b\w/g, char => char.toUpperCase());
+  }
+
+  function uniqueStrings(list, limit) {
+    if (!Array.isArray(list) || !list.length) {
+      return [];
+    }
+    const seen = new Set();
+    const result = [];
+    for (let i = 0; i < list.length; i += 1) {
+      const raw = list[i];
+      if (raw == null) {
+        continue;
+      }
+      const value = String(raw).trim();
+      if (!value) {
+        continue;
+      }
+      const key = value.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      result.push(value);
+      if (limit && result.length >= limit) {
+        break;
+      }
+    }
+    return result;
+  }
+
+  function createSiteCorpusState() {
+    return {
+      ready: false,
+      loading: false,
+      error: null,
+      files: [],
+      stats: null,
+      registry: null,
+      entities: null,
+      activeScopes: [SITE_SCOPE_DEFAULT],
+      enabledSources: SITE_SCOPE_DEFINITIONS[SITE_SCOPE_DEFAULT].slice(),
+      availableSources: [],
+      loadingPromise: null,
+      lastLoadedAt: null
+    };
   }
 
   function loadSettings() {
@@ -1772,6 +2251,12 @@
           }
           if (chunk && chunk.source && Array.isArray(chunk.source.tags) && chunk.source.tags.length) {
             metadata.tags = chunk.source.tags.slice(0, 3);
+          }
+          if (chunk && typeof chunk.url === 'string' && chunk.url.trim()) {
+            metadata.url = chunk.url.trim();
+          }
+          if (chunk && chunk.meta && chunk.meta.published_at) {
+            metadata.published_at = chunk.meta.published_at;
           }
           if (Object.keys(metadata).length) {
             doc.metadata = metadata;
@@ -2981,6 +3466,12 @@
   }
 
   function shouldUseDocumentMode() {
+    if (state.siteCorpus && state.siteCorpus.ready && Array.isArray(state.siteCorpus.files)) {
+      const hasCorpusChunks = state.siteCorpus.files.some(file => Array.isArray(file.chunks) && file.chunks.length);
+      if (hasCorpusChunks) {
+        return true;
+      }
+    }
     if (!Array.isArray(state.files) || !state.files.length) {
       return false;
     }
@@ -2992,11 +3483,15 @@
   }
 
   function getReadyFiles() {
-    return state.files.filter(file => {
+    const ready = state.files.filter(file => {
       if (!file) return false;
       const status = normalizeFileStatus(file.status);
       return READY_FILE_STATUSES[status] && Array.isArray(file.chunks) && file.chunks.length > 0;
     });
+    if (state.siteCorpus && state.siteCorpus.ready && Array.isArray(state.siteCorpus.files)) {
+      Array.prototype.push.apply(ready, state.siteCorpus.files);
+    }
+    return ready;
   }
 
   function getReadyDocumentStats() {
@@ -3090,9 +3585,24 @@
     if (!ranked.length) {
       return null;
     }
-    const header = coverageMode
-      ? 'The user requested comprehensive coverage of the supplied documents. Use these snippets to summarise the full content and cite each source explicitly.'
-      : 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
+    const containsSiteSnippets = ranked.some(item => item.chunk && item.chunk.site);
+    const containsUserSnippets = ranked.some(item => item.chunk && !item.chunk.site);
+    let header;
+    if (coverageMode) {
+      if (containsSiteSnippets && !containsUserSnippets) {
+        header = 'The user wants comprehensive coverage using the site knowledge base. Use the snippets below, cite the page titles, and include the provided URLs when referencing evidence.';
+      } else if (containsSiteSnippets && containsUserSnippets) {
+        header = 'The user requested comprehensive coverage. Combine the uploaded documents and site knowledge base snippets, citing document names or page titles and URLs for each fact.';
+      } else {
+        header = 'The user requested comprehensive coverage of the supplied documents. Use these snippets to summarise the full content and cite each source explicitly.';
+      }
+    } else if (containsSiteSnippets && containsUserSnippets) {
+      header = 'Use both the user-uploaded documents and the site knowledge base snippets below to answer. Cite document names or page titles and include the provided URLs when possible.';
+    } else if (containsSiteSnippets) {
+      header = 'These snippets come from the site knowledge base. Ground your answer in them and cite the page titles with URLs when available.';
+    } else {
+      header = 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
+    }
     const sections = ranked.map((item, index) => {
       const chunk = item.chunk || null;
       const sourceLabel = formatChunkSourceLabel(chunk);
@@ -3124,11 +3634,19 @@
     }
 
     const readyFiles = getReadyFiles();
+    const langPreference = detectQuestionLanguage(question) || getLang();
+    const scoringOptions = {
+      langPreference,
+      fallbackLang: getLang()
+    };
 
     const scored = [];
     readyFiles.forEach(file => {
+      if (file && file.siteSource && !isSiteSourceEnabled(file.siteSource)) {
+        return;
+      }
       file.chunks.forEach((chunk, index) => {
-        const score = computeChunkScore(expanded, chunk);
+        const score = computeChunkScore(expanded, chunk, scoringOptions);
         if (score > 0) {
           scored.push({
             fileId: file.id,
@@ -3163,7 +3681,7 @@
     return filtered;
   }
 
-  function computeChunkScore(questionTokens, chunk) {
+  function computeChunkScore(questionTokens, chunk, options) {
     if (!chunk || !questionTokens.length) {
       return 0;
     }
@@ -3179,7 +3697,19 @@
       return 0;
     }
     const normaliser = Math.sqrt(chunk.tokenCount || Object.keys(freq).length || 1);
-    const weight = chunk.weight && Number.isFinite(chunk.weight) ? chunk.weight : 1;
+    let weight = chunk.weight && Number.isFinite(chunk.weight) ? chunk.weight : 1;
+    if (options && options.langPreference) {
+      const preferred = String(options.langPreference || '').slice(0, 2);
+      const chunkLang = chunk.lang ? String(chunk.lang).slice(0, 2) : null;
+      if (preferred && chunkLang && preferred !== chunkLang) {
+        const fallback = options.fallbackLang ? String(options.fallbackLang).slice(0, 2) : '';
+        if (!fallback || chunkLang !== fallback) {
+          weight *= 0.65;
+        } else {
+          weight *= 0.82;
+        }
+      }
+    }
     return (score / normaliser) * weight;
   }
 
