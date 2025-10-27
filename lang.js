@@ -128,6 +128,7 @@ const translations = {
   // Finance mentor
   module_ai_finance_title: 'AI 理财助手',
   module_ai_finance_desc: '让AI为您的财富增值。',
+  module_ai_finance_frequency: '更新频率：每日自动生成课表 & 市场脉冲',
   // New modules
   module_ai_trends_title: 'AI 前沿要闻',
   module_ai_trends_desc: '精选全球AI领域最重要、最前沿的动态与资讯。',
@@ -580,6 +581,7 @@ const translations = {
   // Finance mentor
   module_ai_finance_title: 'AI Finance Mentor',
   module_ai_finance_desc: 'Empower Your Wealth with AI.',
+  module_ai_finance_frequency: 'Refresh cadence: Daily curriculum plus market pulse updates',
   // New modules
   module_ai_trends_title: 'AI Frontier Briefing',
   module_ai_trends_desc: 'Curated selection of the most critical and cutting-edge developments in AI.',
@@ -1022,6 +1024,7 @@ const translations = {
   // Finance mentor
   module_ai_finance_title: 'Asesor Financiero con IA',
   module_ai_finance_desc: 'Potencie Su Patrimonio con IA.',
+  module_ai_finance_frequency: 'Frecuencia: agenda diaria y pulsos de mercado automatizados',
   // New modules
   module_ai_trends_title: 'Resumen de la Vanguardia IA',
   module_ai_trends_desc: 'Selección de los desarrollos más cruciales y avanzados en Inteligencia Artificial.',
