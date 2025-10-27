@@ -28,8 +28,16 @@ style.textContent = `
 .wealth-pulse-group details:last-of-type { border-bottom: none; }
 .wealth-pulse-group summary { cursor: pointer; padding: 18px 22px; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: space-between; color: color-mix(in oklab, #0f172a 70%, rgba(37,99,235,0.26) 30%); }
 .wealth-pulse-item { padding: 0 22px 22px; display: grid; gap: 10px; border-top: 1px solid rgba(59,130,246,0.1); }
-.wealth-pulse-item h5 { margin: 0; font-size: 1.05rem; color: color-mix(in oklab, #0f172a 70%, rgba(37,99,235,0.24) 30%); }
-.wealth-pulse-facts, .wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.55; color: color-mix(in oklab, #0f172a 70%, rgba(37,99,235,0.22) 30%); }
+.wealth-pulse-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.wealth-pulse-title { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: 0.01em; color: color-mix(in oklab, #0f172a 84%, rgba(37,99,235,0.18) 16%); }
+.wealth-pulse-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.78rem; letter-spacing: 0.02em; color: color-mix(in oklab, #1f3d8a 58%, #0f172a 42%); }
+.wealth-pulse-meta-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: color-mix(in oklab, rgba(59,130,246,0.08), rgba(16,185,129,0.08) 50%); border: 1px solid color-mix(in oklab, rgba(59,130,246,0.22), rgba(16,185,129,0.18) 42%); color: color-mix(in oklab, #0f172a 72%, rgba(37,99,235,0.24) 28%); font-weight: 600; text-decoration: none; transition: transform 0.16s ease, box-shadow 0.16s ease; }
+.wealth-pulse-meta-badge:hover { transform: translateY(-1px); box-shadow: 0 8px 18px -12px rgba(37,99,235,0.25); }
+.wealth-pulse-time { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; color: color-mix(in oklab, #1e293b 58%, rgba(37,99,235,0.28) 42%); }
+.wealth-pulse-item h5 { margin: 0; font-size: 1.05rem; color: inherit; }
+.wealth-pulse-facts { margin: 0; font-size: 0.96rem; line-height: 1.58; color: color-mix(in oklab, #1f2937 64%, rgba(37,99,235,0.16) 36%); }
+.wealth-pulse-impact { margin: 0; font-size: 0.96rem; line-height: 1.58; color: color-mix(in oklab, #0f172a 56%, rgba(14,165,233,0.38) 44%); }
+.wealth-pulse-impact strong { color: color-mix(in oklab, #0f172a 34%, rgba(14,165,233,0.72) 66%); }
 .wealth-empty { font-size: 0.95rem; color: var(--muted, #4b5563); text-align: center; padding: 36px 0; }
 :root[data-theme="dark"] .wealth-daily-card { background: color-mix(in oklab, rgba(15,23,42,0.92), rgba(15,118,110,0.28) 35%); border: 1px solid color-mix(in oklab, rgba(56,189,248,0.32), rgba(15,118,110,0.4) 42%); box-shadow: 0 26px 60px -32px rgba(2,6,23,0.82); }
 :root[data-theme="dark"] .wealth-daily-card h3 { color: #f8fafc; }
@@ -40,9 +48,15 @@ style.textContent = `
 :root[data-theme="dark"] .wealth-links a { color: color-mix(in oklab, #38bdf8, #a7f3d0 24%); }
 :root[data-theme="dark"] .wealth-load-more { background: color-mix(in oklab, rgba(56,189,248,0.2), rgba(15,23,42,0.82) 65%); border-color: color-mix(in oklab, rgba(56,189,248,0.42), rgba(15,118,110,0.42) 40%); color: color-mix(in oklab, #e0f2fe, rgba(56,189,248,0.4) 38%); }
 :root[data-theme="dark"] .wealth-pulse-group { background: color-mix(in oklab, rgba(15,23,42,0.9), rgba(37,99,235,0.32) 30%); border: 1px solid color-mix(in oklab, rgba(59,130,246,0.34), rgba(99,102,241,0.32) 42%); box-shadow: 0 24px 60px -36px rgba(2,6,23,0.85); }
+:root[data-theme="dark"] .wealth-pulse-meta-badge { background: color-mix(in oklab, rgba(37,99,235,0.28), rgba(56,189,248,0.22) 52%); border-color: color-mix(in oklab, rgba(99,102,241,0.38), rgba(56,189,248,0.36) 42%); color: color-mix(in oklab, #e0e7ff, rgba(191,219,254,0.45) 32%); }
+:root[data-theme="dark"] .wealth-pulse-meta-badge:hover { box-shadow: 0 10px 22px -16px rgba(56,189,248,0.35); }
+:root[data-theme="dark"] .wealth-pulse-time { color: color-mix(in oklab, #dbeafe, rgba(56,189,248,0.35) 38%); }
 :root[data-theme="dark"] .wealth-pulse-group summary { color: color-mix(in oklab, #e2e8f0, rgba(99,102,241,0.4) 38%); }
-:root[data-theme="dark"] .wealth-pulse-item h5 { color: color-mix(in oklab, #eef2ff, rgba(56,189,248,0.42) 38%); }
-:root[data-theme="dark"] .wealth-pulse-facts, :root[data-theme="dark"] .wealth-pulse-impact { color: color-mix(in oklab, #dbeafe, rgba(56,189,248,0.32) 32%); }
+:root[data-theme="dark"] .wealth-pulse-title { color: color-mix(in oklab, #f8fafc 82%, rgba(191,219,254,0.45) 18%); }
+:root[data-theme="dark"] .wealth-pulse-meta { color: color-mix(in oklab, #93c5fd 62%, #1e3a8a 38%); }
+:root[data-theme="dark"] .wealth-pulse-facts { color: color-mix(in oklab, #cbd5f5 70%, rgba(96,165,250,0.32) 30%); }
+:root[data-theme="dark"] .wealth-pulse-impact { color: color-mix(in oklab, #d6f5ff 64%, rgba(96,165,250,0.38) 36%); }
+:root[data-theme="dark"] .wealth-pulse-impact strong { color: color-mix(in oklab, #e0f2fe 58%, rgba(56,189,248,0.48) 42%); }
 `;
 document.head.appendChild(style);
 
@@ -116,6 +130,25 @@ function pickLang(obj) {
 function pickList(obj) {
   if (!obj) return [];
   return obj.zh || obj.en || obj.es || [];
+}
+
+function formatTime(isoString) {
+  if (!isoString) return "";
+  try {
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return "";
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC",
+    });
+    return `${formatter.format(date)} UTC`;
+  } catch (error) {
+    console.warn("时间格式化失败", error);
+    return typeof isoString === "string" ? isoString.replace("T", " ").replace(/Z$/, " UTC") : "";
+  }
 }
 
 function createDailyCard(entry, isToday) {
@@ -296,12 +329,41 @@ function renderPulse(data) {
       const row = document.createElement("div");
       row.className = "wealth-pulse-item";
 
+      const header = document.createElement("div");
+      header.className = "wealth-pulse-header";
+
       const title = document.createElement("h5");
+      title.className = "wealth-pulse-title";
       title.textContent = item.title || "市场快讯";
 
-      const source = document.createElement("span");
-      source.className = "wealth-daily-meta";
-      source.textContent = item.source || "";
+      const meta = document.createElement("div");
+      meta.className = "wealth-pulse-meta";
+
+      if (item.source || (Array.isArray(item.links) && item.links.length)) {
+        const primaryLink = Array.isArray(item.links) && item.links.length ? item.links[0] : null;
+        const sourceBadge = document.createElement(primaryLink ? "a" : "span");
+        sourceBadge.className = "wealth-pulse-meta-badge";
+        sourceBadge.textContent = item.source || "资讯源";
+        if (primaryLink) {
+          sourceBadge.href = primaryLink;
+          sourceBadge.target = "_blank";
+          sourceBadge.rel = "noopener";
+        }
+        meta.append(sourceBadge);
+      }
+
+      const stamp = formatTime(item.time_utc);
+      if (stamp) {
+        const time = document.createElement("span");
+        time.className = "wealth-pulse-time";
+        time.textContent = stamp;
+        meta.append(time);
+      }
+
+      header.append(title);
+      if (meta.childNodes.length) {
+        header.append(meta);
+      }
 
       const facts = document.createElement("p");
       facts.className = "wealth-pulse-facts";
@@ -310,6 +372,8 @@ function renderPulse(data) {
       const impact = document.createElement("p");
       impact.className = "wealth-pulse-impact";
       impact.innerHTML = `<strong>可能影响：</strong> ${pickLang(item.impact_one_liner) || "待更新"}`;
+
+      row.append(header, facts, impact);
 
       if (Array.isArray(item.links) && item.links.length) {
         const links = document.createElement("div");
@@ -324,8 +388,6 @@ function renderPulse(data) {
         });
         row.append(links);
       }
-
-      row.prepend(title, source, facts, impact);
       details.append(row);
     });
 
