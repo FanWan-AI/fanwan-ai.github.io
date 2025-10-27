@@ -168,6 +168,7 @@
     pages: ['site_docs']
   });
   const SITE_SCOPE_DEFAULT = 'all';
+  const INTERNAL_HOST_CANDIDATES = buildInternalHostList();
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -176,6 +177,19 @@
       return true;
     }
     return Object.values(LEGACY_PROMPTS).some(list => Array.isArray(list) && list.includes(trimmed));
+  }
+
+  function buildInternalHostList() {
+    const defaults = ['fanwan-ai.github.io'];
+    const configHosts = Array.isArray(windowConfig.internalHosts) ? windowConfig.internalHosts : [];
+    const extras = [];
+    if (typeof window !== 'undefined' && window.location && window.location.hostname) {
+      extras.push(window.location.hostname);
+    }
+    const combined = defaults.concat(configHosts, extras)
+      .map(host => typeof host === 'string' ? host.trim().toLowerCase() : '')
+      .filter(Boolean);
+    return Array.from(new Set(combined));
   }
   const DEFAULT_MATHJAX_SRC = 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js';
   const MATH_MARKERS = ['\\(', '\\[', '$$', '\\begin{'];
@@ -199,7 +213,8 @@
     activePayloadOverrides: null,
     webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED,
     lastWebContext: null,
-    siteCorpus: createSiteCorpusState()
+    siteCorpus: createSiteCorpusState(),
+    citationMap: new Map()
   };
 
   const el = {
@@ -1909,9 +1924,15 @@
   function parseInline(text) {
     if (!text) return '';
     const codeTokens = [];
+    const htmlLinkTokens = [];
     let result = String(text).replace(/`([^`]+?)`/g, function(_, code) {
       const token = `@@CODE${codeTokens.length}@@`;
       codeTokens.push(code);
+      return token;
+    });
+    result = result.replace(/<a\s+[^>]*href\s*=\s*(["'])([^"']+)\1[^>]*>([\s\S]*?)<\/a>/gi, function(_, __, href, label) {
+      const token = `@@HTMLLINK${htmlLinkTokens.length}@@`;
+      htmlLinkTokens.push({ href, label });
       return token;
     });
     result = escapeHtml(result);
@@ -1932,6 +1953,18 @@
         : '<code>' + escapeHtml(code) + '</code>';
       result = result.replace(new RegExp('@@CODE' + idx + '@@', 'g'), replacement);
     });
+    htmlLinkTokens.forEach((link, idx) => {
+      const token = new RegExp('@@HTMLLINK' + idx + '@@', 'g');
+      const href = sanitizeUrl(link && link.href ? link.href : '');
+      const label = link && typeof link.label === 'string' ? link.label : '';
+      const safeLabel = label ? escapeHtml(label) : (href || '');
+      if (href) {
+        result = result.replace(token, '<a href="' + href + '" target="_blank" rel="nofollow noopener noreferrer">' + safeLabel + '</a>');
+      } else {
+        result = result.replace(token, safeLabel);
+      }
+    });
+    result = result.replace(/【([^】]+)】/g, renderCitationToken);
     result = result.replace(/\n/g, '<br />');
     return result;
   }
@@ -1966,11 +1999,546 @@
     if (lower.startsWith('javascript:') || lower.startsWith('data:')) {
       return '';
     }
-    if (!/^https?:/i.test(trimmed) && !trimmed.startsWith('mailto:') && !trimmed.startsWith('#')) {
+    const isHttp = /^https?:/i.test(trimmed);
+    const isMail = trimmed.startsWith('mailto:');
+    const isHash = trimmed.startsWith('#');
+    const isRelative = trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../');
+    if (!isHttp && !isMail && !isHash && !isRelative) {
       return '';
     }
     return escapeAttribute(trimmed);
   }
+
+  function isInternalHost(hostname) {
+    if (!hostname) {
+      return false;
+    }
+    const host = String(hostname).toLowerCase();
+    return INTERNAL_HOST_CANDIDATES.indexOf(host) !== -1;
+  }
+
+  function isLikelySameSiteUrl(url) {
+    if (!url) {
+      return false;
+    }
+    const trimmed = String(url).trim();
+    if (!trimmed) {
+      return false;
+    }
+    if (trimmed.startsWith('/') || trimmed.startsWith('#')) {
+      return true;
+    }
+    if (!/^https?:/i.test(trimmed)) {
+      return false;
+    }
+    try {
+      const parsed = new URL(trimmed, window.location && window.location.origin ? window.location.origin : undefined);
+      return isInternalHost(parsed.hostname);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function normalizeInternalUrl(url) {
+    if (!url) {
+      return '';
+    }
+    const trimmed = String(url).trim();
+    if (!trimmed) {
+      return '';
+    }
+    if (trimmed.startsWith('#')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/')) {
+      return trimmed;
+    }
+    if (!/^https?:/i.test(trimmed)) {
+      return '';
+    }
+    try {
+      const parsed = new URL(trimmed, window.location && window.location.origin ? window.location.origin : undefined);
+      if (isInternalHost(parsed.hostname)) {
+        return parsed.pathname + parsed.search + parsed.hash;
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
+  }
+
+  function isLikelyExternalCandidate(url) {
+    if (!url) {
+      return false;
+    }
+    const trimmed = String(url).trim();
+    if (!/^https?:/i.test(trimmed)) {
+      return false;
+    }
+    try {
+      const parsed = new URL(trimmed, window.location && window.location.origin ? window.location.origin : undefined);
+      if (isInternalHost(parsed.hostname)) {
+        return false;
+      }
+    } catch (_) {
+      return false;
+    }
+    return true;
+  }
+
+  function pickInternalUrl(candidates) {
+    if (!Array.isArray(candidates)) {
+      return '';
+    }
+    for (let i = 0; i < candidates.length; i += 1) {
+      const normalized = normalizeInternalUrl(candidates[i]);
+      if (normalized) {
+        return normalized;
+      }
+    }
+    return '';
+  }
+
+  function pickExternalUrl(candidates) {
+    if (!Array.isArray(candidates)) {
+      return '';
+    }
+    for (let i = 0; i < candidates.length; i += 1) {
+      const value = typeof candidates[i] === 'string' ? candidates[i].trim() : '';
+      if (!value) {
+        continue;
+      }
+      if (isLikelyExternalCandidate(value)) {
+        return value;
+      }
+    }
+    return '';
+  }
+
+  function collectUrlCandidate(list, value) {
+    if (!list || !value) {
+      return;
+    }
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed) {
+      return;
+    }
+    if (list.indexOf(trimmed) === -1) {
+      list.push(trimmed);
+    }
+  }
+
+  function resolveEntityForChunk(chunk) {
+    if (!chunk || !state.siteCorpus || !state.siteCorpus.entities || !(state.siteCorpus.entities.map instanceof Map)) {
+      return null;
+    }
+    const map = state.siteCorpus.entities.map;
+    const meta = chunk.meta || {};
+    const candidates = [];
+    if (meta.canonical_id) candidates.push(meta.canonical_id);
+    if (meta.entity_id) candidates.push(meta.entity_id);
+    if (meta.original_id) candidates.push(meta.original_id);
+    if (chunk.docId) candidates.push(chunk.docId);
+    if (chunk.doc_id) candidates.push(chunk.doc_id);
+    const unique = [];
+    candidates.forEach(id => {
+      if (typeof id !== 'string') {
+        return;
+      }
+      const trimmed = id.trim();
+      if (!trimmed) {
+        return;
+      }
+      if (unique.indexOf(trimmed) === -1) {
+        unique.push(trimmed);
+      }
+    });
+    for (let i = 0; i < unique.length; i += 1) {
+      const key = unique[i];
+      if (map.has(key)) {
+        return map.get(key);
+      }
+      const tail = key.indexOf(':') !== -1 ? key.split(':').pop() : '';
+      if (tail && map.has(tail)) {
+        return map.get(tail);
+      }
+    }
+    return null;
+  }
+
+  function addEntityLinks(entity, internalList, externalList) {
+    if (!entity || !entity.links || typeof entity.links !== 'object') {
+      return;
+    }
+    Object.keys(entity.links).forEach(key => {
+      const value = entity.links[key];
+      if (Array.isArray(value)) {
+        value.forEach(item => {
+          if (typeof item === 'string') {
+            if (isLikelySameSiteUrl(item)) {
+              collectUrlCandidate(internalList, item);
+            } else {
+              collectUrlCandidate(externalList, item);
+            }
+          }
+        });
+        return;
+      }
+      if (typeof value === 'string') {
+        if (isLikelySameSiteUrl(value)) {
+          collectUrlCandidate(internalList, value);
+        } else {
+          collectUrlCandidate(externalList, value);
+        }
+      }
+    });
+  }
+
+  function normalizeCitationKey(value) {
+    if (value == null) {
+      return '';
+    }
+    const trimmed = String(value).trim().toLowerCase();
+    if (!trimmed) {
+      return '';
+    }
+  const collapsed = trimmed.replace(/\s+/g, '');
+    return collapsed.replace(/[^0-9a-z:/._#-]+/g, '');
+  }
+
+  function buildCitationTitle(entry) {
+    if (!entry) {
+      return '';
+    }
+    const parts = [];
+    if (entry.title) {
+      parts.push(entry.title);
+    }
+    if (entry.source) {
+      parts.push(entry.source);
+    } else if (entry.sourceHost) {
+      parts.push(entry.sourceHost);
+    }
+    if (!parts.length) {
+      return '';
+    }
+    return ' title="' + escapeAttribute(parts.join(' - ')) + '"';
+  }
+
+  function shortenCitationLabel(label) {
+    if (!label) {
+      return 'src';
+    }
+    const trimmed = String(label).trim();
+    if (!trimmed) {
+      return 'src';
+    }
+    if (trimmed.length <= 10) {
+      return trimmed;
+    }
+    return trimmed.slice(0, 9) + '...';
+  }
+
+  function buildExternalAriaLabel(entry, display) {
+    const parts = ['External source'];
+    if (display) {
+      parts.push(String(display));
+    }
+    if (entry) {
+      if (entry.title) {
+        parts.push(entry.title);
+      }
+      if (entry.source) {
+        parts.push(entry.source);
+      } else if (entry.sourceHost) {
+        parts.push(entry.sourceHost);
+      }
+    }
+    return escapeAttribute(parts.filter(Boolean).join(' - '));
+  }
+
+  function cloneCitationEntry(entry) {
+    return {
+      label: entry && entry.label ? String(entry.label) : '',
+      title: entry && entry.title ? String(entry.title) : '',
+      url: entry && entry.url ? String(entry.url) : '',
+      externalUrl: entry && entry.externalUrl ? String(entry.externalUrl) : '',
+      source: entry && entry.source ? String(entry.source) : '',
+      sourceHost: entry && entry.sourceHost ? String(entry.sourceHost) : '',
+      type: entry && entry.type ? String(entry.type) : '',
+      chunk: entry && entry.chunk ? entry.chunk : null
+    };
+  }
+
+  function mergeCitationEntries(base, incoming) {
+    const merged = cloneCitationEntry(base);
+    const candidate = cloneCitationEntry(incoming);
+    if (!merged.url && candidate.url) {
+      merged.url = candidate.url;
+    }
+    if (!merged.externalUrl && candidate.externalUrl) {
+      merged.externalUrl = candidate.externalUrl;
+    }
+    if (!merged.title && candidate.title) {
+      merged.title = candidate.title;
+    }
+    if (!merged.label && candidate.label) {
+      merged.label = candidate.label;
+    }
+    if (!merged.source && candidate.source) {
+      merged.source = candidate.source;
+    }
+    if (!merged.sourceHost && candidate.sourceHost) {
+      merged.sourceHost = candidate.sourceHost;
+    }
+    if (!merged.type && candidate.type) {
+      merged.type = candidate.type;
+    }
+    if (!merged.chunk && candidate.chunk) {
+      merged.chunk = candidate.chunk;
+    }
+    return merged;
+  }
+
+  function ensureCitationMap() {
+    if (!(state.citationMap instanceof Map)) {
+      state.citationMap = new Map();
+    }
+    return state.citationMap;
+  }
+
+  function registerCitationEntry(entry, rawKeys) {
+    if (!entry || !Array.isArray(rawKeys) || !rawKeys.length) {
+      return;
+    }
+    const map = ensureCitationMap();
+    rawKeys.forEach(key => {
+      const normalized = normalizeCitationKey(key);
+      if (!normalized) {
+        return;
+      }
+      const existing = map.get(normalized);
+      if (existing) {
+        map.set(normalized, mergeCitationEntries(existing, entry));
+      } else {
+        map.set(normalized, cloneCitationEntry(entry));
+      }
+    });
+  }
+
+  function buildCitationItem(rawKey, entry, normalizedKey) {
+    const labelText = entry && entry.label ? entry.label : rawKey;
+    const safeDisplay = escapeHtml(labelText || '?');
+    const dataset = normalizedKey ? ' data-citation-key="' + escapeAttribute(normalizedKey) + '"' : '';
+    const titleAttr = buildCitationTitle(entry);
+    const internalHref = entry && entry.url ? sanitizeUrl(entry.url) : '';
+    const externalHref = entry && entry.externalUrl ? sanitizeUrl(entry.externalUrl) : '';
+    const fragments = [];
+
+    if (internalHref) {
+      fragments.push('<a class="zhida-citation-link" href="' + internalHref + '" target="_blank" rel="nofollow noopener noreferrer"' + dataset + titleAttr + '>' + safeDisplay + '</a>');
+    } else if (externalHref) {
+      fragments.push('<a class="zhida-citation-link" href="' + externalHref + '" target="_blank" rel="nofollow noopener noreferrer"' + dataset + titleAttr + '>' + safeDisplay + '</a>');
+    } else if (entry) {
+      fragments.push('<span class="zhida-citation-link zhida-citation-link--dead"' + dataset + titleAttr + '>' + safeDisplay + '</span>');
+    } else {
+      fragments.push('<span class="zhida-citation-link zhida-citation-link--missing">' + safeDisplay + '</span>');
+    }
+
+    if (entry && externalHref && internalHref && externalHref !== internalHref) {
+      const extLabel = shortenCitationLabel(entry.sourceHost || entry.source);
+      const aria = buildExternalAriaLabel(entry, labelText);
+      fragments.push('<a class="zhida-citation-link zhida-citation-link--external" href="' + externalHref + '" target="_blank" rel="nofollow noopener noreferrer"' + dataset + ' aria-label="' + aria + '">' + escapeHtml(extLabel) + '</a>');
+    }
+
+    return '<span class="zhida-citation-item">' + fragments.join('<span class="zhida-citation-gap"> </span>') + '</span>';
+  }
+
+  function renderCitationToken(_, rawKeys) {
+    if (!rawKeys) {
+      return '';
+    }
+    const map = ensureCitationMap();
+    const tokens = String(rawKeys)
+      .split(/[|,;，、]/)
+      .map(token => token.trim())
+      .filter(Boolean);
+    if (!tokens.length) {
+      return '';
+    }
+    let hasResolved = false;
+    const items = tokens.map(token => {
+      const normalized = normalizeCitationKey(token);
+      const entry = normalized ? map.get(normalized) : null;
+      if (entry) {
+        hasResolved = true;
+      }
+      return buildCitationItem(token, entry, normalized);
+    });
+    if (!hasResolved) {
+      return '【' + escapeHtml(rawKeys) + '】';
+    }
+    return '<sup class="zhida-citation">' + items.join('<span class="zhida-citation-sep">,</span>') + '</sup>';
+  }
+
+  function populateCitationMap(docContext, webContext) {
+    const map = ensureCitationMap();
+    map.clear();
+
+    if (docContext && Array.isArray(docContext.snippets)) {
+      docContext.snippets.forEach((snippet, index) => {
+        if (!snippet) {
+          return;
+        }
+        const chunk = snippet.chunk || {};
+        const meta = chunk.meta || {};
+        const internalCandidates = [];
+        const externalCandidates = [];
+        collectUrlCandidate(internalCandidates, chunk.url);
+        collectUrlCandidate(internalCandidates, meta.url);
+        collectUrlCandidate(externalCandidates, meta.external_url);
+        if (meta.links && typeof meta.links === 'object') {
+          Object.keys(meta.links).forEach(key => {
+            const value = meta.links[key];
+            if (Array.isArray(value)) {
+              value.forEach(linkValue => {
+                if (typeof linkValue === 'string') {
+                  if (isLikelySameSiteUrl(linkValue)) {
+                    collectUrlCandidate(internalCandidates, linkValue);
+                  } else {
+                    collectUrlCandidate(externalCandidates, linkValue);
+                  }
+                }
+              });
+              return;
+            }
+            if (typeof value === 'string') {
+              if (isLikelySameSiteUrl(value)) {
+                collectUrlCandidate(internalCandidates, value);
+              } else {
+                collectUrlCandidate(externalCandidates, value);
+              }
+            }
+          });
+        }
+        const relatedEntity = resolveEntityForChunk(chunk);
+        if (relatedEntity) {
+          addEntityLinks(relatedEntity, internalCandidates, externalCandidates);
+        }
+        const internalUrl = pickInternalUrl(internalCandidates);
+        const externalUrl = pickExternalUrl(externalCandidates);
+        const entry = {
+          label: String(index + 1),
+          title: chunk.title || snippet.fileName || meta.title || (relatedEntity && relatedEntity.name ? relatedEntity.name : ''),
+          url: internalUrl || '',
+          externalUrl: externalUrl || '',
+          source: meta.source || '',
+          sourceHost: meta.source_host || '',
+          type: chunk.type || 'doc',
+          chunk
+        };
+        if (!entry.source && chunk.source && typeof chunk.source.section === 'string') {
+          const section = chunk.source.section.trim();
+          if (section) {
+            entry.source = section;
+          }
+        }
+        if (!entry.sourceHost && entry.externalUrl) {
+          try {
+            entry.sourceHost = new URL(entry.externalUrl).hostname || '';
+          } catch (_) {
+            entry.sourceHost = '';
+          }
+        }
+        const keys = new Set();
+        keys.add(entry.label);
+        keys.add('doc' + entry.label);
+        keys.add('doc-' + entry.label);
+        keys.add('doc ' + entry.label);
+        if (snippet.fileId) keys.add(snippet.fileId);
+        if (snippet.fileName) keys.add(snippet.fileName);
+        if (entry.title) keys.add(entry.title);
+        if (chunk.docId) keys.add(chunk.docId);
+        if (chunk.id) keys.add(chunk.id);
+        if (chunk.chunkId) keys.add(chunk.chunkId);
+        internalCandidates.forEach(value => keys.add(value));
+        externalCandidates.forEach(value => keys.add(value));
+        if (entry.url) {
+          keys.add(entry.url);
+          const hashIndex = entry.url.indexOf('#');
+          if (hashIndex !== -1 && hashIndex + 1 < entry.url.length) {
+            keys.add(entry.url.slice(hashIndex + 1));
+          }
+        }
+        if (entry.externalUrl) {
+          keys.add(entry.externalUrl);
+        }
+        if (meta.canonical_id) {
+          keys.add(meta.canonical_id);
+          const canonicalParts = String(meta.canonical_id).split(':');
+          const tail = canonicalParts[canonicalParts.length - 1];
+          if (tail) {
+            keys.add(tail);
+          }
+        }
+        if (meta.slug) {
+          keys.add(meta.slug);
+        }
+        registerCitationEntry(entry, Array.from(keys));
+      });
+    }
+
+    if (webContext && Array.isArray(webContext.results)) {
+      webContext.results.forEach((item, index) => {
+        if (!item) {
+          return;
+        }
+        let host = '';
+        if (item.url) {
+          try {
+            host = new URL(item.url).hostname || '';
+          } catch (_) {
+            host = '';
+          }
+        }
+        const entry = {
+          label: 'W' + (index + 1),
+          title: item.title || '',
+          url: '',
+          externalUrl: item.url || '',
+          source: item.source || '',
+          sourceHost: host || item.source || '',
+          type: 'web'
+        };
+        const keys = new Set();
+        keys.add(entry.label);
+        keys.add('web' + (index + 1));
+        keys.add('web-' + (index + 1));
+        keys.add('result' + (index + 1));
+        keys.add('w' + (index + 1));
+        if (item.url) {
+          keys.add(item.url);
+          try {
+            const parsed = new URL(item.url);
+            if (parsed.hostname) {
+              keys.add(parsed.hostname);
+              const hostParts = parsed.hostname.split('.');
+              if (hostParts.length > 1) {
+                keys.add(hostParts.slice(-2).join('.'));
+              }
+            }
+          } catch (_) {
+            // ignore invalid URLs
+          }
+        }
+        if (item.source) {
+          keys.add(item.source);
+        }
+        registerCitationEntry(entry, Array.from(keys));
+      });
+    }
+  }
+
 
   async function handleSend(event) {
     event.preventDefault();
@@ -2114,6 +2682,7 @@
     persistMessages();
     setAutoStick(true);
     state.manualScrollIntent = false;
+    state.citationMap = new Map();
     renderMessages();
     setStatus('ready');
     clearNotification();
@@ -2203,6 +2772,7 @@
       messages.push({ role: 'system', content: system });
     }
     const docContext = buildDocumentContext();
+    populateCitationMap(docContext, webContext);
     const lastUserIndex = findLastUserMessageIndex();
     state.messages.forEach((msg, index) => {
       if (index === state.assistantIndex && msg.streaming) {
