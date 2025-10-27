@@ -27,7 +27,9 @@ export async function extractAiradar({ files, readJson }) {
       const canonicalId = item?.id ? `airadar:${item.id}` : `${dailyId}:${index}`;
       const titleI18n = item?.title_i18n || {};
       const excerptI18n = item?.excerpt_i18n || {};
-      const url = item?.url || `${INTERNAL_PAGE}#${baseId}`;
+  const pageUrl = `${INTERNAL_PAGE}#${baseId}`;
+  const externalUrl = item?.url || null;
+  const url = pageUrl;
       const publishedAt = item?.published_at || payload.generated_at || null;
       const host = resolveHost(item?.source?.site || url);
 
@@ -74,6 +76,8 @@ export async function extractAiradar({ files, readJson }) {
             time_weight: computeTimeWeight(publishedAt),
             hotness: item?.hotness || null,
             canonical_id: canonicalId,
+            external_url: externalUrl,
+            source_host: host || null,
           },
         });
       }
@@ -120,9 +124,10 @@ export async function extractAiradar({ files, readJson }) {
 
       dailyItems.push({
         id: canonicalId,
-        url,
+        url: pageUrl,
         title: item?.title || titleI18n?.zh || titleI18n?.en,
         published_at: publishedAt,
+        external_url: externalUrl,
       });
     }
 
