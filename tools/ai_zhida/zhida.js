@@ -1705,7 +1705,11 @@
         while (index < lines.length) {
           const current = lines[index];
           const currentTrim = current.trim();
-          if (!currentTrim || !/^[-*+]\s+/.test(currentTrim)) {
+          if (!currentTrim) {
+            index += 1;
+            continue;
+          }
+          if (!/^[-*+]\s+/.test(currentTrim)) {
             break;
           }
           const item = document.createElement('li');
@@ -1722,7 +1726,11 @@
         while (index < lines.length) {
           const current = lines[index];
           const currentTrim = current.trim();
-          if (!currentTrim || !/^\d+\.\s+/.test(currentTrim)) {
+          if (!currentTrim) {
+            index += 1;
+            continue;
+          }
+          if (!/^\d+\.\s+/.test(currentTrim)) {
             break;
           }
           const item = document.createElement('li');

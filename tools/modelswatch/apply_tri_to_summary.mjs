@@ -366,7 +366,7 @@ async function main() {
     if (!mergedKeys.length) {
       info('[apply_tri] all candidates were unchanged; skipping write');
       if (runlog) {
-        await runlog.append('skipped', {
+        await runlog.append('warning', {
           summary: 'apply_tri_to_summary skipped write because all items were unchanged',
           skipped,
           unchanged
