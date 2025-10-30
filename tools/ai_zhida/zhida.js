@@ -118,6 +118,23 @@
   const MAX_RAG_SNIPPETS_DEFAULT = 8;
   const MAX_RAG_SNIPPETS_COVERAGE = 18;
   const MAX_RAG_SNIPPETS_UPPER = 20;
+  // Intent keywords for routing
+  const TODAY_KEYWORDS = [
+    /今天|今日|本日|当天/i,
+    /today\b/i,
+    /as of today/i,
+    /this\s+day/i
+  ];
+  const RECENT_KEYWORDS = [
+    /最近|近几天|近一周|这周|本周|最新/i,
+    /recent|past\s+(?:few\s+)?days|this\s+week|latest/i
+  ];
+  const IDENTITY_KEYWORDS = [
+    /万凡\s*是谁|关于万凡|介绍万凡|万凡简介/i,
+    /你是谁|你是誰|who\s+are\s+you\b/i,
+    /who\s+is\s+fan\s*wan\b/i,
+    /about\s+fan\s*wan/i
+  ];
   const WEB_SEARCH_NEGATION_PATTERNS = [
     /不(?:用|要|需)?(?:联网|上网)/i,
     /无需联网/i,
@@ -169,6 +186,23 @@
   });
   const SITE_SCOPE_DEFAULT = 'all';
   const INTERNAL_HOST_CANDIDATES = buildInternalHostList();
+  // Absolute base for internal links in rendered output and citations
+  const INTERNAL_BASE_URL = 'https://fanwan-ai.github.io';
+  const INTERNAL_PAGE_ALIASES = Object.freeze({
+    '关于': '/about.html',
+    'about': '/about.html',
+    '主页': '/index.html',
+    '首页': '/index.html',
+    'home': '/index.html',
+    'publications': '/publications.html',
+    '出版物': '/publications.html',
+    'ai lab': '/ai-lab.html',
+    'ai-lab': '/ai-lab.html',
+    'ai paperhub': '/lab/ai-paperhub.html',
+    'modelswatch': '/lab/modelswatch.html',
+    'ai radar': '/lab/ai-radar.html',
+    'scholarpush': '/lab/scholarpush.html'
+  });
 
   function isKnownSystemPrompt(value) {
     const trimmed = typeof value === 'string' ? value.trim() : '';
@@ -180,7 +214,7 @@
   }
 
   function buildInternalHostList() {
-    const defaults = ['fanwan-ai.github.io'];
+    const defaults = ['fanwan-ai.github.io', 'wanfan.org', 'wanfan.xyz'];
     const configHosts = Array.isArray(windowConfig.internalHosts) ? windowConfig.internalHosts : [];
     const extras = [];
     if (typeof window !== 'undefined' && window.location && window.location.hostname) {
@@ -214,7 +248,10 @@
     webSearchEnabled: WEB_SEARCH_DEFAULT_ENABLED,
     lastWebContext: null,
     siteCorpus: createSiteCorpusState(),
-    citationMap: new Map()
+    citationMap: new Map(),
+    profile: null,
+    profileReady: false,
+    profileLoadingPromise: null
   };
 
   const el = {
@@ -636,6 +673,7 @@
     renderMessages();
     renderFileList();
     ensureSiteCorpusLoading();
+    ensureProfileLoading();
     bindEvents();
     refreshControls();
     setStatus('ready');
@@ -791,6 +829,82 @@
       console.warn('[zhida] optional site corpus json failed', path, error);
       return null;
     }
+  }
+
+  function ensureProfileLoading() {
+    if (state.profileReady || state.profileLoadingPromise) {
+      return state.profileLoadingPromise || Promise.resolve();
+    }
+    const promise = (async () => {
+      try {
+        const res = await fetch('/assets/data/profile.json', { cache: 'no-store' });
+        if (!res.ok) return null;
+        const data = await res.json();
+        state.profile = data || null;
+        state.profileReady = !!state.profile;
+      } catch (e) {
+        console.warn('[zhida] profile.json load failed', e);
+        state.profile = null;
+        state.profileReady = false;
+      } finally {
+        state.profileLoadingPromise = null;
+      }
+      return state.profile;
+    })();
+    state.profileLoadingPromise = promise;
+    return promise;
+  }
+
+  function buildIdentitySnippet(profile, lang) {
+    if (!profile) return null;
+    const locale = (lang || getLang() || 'zh').slice(0, 2);
+    const home = profile.home && profile.home[locale] ? profile.home[locale] : null;
+    const about = profile.about && profile.about[locale] ? profile.about[locale] : null;
+    const lines = [];
+    if (home && typeof home.hero_subtitle === 'string' && home.hero_subtitle.trim()) {
+      lines.push(home.hero_subtitle.trim());
+    }
+    if (about && Array.isArray(about.education) && about.education.length) {
+      const eduLine = about.education.map(e => (e && e.title) ? e.title : '').filter(Boolean).join('；');
+      if (eduLine) {
+        lines.push(eduLine);
+      }
+    }
+    if (about && Array.isArray(about.interests) && about.interests.length) {
+      const interests = about.interests.slice(0, 4).join('，');
+      if (interests) {
+        lines.push((locale === 'zh' ? '研究兴趣：' : 'Interests: ') + interests);
+      }
+    }
+    if (!lines.length) return null;
+    const content = lines.join('\n');
+    const chunk = {
+      content,
+      lang: locale,
+      url: '/about.html',
+      meta: {
+        title: (locale === 'zh' ? '关于 · 万凡' : 'About · Fan Wan'),
+        links: {
+          home: '/index.html',
+          about: '/about.html',
+          scholar: profile.social && profile.social.scholar ? profile.social.scholar : undefined,
+          github: profile.social && profile.social.github ? profile.social.github : undefined
+        }
+      },
+      siteSource: 'site_docs',
+      site: true,
+      weight: 1.2,
+      source: { section: (locale === 'zh' ? '关于' : 'About'), tags: ['pages', 'identity'] }
+    };
+    const snippet = {
+      fileId: 'site:identity',
+      fileName: (locale === 'zh' ? '站内身份' : 'Site Identity'),
+      content,
+      score: 1.0,
+      index: 0,
+      chunk
+    };
+    return snippet;
   }
 
   function buildSiteCorpusFiles(docText) {
@@ -1071,6 +1185,86 @@
       return 'en';
     }
     return '';
+  }
+
+  // Intent detection and helpers
+  function detectIntent(question) {
+    const q = (question || '').trim();
+    const lower = q.toLowerCase();
+    // Identity
+    if (IDENTITY_KEYWORDS.some(rx => rx.test(q) || rx.test(lower))) {
+      return { kind: 'identity', category: 'pages' };
+    }
+    // Today
+    if (TODAY_KEYWORDS.some(rx => rx.test(q) || rx.test(lower))) {
+      // Try to infer category from tokens
+      if (/论文|paper|papers|article/i.test(q)) {
+        return { kind: 'today', category: 'papers', strict: true };
+      }
+      if (/模型|model|models|hugging\s*face/i.test(q)) {
+        return { kind: 'today', category: 'models', strict: true };
+      }
+      if (/新闻|动态|资讯|news/i.test(q)) {
+        return { kind: 'today', category: 'news_ai', strict: true };
+      }
+      if (/项目|repos?|github/i.test(q)) {
+        return { kind: 'today', category: 'models', strict: true };
+      }
+      if (/网站|站内|页面|更新|pages?/i.test(q)) {
+        return { kind: 'today', category: 'pages', strict: true };
+      }
+      return { kind: 'today', category: 'all', strict: true };
+    }
+    // Recent
+    if (RECENT_KEYWORDS.some(rx => rx.test(q) || rx.test(lower))) {
+      if (/论文|paper|papers|article/i.test(q)) {
+        return { kind: 'recency', category: 'papers', windowDays: 7 };
+      }
+      if (/模型|model|models|hugging\s*face/i.test(q)) {
+        return { kind: 'recency', category: 'models', windowDays: 7 };
+      }
+      if (/新闻|动态|资讯|news/i.test(q)) {
+        return { kind: 'recency', category: 'news_ai', windowDays: 7 };
+      }
+      if (/网站|站内|页面|更新|pages?/i.test(q)) {
+        return { kind: 'recency', category: 'pages', windowDays: 7 };
+      }
+      return { kind: 'recency', category: 'all', windowDays: 7 };
+    }
+    return { kind: 'generic', category: 'all' };
+  }
+
+  function mapCategoryToSources(category) {
+    const key = (category || 'all').toLowerCase();
+    if (SITE_SCOPE_DEFINITIONS[key]) return SITE_SCOPE_DEFINITIONS[key].slice();
+    if (key === 'all') return SITE_SCOPE_DEFINITIONS.all.slice();
+    return null;
+  }
+
+  function safeParseDate(value) {
+    if (!value) return null;
+    try {
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function sameLocalDate(a, b) {
+    if (!a || !b) return false;
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+
+  function withinDays(date, days) {
+    if (!date || !Number.isFinite(days) || days <= 0) return false;
+    const now = new Date();
+    return (now.getTime() - date.getTime()) <= days * 24 * 60 * 60 * 1000;
+  }
+
+  function getChunkUpdatedAt(chunk) {
+    const meta = chunk && chunk.meta ? chunk.meta : {};
+    return safeParseDate(meta.updated_at || meta.published_at || meta.last_modified || meta.date);
   }
 
   function normalizeLangCode(value) {
@@ -1933,7 +2127,13 @@
     if (!text) return '';
     const codeTokens = [];
     const htmlLinkTokens = [];
-    let result = String(text).replace(/`([^`]+?)`/g, function(_, code) {
+    let result = String(text)
+      // Normalize non-standard citation-link pattern: 【label】(url) -> [label](url)
+      .replace(/【([^】]+)】\s*\((https?:\/\/[^)]+)\)/gi, function(_, label, href){
+        // Keep label; href will be sanitized/aliased by markdown link handler below
+        return '[' + label + '](' + href + ')';
+      })
+      .replace(/`([^`]+?)`/g, function(_, code) {
       const token = `@@CODE${codeTokens.length}@@`;
       codeTokens.push(code);
       return token;
@@ -1953,7 +2153,12 @@
     result = result.replace(/\[([^\]]+)\]\(([^)]+)\)/g, function(_, label, href) {
       const cleanHref = sanitizeUrl(href);
       if (!cleanHref) return label;
-      return '<a href="' + cleanHref + '" target="_blank" rel="nofollow noopener noreferrer">' + label + '</a>';
+      let abs = toAbsoluteInternal(cleanHref);
+      const alias = resolveInternalAlias(label);
+      if (alias) {
+        abs = alias;
+      }
+      return '<a href="' + abs + '" target="_blank" rel="nofollow noopener noreferrer">' + label + '</a>';
     });
     codeTokens.forEach((code, idx) => {
       const replacement = isLikelyMathContent(code)
@@ -1967,7 +2172,12 @@
       const label = link && typeof link.label === 'string' ? link.label : '';
       const safeLabel = label ? escapeHtml(label) : (href || '');
       if (href) {
-        result = result.replace(token, '<a href="' + href + '" target="_blank" rel="nofollow noopener noreferrer">' + safeLabel + '</a>');
+        let abs = toAbsoluteInternal(href);
+        const alias = resolveInternalAlias(label);
+        if (alias) {
+          abs = alias;
+        }
+        result = result.replace(token, '<a href="' + abs + '" target="_blank" rel="nofollow noopener noreferrer">' + safeLabel + '</a>');
       } else {
         result = result.replace(token, safeLabel);
       }
@@ -2015,6 +2225,73 @@
       return '';
     }
     return escapeAttribute(trimmed);
+  }
+
+  function toAbsoluteInternal(href) {
+    if (!href) return '';
+    const val = String(href);
+    if (val.startsWith('/')) {
+      return INTERNAL_BASE_URL + val;
+    }
+    try {
+      const parsed = new URL(val, window.location && window.location.origin ? window.location.origin : undefined);
+      if (isInternalHost(parsed.hostname)) {
+        // Always rewrite to canonical base domain
+        return INTERNAL_BASE_URL + parsed.pathname + parsed.search + parsed.hash;
+      }
+    } catch (_) {
+      // ignore
+    }
+    return val;
+  }
+
+  function resolveInternalAlias(label) {
+    if (!label) return '';
+    const key = String(label).trim().toLowerCase();
+    const path = INTERNAL_PAGE_ALIASES[key];
+    if (!path) return '';
+    return INTERNAL_BASE_URL + path;
+  }
+
+  function canonicalizeInternalPath(path, title) {
+    if (!path) return '';
+    let p = String(path);
+    if (!p.startsWith('/')) return '';
+    // Direct mappings
+    if (p === '/about' || p === '/about/' || p === '/about.html') return '/about.html';
+    if (p === '/' || p === '/index' || p === '/index.html') return '/index.html';
+    if (p === '/publications' || p === '/publications/') return '/publications.html';
+    if (p === '/ai-lab' || p === '/ai-lab/') return '/ai-lab.html';
+    // Legacy blog/papers paths – prefer search
+    if (p.startsWith('/papers')) {
+      if (title && String(title).trim()) {
+        return ''; // force search fallback
+      }
+      return '/publications.html';
+    }
+    return p; // default keep
+  }
+
+  function buildSiteSearchUrl(query) {
+    const q = (query || '').trim();
+    if (!q) return INTERNAL_BASE_URL + '/';
+    return 'https://www.google.com/search?q=' + encodeURIComponent('site:fanwan-ai.github.io ' + q);
+  }
+
+  function buildModuleQueryLinkFromSource(sourceId, title) {
+    const q = (title || '').trim();
+    if (!q) return '';
+    const src = String(sourceId || '').toLowerCase();
+    // Scholarpush content: prefer PaperHub for global search across dates
+    if (src === 'scholarpush') {
+      return INTERNAL_BASE_URL + '/lab/ai-paperhub.html?q=' + encodeURIComponent(q);
+    }
+    // Modelswatch (HuggingFace/GitHub)
+    if (src.startsWith('modelswatch')) {
+      return INTERNAL_BASE_URL + '/lab/modelswatch.html?q=' + encodeURIComponent(q);
+    }
+    // Default empty (caller can fallback to site search)
+    return '';
   }
 
   function isInternalHost(hostname) {
@@ -2101,7 +2378,9 @@
     for (let i = 0; i < candidates.length; i += 1) {
       const normalized = normalizeInternalUrl(candidates[i]);
       if (normalized) {
-        return normalized;
+        // Try to canonicalize path; if empty, will be handled by caller (e.g., fallback to search)
+        const canon = canonicalizeInternalPath(normalized);
+        return canon || normalized;
       }
     }
     return '';
@@ -2339,11 +2618,14 @@
     const safeDisplay = escapeHtml(labelText || '?');
     const dataset = normalizedKey ? ' data-citation-key="' + escapeAttribute(normalizedKey) + '"' : '';
     const titleAttr = buildCitationTitle(entry);
-    const internalHref = entry && entry.url ? sanitizeUrl(entry.url) : '';
+    let internalHref = entry && entry.url ? sanitizeUrl(entry.url) : '';
     const externalHref = entry && entry.externalUrl ? sanitizeUrl(entry.externalUrl) : '';
     const fragments = [];
 
     if (internalHref) {
+      if (internalHref.startsWith('/')) {
+        internalHref = toAbsoluteInternal(internalHref);
+      }
       fragments.push('<a class="zhida-citation-link" href="' + internalHref + '" target="_blank" rel="nofollow noopener noreferrer"' + dataset + titleAttr + '>' + safeDisplay + '</a>');
     } else if (externalHref) {
       fragments.push('<a class="zhida-citation-link" href="' + externalHref + '" target="_blank" rel="nofollow noopener noreferrer"' + dataset + titleAttr + '>' + safeDisplay + '</a>');
@@ -2384,6 +2666,12 @@
       return buildCitationItem(token, entry, normalized);
     });
     if (!hasResolved) {
+      // If the content already includes sanitized anchors or looks like raw URLs,
+      // allow it to render instead of escaping as plain text.
+      const str = String(rawKeys);
+      if (/<a\s+[^>]*href=/i.test(str) || /https?:\/\//i.test(str)) {
+        return '<sup class="zhida-citation">' + str + '</sup>';
+      }
       return '【' + escapeHtml(rawKeys) + '】';
     }
     return '<sup class="zhida-citation">' + items.join('<span class="zhida-citation-sep">,</span>') + '</sup>';
@@ -2433,7 +2721,12 @@
         if (relatedEntity) {
           addEntityLinks(relatedEntity, internalCandidates, externalCandidates);
         }
-        const internalUrl = pickInternalUrl(internalCandidates);
+        let internalUrl = pickInternalUrl(internalCandidates);
+        // If canonicalization yielded empty or path is likely legacy '/papers/...', prefer module deep link (?q=title) and fall back to site search
+        if ((!internalUrl || /^\/papers\b/.test(internalUrl)) && (chunk.title || meta.title)) {
+          const deep = buildModuleQueryLinkFromSource(chunk.siteSource || (meta && meta.source_id) || '', chunk.title || meta.title);
+          internalUrl = deep || buildSiteSearchUrl(chunk.title || meta.title);
+        }
         const externalUrl = pickExternalUrl(externalCandidates);
         const entry = {
           label: String(index + 1),
@@ -4156,10 +4449,36 @@
     if (!lastUser || !lastUser.content || !lastUser.content.trim()) {
       return null;
     }
+    const intent = detectIntent(lastUser.content);
     const coverageMode = isCoverageRequest(lastUser.content);
     const docStats = getReadyDocumentStats();
     const snippetLimit = determineSnippetLimit(coverageMode, docStats);
-    const ranked = rankDocumentChunks(lastUser.content, snippetLimit, coverageMode);
+    const allowSources = intent && intent.category ? mapCategoryToSources(intent.category) : null;
+    let ranked = rankDocumentChunks(lastUser.content, snippetLimit, coverageMode, {
+      intent,
+      allowedSources: allowSources,
+      todayStrict: intent && intent.kind === 'today' && !!intent.strict,
+      windowDays: intent && intent.windowDays ? intent.windowDays : null
+    });
+    // Identity: prepend a concise identity snippet from profile.json if available
+    if (intent && intent.kind === 'identity' && state.profileReady && state.profile) {
+      const idSnippet = buildIdentitySnippet(state.profile, detectQuestionLanguage(lastUser.content) || getLang());
+      if (idSnippet) {
+        ranked.unshift(idSnippet);
+        if (ranked.length > snippetLimit) {
+          ranked = ranked.slice(0, snippetLimit);
+        }
+      }
+    }
+    // Fallback for strict-today queries: expand to last 3 days if empty
+    if ((!ranked || !ranked.length) && intent && intent.kind === 'today') {
+      ranked = rankDocumentChunks(lastUser.content, snippetLimit, coverageMode, {
+        intent: { kind: 'recency', category: intent.category || 'all', windowDays: 3 },
+        allowedSources: allowSources,
+        todayStrict: false,
+        windowDays: 3
+      });
+    }
     if (!ranked.length) {
       return null;
     }
@@ -4180,6 +4499,19 @@
       header = 'These snippets come from the site knowledge base. Ground your answer in them and cite the page titles with URLs when available.';
     } else {
       header = 'The user supplied reference documents. Use these snippets when answering and cite the document name when you rely on them.';
+    }
+    // Add time-awareness hints for today/recency intents
+    if (intent && (intent.kind === 'today' || intent.kind === 'recency')) {
+      const now = new Date();
+      const isoDate = now.toISOString().slice(0, 10);
+      const rangeHint = intent.kind === 'today'
+        ? 'Focus on updates from today.'
+        : ('Prioritise recent updates' + (intent.windowDays ? (' within last ' + intent.windowDays + ' days') : '') + '.');
+      header += '\n\n' + rangeHint + ' Today: ' + isoDate + ' (local).';
+    }
+    // Identity hint for better grounding
+    if (intent && intent.kind === 'identity') {
+      header += '\n\nThis is an identity query about Fan Wan. Answer concisely using the site pages (About/Home) and include citations to the specific page sections you use.';
     }
     const sections = ranked.map((item, index) => {
       const chunk = item.chunk || null;
@@ -4204,7 +4536,7 @@
     return null;
   }
 
-  function rankDocumentChunks(question, limit, coverageMode) {
+  function rankDocumentChunks(question, limit, coverageMode, opts) {
     const tokens = tokenizeForRanking(question);
     const expanded = dedupeArray(expandQuestionTokens(tokens));
     if (!expanded.length) {
@@ -4215,7 +4547,8 @@
     const langPreference = detectQuestionLanguage(question) || getLang();
     const scoringOptions = {
       langPreference,
-      fallbackLang: getLang()
+      fallbackLang: getLang(),
+      intent: opts && opts.intent ? opts.intent : null
     };
 
     const scored = [];
@@ -4223,7 +4556,25 @@
       if (file && file.siteSource && !isSiteSourceEnabled(file.siteSource)) {
         return;
       }
+      if (opts && Array.isArray(opts.allowedSources) && file.siteSource) {
+        if (opts.allowedSources.indexOf(file.siteSource) === -1) {
+          return;
+        }
+      }
       file.chunks.forEach((chunk, index) => {
+        // Time-window filters
+        if (opts && opts.todayStrict && file.siteSource) {
+          const dt = getChunkUpdatedAt(chunk);
+          if (!dt || !sameLocalDate(dt, new Date())) {
+            return;
+          }
+        }
+        if (opts && Number.isFinite(opts.windowDays) && opts.windowDays > 0 && file.siteSource) {
+          const dt = getChunkUpdatedAt(chunk);
+          if (!dt || !withinDays(dt, opts.windowDays)) {
+            return;
+          }
+        }
         const score = computeChunkScore(expanded, chunk, scoringOptions);
         if (score > 0) {
           scored.push({
@@ -4285,6 +4636,34 @@
           weight *= 0.65;
         } else {
           weight *= 0.82;
+        }
+      }
+    }
+    // Recency boost
+    if (options && options.intent) {
+      const dt = getChunkUpdatedAt(chunk);
+      const kind = options.intent.kind;
+      if (dt) {
+        if (kind === 'today') {
+          // Same-day strong boost; otherwise slightly downweight
+          if (sameLocalDate(dt, new Date())) {
+            weight *= 1.5;
+          } else if (withinDays(dt, 3)) {
+            weight *= 1.25;
+          } else {
+            weight *= 0.9;
+          }
+        } else if (kind === 'recency') {
+          if (withinDays(dt, options.intent.windowDays || 7)) {
+            weight *= 1.2;
+          } else {
+            weight *= 0.95;
+          }
+        } else {
+          // Generic: mild decay for very old content
+          if (!withinDays(dt, 365)) {
+            weight *= 0.92;
+          }
         }
       }
     }

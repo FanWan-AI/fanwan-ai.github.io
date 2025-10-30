@@ -1,7 +1,7 @@
 ﻿from pathlib import Path
 import re
 
-ROOT = Path(r"d:\Code\Web\wanfan.github.io")
+ROOT = Path(r"d:\Code\Web\fanwan-ai.github.io")
 
 CONFIG = {
     "zh": {
@@ -72,8 +72,7 @@ import reimport re
 
 
 
-ROOT = Path(r"d:\Code\Web\wanfan.github.io")ROOT = Path(r"d:\Code\Web\wanfan.github.io")
-
+ROOT = Path(r"d:\Code\Web\fanwan-ai.github.io")
 
 
 CONFIG = {CONFIG = {
@@ -209,7 +208,7 @@ import reimport re
 
 
 
-ROOT = Path(r"d:\Code\Web\wanfan.github.io")root = Path(r"d:/Code/Web/wanfan.github.io")
+ROOT = Path(r"d:\Code\Web\fanwan-ai.github.io")
 
 config = {
 

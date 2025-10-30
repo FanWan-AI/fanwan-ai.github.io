@@ -26,7 +26,7 @@ except Exception:  # pragma: no cover - optional dependency
     dashscope = None  # type: ignore
 
 # ===== 基础路径 =====
-SITE_BASE = ""  # 如你用子路径，可以填 "/wanfan.github.io"
+SITE_BASE = ""  # 如你用子路径，可以填 "/fanwan-ai.github.io"
 BLOG_DIR = "blog"
 DATA_DIR = "data/ai/blog"
 OG_DIR = "assets/og"
