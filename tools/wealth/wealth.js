@@ -645,6 +645,15 @@ function renderPulse(data) {
 			const meta = document.createElement("div");
 			meta.className = "wealth-pulse-meta";
 
+			// Category badge: Global / China
+			const cat = (item.category || "").toLowerCase();
+			if (cat === "global" || cat === "china") {
+				const badge = document.createElement("span");
+				badge.className = "wealth-pulse-meta-badge";
+				badge.textContent = cat === "global" ? "全球" : "中国";
+				meta.append(badge);
+			}
+
 			const primaryLink = Array.isArray(item.links) ? item.links.find((href) => isHttpUrl(href)) : null;
 			if (item.source || primaryLink) {
 				const badge = document.createElement(primaryLink ? "a" : "span");
