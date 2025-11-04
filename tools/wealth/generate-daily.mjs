@@ -20,7 +20,7 @@ import {
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const maxRetries = dryRun ? 0 : 2;
-const cooldownDays = 60;
+const cooldownDays = 45;
 const FALLBACK_KEYWORDS = [
   "预算",
   "复利",
@@ -28,6 +28,191 @@ const FALLBACK_KEYWORDS = [
   "风险",
   "储蓄"
 ];
+
+const DIFFICULTY_LABELS = {
+  1: "入门",
+  2: "基础",
+  3: "进阶",
+  4: "高级",
+  5: "专家"
+};
+
+function mapDifficultyLabel(value) {
+  if (typeof value !== "number") return "";
+  const rounded = Math.max(1, Math.min(5, Math.round(value)));
+  return DIFFICULTY_LABELS[rounded] || "";
+}
+
+function splitSteps(text) {
+  if (!text) return [];
+  return text
+    .split(/\r?\n+/)
+    .map((line) => line.replace(/^\s*(?:\d+\.|[-*\u2022])\s*/, "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
+}
+
+function normalizePractice(raw) {
+  if (!raw || typeof raw !== "object") return {};
+  const languages = ["zh", "en", "es"];
+  const result = {};
+  for (const lang of languages) {
+    const value = raw[lang];
+    if (!value) continue;
+    let items = [];
+    if (Array.isArray(value)) {
+      items = value;
+    } else if (typeof value === "object") {
+      if (Array.isArray(value.items)) {
+        items = value.items;
+      } else if (Array.isArray(value.activities)) {
+        items = value.activities;
+      }
+    }
+    if (!items.length) continue;
+    const normalized = items
+      .map((item, index) => {
+        if (!item) return null;
+        if (typeof item === "string") {
+          const steps = splitSteps(item);
+          if (!steps.length) return null;
+          return {
+            title: `练习 ${index + 1}`,
+            steps
+          };
+        }
+        if (typeof item === "object") {
+          const title = (item.title || item.name || item.heading || `练习 ${index + 1}`).toString().trim();
+          let steps = [];
+          if (Array.isArray(item.steps)) {
+            steps = item.steps.map((step) => (step ? step.toString().trim() : ""));
+          } else if (Array.isArray(item.actions)) {
+            steps = item.actions.map((step) => (step ? step.toString().trim() : ""));
+          } else if (typeof item.detail === "string") {
+            steps = splitSteps(item.detail);
+          } else if (typeof item.description === "string") {
+            steps = splitSteps(item.description);
+          } else if (typeof item.summary === "string") {
+            steps = splitSteps(item.summary);
+          }
+          const filtered = steps.filter(Boolean).slice(0, 6);
+          if (!filtered.length) return null;
+          return {
+            title: title || `练习 ${index + 1}`,
+            steps: filtered
+          };
+        }
+        return null;
+      })
+      .filter((item) => item && Array.isArray(item.steps) && item.steps.length)
+      .slice(0, 3);
+    if (normalized.length) {
+      result[lang] = normalized;
+    }
+  }
+  return result;
+}
+
+function formatPracticeText(structured) {
+  const languages = ["zh", "en", "es"];
+  const formatted = {};
+  for (const lang of languages) {
+    const activities = structured[lang];
+    if (!activities || !activities.length) continue;
+    const lines = [];
+    activities.forEach((activity, index) => {
+      const title = activity.title?.trim();
+      if (activities.length > 1 || activity.steps.length > 1) {
+        lines.push(`${index + 1}. ${title || "练习"}`.trim());
+      } else if (title) {
+        lines.push(title);
+      }
+      activity.steps.forEach((step) => {
+        const clean = step.trim();
+        if (clean) {
+          lines.push(`   - ${clean}`);
+        }
+      });
+      lines.push("");
+    });
+    formatted[lang] = lines.join("\n").trim();
+  }
+  return formatted;
+}
+
+function normalizeSources(raw) {
+  if (!Array.isArray(raw)) {
+    return { structured: [], display: [] };
+  }
+
+  const structured = [];
+  const display = [];
+
+  for (const entry of raw) {
+    if (!entry) continue;
+    if (typeof entry === "string") {
+      const trimmed = entry.trim();
+      if (!trimmed) continue;
+      const structuredEntry = { title: { zh: trimmed, en: trimmed } };
+      if (/^https?:\/\//i.test(trimmed)) {
+        structuredEntry.url = trimmed;
+      }
+      structured.push(structuredEntry);
+      display.push(trimmed);
+      continue;
+    }
+    if (typeof entry === "object") {
+      const rawTitle = entry.title;
+      let zh = "";
+      let en = "";
+      let es = "";
+      if (typeof rawTitle === "string") {
+        zh = rawTitle.trim();
+        en = zh;
+      } else if (rawTitle && typeof rawTitle === "object") {
+        zh = typeof rawTitle.zh === "string" ? rawTitle.zh.trim() : "";
+        en = typeof rawTitle.en === "string" ? rawTitle.en.trim() : "";
+        es = typeof rawTitle.es === "string" ? rawTitle.es.trim() : "";
+      }
+  const rawUrl = typeof entry.url === "string" ? entry.url.trim() : (typeof entry.link === "string" ? entry.link.trim() : "");
+  const url = rawUrl && /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
+      const note = typeof entry.note === "string" ? entry.note.trim() : "";
+      const language = typeof entry.language === "string" ? entry.language.trim() : "";
+      const titleZh = zh || en || es || "参考资料";
+      const titleEn = en || zh || es || "Reference";
+      const titleEs = es || "";
+      const structuredEntry = {
+        title: { zh: titleZh, en: titleEn }
+      };
+      if (url) {
+        structuredEntry.url = url;
+      }
+      if (titleEs) {
+        structuredEntry.title.es = titleEs;
+      }
+      if (note) {
+        structuredEntry.note = note;
+      }
+      if (language) {
+        structuredEntry.language = language;
+      }
+      structured.push(structuredEntry);
+      const parts = [titleEn || titleZh];
+      if (url) {
+        parts.push(url);
+      }
+      if (note) {
+        parts.push(note);
+      }
+      display.push(parts.filter(Boolean).join(" | "));
+    }
+  }
+
+  return {
+    structured: structured.slice(0, 6),
+    display: display.slice(0, 6)
+  };
+}
 
 function daysBetween(dateA, dateB) {
   const diff = new Date(dateA).getTime() - new Date(dateB).getTime();
@@ -147,22 +332,29 @@ function fallbackCandidate(candidates) {
 }
 
 function buildPrompt(candidate) {
-  return `You are a bilingual financial literacy mentor creating daily lessons for beginners. Produce concise, actionable guidance.
+  const related = candidate.related.join(", ") || "无";
+  return `You are a bilingual financial literacy mentor and acclaimed lecturer. Your task is to craft a mini-lesson for complete beginners in finance that sparks curiosity and builds true understanding.
 
-Constraints:
-- Output strict JSON only. No commentary.
-- Provide fields: topic, summary, key_points, practice, sources.
-- Each field must be an object with zh and en strings. If a field is not available in English, mirror zh value.
-- key_points should have 3 to 5 bullet strings (arrays) per language.
-- Mention risks, uncertainty, and avoid investment advice.
-- Tone: encouraging, factual, practical.
+Output requirements:
+- Return strict JSON only. No commentary or code fences.
+- Provide fields: topic, summary, key_points, practice, sources, risk_notes.
+- topic, summary, key_points, practice, risk_notes must be objects with zh and en keys; mirror the zh text when other languages are unavailable.
+- key_points.zh and key_points.en must each be an array of 3 to 5 bullet strings. Each bullet should highlight a deeper insight, give a concrete example or statistic, and point out a common misconception or risk.
+- practice.zh and practice.en must each be an array of 2 to 3 activities. Each activity is an object with "title" and "steps" (an array of 2 to 4 clear actions that a learner can follow).
+- sources must be an array with at least two credible references. Each source is an object containing title.zh, title.en, and url (absolute http or https). Prefer authoritative books, research reports, or top-tier financial media.
+- risk_notes should reinforce uncertainties, trade-offs, or scenarios where the topic might not apply. Never recommend specific products.
+- Tone: warm, story-driven, evidence-based, and precise.
 
+Context:
 Topic context (Chinese): ${candidate.title}
-Related: ${candidate.related.join(", ") || "无"}
+Related topics: ${related}
 Level: ${candidate.level || "N/A"}
 Category: ${candidate.category || "N/A"}
-Audience: Financial beginners seeking easy wins.
-`; }
+Audience: Curious adults with no financial background.
+
+Ensure the summary weaves analogies or stories from everyday life or other disciplines, explains why the concept matters now, and connects to prior lessons.
+`;
+}
 
 async function callLLM(prompt) {
   const apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
@@ -222,45 +414,206 @@ function parseLesson(raw) {
 }
 
 function coerceLesson(candidate, lesson, date) {
-  const ensureLang = (obj) => {
-    if (!obj || typeof obj !== "object") return { zh: "" };
-    if (!obj.zh) {
-      const fallback = obj.en || obj.es || "";
-      obj.zh = fallback;
+  const ensureLang = (obj, fallbackValue = "") => {
+    if (!obj || typeof obj !== "object") {
+      return { zh: fallbackValue, en: fallbackValue };
     }
-    if (!obj.en) {
-      obj.en = obj.zh;
+    const normalized = {};
+    for (const key of ["zh", "en", "es"]) {
+      const raw = obj[key];
+      if (raw === undefined || raw === null) continue;
+      if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed) {
+          normalized[key] = trimmed;
+        }
+      } else if (Array.isArray(raw) || typeof raw === "object") {
+        normalized[key] = raw;
+      }
     }
-    if (obj.es && !obj.es.trim()) {
-      delete obj.es;
+    if (!normalized.zh) {
+      const fallback = typeof obj.en === "string" ? obj.en.trim() : "";
+      const secondary = typeof obj.es === "string" ? obj.es.trim() : "";
+      normalized.zh = fallback || secondary || fallbackValue;
     }
-    return obj;
+    if (!normalized.en) {
+      normalized.en = normalized.zh || fallbackValue;
+    }
+    if (normalized.es && typeof normalized.es === "string" && !normalized.es.trim()) {
+      delete normalized.es;
+    }
+    return normalized;
   };
 
   const ensureArray = (obj) => {
+    const mapped = {};
     for (const key of ["zh", "en", "es"]) {
-      if (obj[key]) {
-        obj[key] = Array.isArray(obj[key]) ? obj[key] : [obj[key]].filter(Boolean);
+      const raw = obj[key];
+      if (raw === undefined || raw === null) continue;
+      if (Array.isArray(raw)) {
+        const cleaned = raw
+          .map((item) => (typeof item === "string" ? item.trim() : item))
+          .filter((item) => (typeof item === "string" ? item.length > 0 : Boolean(item)))
+          .slice(0, 5);
+        if (cleaned.length) {
+          mapped[key] = cleaned;
+        }
+      } else if (typeof raw === "string") {
+        const trimmed = raw.trim();
+        if (trimmed) {
+          mapped[key] = [trimmed];
+        }
       }
     }
-    return obj;
+    return mapped;
   };
+
+  const topic = ensureLang(lesson.topic || { zh: candidate.title, en: candidate.title });
+  const summary = ensureLang(lesson.summary || {});
+  const keyPoints = ensureArray(ensureLang(lesson.key_points || {}));
+
+  let structuredPractice = normalizePractice(lesson.practice || {});
+  const fallbackPracticeStructure = {
+    zh: [
+      {
+        title: "记录与反思",
+        steps: [
+          "写下今日主题与你的生活的一个联系",
+          "描述你可以尝试的一个行动步骤",
+          "一周后复盘结果并记录心得"
+        ]
+      }
+    ],
+    en: [
+      {
+        title: "Reflect and Act",
+        steps: [
+          "Note one link between today's topic and your life",
+          "Define a step you can try this week",
+          "Review the outcome after seven days and capture your insight"
+        ]
+      }
+    ]
+  };
+
+  structuredPractice = {
+    ...structuredPractice,
+    zh: Array.isArray(structuredPractice.zh) && structuredPractice.zh.length ? structuredPractice.zh : fallbackPracticeStructure.zh,
+    en: Array.isArray(structuredPractice.en) && structuredPractice.en.length ? structuredPractice.en : fallbackPracticeStructure.en,
+    es: Array.isArray(structuredPractice.es) && structuredPractice.es.length ? structuredPractice.es : structuredPractice.es
+  };
+
+  const formattedPractice = formatPracticeText(structuredPractice);
+  const practiceRaw = ensureLang(lesson.practice || {});
+  const practice = {};
+  const fallbackPractice = {
+    zh: structuredPractice.zh,
+    en: structuredPractice.en
+  };
+
+  for (const key of ["zh", "en", "es"]) {
+    if (formattedPractice[key]) {
+      practice[key] = formattedPractice[key];
+    } else if (Array.isArray(structuredPractice[key]) && structuredPractice[key].length) {
+      practice[key] = formatPracticeText({ [key]: structuredPractice[key] })[key];
+    } else if (typeof practiceRaw[key] === "string") {
+      practice[key] = practiceRaw[key].trim();
+    }
+  }
+  if (!practice.zh) {
+    practice.zh = formatPracticeText({ zh: fallbackPractice.zh })?.zh || fallbackPractice.zh.map((item, index) => {
+      const steps = item.steps.map((step) => `   - ${step}`).join("\n");
+      return `${index + 1}. ${item.title}\n${steps}`;
+    }).join("\n");
+  }
+  if (!practice.en) {
+    practice.en = formatPracticeText({ en: fallbackPractice.en })?.en || fallbackPractice.en.map((item, index) => {
+      const steps = item.steps.map((step) => `   - ${step}`).join("\n");
+      return `${index + 1}. ${item.title}\n${steps}`;
+    }).join("\n");
+  }
+
+  let { structured: structuredSources, display: displaySources } = normalizeSources(lesson.sources || []);
+  const ensureDisplay = (entries) => entries.map((item) => {
+    const title = item.title?.en || item.title?.zh || "Reference";
+    return [title, item.url, item.note].filter(Boolean).join(" | ");
+  });
+
+  if (!structuredSources.length) {
+    structuredSources = [
+      {
+        title: {
+          zh: `${candidate.title} 背景材料`,
+          en: `${candidate.title} background reading`
+        }
+      },
+      {
+        title: {
+          zh: `${candidate.category || "理财"} 入门指南`,
+          en: `${candidate.category || "Finance"} primer`
+        }
+      }
+    ];
+    displaySources = ensureDisplay(structuredSources);
+  } else if (structuredSources.length === 1) {
+    structuredSources.push({
+      title: {
+        zh: `${candidate.category || "理财"} 延伸阅读`,
+        en: `${candidate.category || "Finance"} further reading`
+      }
+    });
+    displaySources = ensureDisplay(structuredSources);
+  } else if (!displaySources.length) {
+    displaySources = ensureDisplay(structuredSources);
+  }
+
+  displaySources = displaySources.filter((item) => typeof item === "string" && item.trim()).slice(0, 6);
+  structuredSources = structuredSources.slice(0, 6);
+
+  const riskNotes = ensureLang(lesson.risk_notes || {});
+  if (!riskNotes.zh || !riskNotes.zh.trim()) {
+    riskNotes.zh = "不同经济周期和个人目标会改变结果，请结合自身风险承受能力谨慎行事。";
+  }
+  if (!riskNotes.en || !riskNotes.en.trim()) {
+    riskNotes.en = "Market conditions and personal goals can shift outcomes. Reflect on your own risk tolerance before acting.";
+  }
+
+  const lessonTags = Array.isArray(lesson.tags) ? lesson.tags : [];
+  const extraKeywords = Array.isArray(lesson.keywords) ? lesson.keywords : [];
+  const tags = Array.from(new Set([...(candidate.tags || []), ...lessonTags, ...extraKeywords]
+    .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
+    .filter(Boolean))).slice(0, 10);
+
+  const practicePreviewSource = structuredPractice.zh || structuredPractice.en || [];
+  const practicePreview = practicePreviewSource.length
+    ? [practicePreviewSource[0].title, practicePreviewSource[0].steps?.[0]]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   const result = {
     date,
     topic_id: candidate.id,
-    topic: ensureLang(lesson.topic || { zh: candidate.title, en: candidate.title }),
-    summary: ensureLang(lesson.summary),
-    key_points: ensureArray(ensureLang(lesson.key_points || {})),
-    practice: ensureLang(lesson.practice),
-    sources: Array.isArray(lesson.sources) ? lesson.sources.slice(0, 6) : [],
+    topic,
+    summary,
+    key_points: keyPoints,
+    practice,
+    sources: displaySources,
+    risk_notes: riskNotes,
     degraded: false,
     meta: {
       category: candidate.category,
       difficulty: candidate.difficulty,
       level: candidate.level,
       related: candidate.related,
-      hash: hashObject({ date, id: candidate.id })
+      tags,
+      learning_path: `${candidate.level || ""} · ${candidate.category || ""}`.trim().replace(/^ ·\s*/, ""),
+      difficulty_label: mapDifficultyLabel(candidate.difficulty),
+      practice: structuredPractice,
+      practice_preview: practicePreview,
+      sources: structuredSources,
+      hash: hashObject({ date, id: candidate.id }),
+      risk_notes: riskNotes
     }
   };
 
@@ -271,21 +624,53 @@ function coerceLesson(candidate, lesson, date) {
     result.summary.en = result.summary.zh;
   }
 
-  if (!result.practice || !result.practice.zh) {
-    result.practice = ensureLang({
-      zh: "结合今日主题写下一个可执行的小步骤，并记录感受。",
-      en: "Write down one actionable step related to today's topic and note the takeaway."
-    });
-  }
-
-  if (!result.sources.length) {
-    result.sources = [`${candidate.title} 背景材料`];
-  }
-
   return result;
 }
 
 function mockLesson(candidate, date) {
+  const practiceStructure = {
+    zh: [
+      {
+        title: "记录与反思",
+        steps: [
+          "写下今天学到的一个概念",
+          "列出与你的生活相关的一个例子",
+          "规划一个在三天内可以执行的小行动"
+        ]
+      }
+    ],
+    en: [
+      {
+        title: "Reflect and Plan",
+        steps: [
+          "Summarize one idea you learned",
+          "List one example from your daily life",
+          "Plan a small action you can take within three days"
+        ]
+      }
+    ]
+  };
+  const practiceText = formatPracticeText(practiceStructure);
+  const riskNotes = {
+    zh: "金融知识需要结合自身情况应用，务必关注风险并保留缓冲。",
+    en: "Adapt financial knowledge to your context and keep a safety buffer in mind."
+  };
+  const structuredSources = [
+    {
+      title: {
+        zh: `${candidate.title} 入门读物`,
+        en: `${candidate.title} primer`
+      }
+    },
+    {
+      title: {
+        zh: "金融基础课程",
+        en: "Personal finance fundamentals"
+      }
+    }
+  ];
+  const displaySources = structuredSources.map((item) => item.title.en || item.title.zh);
+
   return {
     date,
     topic_id: candidate.id,
@@ -304,15 +689,25 @@ function mockLesson(candidate, date) {
       ]
     },
     practice: {
-      zh: "写下今天可以完成的一个小动作，帮助你应用该概念。"
+      zh: practiceText.zh,
+      en: practiceText.en
     },
-    sources: [`${candidate.title} 入门指南`],
+    sources: displaySources,
+    risk_notes: riskNotes,
     degraded: false,
     meta: {
       category: candidate.category,
       difficulty: candidate.difficulty,
       level: candidate.level,
-      related: candidate.related
+      related: candidate.related,
+      tags: candidate.tags || [],
+      learning_path: `${candidate.level || ""} · ${candidate.category || ""}`.trim().replace(/^ ·\s*/, ""),
+      difficulty_label: mapDifficultyLabel(candidate.difficulty),
+      practice: practiceStructure,
+      practice_preview: practiceText.zh?.split("\n").slice(0, 2).join(" ") || "",
+      sources: structuredSources,
+      hash: hashObject({ date, id: candidate.id }),
+      risk_notes: riskNotes
     }
   };
 }
@@ -322,6 +717,20 @@ function cloneDegraded(entry, date) {
   clone.date = date;
   clone.degraded = true;
   clone.meta = { ...(clone.meta || {}), degradedFrom: entry.date };
+  if (!clone.risk_notes || typeof clone.risk_notes !== "object") {
+    clone.risk_notes = {
+      zh: "该内容为临时沿用，请结合当日市场信息审慎参考。",
+      en: "This is a temporary carry-over. Cross-check with current market information before acting."
+    };
+  } else {
+    if (!clone.risk_notes.zh) {
+      clone.risk_notes.zh = "该内容为临时沿用，请结合当日市场信息审慎参考。";
+    }
+    if (!clone.risk_notes.en) {
+      clone.risk_notes.en = "This is a temporary carry-over. Cross-check with current market information before acting.";
+    }
+  }
+  clone.meta.risk_notes = clone.meta.risk_notes || clone.risk_notes;
   return clone;
 }
 
