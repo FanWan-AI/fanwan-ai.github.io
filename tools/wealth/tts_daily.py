@@ -15,18 +15,21 @@ Environment:
 Usage:
 python tools/wealth/tts_daily.py --date 2025-11-05 --langs zh,en,es
 """
-import os, json, re, sys, argparse, shutil
+import os, json, re, argparse, shutil
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_PATH = _REPO_ROOT / "data" / "ai" / "wealth" / "finance-daily.json"
 OUT_BASE = _REPO_ROOT / "data" / "ai" / "wealth"
 
-try:
-    import dashscope  # type: ignore
-except Exception:
+try:  # pragma: no cover - optional dependency
+    import dashscope  # type: ignore[attr-defined]
+    _DEFAULT_DASHSCOPE_BASE = "https://dashscope.aliyuncs.com/api/v1"
+    _env_base = (os.getenv("DASHSCOPE_BASE_URL") or "").strip()
+    dashscope.base_http_api_url = _env_base or _DEFAULT_DASHSCOPE_BASE  # type: ignore[attr-defined]
+except Exception:  # pragma: no cover - optional dependency missing
     dashscope = None  # type: ignore
 
 # ---- text helpers (simplified, inspired by scholarpush pipeline) ----
@@ -147,35 +150,80 @@ def _find_audio_url(obj) -> Optional[str]:
     return None
 
 
+def _call_dashscope_tts(
+    text: str,
+    api_key: str,
+    model: str,
+    voice: str,
+    lang_hint: str,
+) -> Any:
+    if dashscope is None:
+        raise RuntimeError("dashscope SDK not installed")
+
+    language_type = "Chinese" if lang_hint.lower().startswith("zh") else "English"
+    base_kwargs = {
+        "model": model,
+        "api_key": api_key,
+        "voice": voice,
+        "language_type": language_type,
+        "stream": False,
+    }
+
+    # Attempt legacy signature first (<=1.24.5) for backward compatibility
+    try:
+        return dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+            text=text,
+            **base_kwargs,
+        )
+    except KeyError as exc:
+        if str(exc).strip("'") != "data":
+            raise
+    except Exception as exc:
+        message = str(exc)
+        if "data" not in message and "messages" not in message:
+            raise
+
+    # Fallback for 1.24.6+ which expects `input.messages`
+    messages = [{
+        "role": "user",
+        "content": [{"type": "text", "text": text}],
+    }]
+    return dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
+        input={"messages": messages},
+        **base_kwargs,
+    )
+
+
 def _synthesize_segments(segments: List[str], api_key: str, voice: str, model: str, lang_hint: str) -> List[Path]:
     if dashscope is None:
         raise RuntimeError("dashscope SDK not installed")
     out_paths: List[Path] = []
+    base_tmp = OUT_BASE / "__tmp__"
+    base_tmp.mkdir(parents=True, exist_ok=True)
+
     for i, seg in enumerate(segments, start=1):
         seg = _normalize_text(seg)
         if not seg:
             continue
         try:
-            resp = dashscope.MultiModalConversation.call(  # type: ignore[attr-defined]
-                model=model,
-                api_key=api_key,
-                text=seg,
-                voice=voice,
-                language_type=("Chinese" if lang_hint == "zh" else "English"),
-                stream=False,
-            )
+            resp = _call_dashscope_tts(seg, api_key, model, voice, lang_hint)
         except Exception as e:
             raise RuntimeError(f"DashScope synthesis failed at segment {i}: {e}")
+
         url = _find_audio_url(getattr(resp, "output", None) or getattr(resp, "data", None) or resp)
         if not url:
-            raise RuntimeError("DashScope response missing audio url")
+            # Try to surface API error payload for easier debugging
+            error_payload = getattr(resp, "__dict__", None)
+            raise RuntimeError(
+                "DashScope response missing audio url"
+                + (f"; payload={error_payload}" if error_payload else "")
+            )
+
         import requests
+
         r = requests.get(url, timeout=60)
         r.raise_for_status()
-        ext = ".mp3"
-        tmp = OUT_BASE / "__tmp__"
-        tmp.mkdir(parents=True, exist_ok=True)
-        p = tmp / f"seg-{i:02d}{ext}"
+        p = base_tmp / f"seg-{i:02d}.mp3"
         with open(p, "wb") as f:
             f.write(r.content)
         out_paths.append(p)
@@ -192,11 +240,11 @@ def _concat_segments(paths: List[Path], dest: Path) -> Path:
     return dest
 
 
-def _ensure_dir(p: Path) -> None:
-    p.mkdir(parents=True, exist_ok=True)
+def _ensure_dir(path: Path) -> None:
+    path.mkdir(parents=True, exist_ok=True)
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", help="YYYY-MM-DD; default to first entry (today)")
     ap.add_argument("--langs", help="comma list of langs to synthesize (zh,en,es)", default="zh,en,es")
@@ -248,7 +296,6 @@ def main():
             continue
         final_path = out_dir / f"daily.{lang}.mp3"
         _concat_segments(seg_paths, final_path)
-        # cleanup temp segs
         for p in seg_paths:
             try:
                 p.unlink(missing_ok=True)
@@ -258,7 +305,6 @@ def main():
         manifest[lang] = rel
         print(f"[TTS] wrote {rel}")
 
-    # write manifest
     if manifest:
         mf_path = out_dir / "manifest.json"
         with open(mf_path, "w", encoding="utf-8") as f:
