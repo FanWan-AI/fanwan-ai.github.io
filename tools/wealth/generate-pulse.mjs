@@ -19,6 +19,7 @@ import {
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const maxRetries = dryRun ? 0 : 2;
+const hasLLM = Boolean(process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY);
 
 // --- RSS sources and filters ---
 // Curated feeds: focus on macro/markets/policy; avoid purely political topics
@@ -134,6 +135,53 @@ function coerceItemFromRSSEntries(entries, category, dateISO) {
 	const impact = ensureI18n({ en: impactEn, zh: impactEn });
 	const links = sanitizeLinks(entries.map((e) => e.link).filter(Boolean));
 	return { title, source, time_utc: time, facts, impact_one_liner: impact, links, category, degraded: false };
+}
+
+async function translateText(text, target) {
+	if (!text || !hasLLM || dryRun) return null;
+	try {
+		const prompt = `Translate the following finance text into ${target}. Keep numbers, tickers, and macro terms precise. Preserve bullet list formatting if present. Return ONLY the translated text.\n\n${text}`;
+		const out = await callLLM(prompt);
+		// callLLM uses JSON response_format; here we gave plain text prompt, so wrap as JSON
+		// Adjust: If parsing fails, just return raw
+		try {
+			const obj = JSON.parse(out);
+			const val = obj?.text || obj?.translation || null;
+			if (typeof val === "string" && val.trim()) return val.trim();
+		} catch (_) {
+			if (typeof out === "string" && out.trim()) return out.trim();
+		}
+	} catch (e) {
+		console.warn(`Translate to ${target} failed:`, e.message);
+	}
+	return null;
+}
+
+async function ensureTranslations(item) {
+	// Ensure zh/en/es availability with fallbacks per requirement
+	// facts
+	const enFacts = item.facts?.en || item.facts?.zh || "";
+	if (!item.facts?.en && enFacts) item.facts.en = enFacts;
+	if (!item.facts?.zh && enFacts) {
+		const zh = await translateText(enFacts, "Chinese");
+		item.facts.zh = zh || enFacts;
+	}
+	if (!item.facts?.es && enFacts) {
+		const es = await translateText(enFacts, "Spanish");
+		if (es) item.facts.es = es;
+	}
+	// impact
+	const enImpact = item.impact_one_liner?.en || item.impact_one_liner?.zh || "";
+	if (!item.impact_one_liner?.en && enImpact) item.impact_one_liner.en = enImpact;
+	if (!item.impact_one_liner?.zh && enImpact) {
+		const zh = await translateText(enImpact, "Chinese");
+		item.impact_one_liner.zh = zh || enImpact;
+	}
+	if (!item.impact_one_liner?.es && enImpact) {
+		const es = await translateText(enImpact, "Spanish");
+		if (es) item.impact_one_liner.es = es;
+	}
+	return item;
 }
 
 function ensureI18n(obj, fallback = "") {
@@ -311,13 +359,17 @@ async function generateForDate(dateISO, history) {
 			fetchAndFilterRSS(RSS_SOURCES.global, "global", dateISO),
 			fetchAndFilterRSS(RSS_SOURCES.china, "china", dateISO)
 		]);
-		const fromGlobal = coerceItemFromRSSEntries(globalEntries, "global", dateISO);
-		const fromChina = coerceItemFromRSSEntries(chinaEntries, "china", dateISO);
+		let fromGlobal = coerceItemFromRSSEntries(globalEntries, "global", dateISO);
+		let fromChina = coerceItemFromRSSEntries(chinaEntries, "china", dateISO);
 
 		if (fromGlobal || fromChina) {
 			const items = [];
-			items.push(fromGlobal || degradeOneFromHistory(history, dateISO, "global"));
-			items.push(fromChina || degradeOneFromHistory(history, dateISO, "china"));
+			fromGlobal = fromGlobal || degradeOneFromHistory(history, dateISO, "global");
+			fromChina = fromChina || degradeOneFromHistory(history, dateISO, "china");
+			// Enrich with translations if possible
+			fromGlobal = await ensureTranslations(fromGlobal);
+			fromChina = await ensureTranslations(fromChina);
+			items.push(fromGlobal, fromChina);
 			return { date: dateISO, items };
 		}
 	} catch (e) {

@@ -1,21 +1,26 @@
 const DAILY_URL = "/data/ai/wealth/finance-daily.json";
 const PULSE_URL = "/data/ai/wealth/pulse.json";
-const CACHE_TTL = 1000 * 60 * 60;
+const CACHE_TTL = 1000 * 60 * 60; // Cache time-to-live
 const PAGE_SIZE = 10;
 
 function getLanguageOrder() {
-	const order = [];
-	const docLang = document.documentElement.lang || navigator.language;
-	if (docLang) {
-		const normalized = docLang.toLowerCase().split("-")[0];
-		if (normalized) order.push(normalized);
-	}
-	order.push("zh", "en", "es");
-	return Array.from(new Set(order));
+	const root = document.documentElement;
+	const base = (root && root.lang)
+		? root.lang.toLowerCase().split("-")[0]
+		: (navigator.language || "en").toLowerCase().split("-")[0];
+	if (base === "zh") return ["zh", "en", "es"]; // zh primary; fallback en -> es
+	if (base === "en") return ["en", "zh", "es"]; // en primary; fallback zh -> es
+	if (base === "es") return ["es", "en", "zh"]; // es primary; fallback en -> zh
+	return [base, "en", "zh", "es"]; // generic
 }
 
-const LANGUAGE_ORDER = getLanguageOrder();
+const LANGUAGE_ORDER = getLanguageOrder(); // Language order based on document language
 const URL_PATTERN = /^https?:\/\//i;
+
+let __wealth_last_daily = null;
+let __wealth_last_pulse = null;
+const dailyContainer = document.getElementById("daily");
+const pulseContainer = document.getElementById("pulse");
 
 const style = document.createElement("style");
 style.textContent = `
@@ -73,11 +78,8 @@ style.textContent = `
 	.wealth-empty { color: #94a3b8; }
 	.wealth-practice__fallback { color: #e2e8f0; }
 }
-`;
-document.head.appendChild(style);
-
-const dailyContainer = document.querySelector("#daily");
-const pulseContainer = document.querySelector("#pulse");
+	`;
+	document.head.appendChild(style);
 
 function cacheKey(name) {
 	return `wealth_${name}`;
@@ -138,7 +140,7 @@ async function fetchJSON(url, cacheName) {
 	}
 }
 
-function pickLang(value, order = LANGUAGE_ORDER) {
+function pickLang(value, order = getLanguageOrder()) {
 	if (!value) return "";
 	if (typeof value === "string") return value.trim();
 	if (Array.isArray(value)) {
@@ -164,7 +166,7 @@ function pickLang(value, order = LANGUAGE_ORDER) {
 	return "";
 }
 
-function pickList(value, order = LANGUAGE_ORDER) {
+function pickList(value, order = getLanguageOrder()) {
 	if (!value) return [];
 	if (Array.isArray(value)) {
 		return value.map((entry) => (typeof entry === "string" ? entry.trim() : "")).filter(Boolean);
@@ -188,7 +190,7 @@ function pickPracticeActivities(entry) {
 	const practice = entry?.meta?.practice;
 	if (!practice || typeof practice !== "object") return null;
 	let activities = null;
-	for (const lang of LANGUAGE_ORDER) {
+	for (const lang of getLanguageOrder()) {
 		const candidate = practice[lang];
 		if (Array.isArray(candidate) && candidate.length) {
 			activities = candidate;
@@ -426,6 +428,33 @@ function formatTime(isoString) {
 		return typeof isoString === "string" ? isoString : "";
 	}
 }
+// --- Audio player (server-generated TTS) ---
+async function fetchDailyAudioManifest(dateStr) {
+	try {
+		const url = `/data/ai/wealth/${dateStr}/manifest.json?ts=${Date.now()}`;
+		const resp = await fetch(url, { cache: "no-store" });
+		if (!resp.ok) return null;
+		return await resp.json();
+	} catch (e) {
+		return null;
+	}
+}
+
+function createAudioPlayer(src, label = "播放") {
+	if (!src) return null;
+	const wrap = document.createElement("div");
+	wrap.className = "wealth-references";
+	const p = document.createElement("p");
+	p.className = "wealth-references__label";
+	p.textContent = label;
+	const audio = document.createElement("audio");
+	audio.controls = true;
+	audio.preload = "none";
+	audio.src = src;
+	wrap.append(p);
+	wrap.append(audio);
+	return wrap;
+}
 
 function createDailyCard(entry) {
 	const card = document.createElement("article");
@@ -460,6 +489,24 @@ function createDailyCard(entry) {
 	const summary = document.createElement("p");
 	summary.textContent = pickLang(entry.summary) || "暂无摘要，稍后再试。";
 	card.append(summary);
+
+	// Try to load server-generated audio manifest and render a player if present
+	const dateStr = entry.date || "";
+	if (dateStr) {
+		fetchDailyAudioManifest(dateStr).then((manifest) => {
+			if (!manifest) return;
+			const order = getLanguageOrder();
+			for (const lang of order) {
+				const src = manifest[lang] || manifest[lang?.slice(0, 2)] || null;
+				if (src) {
+					const labelMap = { zh: "朗读音频", en: "Audio narration", es: "Narración" };
+					const player = createAudioPlayer(src, labelMap[lang] || labelMap.en);
+					if (player) card.append(player);
+					break;
+				}
+			}
+		}).catch(() => {});
+	}
 
 	const points = pickList(entry.key_points);
 	if (points.length) {
@@ -549,6 +596,7 @@ function createHistoryItem(entry) {
 }
 
 function renderDaily(data) {
+	__wealth_last_daily = data;
 	if (!dailyContainer) return;
 	const notice = dailyContainer.querySelector(".wealth-notice");
 	dailyContainer.innerHTML = "";
@@ -601,6 +649,7 @@ function renderDaily(data) {
 }
 
 function renderPulse(data) {
+	__wealth_last_pulse = data;
 	if (!pulseContainer) return;
 	const notice = pulseContainer.querySelector(".wealth-notice");
 	pulseContainer.innerHTML = "";
@@ -678,7 +727,6 @@ function renderPulse(data) {
 			if (meta.childNodes.length) {
 				header.append(meta);
 			}
-
 			row.append(header);
 
 			const facts = document.createElement("p");
@@ -769,3 +817,22 @@ async function init() {
 }
 
 init();
+
+// Re-render on language change: watch <html lang="...">
+try {
+	const root = document.documentElement;
+	if (root && typeof MutationObserver !== "undefined") {
+		const mo = new MutationObserver(() => {
+			if (__wealth_last_daily) renderDaily(__wealth_last_daily);
+			if (__wealth_last_pulse) renderPulse(__wealth_last_pulse);
+		});
+		mo.observe(root, { attributes: true, attributeFilter: ["lang"] });
+	} else if ("onlanguagechange" in window) {
+		window.addEventListener("languagechange", () => {
+			if (__wealth_last_daily) renderDaily(__wealth_last_daily);
+			if (__wealth_last_pulse) renderPulse(__wealth_last_pulse);
+		});
+	}
+} catch (e) {
+	// no-op
+}
