@@ -1,5 +1,6 @@
 import path from "path";
 import process from "process";
+import Parser from "rss-parser";
 
 import {
 	DATA_DIR,
@@ -18,6 +19,122 @@ import {
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const maxRetries = dryRun ? 0 : 2;
+
+// --- RSS sources and filters ---
+// Curated feeds: focus on macro/markets/policy; avoid purely political topics
+const RSS_SOURCES = {
+	global: [
+		"https://feeds.a.dj.com/rss/RSSMarketsMain.xml", // WSJ Markets
+		"https://feeds.marketwatch.com/marketwatch/topstories/", // MarketWatch Top
+		"https://www.ecb.europa.eu/rss/press-releases.xml", // ECB press
+		"https://www.federalreserve.gov/feeds/press_monpol.xml", // Fed monetary policy
+		"https://www.ft.com/markets?format=rss" // FT Markets
+	],
+	china: [
+		"https://feeds.reuters.com/reuters/ChinaNews", // Reuters China
+		"https://www.scmp.com/rss/41/feed", // SCMP China Business
+		"https://www.hkma.gov.hk/eng/rss/press-releases.xml" // HKMA press
+	]
+};
+
+const POSITIVE_KEYWORDS = [
+	// English
+	"interest", "rate", "rates", "pmi", "gdp", "trade", "tariff", "export", "import", "real estate", "housing",
+	"monetary policy", "fed", "ecb", "central bank", "inflation", "cpi", "ppi", "employment", "jobs", "unemployment",
+	"bond", "bonds", "treasury", "yield", "yields", "stock", "stocks", "equities", "futures", "etf", "currency", "fx",
+	// Chinese
+	"利率", "PMI", "GDP", "贸易", "房地产", "货币政策", "美联储", "央行", "通胀", "CPI", "PPI", "就业", "失业", "债券", "国债", "收益率", "股市", "期货", "汇率", "关税", "出口", "进口"
+];
+const NEGATIVE_KEYWORDS = [
+	// English
+	"corruption", "politics", "election", "protest", "leader", "geopolit", "conflict", "war", "sanction",
+	// Chinese
+	"腐败", "政治", "选举", "抗议", "领导人", "地缘", "冲突", "战争", "制裁"
+];
+
+function allowedDateSet(dateISO) {
+	const d0 = new Date(dateISO);
+	const prev = new Date(d0.getTime() - 24 * 60 * 60 * 1000);
+	const pad = (n) => String(n).padStart(2, "0");
+	const make = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+	return new Set([make(d0), make(prev)]);
+}
+
+async function fetchAndFilterRSS(urls, category, dateISO) {
+	const parser = new Parser();
+	const allowDates = allowedDateSet(dateISO);
+	let items = [];
+	for (const url of urls) {
+		try {
+			const feed = await parser.parseURL(url);
+			const feedTitle = (feed?.title || "").trim();
+			const recent = (feed?.items || [])
+				.map((entry) => ({ ...entry, __feed: feedTitle }))
+				.filter((entry) => {
+					const rawDate = entry.isoDate || entry.pubDate || entry.pubdate || entry.date;
+					if (!rawDate) return false;
+					const dt = new Date(rawDate);
+					if (Number.isNaN(dt.getTime())) return false;
+					const ds = dt.toISOString().slice(0, 10);
+					return allowDates.has(ds);
+				})
+				.filter((entry) => {
+					const hay = [entry.title, entry.contentSnippet, entry.content, entry.summary]
+						.filter(Boolean)
+						.join(" ")
+						.toLowerCase();
+					const pos = POSITIVE_KEYWORDS.some((k) => hay.includes(String(k).toLowerCase()));
+					const neg = NEGATIVE_KEYWORDS.some((k) => hay.includes(String(k).toLowerCase()));
+					return pos && !neg;
+				})
+				.slice(0, 10);
+			items.push(...recent);
+		} catch (error) {
+			console.warn(`RSS fetch failed for ${url}: ${error.message}`);
+		}
+		await sleep(400); // polite delay per source
+	}
+	// Sort by published time desc
+	items.sort((a, b) => new Date(b.isoDate || b.pubDate || 0) - new Date(a.isoDate || a.pubDate || 0));
+	return items.slice(0, 6);
+}
+
+function degradeOneFromHistory(history, dateISO, category) {
+	const prevItems = history[0]?.items || [];
+	const pick = prevItems.find((i) => i.category === category) || prevItems[0] || {};
+	const time = category === "china" ? `${dateISO}T02:00:00Z` : `${dateISO}T12:00:00Z`;
+	return coerceItem({
+		title: pick?.title,
+		source: pick?.source,
+		time_utc: time,
+		facts: pick?.facts,
+		impact_one_liner: pick?.impact_one_liner,
+		links: pick?.links,
+		degraded: true
+	}, category, dateISO);
+}
+
+function coerceItemFromRSSEntries(entries, category, dateISO) {
+	if (!Array.isArray(entries) || entries.length === 0) return null;
+	const top = entries[0];
+	const title = (top.title || (category === "global" ? "Global Finance Update" : "中国财经快讯")).toString();
+	const source = (top.__feed || top.creator || top.author || "Aggregated News").toString();
+	const t = top.isoDate || top.pubDate || "";
+	const time = t ? new Date(t).toISOString() : `${dateISO}T${category === "china" ? "02:00:00" : "12:00:00"}Z`;
+	const factLines = entries
+		.map((e) => (e.contentSnippet || e.summary || e.content || "").toString().trim())
+		.filter(Boolean)
+		.slice(0, 3)
+		.map((s) => (s.startsWith("- ") ? s : `- ${s}`));
+	const factsEn = factLines.join("\n");
+	const facts = ensureI18n({ en: factsEn, zh: factsEn });
+	const impactEn = category === "china"
+		? "May affect onshore risk sentiment, RMB, and China/HK equities."
+		: "May influence global risk assets, yields, FX, and commodities.";
+	const impact = ensureI18n({ en: impactEn, zh: impactEn });
+	const links = sanitizeLinks(entries.map((e) => e.link).filter(Boolean));
+	return { title, source, time_utc: time, facts, impact_one_liner: impact, links, category, degraded: false };
+}
 
 function ensureI18n(obj, fallback = "") {
 	if (!obj || typeof obj !== "object") return { zh: fallback, en: fallback };
@@ -186,6 +303,25 @@ async function generateForDate(dateISO, history) {
 				}, "china", dateISO)
 			]
 		};
+	}
+
+	// Try RSS first. If one category fails, degrade from history; if both fail, fall back to LLM.
+	try {
+		const [globalEntries, chinaEntries] = await Promise.all([
+			fetchAndFilterRSS(RSS_SOURCES.global, "global", dateISO),
+			fetchAndFilterRSS(RSS_SOURCES.china, "china", dateISO)
+		]);
+		const fromGlobal = coerceItemFromRSSEntries(globalEntries, "global", dateISO);
+		const fromChina = coerceItemFromRSSEntries(chinaEntries, "china", dateISO);
+
+		if (fromGlobal || fromChina) {
+			const items = [];
+			items.push(fromGlobal || degradeOneFromHistory(history, dateISO, "global"));
+			items.push(fromChina || degradeOneFromHistory(history, dateISO, "china"));
+			return { date: dateISO, items };
+		}
+	} catch (e) {
+		console.warn("RSS generation pipeline error; will try LLM fallback", e.message);
 	}
 
 	let lastError = null;
