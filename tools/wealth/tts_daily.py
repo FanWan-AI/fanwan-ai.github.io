@@ -2,22 +2,25 @@
 """
 Generate server-side TTS audio for AI 理财助手 Daily Lesson using DashScope.
 - Reads today's entry from data/ai/wealth/finance-daily.json (or a specific --date YYYY-MM-DD)
-- For each language (zh/en/es), builds a short narration text (title + summary + 2-3 key points)
-- Splits long text into safe segments (<= ~520 chars) and synthesizes audio via DashScope
-- Writes per-lang MP3 under assets/audio/wealth/<date>/daily.<lang>.mp3
-- Emits a manifest.json mapping { lang: "/assets/audio/wealth/<date>/daily.<lang>.mp3" }
+- For each language (zh/en/es), builds a narration script spanning title, summary, key points, practice, and risk notes.
+- Splits long text into safe segments (<= ~520 chars) and synthesizes audio via DashScope.
+- Persists each segment MP3 under data/ai/wealth/<date>/segments.<lang>/ for traceability and debugging.
+- Merges segments into daily.<lang>.mp3 using ffmpeg (required for stable playback) and emits manifest.json mapping { lang: "/data/ai/wealth/<date>/daily.<lang>.mp3" }.
 
 Environment:
 - DASHSCOPE_API_KEY: required for synthesis
 - DASHSCOPE_TTS_MODEL (optional): default "qwen3-tts-flash"
-- DASHSCOPE_TTS_VOICE (optional): default "zhitian_emo" (Chinese), will also be used for en/es as a default
+- DASHSCOPE_TTS_VOICE (optional): overrides DashScope voice
+- DASHSCOPE_TTS_KEEP_SEGMENTS (optional): set to 0 to delete per-segment files after merging (default keeps them)
+- DASHSCOPE_TTS_MIN_INTERVAL / *_RATE_LIMIT_* knobs: pacing controls for DashScope throttling
+- FFmpeg must be available on PATH for high-fidelity merging (GitHub Actions installs it; local users install separately)
 
 Usage:
 python tools/wealth/tts_daily.py --date 2025-11-05 --langs zh,en,es
 """
-import os, json, re, argparse, shutil, time, errno, subprocess
+import os, json, re, argparse, shutil, time, errno, subprocess, hashlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -185,6 +188,13 @@ def _normalize_text(s: str) -> str:
     # normalize some punct
     s = s.replace("\u3000", " ")
     return s
+
+
+def _slugify_segment(text: str, fallback: str = "segment") -> str:
+    ascii_only = re.sub(r"\s+", " ", (text or "")).strip()
+    ascii_only = ascii_only.encode("ascii", "ignore").decode("ascii")
+    ascii_only = re.sub(r"[^a-zA-Z0-9_-]+", "-", ascii_only).strip("-")
+    return ascii_only or fallback
 
 
 def _force_chunks(text: str, cap: int) -> List[str]:
@@ -452,8 +462,10 @@ def _synthesize_segments(segments: List[str], api_key: str, voice: str, model: s
     if dashscope is None:
         raise RuntimeError("dashscope SDK not installed")
     out_paths: List[Path] = []
-    base_tmp = OUT_BASE / "__tmp__"
-    base_tmp.mkdir(parents=True, exist_ok=True)
+    base_tmp_root = OUT_BASE / "__tmp__"
+    base_tmp_root.mkdir(parents=True, exist_ok=True)
+    tmp_dir = base_tmp_root / f"{lang_hint}-{int(time.time() * 1000)}"
+    tmp_dir.mkdir(parents=True, exist_ok=True)
 
     def _env_float(name: str, default: float) -> float:
         raw = os.getenv(name)
@@ -548,7 +560,7 @@ def _synthesize_segments(segments: List[str], api_key: str, voice: str, model: s
             seg_index += 1
             r = requests.get(url, timeout=60)
             r.raise_for_status()
-            p = base_tmp / f"seg-{seg_index:02d}.mp3"
+            p = tmp_dir / f"seg-{seg_index:02d}.mp3"
             with open(p, "wb") as f:
                 f.write(r.content)
             out_paths.append(p)
@@ -562,61 +574,76 @@ def _concat_segments(paths: List[Path], dest: Path) -> Path:
         raise RuntimeError("No audio segments to concatenate")
 
     ffmpeg_bin = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
-    if ffmpeg_bin:
-        concat_list = dest.with_suffix(dest.suffix + ".parts.txt")
-        try:
-            with open(concat_list, "w", encoding="utf-8") as handle:
-                for path in paths:
-                    handle.write(f"file '{path.as_posix()}'\n")
-            cmd = [
-                ffmpeg_bin,
-                "-loglevel",
-                "error",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
-                "-c",
-                "copy",
-                str(dest),
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode == 0 and dest.exists() and dest.stat().st_size > 0:
-                concat_list.unlink(missing_ok=True)
-                return dest
-            print(
-                "[TTS] ffmpeg concat failed, falling back to manual merge",
-                result.stderr.strip() if result.stderr else "",
-            )
-        except Exception as exc:
-            print(f"[TTS] ffmpeg concat raised {exc}; falling back to manual merge")
-        finally:
-            concat_list.unlink(missing_ok=True)
+    if not ffmpeg_bin:
+        raise RuntimeError(
+            "ffmpeg not found on PATH; install it to merge TTS segments reliably"
+        )
 
-    def _read_segment_bytes(path: Path, keep_id3: bool) -> bytes:
-        data = path.read_bytes()
-        start = 0
-        if len(data) >= 10 and data[:3] == b"ID3":
-            tag_size = ((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14) | ((data[8] & 0x7F) << 7) | (data[9] & 0x7F)
-            start = min(len(data), 10 + tag_size)
-        if keep_id3:
-            start = 0
-        end = len(data)
-        if end >= 128 and data[end - 128:end - 125] == b"TAG":
-            end -= 128
-        return data[start:end]
+    concat_list = dest.with_suffix(dest.suffix + ".parts.txt")
+    bitrate = os.getenv("DASHSCOPE_TTS_MERGE_BITRATE", "192k")
+    try:
+        with open(concat_list, "w", encoding="utf-8") as handle:
+            for path in paths:
+                handle.write(f"file '{path.as_posix()}'\n")
+        cmd = [
+            ffmpeg_bin,
+            "-loglevel",
+            "error",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            bitrate,
+            str(dest),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            raise RuntimeError(f"ffmpeg merge failed: {stderr or result.returncode}")
+        if not dest.exists() or dest.stat().st_size == 0:
+            raise RuntimeError("ffmpeg merge succeeded but output missing or empty")
+        return dest
+    finally:
+        concat_list.unlink(missing_ok=True)
 
-    with open(dest, "wb") as out:
-        for idx, segment_path in enumerate(paths):
-            keep_id3 = idx == 0
-            chunk = _read_segment_bytes(segment_path, keep_id3=keep_id3)
-            if not chunk:
-                continue
-            out.write(chunk)
-    return dest
+
+def _prepare_segment_files(
+    temp_paths: List[Path],
+    texts: List[str],
+    lang: str,
+    out_dir: Path,
+    keep_segments: bool,
+) -> Tuple[List[Path], Optional[Path]]:
+    if not temp_paths:
+        return [], None
+    tmp_dir = temp_paths[0].parent
+    dest_dir = out_dir / f"segments.{lang}"
+    if keep_segments:
+        if dest_dir.exists():
+            shutil.rmtree(dest_dir)
+        dest_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: List[Path] = []
+    for idx, (tmp_path, text) in enumerate(zip(temp_paths, texts), start=1):
+        slug = _slugify_segment(text[:48] if text else "segment")
+        digest = hashlib.sha1((text or f"segment-{idx}").encode("utf-8")).hexdigest()[:8]
+        base = f"{idx:02d}-{slug}-{digest}"
+        filename = f"{base}.mp3"
+        target_dir = dest_dir if keep_segments else tmp_dir
+        target_path = target_dir / filename
+        counter = 1
+        while target_path.exists():
+            filename = f"{base}-{counter}.mp3"
+            target_path = target_dir / filename
+            counter += 1
+        shutil.move(str(tmp_path), target_path)
+        saved_paths.append(target_path)
+    return saved_paths, dest_dir if keep_segments else None
 
 
 def _ensure_dir(path: Path) -> None:
@@ -643,7 +670,8 @@ def main() -> int:
     voice = (os.getenv("DASHSCOPE_TTS_VOICE") or "Cherry").strip()
     if voice.lower() == "zhitian_emo":
         voice = "Cherry"
-    keep_segments = (os.getenv("DASHSCOPE_TTS_KEEP_SEGMENTS") or "").strip().lower() in {"1", "true", "yes"}
+    keep_flag = (os.getenv("DASHSCOPE_TTS_KEEP_SEGMENTS") or "1").strip().lower()
+    keep_segments = keep_flag not in {"0", "false", "no"}
 
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         daily = json.load(f)
@@ -660,6 +688,61 @@ def main() -> int:
     if entry is None:
         entry = daily[0]
     date_key = str(entry.get("date") or datetime.utcnow().strftime("%Y-%m-%d"))
+
+    ffmpeg_env = os.getenv("DASHSCOPE_TTS_FFMPEG") or os.getenv("FFMPEG_PATH")
+    ffmpeg_bin = None
+    tried: List[str] = []
+    if ffmpeg_env:
+        candidate = Path(ffmpeg_env).expanduser()
+        tried.append(str(candidate))
+        if candidate.is_file():
+            ffmpeg_bin = str(candidate)
+        elif candidate.is_dir():
+            exe = candidate / "ffmpeg.exe"
+            tried.append(str(exe))
+            if exe.is_file():
+                ffmpeg_bin = str(exe)
+    # check PATH
+    path_candidate = shutil.which("ffmpeg") or shutil.which("ffmpeg.exe")
+    if path_candidate:
+        tried.append(path_candidate)
+        if Path(path_candidate).is_file():
+            ffmpeg_bin = path_candidate
+
+    # probe common conda/miniconda locations and Program Files on Windows
+    try:
+        import sys
+        conda_prefix = Path(sys.prefix)
+        candidates = [
+            conda_prefix / "Library" / "bin" / "ffmpeg.exe",
+            conda_prefix / "Scripts" / "ffmpeg.exe",
+            conda_prefix / "bin" / "ffmpeg",
+            Path("C:/Program Files/ffmpeg/bin/ffmpeg.exe"),
+            Path("C:/ffmpeg/bin/ffmpeg.exe"),
+        ]
+        for c in candidates:
+            tried.append(str(c))
+            if c.is_file():
+                ffmpeg_bin = str(c)
+                break
+    except Exception:
+        pass
+
+    skip_merge_flag = (os.getenv("DASHSCOPE_TTS_SKIP_MERGE") or "0").strip().lower() in {"1", "true", "yes"}
+    if not ffmpeg_bin:
+        print("[TTS] ffmpeg binary not found. Tried:")
+        for t in tried:
+            print("  ", t)
+        print("Set DASHSCOPE_TTS_FFMPEG to the full path of ffmpeg.exe or install ffmpeg and ensure it's on PATH.")
+        print("Example (PowerShell):")
+        print(r"  Get-Command ffmpeg | Select-Object -ExpandProperty Source")
+        print(r"  setx DASHSCOPE_TTS_FFMPEG 'C:\\\\tools\\\\ffmpeg\\\\bin\\\\ffmpeg.exe'  # then restart shell")
+        if skip_merge_flag:
+            print("[TTS] continuing in SKIP_MERGE mode (will keep synthesized segments and copy first segment as playable output)")
+        else:
+            return 1
+    else:
+        print(f"[TTS] using ffmpeg at: {ffmpeg_bin}")
 
     out_dir = OUT_BASE / date_key
     _ensure_dir(out_dir)
@@ -678,32 +761,77 @@ def main() -> int:
         if not segments:
             continue
         try:
-            seg_paths = _synthesize_segments(segments, api_key=api_key, voice=voice, model=model, lang_hint=lang)
+            temp_paths = _synthesize_segments(segments, api_key=api_key, voice=voice, model=model, lang_hint=lang)
         except Exception as e:
             print(f"[TTS] synth {lang} failed: {e}")
             continue
+        tmp_dir = temp_paths[0].parent if temp_paths else None
+        saved_paths, segment_dir = _prepare_segment_files(temp_paths, segments, lang, out_dir, keep_segments or skip_merge_flag)
+        if not saved_paths:
+            print(f"[TTS] synth {lang} produced no audio segments")
+            if tmp_dir and tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            continue
         final_path = out_dir / f"daily.{lang}.mp3"
-        _concat_segments(seg_paths, final_path)
+        try:
+            if skip_merge_flag:
+                # No ffmpeg — create a playable placeholder by copying the first segment.
+                # We still keep all segments for inspection when keep_segments=True.
+                shutil.copyfile(str(saved_paths[0]), str(final_path))
+            else:
+                _concat_segments(saved_paths, final_path)
+        except Exception as exc:
+            print(f"[TTS] merge {lang} failed: {exc}")
+            if keep_segments:
+                # keep individual files for debugging
+                pass
+            else:
+                for p in saved_paths:
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            if tmp_dir and tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+            continue
         duration = _estimate_mp3_duration(final_path)
-        if keep_segments:
-            dbg_dir = out_dir / f"segments.{lang}"
-            dbg_dir.mkdir(parents=True, exist_ok=True)
-            for p in seg_paths:
-                try:
-                    shutil.move(str(p), dbg_dir / p.name)
-                except Exception:
-                    pass
-        else:
-            for p in seg_paths:
+        if not (keep_segments or skip_merge_flag):
+            for p in saved_paths:
                 try:
                     p.unlink(missing_ok=True)
                 except Exception:
                     pass
+            if tmp_dir and tmp_dir.exists():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        else:
+            if tmp_dir and tmp_dir.exists():
+                # tmp_dir should be empty after moves; clean it up quietly
+                shutil.rmtree(tmp_dir, ignore_errors=True)
         rel = f"/data/ai/wealth/{date_key}/{final_path.name}"
-        manifest[lang] = rel
-        seg_count = len(seg_paths)
+        # If we kept individual segments, expose them in the manifest so the frontend
+        # can play them sequentially. Also write an index JSON for robust frontend fallback.
+        if segment_dir and saved_paths:
+            seg_rel_base = f"/data/ai/wealth/{date_key}/{segment_dir.name}"
+            seg_urls = [f"{seg_rel_base}/{p.name}" for p in saved_paths]
+            # write index file alongside segments
+            try:
+                idx_path = segment_dir / "_index.json"
+                with open(idx_path, "w", encoding="utf-8") as f:
+                    json.dump({"segments": seg_urls}, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
+            manifest[lang] = {"file": rel, "segments": seg_urls}
+        else:
+            manifest[lang] = rel
+        seg_count = len(saved_paths)
         duration_str = f"~{duration:.1f}s" if duration else "duration unknown"
         print(f"[TTS] wrote {rel} ({seg_count} segments, {duration_str})")
+        if keep_segments and segment_dir:
+            try:
+                rel_dir = segment_dir.relative_to(_REPO_ROOT)
+            except ValueError:
+                rel_dir = segment_dir
+            print(f"[TTS] kept individual segments under {rel_dir}")
 
     if manifest:
         mf_path = out_dir / "manifest.json"

@@ -440,6 +440,19 @@ async function fetchDailyAudioManifest(dateStr) {
 	}
 }
 
+async function fetchSegmentsIndex(dateStr, lang) {
+	try {
+		const url = `/data/ai/wealth/${dateStr}/segments.${lang}/_index.json?ts=${Date.now()}`;
+		const resp = await fetch(url, { cache: "no-store" });
+		if (!resp.ok) return null;
+		const data = await resp.json();
+		if (data && Array.isArray(data.segments) && data.segments.length) return data.segments;
+		return null;
+	} catch (e) {
+		return null;
+	}
+}
+
 function createAudioPlayer(src, label = "播放") {
 	if (!src) return null;
 	const wrap = document.createElement("div");
@@ -453,6 +466,102 @@ function createAudioPlayer(src, label = "播放") {
 	audio.src = src;
 	wrap.append(p);
 	wrap.append(audio);
+	return wrap;
+}
+
+function createSequentialAudioPlayer(segments, label = "播放") {
+	if (!Array.isArray(segments) || !segments.length) return null;
+	const wrap = document.createElement("div");
+	wrap.className = "wealth-references";
+	const p = document.createElement("p");
+	p.className = "wealth-references__label";
+	p.textContent = label;
+
+	const ctrl = document.createElement("div");
+	ctrl.style.display = "flex";
+	ctrl.style.gap = "8px";
+	ctrl.style.alignItems = "center";
+
+	const btn = document.createElement("button");
+	btn.className = "wealth-load-more";
+	btn.textContent = label;
+
+	const status = document.createElement("span");
+	status.style.fontSize = "0.9rem";
+	status.style.color = "#0f172a";
+	status.textContent = `0 / ${segments.length}`;
+
+	const audio = document.createElement("audio");
+	audio.preload = "none";
+	audio.style.display = "none";
+
+	let idx = 0;
+	let playing = false;
+
+	function setSrc(i) {
+		audio.src = segments[i];
+		// ensure browser loads new src before attempting playback
+		try {
+			audio.load();
+		} catch (e) {
+			// ignore
+		}
+		status.textContent = `${i + 1} / ${segments.length}`;
+	}
+
+	audio.addEventListener("ended", () => {
+		idx += 1;
+		if (idx < segments.length) {
+			setSrc(idx);
+			const p = audio.play();
+			if (p && p instanceof Promise) {
+				p.catch(() => {
+					// try again after canplaythrough
+					const onReady = () => {
+						audio.removeEventListener("canplaythrough", onReady);
+						audio.play().catch(() => {});
+					};
+					audio.addEventListener("canplaythrough", onReady);
+				});
+			}
+		} else {
+			// finished
+			playing = false;
+			idx = 0;
+			btn.textContent = label;
+			setSrc(0);
+		}
+	});
+
+	btn.addEventListener("click", () => {
+		if (!playing) {
+			playing = true;
+			btn.textContent = "暂停";
+			setSrc(idx);
+			const p = audio.play();
+			if (p && p instanceof Promise) {
+				p.catch(() => {
+					const onReady = () => {
+						audio.removeEventListener("canplaythrough", onReady);
+						audio.play().catch(() => {});
+					};
+					audio.addEventListener("canplaythrough", onReady);
+				});
+			}
+		} else {
+			playing = false;
+			btn.textContent = label;
+			audio.pause();
+		}
+	});
+
+	ctrl.appendChild(btn);
+	ctrl.appendChild(status);
+	wrap.appendChild(p);
+	wrap.appendChild(ctrl);
+	wrap.appendChild(audio);
+	// initialize
+	setSrc(0);
 	return wrap;
 }
 
@@ -493,17 +602,31 @@ function createDailyCard(entry) {
 	// Try to load server-generated audio manifest and render a player if present
 	const dateStr = entry.date || "";
 	if (dateStr) {
-		fetchDailyAudioManifest(dateStr).then((manifest) => {
+		fetchDailyAudioManifest(dateStr).then(async (manifest) => {
 			if (!manifest) return;
 			const order = getLanguageOrder();
 			for (const lang of order) {
-				const src = manifest[lang] || manifest[lang?.slice(0, 2)] || null;
-				if (src) {
-					const labelMap = { zh: "朗读音频", en: "Audio narration", es: "Narración" };
-					const player = createAudioPlayer(src, labelMap[lang] || labelMap.en);
-					if (player) card.append(player);
-					break;
+				let src = manifest[lang] || manifest[lang?.slice(0, 2)] || null;
+				if (!src) continue;
+				const labelMap = { zh: "朗读音频", en: "Audio narration", es: "Narración" };
+				let player = null;
+				if (typeof src === "string") {
+					// Try to discover a segments index if present
+					const segList = await fetchSegmentsIndex(dateStr, lang);
+					if (segList && segList.length) {
+						player = createSequentialAudioPlayer(segList, labelMap[lang] || labelMap.en);
+					} else {
+						player = createAudioPlayer(src, labelMap[lang] || labelMap.en);
+					}
+				} else if (src && typeof src === "object") {
+					if (Array.isArray(src.segments) && src.segments.length) {
+						player = createSequentialAudioPlayer(src.segments, labelMap[lang] || labelMap.en);
+					} else if (typeof src.file === "string") {
+						player = createAudioPlayer(src.file, labelMap[lang] || labelMap.en);
+					}
 				}
+				if (player) card.append(player);
+				break;
 			}
 		}).catch(() => {});
 	}
