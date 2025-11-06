@@ -24,60 +24,155 @@ const pulseContainer = document.getElementById("pulse");
 
 const style = document.createElement("style");
 style.textContent = `
-.wealth-notice { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(56,189,248,0.25); background: rgba(219,242,255,0.5); font-size: 0.85rem; color: #0f172a; }
-.wealth-empty { padding: 36px 0; text-align: center; font-size: 0.95rem; color: #64748b; }
-.wealth-daily-card { display: grid; gap: 16px; padding: 24px; border-radius: 18px; background: linear-gradient(160deg, rgba(236,253,245,0.95) 0%, rgba(219,242,255,0.9) 100%); border: 1px solid rgba(56,189,248,0.22); box-shadow: 0 18px 48px -30px rgba(15,118,110,0.24); }
-.wealth-daily-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.88rem; color: #0f766e; }
-.wealth-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(56,189,248,0.16); border: 1px solid rgba(56,189,248,0.3); font-size: 0.78rem; font-weight: 600; color: #0f172a; }
-.wealth-badge--fresh { background: rgba(56,189,248,0.18); border-color: rgba(56,189,248,0.32); color: #1d4ed8; }
-.wealth-badge--degraded { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.26); color: #b91c1c; }
-.wealth-badge--tag { background: rgba(16,185,129,0.14); border-color: rgba(16,185,129,0.28); color: #065f46; }
+:root {
+	--wealth-card-bg: linear-gradient(160deg, rgba(244, 250, 248, 0.98) 0%, rgba(231, 245, 254, 0.95) 100%);
+	--wealth-card-border: rgba(56, 189, 248, 0.22);
+	--wealth-card-shadow: 0 18px 48px -30px rgba(15, 118, 110, 0.24);
+	--wealth-card-text: #0f172a;
+	--wealth-card-muted: #334155;
+	--wealth-card-strong: #0f766e;
+	--wealth-card-tag-bg: rgba(16, 185, 129, 0.14);
+	--wealth-card-tag-border: rgba(16, 185, 129, 0.28);
+	--wealth-card-tag-text: #065f46;
+	--wealth-card-risk-bg: rgba(248, 113, 113, 0.14);
+	--wealth-card-risk-border: rgba(248, 113, 113, 0.3);
+	--wealth-card-risk-text: #991b1b;
+	--wealth-card-link-bg: rgba(219, 242, 255, 0.55);
+	--wealth-card-link-border: rgba(56, 189, 248, 0.24);
+	--wealth-card-link-text: #0369a1;
+	--wealth-card-load-bg: rgba(219, 242, 255, 0.7);
+	--wealth-card-load-text: #0369a1;
+	--wealth-card-pulse-bg: rgba(224, 242, 254, 0.6);
+	--wealth-card-pulse-border: rgba(96, 165, 250, 0.2);
+	--wealth-card-pulse-title: #0f172a;
+	--wealth-card-pulse-meta: #1d4ed8;
+	--wealth-card-practice-divider: rgba(15, 118, 110, 0.2);
+	--wealth-card-practice-secondary: #1f2937;
+	--wealth-card-fallback: #334155;
+	--wealth-card-notice-bg: rgba(219, 242, 255, 0.5);
+	--wealth-card-notice-border: rgba(56, 189, 248, 0.25);
+	--wealth-card-notice-text: #0f172a;
+	--wealth-card-empty: #64748b;
+	--wealth-list-bg: rgba(239, 246, 255, 0.8);
+	--wealth-list-border: rgba(56, 189, 248, 0.18);
+	--wealth-list-shadow: 0 16px 38px -28px rgba(15, 118, 110, 0.22);
+	--wealth-load-border: rgba(56, 189, 248, 0.3);
+}
+
+:root[data-theme="dark"],
+:root[data-theme^="system-dark"] {
+	--wealth-card-bg: linear-gradient(160deg, rgba(17, 24, 39, 0.92) 0%, rgba(20, 30, 48, 0.9) 100%);
+	--wealth-card-border: rgba(56, 189, 248, 0.34);
+	--wealth-card-shadow: 0 18px 48px -30px rgba(2, 6, 23, 0.72);
+	--wealth-card-text: #e2e8f0;
+	--wealth-card-muted: #cbd5f5;
+	--wealth-card-strong: #5eead4;
+	--wealth-card-tag-bg: rgba(45, 212, 191, 0.2);
+	--wealth-card-tag-border: rgba(45, 212, 191, 0.38);
+	--wealth-card-tag-text: #99f6e4;
+	--wealth-card-risk-bg: rgba(248, 113, 113, 0.2);
+	--wealth-card-risk-border: rgba(248, 113, 113, 0.45);
+	--wealth-card-risk-text: #fee2e2;
+	--wealth-card-link-bg: rgba(30, 41, 59, 0.7);
+	--wealth-card-link-border: rgba(56, 189, 248, 0.35);
+	--wealth-card-link-text: #bfdbfe;
+	--wealth-card-load-bg: rgba(30, 41, 59, 0.78);
+	--wealth-card-load-text: #bfdbfe;
+	--wealth-card-pulse-bg: rgba(17, 24, 39, 0.88);
+	--wealth-card-pulse-border: rgba(96, 165, 250, 0.32);
+	--wealth-card-pulse-title: #e2e8f0;
+	--wealth-card-pulse-meta: #93c5fd;
+	--wealth-card-practice-divider: rgba(148, 163, 184, 0.35);
+	--wealth-card-practice-secondary: #dbeafe;
+	--wealth-card-fallback: #e2e8f0;
+	--wealth-card-notice-bg: rgba(30, 41, 59, 0.8);
+	--wealth-card-notice-border: rgba(56, 189, 248, 0.3);
+	--wealth-card-notice-text: #e2e8f0;
+	--wealth-card-empty: #94a3b8;
+	--wealth-list-bg: rgba(22, 30, 48, 0.84);
+	--wealth-list-border: rgba(56, 189, 248, 0.3);
+	--wealth-list-shadow: 0 16px 38px -28px rgba(2, 6, 23, 0.7);
+	--wealth-load-border: rgba(56, 189, 248, 0.38);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]):not([data-theme^="system-light"]) {
+		--wealth-card-bg: linear-gradient(160deg, rgba(17, 24, 39, 0.92) 0%, rgba(20, 30, 48, 0.9) 100%);
+		--wealth-card-border: rgba(56, 189, 248, 0.34);
+		--wealth-card-shadow: 0 18px 48px -30px rgba(2, 6, 23, 0.72);
+		--wealth-card-text: #e2e8f0;
+		--wealth-card-muted: #cbd5f5;
+		--wealth-card-strong: #5eead4;
+		--wealth-card-tag-bg: rgba(45, 212, 191, 0.2);
+		--wealth-card-tag-border: rgba(45, 212, 191, 0.38);
+		--wealth-card-tag-text: #99f6e4;
+		--wealth-card-risk-bg: rgba(248, 113, 113, 0.2);
+		--wealth-card-risk-border: rgba(248, 113, 113, 0.45);
+		--wealth-card-risk-text: #fee2e2;
+		--wealth-card-link-bg: rgba(30, 41, 59, 0.7);
+		--wealth-card-link-border: rgba(56, 189, 248, 0.35);
+		--wealth-card-link-text: #bfdbfe;
+		--wealth-card-load-bg: rgba(30, 41, 59, 0.78);
+		--wealth-card-load-text: #bfdbfe;
+		--wealth-card-pulse-bg: rgba(17, 24, 39, 0.88);
+		--wealth-card-pulse-border: rgba(96, 165, 250, 0.32);
+		--wealth-card-pulse-title: #e2e8f0;
+		--wealth-card-pulse-meta: #93c5fd;
+		--wealth-card-practice-divider: rgba(148, 163, 184, 0.35);
+		--wealth-card-practice-secondary: #dbeafe;
+		--wealth-card-fallback: #e2e8f0;
+		--wealth-card-notice-bg: rgba(30, 41, 59, 0.8);
+		--wealth-card-notice-border: rgba(56, 189, 248, 0.3);
+		--wealth-card-notice-text: #e2e8f0;
+		--wealth-card-empty: #94a3b8;
+		--wealth-list-bg: rgba(22, 30, 48, 0.84);
+		--wealth-list-border: rgba(56, 189, 248, 0.3);
+		--wealth-list-shadow: 0 16px 38px -28px rgba(2, 6, 23, 0.7);
+		--wealth-load-border: rgba(56, 189, 248, 0.38);
+	}
+}
+
+.wealth-notice { margin-bottom: 12px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--wealth-card-notice-border); background: var(--wealth-card-notice-bg); font-size: 0.85rem; color: var(--wealth-card-notice-text); }
+.wealth-empty { padding: 36px 0; text-align: center; font-size: 0.95rem; color: var(--wealth-card-empty); }
+.wealth-daily-card { display: grid; gap: 16px; padding: 24px; border-radius: 18px; background: var(--wealth-card-bg); border: 1px solid var(--wealth-card-border); box-shadow: var(--wealth-card-shadow); color: var(--wealth-card-text); }
+.wealth-daily-meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 0.88rem; color: var(--wealth-card-strong); }
+.wealth-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: rgba(56, 189, 248, 0.16); border: 1px solid rgba(56, 189, 248, 0.3); font-size: 0.78rem; font-weight: 600; color: var(--wealth-card-text); }
+.wealth-badge--fresh { background: rgba(56, 189, 248, 0.18); border-color: rgba(56, 189, 248, 0.32); color: #1d4ed8; }
+.wealth-badge--degraded { background: rgba(248, 113, 113, 0.1); border-color: rgba(248, 113, 113, 0.26); color: #b91c1c; }
+.wealth-badge--tag { background: var(--wealth-card-tag-bg); border-color: var(--wealth-card-tag-border); color: var(--wealth-card-tag-text); }
 .wealth-daily-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 4px; }
 .wealth-daily-tags--compact { margin-top: 0; }
-.wealth-meta-line { margin: 0; font-size: 0.85rem; color: #0f172a; display: flex; flex-wrap: wrap; gap: 12px; }
+.wealth-meta-line { margin: 0; font-size: 0.85rem; color: var(--wealth-card-muted); display: flex; flex-wrap: wrap; gap: 12px; }
 .wealth-meta-line span { display: inline-flex; align-items: center; gap: 6px; }
-.wealth-points { margin: 0; padding-left: 20px; color: #0f172a; line-height: 1.6; }
-.wealth-practice { border-top: 1px solid rgba(15,118,110,0.2); padding-top: 12px; display: grid; gap: 10px; }
-.wealth-practice--history { border-top-color: rgba(148,163,184,0.3); }
-.wealth-practice__title { margin: 0; font-size: 0.95rem; font-weight: 600; color: #0f172a; }
-.wealth-practice__activity { margin: 0; font-weight: 600; color: #0f172a; }
-.wealth-practice__list { margin: 0; padding-left: 20px; display: grid; gap: 10px; list-style: decimal; }
-.wealth-practice__steps { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; list-style: disc; color: #1f2937; }
-.wealth-practice__fallback { margin: 0; font-size: 0.92rem; line-height: 1.6; color: #334155; }
-.wealth-risk { margin: 0; padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(248,113,113,0.3); background: rgba(248,113,113,0.14); color: #991b1b; font-size: 0.9rem; line-height: 1.55; display: flex; gap: 8px; align-items: flex-start; }
+.wealth-points { margin: 0; padding-left: 20px; color: var(--wealth-card-text); line-height: 1.6; }
+.wealth-practice { border-top: 1px solid var(--wealth-card-practice-divider); padding-top: 12px; display: grid; gap: 10px; }
+.wealth-practice--history { border-top-color: rgba(148, 163, 184, 0.3); }
+.wealth-practice__title { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--wealth-card-text); }
+.wealth-practice__activity { margin: 0; font-weight: 600; color: var(--wealth-card-text); }
+.wealth-practice__list { margin: 0; padding-left: 20px; display: grid; gap: 10px; list-style: decimal; color: var(--wealth-card-text); }
+.wealth-practice__steps { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; list-style: disc; color: var(--wealth-card-practice-secondary); }
+.wealth-practice__fallback { margin: 0; font-size: 0.92rem; line-height: 1.6; color: var(--wealth-card-fallback); }
+.wealth-risk { margin: 0; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--wealth-card-risk-border); background: var(--wealth-card-risk-bg); color: var(--wealth-card-risk-text); font-size: 0.9rem; line-height: 1.55; display: flex; gap: 8px; align-items: flex-start; }
 .wealth-references { display: grid; gap: 10px; }
-.wealth-references__label { margin: 0; font-size: 0.9rem; font-weight: 600; color: #0f172a; }
+.wealth-references__label { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--wealth-card-text); }
 .wealth-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.9rem; }
-.wealth-link__text { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid rgba(56,189,248,0.24); background: rgba(219,242,255,0.55); color: #0369a1; text-decoration: none; }
+.wealth-link__text { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wealth-card-link-border); background: var(--wealth-card-link-bg); color: var(--wealth-card-link-text); text-decoration: none; }
 .wealth-list { display: grid; gap: 18px; margin-top: 18px; }
-.wealth-list-item { padding: 20px; border-radius: 16px; border: 1px solid rgba(56,189,248,0.18); background: rgba(239,246,255,0.8); box-shadow: 0 16px 38px -28px rgba(15,118,110,0.22); display: grid; gap: 12px; }
-.wealth-load-more { padding: 10px 18px; border-radius: 999px; border: 1px solid rgba(56,189,248,0.3); background: rgba(219,242,255,0.7); color: #0369a1; font-weight: 600; cursor: pointer; }
+.wealth-list-item { padding: 20px; border-radius: 16px; border: 1px solid var(--wealth-list-border); background: var(--wealth-list-bg); box-shadow: var(--wealth-list-shadow); display: grid; gap: 12px; color: var(--wealth-card-text); }
+.wealth-load-more { padding: 10px 18px; border-radius: 999px; border: 1px solid var(--wealth-load-border); background: var(--wealth-card-load-bg); color: var(--wealth-card-load-text); font-weight: 600; cursor: pointer; }
 .wealth-load-more:disabled { opacity: 0.6; cursor: not-allowed; }
-.wealth-pulse-group { border-radius: 18px; border: 1px solid rgba(96,165,250,0.2); background: rgba(224,242,254,0.6); overflow: hidden; box-shadow: 0 18px 44px -30px rgba(37,99,235,0.22); }
-.wealth-pulse-group details { border-bottom: 1px solid rgba(148,163,184,0.25); }
-.wealth-pulse-group summary { cursor: pointer; padding: 18px 22px; font-weight: 600; font-size: 1rem; display: flex; justify-content: space-between; align-items: center; color: #0f172a; }
-.wealth-pulse-item { padding: 0 22px 22px; display: grid; gap: 10px; }
+.wealth-pulse-group { border-radius: 18px; border: 1px solid var(--wealth-card-pulse-border); background: var(--wealth-card-pulse-bg); overflow: hidden; box-shadow: 0 18px 44px -30px rgba(37, 99, 235, 0.22); }
+.wealth-pulse-group details { border-bottom: 1px solid rgba(148, 163, 184, 0.25); }
+.wealth-pulse-group summary { cursor: pointer; padding: 18px 22px; font-weight: 600; font-size: 1rem; display: flex; justify-content: space-between; align-items: center; color: var(--wealth-card-pulse-title); }
+.wealth-pulse-item { padding: 0 22px 22px; display: grid; gap: 10px; color: var(--wealth-card-text); }
 .wealth-pulse-header { display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-start; }
-.wealth-pulse-title { margin: 0; font-size: 1.05rem; font-weight: 600; color: #0f172a; }
-.wealth-pulse-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.78rem; color: #1d4ed8; }
-.wealth-pulse-meta-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(96,165,250,0.3); background: rgba(191,219,254,0.6); color: #1d4ed8; text-decoration: none; }
-.wealth-pulse-time { display: inline-flex; align-items: center; gap: 4px; color: #1f2937; }
-.wealth-pulse-facts { margin: 0; font-size: 0.95rem; line-height: 1.6; color: #1f2937; }
-.wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.6; color: #0f172a; }
-.wealth-legal-note { margin: 0; font-size: 0.82rem; color: #475569; }
-@media (prefers-color-scheme: dark) {
-	.wealth-daily-card { background: rgba(15,23,42,0.82); border-color: rgba(56,189,248,0.3); color: #e2e8f0; }
-	.wealth-list-item { background: rgba(22,30,48,0.8); border-color: rgba(56,189,248,0.26); }
-	.wealth-link__text { background: rgba(30,41,59,0.7); border-color: rgba(56,189,248,0.3); color: #bae6fd; }
-	.wealth-load-more { background: rgba(30,41,59,0.8); color: #bae6fd; }
-	.wealth-pulse-group { background: rgba(17,24,39,0.9); border-color: rgba(96,165,250,0.3); }
-	.wealth-pulse-title { color: #e2e8f0; }
-	.wealth-pulse-meta { color: #93c5fd; }
-	.wealth-pulse-facts, .wealth-pulse-impact { color: #cbd5f5; }
-	.wealth-notice { background: rgba(30,41,59,0.8); border-color: rgba(56,189,248,0.3); color: #e2e8f0; }
-	.wealth-empty { color: #94a3b8; }
-	.wealth-practice__fallback { color: #e2e8f0; }
-}
+.wealth-pulse-title { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--wealth-card-pulse-title); }
+.wealth-pulse-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.78rem; color: var(--wealth-card-pulse-meta); }
+.wealth-pulse-meta-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(96, 165, 250, 0.3); background: rgba(191, 219, 254, 0.6); color: var(--wealth-card-pulse-meta); text-decoration: none; }
+.wealth-pulse-time { display: inline-flex; align-items: center; gap: 4px; color: var(--wealth-card-muted); }
+.wealth-pulse-facts { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
+.wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
+.wealth-legal-note { margin: 0; font-size: 0.82rem; color: var(--wealth-card-muted); }
 	`;
 	document.head.appendChild(style);
 
