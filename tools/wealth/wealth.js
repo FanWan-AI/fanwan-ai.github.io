@@ -22,6 +22,35 @@ let __wealth_last_pulse = null;
 const dailyContainer = document.getElementById("daily");
 const pulseContainer = document.getElementById("pulse");
 
+function formatTemplate(template, replacements) {
+	if (typeof template !== "string") return "";
+	if (!replacements || typeof replacements !== "object") return template;
+	return template.replace(/\{(\w+)\}/g, (match, token) => {
+		if (Object.prototype.hasOwnProperty.call(replacements, token)) {
+			const value = replacements[token];
+			return value === null || value === undefined ? "" : String(value);
+		}
+		return match;
+	});
+}
+
+function t(key, fallback = "", replacements) {
+	const tables = (typeof window !== "undefined" && window.translations) || null;
+	if (tables && key) {
+		const order = getLanguageOrder();
+		const fallbackOrder = ["zh", "en", "es"];
+		const searchOrder = Array.from(new Set([...(Array.isArray(order) ? order : []), ...fallbackOrder]));
+		for (const lang of searchOrder) {
+			const group = tables[lang];
+			if (group && typeof group[key] === "string") {
+				return formatTemplate(group[key], replacements);
+			}
+		}
+	}
+	const text = typeof fallback === "string" ? fallback : "";
+	return formatTemplate(text, replacements);
+}
+
 const style = document.createElement("style");
 style.textContent = `
 :root {
@@ -53,6 +82,7 @@ style.textContent = `
 	--wealth-card-notice-border: rgba(56, 189, 248, 0.25);
 	--wealth-card-notice-text: #0f172a;
 	--wealth-card-empty: #64748b;
+	--wealth-audio-status: #475569;
 	--wealth-list-bg: rgba(239, 246, 255, 0.8);
 	--wealth-list-border: rgba(56, 189, 248, 0.18);
 	--wealth-list-shadow: 0 16px 38px -28px rgba(15, 118, 110, 0.22);
@@ -89,6 +119,7 @@ style.textContent = `
 	--wealth-card-notice-border: rgba(56, 189, 248, 0.3);
 	--wealth-card-notice-text: #e2e8f0;
 	--wealth-card-empty: #94a3b8;
+	--wealth-audio-status: #cbd5f5;
 	--wealth-list-bg: rgba(22, 30, 48, 0.84);
 	--wealth-list-border: rgba(56, 189, 248, 0.3);
 	--wealth-list-shadow: 0 16px 38px -28px rgba(2, 6, 23, 0.7);
@@ -125,6 +156,7 @@ style.textContent = `
 		--wealth-card-notice-border: rgba(56, 189, 248, 0.3);
 		--wealth-card-notice-text: #e2e8f0;
 		--wealth-card-empty: #94a3b8;
+		--wealth-audio-status: #cbd5f5;
 		--wealth-list-bg: rgba(22, 30, 48, 0.84);
 		--wealth-list-border: rgba(56, 189, 248, 0.3);
 		--wealth-list-shadow: 0 16px 38px -28px rgba(2, 6, 23, 0.7);
@@ -154,6 +186,8 @@ style.textContent = `
 .wealth-practice__fallback { margin: 0; font-size: 0.92rem; line-height: 1.6; color: var(--wealth-card-fallback); }
 .wealth-risk { margin: 0; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--wealth-card-risk-border); background: var(--wealth-card-risk-bg); color: var(--wealth-card-risk-text); font-size: 0.9rem; line-height: 1.55; display: flex; gap: 8px; align-items: flex-start; }
 .wealth-references { display: grid; gap: 10px; }
+.wealth-references[data-audio="true"] { gap: 6px; }
+.wealth-references[data-audio="true"] audio { width: 100%; }
 .wealth-references__label { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--wealth-card-text); }
 .wealth-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.9rem; }
 .wealth-link__text { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wealth-card-link-border); background: var(--wealth-card-link-bg); color: var(--wealth-card-link-text); text-decoration: none; }
@@ -161,6 +195,7 @@ style.textContent = `
 .wealth-list-item { padding: 20px; border-radius: 16px; border: 1px solid var(--wealth-list-border); background: var(--wealth-list-bg); box-shadow: var(--wealth-list-shadow); display: grid; gap: 12px; color: var(--wealth-card-text); }
 .wealth-load-more { padding: 10px 18px; border-radius: 999px; border: 1px solid var(--wealth-load-border); background: var(--wealth-card-load-bg); color: var(--wealth-card-load-text); font-weight: 600; cursor: pointer; }
 .wealth-load-more:disabled { opacity: 0.6; cursor: not-allowed; }
+.wealth-audio-status { font-size: 0.9rem; color: var(--wealth-audio-status); }
 .wealth-pulse-group { border-radius: 18px; border: 1px solid var(--wealth-card-pulse-border); background: var(--wealth-card-pulse-bg); overflow: hidden; box-shadow: 0 18px 44px -30px rgba(37, 99, 235, 0.22); }
 .wealth-pulse-group details { border-bottom: 1px solid rgba(148, 163, 184, 0.25); }
 .wealth-pulse-group summary { cursor: pointer; padding: 18px 22px; font-weight: 600; font-size: 1rem; display: flex; justify-content: space-between; align-items: center; color: var(--wealth-card-pulse-title); }
@@ -228,7 +263,7 @@ async function fetchJSON(url, cacheName) {
 		console.warn(`Wealth fetch ${cacheName} failed`, error);
 		const cached = getCache(cacheName);
 		if (cached) {
-			renderNotice(cacheName, "已加载缓存数据，稍后请刷新重试。");
+			renderNotice(cacheName, t("wealth_cache_notice", "已加载缓存数据，稍后请刷新重试。"));
 			return cached;
 		}
 		throw error;
@@ -325,7 +360,11 @@ function collectReferences(entry) {
 	const metaSources = Array.isArray(entry?.meta?.sources) ? entry.meta.sources : [];
 	metaSources.forEach((source, index) => {
 		if (!source || typeof source !== "object") return;
-		const label = pickLang(source.title) || pickLang(source.name) || source.url || `参考 ${index + 1}`;
+		const label =
+			pickLang(source.title) ||
+			pickLang(source.name) ||
+			source.url ||
+			t("wealth_reference_default", "参考 {index}", { index: index + 1 });
 		const url = isHttpUrl(source.url) ? source.url : "";
 		const language = typeof source.language === "string" ? source.language.trim() : "";
 		const note = pickLang(source.note);
@@ -343,14 +382,21 @@ function collectReferences(entry) {
 				const text = item.trim();
 				if (!text) return;
 				if (isHttpUrl(text)) {
-					collected.push({ label: `参考 ${index + 1}`, url: text });
+					collected.push({
+						label: t("wealth_reference_default", "参考 {index}", { index: index + 1 }),
+						url: text,
+					});
 				} else {
 					collected.push({ label: text, url: "" });
 				}
 				return;
 			}
 			if (typeof item === "object") {
-				const label = pickLang(item.title) || pickLang(item.name) || item.url || `参考 ${index + 1}`;
+				const label =
+					pickLang(item.title) ||
+					pickLang(item.name) ||
+					item.url ||
+					t("wealth_reference_default", "参考 {index}", { index: index + 1 });
 				const url = isHttpUrl(item.url) ? item.url : "";
 				collected.push({ label, url });
 			}
@@ -384,7 +430,7 @@ function renderMetaLine(entry, { compact = false } = {}) {
 	const meta = entry?.meta || {};
 	const parts = [];
 	if (typeof meta.difficulty_label === "string" && meta.difficulty_label.trim()) {
-		parts.push(`难度：${meta.difficulty_label.trim()}`);
+		parts.push(t("wealth_meta_difficulty", "难度：{value}", { value: meta.difficulty_label.trim() }));
 	}
 	if (!compact && typeof meta.learning_path === "string" && meta.learning_path.trim()) {
 		parts.push(meta.learning_path.trim());
@@ -417,7 +463,9 @@ function renderPractice(entry, { compact = false } = {}) {
 
 	const title = document.createElement("p");
 	title.className = "wealth-practice__title";
-	title.textContent = compact ? "练习提要" : "今日练习";
+	title.textContent = compact
+		? t("wealth_practice_compact_title", "练习提要")
+		: t("wealth_practice_title", "今日练习");
 	block.append(title);
 
 	if (!compact && activities && activities.length) {
@@ -427,7 +475,8 @@ function renderPractice(entry, { compact = false } = {}) {
 			const li = document.createElement("li");
 			const heading = document.createElement("p");
 			heading.className = "wealth-practice__activity";
-			heading.textContent = activity.title || `练习 ${index + 1}`;
+			heading.textContent = activity.title
+				|| t("wealth_practice_item_label", "练习 {index}", { index: index + 1 });
 			li.append(heading);
 			if (activity.steps.length) {
 				const steps = document.createElement("ul");
@@ -465,7 +514,7 @@ function renderRisk(entry) {
 	const box = document.createElement("div");
 	box.className = "wealth-risk";
 	const label = document.createElement("strong");
-	label.textContent = "风险提示";
+	label.textContent = t("wealth_risk_label", "风险提示");
 	const body = document.createElement("span");
 	body.textContent = text;
 	box.append(label, body);
@@ -479,23 +528,24 @@ function renderReferences(entry) {
 	block.className = "wealth-references";
 	const label = document.createElement("p");
 	label.className = "wealth-references__label";
-	label.textContent = "参考资料";
+	label.textContent = t("wealth_references_label", "参考资料");
 	block.append(label);
 	const list = document.createElement("div");
 	list.className = "wealth-links";
-	references.forEach((ref, index) => {
-		if (ref.url) {
+		references.forEach((ref, index) => {
+			const fallbackLabel = t("wealth_reference_default", "参考 {index}", { index: index + 1 });
+			if (ref.url) {
 			const anchor = document.createElement("a");
 			anchor.href = ref.url;
 			anchor.target = "_blank";
 			anchor.rel = "noopener";
 			anchor.className = "wealth-link__text";
-			anchor.textContent = ref.label || `参考 ${index + 1}`;
+				anchor.textContent = ref.label || fallbackLabel;
 			list.append(anchor);
 		} else {
 			const span = document.createElement("span");
 			span.className = "wealth-link__text";
-			span.textContent = ref.label || `参考 ${index + 1}`;
+				span.textContent = ref.label || fallbackLabel;
 			list.append(span);
 		}
 	});
@@ -548,13 +598,15 @@ async function fetchSegmentsIndex(dateStr, lang) {
 	}
 }
 
-function createAudioPlayer(src, label = "播放") {
+function createAudioPlayer(src, label) {
 	if (!src) return null;
 	const wrap = document.createElement("div");
 	wrap.className = "wealth-references";
+	wrap.dataset.audio = "true";
 	const p = document.createElement("p");
 	p.className = "wealth-references__label";
-	p.textContent = label;
+	const resolvedLabel = label || t("wealth_audio_label_default", "播放");
+	p.textContent = resolvedLabel;
 	const audio = document.createElement("audio");
 	audio.controls = true;
 	audio.preload = "none";
@@ -564,100 +616,162 @@ function createAudioPlayer(src, label = "播放") {
 	return wrap;
 }
 
-function createSequentialAudioPlayer(segments, label = "播放") {
+function createSequentialAudioPlayer(segments, label) {
 	if (!Array.isArray(segments) || !segments.length) return null;
 	const wrap = document.createElement("div");
 	wrap.className = "wealth-references";
+	wrap.dataset.audio = "true";
 	const p = document.createElement("p");
 	p.className = "wealth-references__label";
-	p.textContent = label;
-
-	const ctrl = document.createElement("div");
-	ctrl.style.display = "flex";
-	ctrl.style.gap = "8px";
-	ctrl.style.alignItems = "center";
-
-	const btn = document.createElement("button");
-	btn.className = "wealth-load-more";
-	btn.textContent = label;
-
-	const status = document.createElement("span");
-	status.style.fontSize = "0.9rem";
-	status.style.color = "#0f172a";
-	status.textContent = `0 / ${segments.length}`;
+	const resolvedLabel = label || t("wealth_audio_label_default", "播放");
+	p.textContent = resolvedLabel;
 
 	const audio = document.createElement("audio");
+	audio.controls = true;
 	audio.preload = "none";
-	audio.style.display = "none";
+	const status = document.createElement("span");
+	status.className = "wealth-audio-status";
 
 	let idx = 0;
-	let playing = false;
 
-	function setSrc(i) {
-		audio.src = segments[i];
-		// ensure browser loads new src before attempting playback
-		try {
-			audio.load();
-		} catch (e) {
-			// ignore
-		}
-		status.textContent = `${i + 1} / ${segments.length}`;
+	function updateStatus(position) {
+		status.textContent = `${position + 1} / ${segments.length}`;
 	}
 
+	function setSrc(newIndex, autoplay = false) {
+		idx = newIndex;
+		if (idx < 0) idx = 0;
+		if (idx >= segments.length) idx = 0;
+		audio.src = segments[idx];
+		try {
+			audio.load();
+		} catch (error) {
+			// no-op
+		}
+		updateStatus(idx);
+		if (autoplay) {
+			const playPromise = audio.play();
+			if (playPromise && typeof playPromise.then === "function") {
+				playPromise.catch(() => {});
+			}
+		}
+	}
+
+	audio.addEventListener("play", () => {
+		if (!audio.src) {
+			setSrc(idx, false);
+		}
+	});
+
 	audio.addEventListener("ended", () => {
-		idx += 1;
-		if (idx < segments.length) {
-			setSrc(idx);
-			const p = audio.play();
-			if (p && p instanceof Promise) {
-				p.catch(() => {
-					// try again after canplaythrough
-					const onReady = () => {
-						audio.removeEventListener("canplaythrough", onReady);
-						audio.play().catch(() => {});
-					};
-					audio.addEventListener("canplaythrough", onReady);
-				});
-			}
+		if (idx + 1 < segments.length) {
+			setSrc(idx + 1, true);
 		} else {
-			// finished
-			playing = false;
-			idx = 0;
-			btn.textContent = label;
-			setSrc(0);
+			setSrc(0, false);
 		}
 	});
 
-	btn.addEventListener("click", () => {
-		if (!playing) {
-			playing = true;
-			btn.textContent = "暂停";
-			setSrc(idx);
-			const p = audio.play();
-			if (p && p instanceof Promise) {
-				p.catch(() => {
-					const onReady = () => {
-						audio.removeEventListener("canplaythrough", onReady);
-						audio.play().catch(() => {});
-					};
-					audio.addEventListener("canplaythrough", onReady);
-				});
-			}
-		} else {
-			playing = false;
-			btn.textContent = label;
-			audio.pause();
-		}
-	});
-
-	ctrl.appendChild(btn);
-	ctrl.appendChild(status);
-	wrap.appendChild(p);
-	wrap.appendChild(ctrl);
-	wrap.appendChild(audio);
-	// initialize
-	setSrc(0);
+	wrap.append(p);
+	wrap.append(audio);
+	wrap.append(status);
+	setSrc(0, false);
 	return wrap;
+}
+
+function mountAudio(card, slot, player) {
+	if (!player) return;
+	const canReplace = slot && typeof slot.replaceWith === "function";
+	if (canReplace) {
+		try {
+			slot.replaceWith(player);
+			return;
+		} catch (error) {
+			// fall back below
+		}
+	}
+	if (slot && slot.parentNode) {
+		slot.parentNode.replaceChild(player, slot);
+		return;
+	}
+	if (card) {
+		card.append(player);
+	}
+}
+
+function attachAudioToCard(card, entry, dateStr, slot) {
+	if (!card || !dateStr) {
+		if (slot && slot.isConnected) slot.remove();
+		return;
+	}
+	if (card.querySelector('[data-audio="true"]')) {
+		if (slot && slot.isConnected) slot.remove();
+		return;
+	}
+	if (card.dataset.audioLoading === dateStr) {
+		if (slot && slot.isConnected) slot.remove();
+		return;
+	}
+	const languageOrder = getLanguageOrder();
+	const primaryDocLang = (languageOrder && languageOrder.length ? languageOrder[0] : "zh") || "zh";
+	const normalizedDocLang = primaryDocLang.toLowerCase();
+	const docLangBase = normalizedDocLang.split(/[-_]/)[0] || normalizedDocLang;
+	const docLangAlias = normalizedDocLang.replace(/-/g, "_");
+	const langCandidates = [];
+	const pushCandidate = (value) => {
+		if (!value) return;
+		const key = value.toLowerCase();
+		if (!langCandidates.includes(key)) {
+			langCandidates.push(key);
+		}
+	};
+	pushCandidate(normalizedDocLang);
+	if (docLangAlias !== normalizedDocLang) pushCandidate(docLangAlias);
+	if (docLangBase !== normalizedDocLang) pushCandidate(docLangBase);
+
+	card.dataset.audioLoading = dateStr;
+	fetchDailyAudioManifest(dateStr).then(async (manifest) => {
+		if (!manifest) return;
+		const allowedTopics = Array.isArray(manifest.topic_ids) && manifest.topic_ids.length
+			? manifest.topic_ids
+			: (typeof manifest.primary_topic_id === "string" ? [manifest.primary_topic_id] : null);
+		if (allowedTopics && entry?.topic_id && !allowedTopics.includes(entry.topic_id)) {
+			return;
+		}
+		const labelMap = { zh: "朗读音频", en: "Audio narration", es: "Narración" };
+		for (const langKey of langCandidates) {
+			const src = manifest[langKey];
+			if (!src) continue;
+			const labelKey = langKey.slice(0, 2) || langKey;
+			let player = null;
+			if (typeof src === "string") {
+				const segList = await fetchSegmentsIndex(dateStr, labelKey);
+				if (segList && segList.length) {
+					player = createSequentialAudioPlayer(segList, labelMap[labelKey] || labelMap.en);
+				} else {
+					player = createAudioPlayer(src, labelMap[labelKey] || labelMap.en);
+				}
+			} else if (src && typeof src === "object") {
+				if (Array.isArray(src.segments) && src.segments.length) {
+					player = createSequentialAudioPlayer(src.segments, labelMap[labelKey] || labelMap.en);
+				} else if (typeof src.file === "string") {
+					player = createAudioPlayer(src.file, labelMap[labelKey] || labelMap.en);
+				}
+			}
+			if (player) {
+				mountAudio(card, slot, player);
+				return;
+			}
+		}
+	}).catch(() => {
+		// ignore fetch errors; UI remains without audio
+	}).finally(() => {
+		if (card.dataset.audioLoading === dateStr) {
+			delete card.dataset.audioLoading;
+		}
+		if (slot && slot.isConnected) {
+			slot.remove();
+		}
+	});
 }
 
 function createDailyCard(entry) {
@@ -669,13 +783,13 @@ function createDailyCard(entry) {
 	header.className = "wealth-daily-meta";
 
 	const date = document.createElement("span");
-	date.textContent = entry.date || pickLang(entry.display_date) || "今日纪要";
+	date.textContent = entry.date || pickLang(entry.display_date) || t("wealth_today_digest", "今日纪要");
 	header.append(date);
 
-	header.append(createBadge("今日主题", "wealth-badge wealth-badge--fresh"));
+	header.append(createBadge(t("wealth_badge_today", "今日主题"), "wealth-badge wealth-badge--fresh"));
 
 	if (entry.degraded) {
-		header.append(createBadge("降级：沿用上一条内容", "wealth-badge wealth-badge--degraded"));
+		header.append(createBadge(t("wealth_badge_degraded_detail", "降级：沿用上一条内容"), "wealth-badge wealth-badge--degraded"));
 	}
 
 	card.append(header);
@@ -687,43 +801,26 @@ function createDailyCard(entry) {
 	if (metaLine) card.append(metaLine);
 
 	const title = document.createElement("h3");
-	title.textContent = pickLang(entry.topic) || pickLang(entry.title) || "今日主题";
+	title.textContent =
+		pickLang(entry.topic) ||
+		pickLang(entry.title) ||
+		t("wealth_topic_fallback", "今日主题");
 	card.append(title);
 
+	const dateStr = entry.date || "";
+	let audioSlot = null;
+	if (dateStr) {
+		audioSlot = document.createElement("div");
+		audioSlot.dataset.audioSlot = "true";
+		card.append(audioSlot);
+	}
+
 	const summary = document.createElement("p");
-	summary.textContent = pickLang(entry.summary) || "暂无摘要，稍后再试。";
+	summary.textContent = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
 	card.append(summary);
 
-	// Try to load server-generated audio manifest and render a player if present
-	const dateStr = entry.date || "";
-	if (dateStr) {
-		fetchDailyAudioManifest(dateStr).then(async (manifest) => {
-			if (!manifest) return;
-			const order = getLanguageOrder();
-			for (const lang of order) {
-				let src = manifest[lang] || manifest[lang?.slice(0, 2)] || null;
-				if (!src) continue;
-				const labelMap = { zh: "朗读音频", en: "Audio narration", es: "Narración" };
-				let player = null;
-				if (typeof src === "string") {
-					// Try to discover a segments index if present
-					const segList = await fetchSegmentsIndex(dateStr, lang);
-					if (segList && segList.length) {
-						player = createSequentialAudioPlayer(segList, labelMap[lang] || labelMap.en);
-					} else {
-						player = createAudioPlayer(src, labelMap[lang] || labelMap.en);
-					}
-				} else if (src && typeof src === "object") {
-					if (Array.isArray(src.segments) && src.segments.length) {
-						player = createSequentialAudioPlayer(src.segments, labelMap[lang] || labelMap.en);
-					} else if (typeof src.file === "string") {
-						player = createAudioPlayer(src.file, labelMap[lang] || labelMap.en);
-					}
-				}
-				if (player) card.append(player);
-				break;
-			}
-		}).catch(() => {});
+	if (audioSlot) {
+		attachAudioToCard(card, entry, dateStr, audioSlot);
 	}
 
 	const points = pickList(entry.key_points);
@@ -763,7 +860,7 @@ function createHistoryItem(entry) {
 	article.className = "wealth-list-item";
 
 	const title = document.createElement("h4");
-	title.textContent = pickLang(entry.topic) || entry.date || "历史记录";
+	title.textContent = pickLang(entry.topic) || entry.date || t("wealth_history_fallback_title", "历史记录");
 	article.append(title);
 
 	const meta = document.createElement("div");
@@ -774,7 +871,7 @@ function createHistoryItem(entry) {
 	meta.append(date);
 
 	if (entry.degraded) {
-		meta.append(createBadge("降级", "wealth-badge wealth-badge--degraded"));
+		meta.append(createBadge(t("wealth_badge_degraded", "降级"), "wealth-badge wealth-badge--degraded"));
 	}
 
 	article.append(meta);
@@ -785,9 +882,21 @@ function createHistoryItem(entry) {
 	const metaLine = renderMetaLine(entry, { compact: true });
 	if (metaLine) article.append(metaLine);
 
+	const dateStr = entry.date || "";
+	let audioSlot = null;
+	if (dateStr) {
+		audioSlot = document.createElement("div");
+		audioSlot.dataset.audioSlot = "true";
+		article.append(audioSlot);
+	}
+
 	const summary = document.createElement("p");
-	summary.textContent = pickLang(entry.summary) || "暂无摘要。";
+	summary.textContent = pickLang(entry.summary) || t("wealth_summary_history_placeholder", "暂无摘要。");
 	article.append(summary);
+
+	if (audioSlot) {
+		attachAudioToCard(article, entry, dateStr, audioSlot);
+	}
 
 	const points = pickList(entry.key_points);
 	if (points.length) {
@@ -823,7 +932,7 @@ function renderDaily(data) {
 	if (!Array.isArray(data) || !data.length) {
 		const empty = document.createElement("p");
 		empty.className = "wealth-empty";
-		empty.textContent = "暂未加载到课程内容，稍后再试。";
+		empty.textContent = t("wealth_daily_empty", "暂未加载到课程内容，稍后再试。");
 		dailyContainer.append(empty);
 		return;
 	}
@@ -853,13 +962,13 @@ function renderDaily(data) {
 		const button = document.createElement("button");
 		button.type = "button";
 		button.className = "wealth-load-more";
-		button.textContent = "加载更多";
+		button.textContent = t("wealth_load_more", "加载更多");
 		button.addEventListener("click", () => {
 			state.page += 1;
 			renderPage();
 			if (state.page * PAGE_SIZE >= history.length) {
 				button.disabled = true;
-				button.textContent = "没有更多了";
+				button.textContent = t("wealth_load_more_done", "没有更多了");
 			}
 		});
 		dailyContainer.append(button);
@@ -876,7 +985,7 @@ function renderPulse(data) {
 	if (!Array.isArray(data) || !data.length) {
 		const empty = document.createElement("p");
 		empty.className = "wealth-empty";
-		empty.textContent = "暂无市场快讯，稍后再试。";
+		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
 		pulseContainer.append(empty);
 		return;
 	}
@@ -892,7 +1001,10 @@ function renderPulse(data) {
 		if (groupIndex === 0) details.open = true;
 
 		const summary = document.createElement("summary");
-		summary.textContent = group.date || pickLang(group.title) || `分组 ${groupIndex + 1}`;
+		summary.textContent =
+			group.date ||
+			pickLang(group.title) ||
+			t("wealth_pulse_group_label", "分组 {index}", { index: groupIndex + 1 });
 		details.append(summary);
 
 		const items = Array.isArray(group.items) ? group.items : [];
@@ -906,7 +1018,10 @@ function renderPulse(data) {
 
 			const title = document.createElement("h5");
 			title.className = "wealth-pulse-title";
-			title.textContent = pickLang(item.title) || pickLang(item.headline) || "市场快讯";
+			title.textContent =
+				pickLang(item.title) ||
+				pickLang(item.headline) ||
+				t("wealth_pulse_item_title", "市场快讯");
 			header.append(title);
 
 			const meta = document.createElement("div");
@@ -917,7 +1032,9 @@ function renderPulse(data) {
 			if (cat === "global" || cat === "china") {
 				const badge = document.createElement("span");
 				badge.className = "wealth-pulse-meta-badge";
-				badge.textContent = cat === "global" ? "全球" : "中国";
+				badge.textContent = cat === "global"
+					? t("wealth_pulse_category_global", "全球")
+					: t("wealth_pulse_category_china", "中国");
 				meta.append(badge);
 			}
 
@@ -925,7 +1042,7 @@ function renderPulse(data) {
 			if (item.source || primaryLink) {
 				const badge = document.createElement(primaryLink ? "a" : "span");
 				badge.className = "wealth-pulse-meta-badge";
-				badge.textContent = item.source || "资讯源";
+				badge.textContent = item.source || t("wealth_pulse_source_fallback", "资讯源");
 				if (primaryLink) {
 					badge.href = primaryLink;
 					badge.target = "_blank";
@@ -949,7 +1066,10 @@ function renderPulse(data) {
 
 			const facts = document.createElement("p");
 			facts.className = "wealth-pulse-facts";
-			facts.textContent = pickLang(item.facts) || pickLang(item.summary) || "暂无事实摘要。";
+			facts.textContent =
+				pickLang(item.facts) ||
+				pickLang(item.summary) ||
+				t("wealth_pulse_facts_fallback", "暂无事实摘要。");
 			row.append(facts);
 
 			const impactText = pickLang(item.impact_one_liner) || pickLang(item.impact) || "";
@@ -957,7 +1077,7 @@ function renderPulse(data) {
 				const impact = document.createElement("p");
 				impact.className = "wealth-pulse-impact";
 				const label = document.createElement("strong");
-				label.textContent = "可能影响：";
+				label.textContent = t("wealth_pulse_impact_label", "可能影响：");
 				const span = document.createElement("span");
 				span.textContent = impactText;
 				impact.append(label, span);
@@ -974,7 +1094,7 @@ function renderPulse(data) {
 					anchor.target = "_blank";
 					anchor.rel = "noopener";
 					anchor.className = "wealth-link__text";
-					anchor.textContent = `延伸阅读 ${index + 1}`;
+					anchor.textContent = t("wealth_pulse_link_label", "延伸阅读 {index}", { index: index + 1 });
 					linkWrap.append(anchor);
 				});
 				row.append(linkWrap);
@@ -992,7 +1112,7 @@ function renderPulse(data) {
 	if (rendered === 0) {
 		const empty = document.createElement("p");
 		empty.className = "wealth-empty";
-		empty.textContent = "暂无市场快讯，稍后再试。";
+		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
 		pulseContainer.append(empty);
 		return;
 	}
@@ -1020,7 +1140,7 @@ async function init() {
 		} else if (dailyContainer) {
 			const message = document.createElement("p");
 			message.className = "wealth-empty";
-			message.textContent = "未能加载课程数据，请稍后刷新。";
+			message.textContent = t("wealth_daily_error", "未能加载课程数据，请稍后刷新。");
 			dailyContainer.append(message);
 		}
 		if (fallbackPulse) {
@@ -1028,7 +1148,7 @@ async function init() {
 		} else if (pulseContainer) {
 			const message = document.createElement("p");
 			message.className = "wealth-empty";
-			message.textContent = "未能加载市场快讯，请稍后刷新。";
+			message.textContent = t("wealth_pulse_error", "未能加载市场快讯，请稍后刷新。");
 			pulseContainer.append(message);
 		}
 	}
