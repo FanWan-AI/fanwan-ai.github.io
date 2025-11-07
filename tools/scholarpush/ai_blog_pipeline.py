@@ -934,39 +934,72 @@ def _build_entry_title_map(entries: list) -> dict:
     return m
 
 def _find_source_url_by_text(candidates: list, entries: list) -> str:
-    """Find a plausible source URL by matching candidate texts to entries' titles or summaries.
-    Returns first high-confidence match or empty string.
     """
-    try:
-        scored = []
-        for e in (entries or []):
-            title = BS(e.get("title", ""), "html.parser").text.strip().lower()
-            summ  = BS(e.get("summary", ""), "html.parser").text.strip().lower()
-            blob = f"{title} \n {summ}"
-            url = (e.get("url") or "").strip()
-            if not url:
-                continue
-            best = 0
-            for ct in candidates:
-                if not ct or len(ct) < 6:
-                    continue
-                if ct in blob or title in ct:
-                    best = max(best, 3)
-                else:
-                    # simple token overlap on words/zh chunks
-                    tokens = [w for w in re.split(r"[^\w\u4e00-\u9fff]+", ct) if len(w) >= 3]
-                    hit = sum(1 for w in tokens if w in blob)
-                    best = max(best, hit)
-            if best >= 3:
-                return url
-            scored.append((best, url))
-        # fall back to the highest overlap if decent
-        scored.sort(reverse=True)
-        if scored and scored[0][0] >= 2:
-            return scored[0][1]
+    Fuzzy search for a source entry URL by matching text from a list of candidates
+    (e.g., headline, one_liner). Normalizes text to improve match robustness.
+    """
+    if not candidates or not entries:
         return ""
-    except Exception:
+
+    # Normalize candidates for better matching
+    norm_candidates = []
+    for cand in candidates:
+        s = (cand or "").strip().lower()
+        # 移除常见的前缀/标签，如 "[Agent] "
+        s = re.sub(r'^\[[^\]]+\]\s*', '', s)
+        # 移除标点和多余空格
+        s = re.sub(r'[^\w\s]', '', s)
+        s = re.sub(r'\s+', ' ', s).strip()
+        if s:
+            norm_candidates.append(s)
+
+    if not norm_candidates:
         return ""
+
+    best_match_score = 0
+    best_match_url = ""
+
+    for entry in entries:
+        url = entry.get("url")
+        if not url:
+            continue
+
+        title = (entry.get("title") or "").strip().lower()
+        summary = (entry.get("summary") or "").strip().lower()
+
+        # Normalize entry content for comparison
+        norm_title = re.sub(r'[^\w\s]', '', title)
+        norm_title = re.sub(r'\s+', ' ', norm_title).strip()
+        
+        norm_summary = re.sub(r'[^\w\s]', '', summary)
+        norm_summary = re.sub(r'\s+', ' ', norm_summary).strip()
+
+        # Calculate match score
+        score = 0
+        for norm_cand in norm_candidates:
+            if norm_cand in norm_title:
+                score += 100  # Strong match in title
+            elif norm_cand in norm_summary:
+                score += 50   # Weaker match in summary
+            # Partial match scoring
+            elif len(norm_cand) > 10:
+                try:
+                    # Use SequenceMatcher for fuzzy ratio
+                    ratio = difflib.SequenceMatcher(None, norm_cand, norm_title).ratio()
+                    if ratio > 0.85:
+                        score += int(ratio * 80)
+                except Exception:
+                    pass
+
+        if score > best_match_score:
+            best_match_score = score
+            best_match_url = url
+
+    # Require a minimum score to consider it a confident match
+    if best_match_score >= 80:
+        return best_match_url
+
+    return ""
 
 def _openreview_pdf(u: str) -> str:
     """Best-effort PDF URL for OpenReview forum links."""
