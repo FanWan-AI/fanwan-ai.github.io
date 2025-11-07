@@ -161,24 +161,34 @@ async function translateText(text, target) {
 		return translationCache.get(cacheKey);
 	}
 	try {
-		const prompt = `Translate the following finance text into ${target}. Keep numbers, tickers, and macro terms precise. Preserve bullet list formatting if present. Return ONLY the translated text.\n\n${text}`;
+		const explicitTarget = target === "Chinese" ? "Simplified Chinese" : target;
+		const prompt = `You are a bilingual financial copy editor. Translate the following finance text into ${explicitTarget}.\n- Keep numbers, tickers, and macro terms precise.\n- Preserve leading bullet symbols (e.g. "- ", "1.") and paragraph breaks.\n- Output valid JSON with the shape {"translation": "..."} and nothing else.\n\nTEXT:\n${text}`;
 		const out = await callLLM(prompt);
-		// callLLM uses JSON response_format; here we gave plain text prompt, so wrap as JSON
-		// Adjust: If parsing fails, just return raw
+		let result = null;
 		try {
 			const obj = JSON.parse(out);
-			const val = obj?.text || obj?.translation || null;
-			if (typeof val === "string" && val.trim()) {
-				const result = val.trim();
-				translationCache.set(cacheKey, result);
-				return result;
+			const candidateKeys = ["translation", "text", "output", "result", "value"];
+			for (const key of candidateKeys) {
+				const val = obj?.[key];
+				if (typeof val === "string" && val.trim()) {
+					result = val.trim();
+					break;
+				}
+			}
+			if (!result) {
+				const fallbackValue = Object.values(obj).find((entry) => typeof entry === "string" && entry.trim());
+				if (fallbackValue) {
+					result = fallbackValue.trim();
+				}
 			}
 		} catch (_) {
 			if (typeof out === "string" && out.trim()) {
-				const result = out.trim();
-				translationCache.set(cacheKey, result);
-				return result;
+				result = out.trim();
 			}
+		}
+		if (result) {
+			translationCache.set(cacheKey, result);
+			return result;
 		}
 	} catch (e) {
 		console.warn(`Translate to ${target} failed:`, e.message);
@@ -218,14 +228,21 @@ async function normalizeI18nField(field, fallback = "") {
 		esText = enText || zhText || pivot;
 	}
 
-	return {
-		en: normalizeText(enText) || "",
-		zh: normalizeText(zhText) || normalizeText(enText) || "",
-		es: normalizeText(esText) || normalizeText(enText) || ""
-	};
+	const finalEn = normalizeText(enText) || normalizeText(zhText) || normalizeText(esText) || normalizeText(pivot);
+	const finalZh = normalizeText(zhText) || finalEn;
+	const finalEs = normalizeText(esText) || finalEn || finalZh;
+	const result = {};
+	if (finalEn) result.en = finalEn;
+	if (finalZh) result.zh = finalZh;
+	if (finalEs) result.es = finalEs;
+	return result;
 }
 
 async function ensureTranslations(item) {
+	const titleSeed = typeof item.title === "string"
+		? item.title
+		: normalizeText(item?.title?.en || item?.title?.zh || Object.values(item.title || {}).find((entry) => typeof entry === "string" && entry.trim()) || "");
+	item.title = await normalizeI18nField(item.title, titleSeed);
 	item.facts = await normalizeI18nField(item.facts, "");
 	item.impact_one_liner = await normalizeI18nField(item.impact_one_liner, "");
 	return item;
@@ -240,14 +257,47 @@ async function enrichItem(item) {
 
 const enrichItems = async (items) => Promise.all(items.map((entry) => enrichItem(entry)));
 
-function ensureI18n(obj, fallback = "") {
-	if (!obj || typeof obj !== "object") return { zh: fallback, en: fallback };
+function ensureI18nTextField(value, fallback = "") {
 	const out = {};
-	if (typeof obj.zh === "string" && obj.zh.trim()) out.zh = obj.zh.trim();
-	if (typeof obj.en === "string" && obj.en.trim()) out.en = obj.en.trim();
-	if (!out.zh && out.en) out.zh = out.en;
-	if (!out.en && out.zh) out.en = out.zh;
-	if (typeof obj.es === "string" && obj.es.trim()) out.es = obj.es.trim();
+	const assign = (lang, text) => {
+		if (!lang || typeof text !== "string") return;
+		const trimmed = text.trim();
+		if (!trimmed) return;
+		out[lang] = trimmed;
+	};
+	if (typeof value === "string") {
+		assign("en", value);
+	} else if (value && typeof value === "object") {
+		for (const [lang, raw] of Object.entries(value)) {
+			if (typeof raw === "string" && raw.trim()) assign(lang, raw);
+		}
+	}
+	const fallbackText = normalizeText(fallback);
+	if (!Object.keys(out).length && fallbackText) {
+		assign("en", fallbackText);
+	}
+	return out;
+}
+
+function ensureI18n(obj, fallback = "") {
+	const bag = ensureI18nTextField(obj, fallback);
+	const zh = normalizeText(bag.zh || bag["zh-CN"] || bag["zh_cn"] || "");
+	const en = normalizeText(bag.en || bag["en-US"] || bag["en_us"] || "");
+	const es = normalizeText(bag.es || bag["es-ES"] || bag["es_es"] || "");
+	const out = {};
+	if (en) out.en = en;
+	if (zh) {
+		out.zh = zh;
+	} else if (en) {
+		out.zh = en;
+	}
+	if (es) {
+		out.es = es;
+	} else if (en) {
+		out.es = en;
+	} else if (zh) {
+		out.es = zh;
+	}
 	return out;
 }
 
@@ -307,7 +357,8 @@ async function filterValidLinks(links) {
 }
 
 function coerceItem(raw, category, date) {
-	const title = (raw?.title ?? "").toString().trim();
+	const titleFallback = category === "china" ? "中国财经快讯" : "Global markets update";
+	const title = ensureI18nTextField(raw?.title ?? raw?.headline ?? {}, titleFallback);
 	const source = (raw?.source ?? "").toString().trim();
 	let time = (raw?.time_utc ?? raw?.time ?? "").toString().trim();
 	if (!time) {
@@ -415,7 +466,10 @@ function cloneDegradedItems(prevItems, date) {
 	const global = pick("global");
 	const china = pick("china");
 	const make = (it, cat, t) => ({
-		title: it?.title || (cat === "global" ? "Global markets update" : "中国财经快讯"),
+		title: ensureI18nTextField(
+			it?.title,
+			cat === "global" ? "Global markets update" : "中国财经快讯"
+		),
 		source: it?.source || (cat === "global" ? "News" : "新闻"),
 		time_utc: t,
 		facts: ensureI18n(it?.facts || { zh: "临时沿用前一日概览。", en: "Temporarily carrying over the previous day's summary." }),
@@ -524,7 +578,13 @@ async function main() {
 		path.resolve(root, PULSE_ARCH),
 		(entry) => entry?.date?.slice(0, 7)
 	);
-	await writeJSON(path.resolve(root, PULSE), trimmed);
+	const translatedTrimmed = await Promise.all(trimmed.map(async (entry) => {
+		const clone = { ...entry };
+		const items = Array.isArray(entry.items) ? entry.items : [];
+		clone.items = await Promise.all(items.map(async (item) => ensureTranslations({ ...item })));
+		return clone;
+	}));
+	await writeJSON(path.resolve(root, PULSE), translatedTrimmed);
 
 	const { valid, errors } = await validateWithSchema(
 		path.resolve(root, PULSE),

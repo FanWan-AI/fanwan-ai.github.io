@@ -3,6 +3,7 @@ import process from "process";
 
 import {
   PULSE,
+  i18nPick,
   readJSON,
   writeJSON
 } from "./util.mjs";
@@ -19,11 +20,16 @@ function ensureI18n(obj, fallback = "") {
   if (typeof obj.es === "string" && obj.es.trim()) out.es = obj.es.trim();
   if (!out.zh) out.zh = fallback;
   if (!out.en) out.en = fallback;
+  if (!out.es) out.es = out.en || out.zh || fallback;
   return out;
 }
 
 function isChinaItem(item) {
-  const hay = [item?.title, item?.source, item?.facts?.zh]
+  const title = typeof item?.title === "string" ? item.title : i18nPick(item?.title, ["zh", "en", "es"]);
+  const facts = item?.facts && typeof item.facts === "object"
+    ? i18nPick(item.facts, ["zh", "en", "es"])
+    : "";
+  const hay = [title, item?.source, facts]
     .filter(Boolean)
     .join(" ");
   const keywords = [
@@ -38,7 +44,10 @@ function coerceCategory(item) {
 }
 
 function cloneDegradedItem(from, date, category) {
-  const title = from?.title || (category === "global" ? "Global markets update" : "中国财经快讯");
+  const title = ensureI18n(
+    from?.title,
+    category === "global" ? "Global markets update" : "中国财经快讯"
+  );
   const source = from?.source || (category === "global" ? "News" : "新闻");
   const facts = ensureI18n(from?.facts || { zh: "临时沿用前一日概览。", en: "Temporarily carrying over the previous day's summary." });
   const impact = ensureI18n(from?.impact_one_liner || { zh: "请结合当日市场信息审慎参考。", en: "Cross-check with today's conditions before acting." });
