@@ -215,22 +215,170 @@ def fetch_items(limit_per_feed=25):
     return uniq
 
 # ===== Topic preference (user-configurable via TOPIC_PREFER env) =====
+# Canonical topics & their synonyms/variants.
+# 用于提升 RAG / 知识注入 / 知识图谱 等主题的召回与排序准确性。
+_TOPIC_SYNONYMS = {
+    # RAG / Retrieval
+    "rag": [
+        "retrieval-augmented generation",
+        "retrieval augmented generation",
+        "rag-based",
+        "rag pipeline",
+    ],
+    "retrieval-augmented generation": ["rag"],
+    "retrieval": [
+        "dense retrieval",
+        "neural retrieval",
+        "retriever",
+        "retrieval module",
+        "bm25",
+    ],
+
+    # LLM & Agent
+    "llm": ["large language model", "foundation model"],
+    "agent": [
+        "tool-augmented agent",
+        "tool calling",
+        "autonomous agent",
+        "planning agent",
+        "multi-agent",
+    ],
+
+    # Multimodal
+    "multimodal": [
+        "multi-modal",
+        "vision-language",
+        "vlm",
+        "mm-llm",
+    ],
+
+    # Evaluation
+    "evaluation": [
+        "benchmark",
+        "leaderboard",
+        "eval suite",
+        "evaluation framework",
+        "hallucination benchmark",
+    ],
+
+    # === 知识注入相关（重点提升权重） ===
+    "knowledge injection": [
+        "knowledge-injection",
+        "knowledge infusion",
+        "knowledge editing",
+        "factual editing",
+        "model editing",
+        "parametric knowledge editing",
+        "injected knowledge",
+    ],
+
+    # === 知识图谱 / 图增强 LLM（重点提升权重） ===
+    "knowledge graph": [
+        "knowledge-graph",
+        "kg",
+        "kg-llm",
+        "kg enhanced",
+        "kg-enhanced",
+        "knowledge grounded",
+        "graph-based reasoning",
+        "graph reasoning",
+        "graph neural network for knowledge",
+        "kg fusion",
+        "kg alignment",
+        "symbolic knowledge graph",
+    ],
+}
+
+
 def _get_topic_keywords():
-    raw = os.getenv("TOPIC_PREFER", "")
-    kws = [w.strip().lower() for w in raw.split(',') if w.strip()]
-    return kws
+    """
+    返回用于打分排序的关键词列表：
+    - 如果设置了 TOPIC_PREFER，则在其基础上自动扩展同义词。
+    - 如果未设置，则使用为你站点定制的默认主题集，
+      覆盖：LLM / Agent / RAG / Retrieval / 知识注入 / 知识图谱 / 多模态 / 评测。
+    """
+    raw = os.getenv("TOPIC_PREFER", "").strip()
+
+    if not raw:
+        # 默认偏好：已经包含你现在想重点推的方向
+        raw = (
+            "LLM,Agent,"
+            "Retrieval-Augmented Generation,RAG,Retrieval,"
+            "Knowledge Injection,Knowledge Editing,Knowledge Infusion,"
+            "Knowledge Graph,KG-LLM,"
+            "Multimodal,Evaluation"
+        )
+
+    base = [w.strip().lower() for w in raw.split(",") if w.strip()]
+    expanded = []
+
+    for k in base:
+        if not k:
+            continue
+        expanded.append(k)
+        # 展开同义词
+        syns = _TOPIC_SYNONYMS.get(k, [])
+        for s in syns:
+            if s:
+                expanded.append(s.lower())
+
+    # 去重
+    return sorted(set(expanded))
+
 
 def _topic_score(entry, kws):
+    """
+    根据标题 / 摘要 / URL 与主题关键词的匹配程度打分，用于排序。
+    升级点：
+    - 使用单词边界/短语匹配，减少误伤。
+    - 对“Knowledge Injection / Knowledge Graph / RAG”等核心主题加更高权重。
+    """
     if not kws:
         return 0
-    blob = ((entry.get("title") or '') + ' ' + (entry.get("summary") or '') + ' ' + (entry.get("url") or '')).lower()
-    s = 0
+
+    blob = (
+        (entry.get("title") or "")
+        + " "
+        + (entry.get("summary") or "")
+        + " "
+        + (entry.get("url") or "")
+    ).lower()
+
+    # 归一化：连字符/下划线视作空格，方便做词边界
+    norm = re.sub(r"[\-_/]+", " ", blob)
+    score = 0
+
     for k in kws:
-        if not k: continue
-        # simple contains; could be improved to word-boundary, but arXiv titles are English
-        if k in blob:
-            s += 3
-    return s
+        if not k:
+            continue
+        # phrase / keyword with word boundaries
+        # 对非常短的 token（如 kg）仍用宽松匹配防止全丢，但避免太随意
+        if len(k) <= 3:
+            pattern = r"\b" + re.escape(k) + r"\b"
+        else:
+            pattern = r"\b" + re.escape(k) + r"\b"
+
+        if re.search(pattern, norm):
+            base = 3
+
+            # 提升核心主题的影响力
+            lk = k.lower()
+            if "knowledge injection" in lk or "knowledge editing" in lk or "knowledge infusion" in lk:
+                base = 7  # 知识注入：最高优先
+            elif "knowledge graph" in lk or lk in ("kg-llm",):
+                base = 6  # 知识图谱 / KG-LLM：次高优先
+            elif lk in ("rag", "retrieval-augmented generation"):
+                base = 5
+            elif lk in ("llm", "agent"):
+                base = 4
+            elif "multimodal" in lk:
+                base = 3
+            elif "evaluation" in lk or "benchmark" in lk:
+                base = 3
+
+            score += base
+
+    return score
 
 def _filter_cap_entries(entries):
     """Reduce prompt size: keep recent items only, dedupe, and shorten summaries."""
