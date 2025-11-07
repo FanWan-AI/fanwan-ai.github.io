@@ -16,6 +16,7 @@ function getLanguageOrder() {
 
 const LANGUAGE_ORDER = getLanguageOrder(); // Language order based on document language
 const URL_PATTERN = /^https?:\/\//i;
+const CJK_PATTERN = /[\u3400-\u4dbf\u4e00-\u9ffc]/;
 
 let __wealth_last_daily = null;
 let __wealth_last_pulse = null;
@@ -179,11 +180,18 @@ style.textContent = `
 .wealth-points { margin: 0; padding-left: 20px; color: var(--wealth-card-text); line-height: 1.6; }
 .wealth-practice { border-top: 1px solid var(--wealth-card-practice-divider); padding-top: 12px; display: grid; gap: 10px; }
 .wealth-practice--history { border-top-color: rgba(148, 163, 184, 0.3); }
+.wealth-practice__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .wealth-practice__title { margin: 0; font-size: 0.95rem; font-weight: 600; color: var(--wealth-card-text); }
+.wealth-practice__toggle { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--wealth-card-link-border); background: var(--wealth-card-link-bg); color: var(--wealth-card-link-text); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: background 0.2s ease, color 0.2s ease; }
+.wealth-practice__toggle.is-open { background: rgba(56, 189, 248, 0.24); color: var(--wealth-card-text); }
+.wealth-practice__toggle:focus-visible { outline: 2px solid rgba(56, 189, 248, 0.65); outline-offset: 2px; }
 .wealth-practice__activity { margin: 0; font-weight: 600; color: var(--wealth-card-text); }
 .wealth-practice__list { margin: 0; padding-left: 20px; display: grid; gap: 10px; list-style: decimal; color: var(--wealth-card-text); }
 .wealth-practice__steps { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 6px; list-style: disc; color: var(--wealth-card-practice-secondary); }
-.wealth-practice__fallback { margin: 0; font-size: 0.92rem; line-height: 1.6; color: var(--wealth-card-fallback); }
+.wealth-practice__fallback { margin: 0; font-size: 0.92rem; line-height: 1.6; color: var(--wealth-card-fallback); white-space: pre-wrap; }
+.wealth-practice__summary { margin: 0; font-size: 0.9rem; line-height: 1.55; color: var(--wealth-card-text); white-space: pre-wrap; }
+.wealth-practice__details { margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--wealth-card-practice-divider); display: grid; gap: 10px; }
+.wealth-practice__details[hidden] { display: none; }
 .wealth-risk { margin: 0; padding: 12px 16px; border-radius: 14px; border: 1px solid var(--wealth-card-risk-border); background: var(--wealth-card-risk-bg); color: var(--wealth-card-risk-text); font-size: 0.9rem; line-height: 1.55; display: flex; gap: 8px; align-items: flex-start; }
 .wealth-references { display: grid; gap: 10px; }
 .wealth-references[data-audio="true"] { gap: 6px; }
@@ -204,6 +212,7 @@ style.textContent = `
 .wealth-pulse-title { margin: 0; font-size: 1.05rem; font-weight: 600; color: var(--wealth-card-pulse-title); }
 .wealth-pulse-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 0.78rem; color: var(--wealth-card-pulse-meta); }
 .wealth-pulse-meta-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid rgba(96, 165, 250, 0.3); background: rgba(191, 219, 254, 0.6); color: var(--wealth-card-pulse-meta); text-decoration: none; }
+.wealth-pulse-meta-badge--degraded { border-color: rgba(248, 113, 113, 0.35); background: rgba(248, 113, 113, 0.15); color: #b91c1c; }
 .wealth-pulse-time { display: inline-flex; align-items: center; gap: 4px; color: var(--wealth-card-muted); }
 .wealth-pulse-facts { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
 .wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
@@ -355,6 +364,44 @@ function isHttpUrl(value) {
 	return typeof value === "string" && URL_PATTERN.test(value);
 }
 
+function resolvePracticeText(value, lang) {
+	if (!value) return "";
+	if (typeof value === "string") return value.trim();
+	if (typeof value === "object") {
+		if (lang) {
+			const direct = value[lang];
+			if (typeof direct === "string" && direct.trim()) return direct.trim();
+		}
+		return pickLang(value);
+	}
+	return "";
+}
+
+function createActivitiesList(activities, { limitItems = 3, limitSteps = 6 } = {}) {
+	const list = document.createElement("ol");
+	list.className = "wealth-practice__list";
+	activities.slice(0, limitItems).forEach((activity, index) => {
+		const li = document.createElement("li");
+		const heading = document.createElement("p");
+		heading.className = "wealth-practice__activity";
+		heading.textContent = activity.title
+			|| t("wealth_practice_item_label", "练习 {index}", { index: index + 1 });
+		li.append(heading);
+		if (Array.isArray(activity.steps) && activity.steps.length) {
+			const steps = document.createElement("ul");
+			steps.className = "wealth-practice__steps";
+			activity.steps.slice(0, limitSteps).forEach((step) => {
+				const item = document.createElement("li");
+				item.textContent = step;
+				steps.append(item);
+			});
+			li.append(steps);
+		}
+		list.append(li);
+	});
+	return list;
+}
+
 function collectReferences(entry) {
 	const collected = [];
 	const metaSources = Array.isArray(entry?.meta?.sources) ? entry.meta.sources : [];
@@ -429,14 +476,19 @@ function renderTags(meta, { compact = false } = {}) {
 function renderMetaLine(entry, { compact = false } = {}) {
 	const meta = entry?.meta || {};
 	const parts = [];
+	const languageOrder = getLanguageOrder();
+	const docLang = (languageOrder && languageOrder.length ? languageOrder[0] : "zh") || "zh";
 	if (typeof meta.difficulty_label === "string" && meta.difficulty_label.trim()) {
 		parts.push(t("wealth_meta_difficulty", "难度：{value}", { value: meta.difficulty_label.trim() }));
 	}
 	if (!compact && typeof meta.learning_path === "string" && meta.learning_path.trim()) {
 		parts.push(meta.learning_path.trim());
 	}
-	if (compact && typeof meta.practice_preview === "string" && meta.practice_preview.trim()) {
-		parts.push(meta.practice_preview.trim());
+	if (compact) {
+		const preview = resolvePracticeText(meta.practice_preview, docLang);
+		if (preview && (docLang === "zh" || !CJK_PATTERN.test(preview))) {
+			parts.push(preview);
+		}
 	}
 	if (compact && typeof meta.category === "string" && meta.category.trim()) {
 		parts.push(meta.category.trim());
@@ -452,59 +504,142 @@ function renderMetaLine(entry, { compact = false } = {}) {
 	return line;
 }
 
+function appendMultiline(target, text) {
+	if (!target) return;
+	const str = typeof text === "string" ? text : text == null ? "" : String(text);
+	if (!str) return;
+	target.textContent = str.replace(/\r\n/g, "\n");
+}
+
+// Trim helper to remove leading bullets or numbering from summary snippets.
+function normalizeSummary(text) {
+	if (!text) return "";
+	const value = String(text).trim();
+	const cleaned = value.replace(/^[\s\u2022\-–—]*(?:\d+[\.、)\-\s]+|[①②③④⑤⑥⑦⑧⑨⑩][\.、\s]+)?/, "");
+	return cleaned.trim();
+}
+
 function renderPractice(entry, { compact = false } = {}) {
 	const activities = pickPracticeActivities(entry);
-	const preview = typeof entry?.meta?.practice_preview === "string" ? entry.meta.practice_preview.trim() : "";
-	const fallback = pickLang(entry.practice);
-	if (!activities && !preview && !fallback) return null;
+	const hasActivities = Array.isArray(activities) && activities.length > 0;
+	const languageOrder = getLanguageOrder();
+	const docLang = (languageOrder && languageOrder.length ? languageOrder[0] : "zh") || "zh";
+	const previewRaw = resolvePracticeText(entry?.meta?.practice_preview, docLang);
+	const preview = previewRaw && (docLang === "zh" || !CJK_PATTERN.test(previewRaw)) ? previewRaw : "";
+	const fallback = resolvePracticeText(entry?.practice, docLang);
+	if (!hasActivities && !preview && !fallback) return null;
 
 	const block = document.createElement("div");
 	block.className = `wealth-practice${compact ? " wealth-practice--history" : ""}`;
 
+	const header = document.createElement("div");
+	header.className = "wealth-practice__header";
 	const title = document.createElement("p");
 	title.className = "wealth-practice__title";
 	title.textContent = compact
 		? t("wealth_practice_compact_title", "练习提要")
 		: t("wealth_practice_title", "今日练习");
-	block.append(title);
+	header.append(title);
+	block.append(header);
 
-	if (!compact && activities && activities.length) {
-		const list = document.createElement("ol");
-		list.className = "wealth-practice__list";
-		activities.slice(0, 3).forEach((activity, index) => {
-			const li = document.createElement("li");
-			const heading = document.createElement("p");
-			heading.className = "wealth-practice__activity";
-			heading.textContent = activity.title
-				|| t("wealth_practice_item_label", "练习 {index}", { index: index + 1 });
-			li.append(heading);
-			if (activity.steps.length) {
-				const steps = document.createElement("ul");
-				steps.className = "wealth-practice__steps";
-				activity.steps.slice(0, 6).forEach((step) => {
-					const item = document.createElement("li");
-					item.textContent = step;
-					steps.append(item);
-				});
-				li.append(steps);
-			}
-			list.append(li);
-		});
-		block.append(list);
+	if (!compact) {
+		if (hasActivities) {
+			block.append(createActivitiesList(activities));
+			return block;
+		}
+		const text = preview || fallback;
+		if (text) {
+			const paragraph = document.createElement("p");
+			paragraph.className = "wealth-practice__fallback";
+			appendMultiline(paragraph, text);
+			block.append(paragraph);
+		}
 		return block;
 	}
 
-	const summary =
-		preview ||
-		fallback ||
-		(activities && activities.length
-			? [activities[0].title, activities[0].steps[0]].filter(Boolean).join(" · ")
-			: "");
-	if (!summary) return null;
-	const paragraph = document.createElement("p");
-	paragraph.className = "wealth-practice__fallback";
-	paragraph.textContent = summary;
-	block.append(paragraph);
+	let summary = "";
+	// When activities exist, avoid using long or list-styled previews as the collapsed summary.
+	const previewLooksLikeList = /(^|\n)\s*(?:\d+|[①②③④⑤⑥⑦⑧⑨⑩])[\.。、]/.test(preview) || preview.split(/\n+/).length > 1;
+	const previewIsTooLong = preview.length > 160;
+	if (preview && !(hasActivities && (previewLooksLikeList || previewIsTooLong))) {
+		summary = preview;
+	}
+	if (!summary && hasActivities) {
+		const seed = activities[0];
+		summary = seed?.title || (Array.isArray(seed?.steps) ? seed.steps[0] : "") || "";
+	}
+	if (!summary && fallback && (docLang === "zh" || !CJK_PATTERN.test(fallback))) {
+		const firstLine = fallback.split(/\n+/)[0] || fallback;
+		summary = firstLine;
+	}
+
+	const detailContainer = document.createElement("div");
+	detailContainer.className = "wealth-practice__details";
+	detailContainer.hidden = true;
+	let detailHasContent = false;
+
+	if (hasActivities) {
+		detailContainer.append(createActivitiesList(activities));
+		detailHasContent = true;
+	}
+
+	let detailText = "";
+	if (!hasActivities && fallback && (!summary || fallback !== summary)) {
+		detailText = fallback;
+	} else if (!hasActivities && preview && preview !== summary) {
+		detailText = preview;
+	}
+
+	if (detailText) {
+		const paragraph = document.createElement("p");
+		paragraph.className = "wealth-practice__fallback";
+		appendMultiline(paragraph, detailText);
+		detailContainer.append(paragraph);
+		detailHasContent = true;
+	}
+
+	const summaryText = normalizeSummary(summary);
+	if (summaryText) {
+		const summaryParagraph = document.createElement("p");
+		summaryParagraph.className = "wealth-practice__summary";
+		appendMultiline(summaryParagraph, summaryText);
+		block.append(summaryParagraph);
+	}
+
+	if (detailHasContent) {
+		const expandLabel = t("wealth_practice_expand", "展开");
+		const collapseLabel = t("wealth_practice_collapse", "收起");
+		const toggle = document.createElement("button");
+		toggle.type = "button";
+		toggle.className = "wealth-practice__toggle";
+		const detailsId = `wealth-practice-details-${Math.random().toString(36).slice(2, 10)}`;
+		detailContainer.id = detailsId;
+		toggle.setAttribute("aria-controls", detailsId);
+		const setExpanded = (expanded) => {
+			if (expanded) {
+				detailContainer.hidden = false;
+				detailContainer.removeAttribute("hidden");
+			} else {
+				detailContainer.hidden = true;
+				detailContainer.setAttribute("hidden", "");
+			}
+			toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+			toggle.textContent = expanded ? collapseLabel : expandLabel;
+			toggle.classList.toggle("is-open", expanded);
+		};
+		setExpanded(false);
+		toggle.addEventListener("click", () => {
+			setExpanded(detailContainer.hidden);
+		});
+		header.append(toggle);
+		block.append(detailContainer);
+	} else if (!summary && fallback) {
+		const paragraph = document.createElement("p");
+		paragraph.className = "wealth-practice__fallback";
+		appendMultiline(paragraph, fallback);
+		block.append(paragraph);
+	}
+
 	return block;
 }
 
@@ -1036,6 +1171,13 @@ function renderPulse(data) {
 					? t("wealth_pulse_category_global", "全球")
 					: t("wealth_pulse_category_china", "中国");
 				meta.append(badge);
+			}
+
+			if (item.degraded) {
+				const degradedBadge = document.createElement("span");
+				degradedBadge.className = "wealth-pulse-meta-badge wealth-pulse-meta-badge--degraded";
+				degradedBadge.textContent = t("wealth_badge_degraded", "降级");
+				meta.append(degradedBadge);
 			}
 
 			const primaryLink = Array.isArray(item.links) ? item.links.find((href) => isHttpUrl(href)) : null;
