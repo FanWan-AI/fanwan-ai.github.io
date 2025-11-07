@@ -183,7 +183,7 @@ export async function fetchGithubTop(options = {}){
   }
 
   const items = (allItems||[])
-    .filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION')
+    // .filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION')
     .slice(0, desired)
     .map(mapGithubRepo)
     .filter(Boolean);
