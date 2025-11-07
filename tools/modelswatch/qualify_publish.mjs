@@ -13,7 +13,7 @@ import { nowUtcISOString, formatDateKey } from './lib/time.mjs';
 import { readState, writeState } from './lib/state.mjs';
 import { computeSha256 } from './lib/hash.mjs';
 
-const TASK_THRESHOLD = Number(process.env.MODELSWATCH_TASK_THRESHOLD || '0.7');
+const TASK_THRESHOLD = Number(process.env.MODELSWATCH_TASK_THRESHOLD || '0.5');
 const TASK_TOP_K = Number(process.env.MODELSWATCH_TASK_TOP_K || '3');
 const TASK_INDEX_LIMIT = Number(process.env.MODELSWATCH_TASK_INDEX_LIMIT || '500');
 const CATEGORY_LIMIT = Number(process.env.MODELSWATCH_CATEGORY_LIMIT || '3');
@@ -24,7 +24,7 @@ const MAX_DATES = Number(process.env.MODELSWATCH_MAX_DATES || '120');
 const HOTLIST_LIMIT = Number(process.env.MODELSWATCH_HOTLIST_LIMIT || '50');
 const CORPUS_LIMIT = Number(process.env.MODELSWATCH_CORPUS_LIMIT || '1000');
 const CATEGORY_TARGET = Number(process.env.MODELSWATCH_CATEGORY_TARGET || '12');
-const TASK_TARGET = Number(process.env.MODELSWATCH_TASK_TARGET || '18');
+const TASK_TARGET = Number(process.env.MODELSWATCH_TASK_TARGET || '30');
 const FETCH_RECOMMEND_LIMIT = Number(process.env.MODELSWATCH_FETCH_RECOMMEND_LIMIT || '8');
 
 const PROJECT_CATEGORY_RULES = {

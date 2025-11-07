@@ -52,34 +52,104 @@ function parseLinkHeader(linkHeader) {
   return out;
 }
 
+// async function hfListPaginated({ desired, pageSize = HF_PAGE_SIZE, maxPages = HF_MAX_PAGES } = {}){
+//   const headers = buildHeaders({ log: true });
+//   const collected = [];
+//   let url = `https://huggingface.co/api/models?sort=${encodeURIComponent(HF_SORT)}&direction=${encodeURIComponent(HF_DIRECTION)}&limit=${pageSize}`;
+//   let pages = 0;
+//   const seen = new Set();
+//   while (url && pages < maxPages && collected.length < desired) {
+//     let res;
+//     try {
+//       res = await fetch(url, { headers });
+//     } catch(e){
+//       warn('HF list network error', e.message);
+//       if (collected.length) break; // return partial results if we have some
+//       throw e;
+//     }
+//     if (!res.ok) {
+//       warn('HF list failed status %s on page %d', res.status, pages+1);
+//       if (collected.length) break; // return partial results if we have some
+//       throw new Error('HF list failed ' + res.status);
+//     }
+//     let pageItems = [];
+//     try {
+//       pageItems = await res.json();
+//     } catch (e) {
+//       warn('HF list JSON parse error on page %d: %s', pages+1, e.message || e);
+//       if (collected.length) break;
+//       throw e;
+//     }
+//     for (const m of pageItems) {
+//       const id = m && m.id;
+//       if (!id || seen.has(id)) continue;
+//       seen.add(id);
+//       collected.push(m);
+//       if (collected.length >= desired) break;
+//     }
+//     pages += 1;
+//     if (collected.length >= desired) break;
+//     const link = res.headers.get('link') || res.headers.get('Link');
+//     const links = parseLinkHeader(link);
+//     url = links.next || null;
+//     if (!url) break;
+//     // Ensure we don't accidentally change page size when following next
+//     if (!/limit=/.test(url)) {
+//       const sep = url.includes('?') ? '&' : '?';
+//       url = `${url}${sep}limit=${pageSize}`;
+//     }
+//   }
+//   return collected;
+// }
 async function hfListPaginated({ desired, pageSize = HF_PAGE_SIZE, maxPages = HF_MAX_PAGES } = {}){
   const headers = buildHeaders({ log: true });
   const collected = [];
   let url = `https://huggingface.co/api/models?sort=${encodeURIComponent(HF_SORT)}&direction=${encodeURIComponent(HF_DIRECTION)}&limit=${pageSize}`;
   let pages = 0;
   const seen = new Set();
+  const maxRetries = 3; // a-1. 定义最大重试次数
+  const retryDelay = 2000; // a-2. 定义重试延迟（毫秒）
+
   while (url && pages < maxPages && collected.length < desired) {
     let res;
-    try {
-      res = await fetch(url, { headers });
-    } catch(e){
-      warn('HF list network error', e.message);
-      if (collected.length) break; // return partial results if we have some
-      throw e;
+    let success = false; // b. 用于跟踪请求是否成功
+    for (let attempt = 1; attempt <= maxRetries; attempt++) { // c. 开始重试循环
+      try {
+        res = await fetch(url, { headers });
+        if (res.ok) {
+          success = true;
+          break; // c-1. 请求成功，跳出重试循环
+        }
+        // c-2. 处理非2xx但在500-599范围内的服务器错误
+        if (res.status >= 500 && res.status <= 599) {
+          warn('HF list API error (status %s) on page %d, attempt %d/%d. Retrying in %dms...', res.status, pages + 1, attempt, maxRetries, retryDelay);
+          if (attempt < maxRetries) await new Promise(r => setTimeout(r, retryDelay));
+        } else {
+          // c-3. 对于客户端错误（4xx）或其他非重试错误，直接中断
+          warn('HF list failed status %s on page %d. Not retrying.', res.status, pages + 1);
+          break; // 不再重试
+        }
+      } catch (e) {
+        warn('HF list network error on page %d, attempt %d/%d: %s. Retrying in %dms...', pages + 1, attempt, maxRetries, e.message, retryDelay);
+        if (attempt < maxRetries) await new Promise(r => setTimeout(r, retryDelay));
+      }
     }
-    if (!res.ok) {
-      warn('HF list failed status %s on page %d', res.status, pages+1);
-      if (collected.length) break; // return partial results if we have some
-      throw new Error('HF list failed ' + res.status);
+
+    if (!success || !res || !res.ok) { // d. 如果所有重试都失败了
+      warn('HF list failed permanently on page %d after %d attempts.', pages + 1, maxRetries);
+      if (collected.length > 0) break; // 如果已有数据，则返回部分结果
+      throw new Error(`HF list failed on page ${pages + 1}`); // 否则抛出错误
     }
+
     let pageItems = [];
     try {
       pageItems = await res.json();
     } catch (e) {
-      warn('HF list JSON parse error on page %d: %s', pages+1, e.message || e);
+      warn('HF list JSON parse error on page %d: %s', pages + 1, e.message || e);
       if (collected.length) break;
       throw e;
     }
+
     for (const m of pageItems) {
       const id = m && m.id;
       if (!id || seen.has(id)) continue;
@@ -87,13 +157,13 @@ async function hfListPaginated({ desired, pageSize = HF_PAGE_SIZE, maxPages = HF
       collected.push(m);
       if (collected.length >= desired) break;
     }
+
     pages += 1;
     if (collected.length >= desired) break;
     const link = res.headers.get('link') || res.headers.get('Link');
     const links = parseLinkHeader(link);
     url = links.next || null;
     if (!url) break;
-    // Ensure we don't accidentally change page size when following next
     if (!/limit=/.test(url)) {
       const sep = url.includes('?') ? '&' : '?';
       url = `${url}${sep}limit=${pageSize}`;
