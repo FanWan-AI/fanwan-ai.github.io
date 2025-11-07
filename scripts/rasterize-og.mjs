@@ -122,9 +122,19 @@ async function rasterizeOne(svgPath, pngPath){
     const svg = await fs.readFile(svgPath, 'utf8');
     // Try Puppeteer first (ensures webfont support). If unavailable, fall back to sharp.
     const ok = await rasterizeWithPuppeteer(svg, pngPath);
-    if (ok) { console.log('Rendered (puppeteer) ', path.relative(root, svgPath), '->', path.relative(root, pngPath)); return; }
+    if (ok) {
+      console.log('Rendered (puppeteer) ', path.relative(root, svgPath), '->', path.relative(root, pngPath));
+      await fs.unlink(svgPath); // Delete SVG after successful rasterization
+      console.log('Deleted source SVG:', path.relative(root, svgPath));
+      return;
+    }
     const ok2 = await rasterizeWithSharp(svg, pngPath);
-    if (ok2) { console.log('Rasterized (sharp) ', path.relative(root, svgPath), '->', path.relative(root, pngPath)); return; }
+    if (ok2) {
+      console.log('Rasterized (sharp) ', path.relative(root, svgPath), '->', path.relative(root, pngPath));
+      await fs.unlink(svgPath); // Delete SVG after successful rasterization
+      console.log('Deleted source SVG:', path.relative(root, svgPath));
+      return;
+    }
     console.warn('Failed to rasterize', svgPath);
   } catch (e) {
     console.error('rasterizeOne error', e?.message || e);
