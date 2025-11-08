@@ -78,7 +78,35 @@ jobs:
           if ! git diff --quiet; then
             git add -A
             git commit -m "chore(wealth): daily/pulse/tts auto-update [skip ci]"
-            git push
+            # Try to push; if remote has new commits, fetch and rebase then push again.
+            set -e
+            git remote set-url origin "$(git config --get remote.origin.url)"
+            git fetch origin --depth=1 || true
+            # Attempt a normal push first
+            if git push; then
+              echo "Push succeeded"
+              exit 0
+            fi
+            echo "Initial push failed; attempting to rebase onto origin/main and push again"
+            # Try rebase onto remote main (best-effort). If rebase fails, fall back to merge.
+            BRANCH=$(git rev-parse --abbrev-ref HEAD)
+            git fetch origin $BRANCH || true
+            if git rebase --autostash origin/$BRANCH; then
+              git push || true
+            else
+              echo "Rebase failed; trying merge instead"
+              git rebase --abort || true
+              git merge --no-edit origin/$BRANCH || true
+              git push || true
+            fi
+            # As a last resort, use force-with-lease to avoid accidentally overwriting remote work
+            if ! git rev-parse --verify --quiet origin/$BRANCH >/dev/null; then
+              echo "Remote branch not found; final push"
+              git push --set-upstream origin $BRANCH || true
+            else
+              echo "Attempting final push with --force-with-lease if needed"
+              git push --force-with-lease || true
+            fi
           else
             echo "No changes to commit."
           fi
