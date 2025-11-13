@@ -335,7 +335,7 @@ async function main() {
     return !summaryModels[canonical] && !summaryModels[`hf:${id}`];
   });
 
-  // Fallback injection: if no HF targets remain after prefiltering, try to inject a few from hotlist deficits
+  // Fallback injection: if no HF targets remain after prefiltering, try to inject a few valid HF models from the models_hotlist
   if (filteredHfTargets.length === 0) {
     try {
       const hotlistPath = resolveDataPath('models_hotlist.json');
@@ -345,8 +345,19 @@ async function main() {
       for (const arr of Object.values(byCategory)) {
         if (!Array.isArray(arr)) continue;
         for (const it of arr) {
-          const id = it?.id || it?.repo || it?.model_id || '';
-          if (typeof id === 'string' && id.includes('/')) pool.add(id);
+          // Prefer canonical_id if present and valid
+          const canonical = typeof it?.canonical_id === 'string' ? it.canonical_id : '';
+          const source = (it?.source || '').toLowerCase();
+          if (canonical.startsWith('huggingface:') || canonical.startsWith('hf:') || source === 'huggingface') {
+            const slug = canonical.includes(':') ? canonical.split(':').slice(1).join(':') : (it?.id || it?.model_id || '');
+            if (slug && typeof slug === 'string' && slug.includes('/')) pool.add(slug);
+            continue;
+          }
+          // As a very last resort, use id-style fields only if we can infer they are HF model slugs
+          const idMaybe = it?.id || it?.model_id || '';
+          if (typeof idMaybe === 'string' && idMaybe.includes('/') && !idMaybe.includes(' ')) {
+            pool.add(idMaybe);
+          }
         }
       }
       const candidates = Array.from(pool).filter((id) => !summaryModels[`huggingface:${id}`] && !summaryModels[`hf:${id}`]);

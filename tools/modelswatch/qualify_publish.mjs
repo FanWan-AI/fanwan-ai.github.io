@@ -529,7 +529,9 @@ function buildHotlists(taskBuckets, categoryBuckets, generatedAt, dateKey) {
   };
 
   for (const [key, entries] of taskBuckets.entries()) {
-    const sorted = entries
+    // Only include Hugging Face models in the models hotlist
+    const hfOnly = (entries || []).filter((e) => (e?.item?.source || '').toLowerCase() === 'huggingface');
+    const sorted = hfOnly
       .slice()
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -1306,6 +1308,39 @@ async function main() {
     const taskContext = await buildTaskContext();
     const categoryContext = await buildCategoryContext();
 
+    // Load previous hotlists to reduce overlap in daily outputs; we will filter pass-once items
+    // that already appear in hotlists for the same source. Qualified items are kept.
+    let prevModelsHot = null;
+    let prevProjectsHot = null;
+    try { prevModelsHot = await readJsonIfExists(resolveDataPath('models_hotlist.json')); } catch {}
+    try { prevProjectsHot = await readJsonIfExists(resolveDataPath('projects_hotlist.json')); } catch {}
+    const hotHFCanonicals = new Set();
+    const hotGHCanonicals = new Set();
+    if (prevModelsHot && prevModelsHot.by_category && typeof prevModelsHot.by_category === 'object') {
+      for (const arr of Object.values(prevModelsHot.by_category)) {
+        if (!Array.isArray(arr)) continue;
+        for (const it of arr) {
+          const cid = typeof it?.canonical_id === 'string' ? it.canonical_id : null;
+          const src = (it?.source || '').toLowerCase();
+          if (cid && (cid.startsWith('huggingface:') || cid.startsWith('hf:') || src === 'huggingface')) {
+            hotHFCanonicals.add(cid.startsWith('hf:') ? `huggingface:${cid.slice(3)}` : cid);
+          }
+        }
+      }
+    }
+    if (prevProjectsHot && prevProjectsHot.by_category && typeof prevProjectsHot.by_category === 'object') {
+      for (const arr of Object.values(prevProjectsHot.by_category)) {
+        if (!Array.isArray(arr)) continue;
+        for (const it of arr) {
+          const cid = typeof it?.canonical_id === 'string' ? it.canonical_id : null;
+          const src = (it?.source || '').toLowerCase();
+          if (cid && (cid.startsWith('github:') || src === 'github')) {
+            hotGHCanonicals.add(cid);
+          }
+        }
+      }
+    }
+
     const artifacts = [];
     const artifactGroups = {
       daily: [],
@@ -1383,6 +1418,22 @@ async function main() {
         generatedAt
       });
 
+      // Filter daily outputs to de-duplicate against previous hotlists for the same source.
+      // Keep qualified items; drop pass-once items that already appear in hotlists.
+      const hotSet = source === 'github' ? hotGHCanonicals : hotHFCanonicals;
+      const filteredItems = Array.isArray(mergedItems)
+        ? mergedItems.filter((it) => {
+            if (!it?.canonical_id) return true;
+            if (it.status === 'qualified') return true;
+            return !hotSet.has(it.canonical_id);
+          })
+        : [];
+      const filteredQualified = filteredItems.filter((it) => it.status === 'qualified').length;
+      const filteredPassonce = filteredItems.filter((it) => it.status === 'passonce').length;
+      const filteredCoverage = filteredItems.length
+        ? Number((filteredQualified / filteredItems.length).toFixed(4))
+        : 0;
+
       for (const item of mergedItems) {
         const taskAssignments = classifyTasks(item, taskContext, classificationMetrics);
         item.tasks = taskAssignments.map((entry) => entry.key);
@@ -1432,18 +1483,18 @@ async function main() {
         updated_at: generatedAt,
         published_at: generatedAt,
         stats: {
-          total: stats.published_total,
-          qualified: stats.published_qualified,
-          passonce: stats.published_passonce,
-          coverage_pct: stats.coverage_pct,
+          total: filteredItems.length,
+          qualified: filteredQualified,
+          passonce: filteredPassonce,
+          coverage_pct: filteredCoverage,
           duplicates: stats.duplicates,
           source_total: stats.input_total
         },
-        items: mergedItems
+        items: filteredItems
       };
 
-      totalPublished += stats.published_total;
-      totalQualified += stats.published_qualified;
+      totalPublished += filteredItems.length;
+      totalQualified += filteredQualified;
 
       const releasePath = resolveDataPath('daily', `${dateKey}.${source}.json`);
       const aliasPath = resolveDataPath(source === 'github' ? 'daily_github.json' : 'daily_hf.json');
