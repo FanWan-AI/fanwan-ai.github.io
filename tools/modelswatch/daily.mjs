@@ -23,6 +23,7 @@ const QUALIFIED_MIN_ZH = Number(process.env.TRI_ACCEPT_MIN_ZH || '150');
 const REFRESH_ENABLE = ['1','true','yes','on'].includes((process.env.TRI_REFRESH_ENABLE || '1').toLowerCase());
 const REFRESH_TTL_DAYS = Number(process.env.TRI_REFRESH_TTL_DAYS || '30');
 const FORCE_REFRESH = ['1','true','yes','on'].includes((process.env.TRI_FORCE_REFRESH || '0').toLowerCase());
+const REFRESH_MAX_PER_RUN = Math.max(0, Number(process.env.TRI_REFRESH_MAX_PER_RUN || '5'));
 const FETCH_BUFFER = Number(process.env.MODELSWATCH_FETCH_BUFFER || '1.3');
 const TRI_LIMIT_TOTAL = Number(process.env.MODELSWATCH_TRI_LIMIT || '20');
 const TRI_LIMIT_GH = Number(process.env.MODELSWATCH_TRI_LIMIT_GH || Math.ceil(TRI_LIMIT_TOTAL/2));
@@ -49,7 +50,33 @@ function daysSince(iso) {
   return (Date.now() - t) / (1000*3600*24);
 }
 
-function isCacheEntryQualified(entry) {
+function buildRefreshPolicy() {
+  return {
+    enabled: REFRESH_ENABLE,
+    ttlDays: REFRESH_TTL_DAYS,
+    force: FORCE_REFRESH,
+    budget: REFRESH_MAX_PER_RUN,
+    triggered: 0,
+    skipped: 0
+  };
+}
+
+function shouldRefreshEntry(entry, refreshPolicy) {
+  if (!refreshPolicy || !refreshPolicy.enabled) return false;
+  if (!refreshPolicy.ttlDays || refreshPolicy.ttlDays <= 0) return false;
+  const last = entry?.quality?.accepted_at || entry?.updated_at || entry?.first_generated_at || entry?.created_at;
+  const age = daysSince(last);
+  if (!Number.isFinite(age) || age <= refreshPolicy.ttlDays) return false;
+  if (refreshPolicy.budget <= 0) {
+    refreshPolicy.skipped += 1;
+    return false;
+  }
+  refreshPolicy.budget -= 1;
+  refreshPolicy.triggered += 1;
+  return true;
+}
+
+function isCacheEntryQualified(entry, refreshPolicy) {
   if (!entry || entry.quality?.fallback) return false;
   const summaries = entry.summaries || {
     en: entry.summary_en || '',
@@ -58,19 +85,12 @@ function isCacheEntryQualified(entry) {
   const enLen = sanitizeText(summaries.en).length;
   const zhLen = sanitizeText(summaries.zh).length;
   if (enLen < QUALIFIED_MIN_EN && zhLen < QUALIFIED_MIN_ZH) return false;
-  // Refresh TTL policy: if disabled, treat as qualified; if enabled, only re-tri when TTL expired unless forced
-  if (FORCE_REFRESH) return false; // force re-tri
-  if (REFRESH_ENABLE && REFRESH_TTL_DAYS > 0) {
-    const last = entry.quality?.accepted_at || entry.updated_at || entry.first_generated_at || entry.created_at;
-    const age = daysSince(last);
-    if (age > REFRESH_TTL_DAYS) {
-      return false; // stale -> needs refresh
-    }
-  }
+  if (refreshPolicy?.force) return false;
+  if (shouldRefreshEntry(entry, refreshPolicy)) return false;
   return true;
 }
 
-function filterNewItems(items, summaryModels, sourceLabel, stats) {
+function filterNewItems(items, summaryModels, sourceLabel, stats, refreshPolicy) {
   if (!Array.isArray(items) || !items.length) {
     return { filtered: [], removedQualified: 0, removedDuplicates: 0 };
   }
@@ -78,6 +98,7 @@ function filterNewItems(items, summaryModels, sourceLabel, stats) {
   const filtered = [];
   let removedQualified = 0;
   let removedDuplicates = 0;
+  if (!stats[sourceLabel]) stats[sourceLabel] = {};
   for (const item of items) {
     if (!item || !item.canonical_id) continue;
     if (seen.has(item.canonical_id)) {
@@ -86,7 +107,7 @@ function filterNewItems(items, summaryModels, sourceLabel, stats) {
     }
     seen.add(item.canonical_id);
     const cacheEntry = summaryModels[item.canonical_id];
-    if (isCacheEntryQualified(cacheEntry)) {
+    if (isCacheEntryQualified(cacheEntry, refreshPolicy)) {
       removedQualified += 1;
       continue;
     }
@@ -97,7 +118,9 @@ function filterNewItems(items, summaryModels, sourceLabel, stats) {
       removedQualified,
       removedDuplicates,
       kept: filtered.length,
-      original: items.length
+      original: items.length,
+      refresh_scheduled: refreshPolicy ? refreshPolicy.triggered : 0,
+      refresh_skipped: refreshPolicy ? refreshPolicy.skipped : 0
     };
   }
   return { filtered, removedQualified, removedDuplicates };
@@ -314,6 +337,10 @@ async function main() {
     }
   }
   const dedupeStats = {};
+  const refreshPolicies = {
+    github: buildRefreshPolicy(),
+    huggingface: buildRefreshPolicy()
+  };
 
   // Pre-filter any targeted repos/models from the fetch plan against the
   // existing summary cache so we don't request items that are already
@@ -427,11 +454,11 @@ async function main() {
     const hfNormalizedRaw = hfItemsRaw.map((item) => normalizeHFItem(item, generatedAt));
 
     const { filtered: githubNormalized, removedQualified: ghRemovedQualified, removedDuplicates: ghRemovedDuplicates } =
-      filterNewItems(githubNormalizedRaw, summaryModels, 'github', dedupeStats);
+      filterNewItems(githubNormalizedRaw, summaryModels, 'github', dedupeStats, refreshPolicies.github);
     const { filtered: hfNormalized, removedQualified: hfRemovedQualified, removedDuplicates: hfRemovedDuplicates } =
-      filterNewItems(hfNormalizedRaw, summaryModels, 'huggingface', dedupeStats);
+      filterNewItems(hfNormalizedRaw, summaryModels, 'huggingface', dedupeStats, refreshPolicies.huggingface);
 
-    if (ghRemovedQualified || ghRemovedDuplicates) {
+    if (ghRemovedQualified || ghRemovedDuplicates || refreshPolicies.github.triggered) {
       info(
         '[daily] github dedupe removed %d qualified & %d duplicate entries (kept %d/%d)',
         ghRemovedQualified,
@@ -439,8 +466,11 @@ async function main() {
         githubNormalized.length,
         githubNormalizedRaw.length
       );
+      if (refreshPolicies.github.enabled && (refreshPolicies.github.triggered || refreshPolicies.github.skipped)) {
+        info('[daily] github refresh scheduled=%d skipped=%d (budget=%d)', refreshPolicies.github.triggered, refreshPolicies.github.skipped, REFRESH_MAX_PER_RUN);
+      }
     }
-    if (hfRemovedQualified || hfRemovedDuplicates) {
+    if (hfRemovedQualified || hfRemovedDuplicates || refreshPolicies.huggingface.triggered) {
       info(
         '[daily] huggingface dedupe removed %d qualified & %d duplicate entries (kept %d/%d)',
         hfRemovedQualified,
@@ -448,6 +478,9 @@ async function main() {
         hfNormalized.length,
         hfNormalizedRaw.length
       );
+      if (refreshPolicies.huggingface.enabled && (refreshPolicies.huggingface.triggered || refreshPolicies.huggingface.skipped)) {
+        info('[daily] huggingface refresh scheduled=%d skipped=%d (budget=%d)', refreshPolicies.huggingface.triggered, refreshPolicies.huggingface.skipped, REFRESH_MAX_PER_RUN);
+      }
     }
 
     const metrics = {

@@ -693,6 +693,38 @@ function mergeSourceCollections({ source, passonceItems, qualifiedItems, summary
   };
 }
 
+function buildCorpusCanonicalSet(payload) {
+  const set = new Set();
+  if (payload && Array.isArray(payload.items)) {
+    for (const item of payload.items) {
+      if (item?.canonical_id) {
+        set.add(item.canonical_id);
+      }
+    }
+  }
+  return set;
+}
+
+function filterReleaseItems(items, existingSet) {
+  if (!Array.isArray(items) || !items.length) {
+    return { items: [], dropped: 0 };
+  }
+  if (!existingSet || existingSet.size === 0) {
+    return { items: items.slice(), dropped: 0 };
+  }
+  const kept = [];
+  let dropped = 0;
+  for (const item of items) {
+    const canon = item?.canonical_id;
+    if (canon && existingSet.has(canon)) {
+      dropped += 1;
+      continue;
+    }
+    kept.push(item);
+  }
+  return { items: kept, dropped };
+}
+
 function expandAliasVariants(alias) {
   const normalized = sanitizeText(alias).toLowerCase();
   if (!normalized) return [];
@@ -1341,6 +1373,12 @@ async function main() {
       }
     }
 
+    // Snapshot recently published corpora to filter out already-covered canonicals.
+    const corpusGhPayload = await readJsonIfExists(resolveDataPath('corpus.gh.json'));
+    const corpusHfPayload = await readJsonIfExists(resolveDataPath('corpus.hf.json'));
+    const corpusGhCanonicals = buildCorpusCanonicalSet(corpusGhPayload);
+    const corpusHfCanonicals = buildCorpusCanonicalSet(corpusHfPayload);
+
     const artifacts = [];
     const artifactGroups = {
       daily: [],
@@ -1418,21 +1456,49 @@ async function main() {
         generatedAt
       });
 
-      // Filter daily outputs to de-duplicate against previous hotlists for the same source.
+      // First drop any entries whose canonicals already exist in the historical corpus.
+      const corpusSet = source === 'github' ? corpusGhCanonicals : corpusHfCanonicals;
+      const corpusFilterResult = filterReleaseItems(mergedItems, corpusSet);
+      const corpusFilteredItems = corpusFilterResult.items;
+
+      // Then filter daily outputs to de-duplicate against previous hotlists for the same source.
       // Keep qualified items; drop pass-once items that already appear in hotlists.
       const hotSet = source === 'github' ? hotGHCanonicals : hotHFCanonicals;
-      const filteredItems = Array.isArray(mergedItems)
-        ? mergedItems.filter((it) => {
-            if (!it?.canonical_id) return true;
-            if (it.status === 'qualified') return true;
-            return !hotSet.has(it.canonical_id);
-          })
-        : [];
+      const filteredItems = [];
+      let hotlistDropped = 0;
+      if (Array.isArray(corpusFilteredItems)) {
+        for (const item of corpusFilteredItems) {
+          if (!item?.canonical_id) {
+            filteredItems.push(item);
+            continue;
+          }
+          if (item.status === 'qualified') {
+            filteredItems.push(item);
+            continue;
+          }
+          if (hotSet.has(item.canonical_id)) {
+            hotlistDropped += 1;
+            continue;
+          }
+          filteredItems.push(item);
+        }
+      }
       const filteredQualified = filteredItems.filter((it) => it.status === 'qualified').length;
       const filteredPassonce = filteredItems.filter((it) => it.status === 'passonce').length;
       const filteredCoverage = filteredItems.length
         ? Number((filteredQualified / filteredItems.length).toFixed(4))
         : 0;
+
+      const releaseStats = {
+        published_total: filteredItems.length,
+        published_qualified: filteredQualified,
+        published_passonce: filteredPassonce,
+        coverage_pct: filteredCoverage,
+        duplicates: stats.duplicates,
+        source_total: stats.input_total,
+        dropped_corpus: corpusFilterResult.dropped,
+        dropped_hotlist: hotlistDropped
+      };
 
       for (const item of mergedItems) {
         const taskAssignments = classifyTasks(item, taskContext, classificationMetrics);
@@ -1488,13 +1554,15 @@ async function main() {
           passonce: filteredPassonce,
           coverage_pct: filteredCoverage,
           duplicates: stats.duplicates,
-          source_total: stats.input_total
+          source_total: stats.input_total,
+          dropped_corpus: corpusFilterResult.dropped,
+          dropped_hotlist: hotlistDropped
         },
         items: filteredItems
       };
 
-      totalPublished += filteredItems.length;
-      totalQualified += filteredQualified;
+      totalPublished += releaseStats.published_total;
+      totalQualified += releaseStats.published_qualified;
 
       const releasePath = resolveDataPath('daily', `${dateKey}.${source}.json`);
       const aliasPath = resolveDataPath(source === 'github' ? 'daily_github.json' : 'daily_hf.json');
@@ -1589,11 +1657,13 @@ async function main() {
 
       perSourceResults.push({
         source,
-        published: stats.published_total,
-        qualified: stats.published_qualified,
-        passonce: stats.published_passonce,
-        coverage_pct: stats.coverage_pct,
-        duplicates: stats.duplicates,
+        published: releaseStats.published_total,
+        qualified: releaseStats.published_qualified,
+        passonce: releaseStats.published_passonce,
+        coverage_pct: releaseStats.coverage_pct,
+        duplicates: releaseStats.duplicates,
+        dropped_corpus: releaseStats.dropped_corpus,
+        dropped_hotlist: releaseStats.dropped_hotlist,
         inputs: {
           passonce: stats.input_passonce,
           qualified: stats.input_qualified
@@ -1601,7 +1671,7 @@ async function main() {
       });
 
       info(
-        `[qualify_publish] ${source}: published ${stats.published_total} items (qualified=${stats.published_qualified}, passonce=${stats.published_passonce}, coverage=${stats.coverage_pct})`
+        `[qualify_publish] ${source}: published ${releaseStats.published_total} items (qualified=${releaseStats.published_qualified}, passonce=${releaseStats.published_passonce}, coverage=${releaseStats.coverage_pct}, dropped_corpus=${releaseStats.dropped_corpus}, dropped_hotlist=${releaseStats.dropped_hotlist})`
       );
     }
 
