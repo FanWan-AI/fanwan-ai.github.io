@@ -88,9 +88,15 @@ async function synthesizeWithDashScope(text, lang = "zh") {
     throw new Error("DASHSCOPE_API_KEY is required for TTS");
   }
   const endpoint = process.env.DASHSCOPE_TTS_ENDPOINT || "https://dashscope.aliyuncs.com/api/v1/services/tts/text-to-speech";
-  const voice = process.env.TTS_VOICE || process.env.voice || (lang === "en" ? "Katherine" : "Katerina");
+  const langKey = String(lang || "zh").toLowerCase();
+  const defaultVoice = langKey.startsWith("en") ? "Alex" : "Cherry";
+  const voice =
+    process.env.DASHSCOPE_TTS_VOICE ||
+    process.env.TTS_VOICE ||
+    process.env.voice ||
+    defaultVoice;
   const format = process.env.TTS_AUDIO_FORMAT || "mp3";
-  const model = process.env.DASHSCOPE_TTS_MODEL || "sambert-zhihe-v1";
+  const model = process.env.DASHSCOPE_TTS_MODEL || "qwen3-tts-flash";
   const sampleRate = Number(process.env.TTS_SAMPLE_RATE || 48000);
   const payload = {
     model,
