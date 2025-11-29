@@ -1,7 +1,6 @@
 const DAILY_URL = "/data/ai/wealth/finance-daily.json";
 const PULSE_URL = "/data/ai/wealth/pulse.json";
 const CACHE_TTL = 1000 * 60 * 60; // Cache time-to-live
-const PAGE_SIZE = 10;
 
 function getLanguageOrder() {
 	const root = document.documentElement;
@@ -22,6 +21,33 @@ let __wealth_last_daily = null;
 let __wealth_last_pulse = null;
 const dailyContainer = document.getElementById("daily");
 const pulseContainer = document.getElementById("pulse");
+const dailyTrackEl = dailyContainer?.querySelector('[data-role="daily-track"]');
+const dailyActiveLabel = dailyContainer?.querySelector('[data-role="daily-active-date"]');
+const dailyPrevBtn = dailyContainer?.querySelector('[data-role="daily-track-prev"]');
+const dailyNextBtn = dailyContainer?.querySelector('[data-role="daily-track-next"]');
+const dailyStatusEl = dailyContainer?.querySelector('[data-role="status"]');
+const dailyPageContainer = dailyContainer?.querySelector('.wealth-track-page');
+const dailyPageLabels = {
+	zh: dailyContainer?.querySelector('[data-role="daily-track-page-zh"]'),
+	en: dailyContainer?.querySelector('[data-role="daily-track-page-en"]'),
+	es: dailyContainer?.querySelector('[data-role="daily-track-page-es"]'),
+};
+
+const pulseTabsEl = pulseContainer?.querySelector('[data-role="pulse-tabs"]');
+const pulseGridEl = pulseContainer?.querySelector('[data-role="pulse-grid"]');
+const pulseStatusEl = pulseContainer?.querySelector('[data-role="status"]');
+const pulseMoreBtn = pulseContainer?.querySelector('[data-role="pulse-more"]');
+
+const lessonModal = document.getElementById("wealth-lesson-modal");
+const lessonModalBody = lessonModal?.querySelector('[data-role="modal-body"]');
+const lessonModalClosers = lessonModal ? Array.from(lessonModal.querySelectorAll('[data-role="modal-close"]')) : [];
+
+const PULSE_PAGE_LIMIT = 6;
+
+const TRACK_PAGE_SIZE = 15;
+const dailyState = { items: [], activeIndex: 0, page: 0 };
+const pulseState = { items: [], filter: "all", page: 1, categories: [] };
+let visibleTimelineCards = [];
 
 function formatTemplate(template, replacements) {
 	if (typeof template !== "string") return "";
@@ -249,16 +275,32 @@ function getCache(name) {
 	}
 }
 
+function getStatusHost(section) {
+	if (section === "daily") return dailyStatusEl || dailyContainer;
+	if (section === "pulse") return pulseStatusEl || pulseContainer;
+	return null;
+}
+
 function renderNotice(section, message) {
-	const target = section === "daily" ? dailyContainer : pulseContainer;
-	if (!target) return;
-	let banner = target.querySelector(".wealth-notice");
+	const host = getStatusHost(section);
+	if (!host) return;
+	let banner = host.querySelector(".wealth-notice");
 	if (!banner) {
 		banner = document.createElement("div");
 		banner.className = "wealth-notice";
-		target.prepend(banner);
+		host.append(banner);
 	}
-	banner.textContent = message;
+	banner.hidden = !message;
+	if (message) {
+		banner.textContent = message;
+	}
+}
+
+function clearStatus(section) {
+	const host = getStatusHost(section);
+	if (!host) return;
+	const banner = host.querySelector(".wealth-notice");
+	if (banner) banner.remove();
 }
 
 async function fetchJSON(url, cacheName) {
@@ -990,276 +1032,434 @@ function createDailyCard(entry) {
 	return card;
 }
 
-function createHistoryItem(entry) {
-	const article = document.createElement("article");
-	article.className = "wealth-list-item";
-
-	const title = document.createElement("h4");
-	title.textContent = pickLang(entry.topic) || entry.date || t("wealth_history_fallback_title", "历史记录");
-	article.append(title);
-
-	const meta = document.createElement("div");
-	meta.className = "wealth-daily-meta";
-
-	const date = document.createElement("span");
-	date.textContent = entry.date || "";
-	meta.append(date);
-
-	if (entry.degraded) {
-		meta.append(createBadge(t("wealth_badge_degraded", "降级"), "wealth-badge wealth-badge--degraded"));
+function collectTimelineTags(entry) {
+	const tags = [];
+	const meta = entry?.meta || {};
+	const difficultyLabel = typeof meta.difficulty_label === "string" ? meta.difficulty_label.trim() : "";
+	const difficultyValue = meta.difficulty ?? meta.level;
+	const theme = meta.theme || meta.category || meta.track;
+	if (difficultyLabel) {
+		tags.push(difficultyLabel);
+	} else if (typeof difficultyValue === "string" && /\D/.test(difficultyValue)) {
+		tags.push(difficultyValue.trim());
 	}
+	if (theme) tags.push(theme);
+	if (entry.degraded) tags.push(t("wealth_badge_degraded", "沿用"));
+	return tags.slice(0, 2);
+}
 
-	article.append(meta);
+function createTimelineCard(entry, index) {
+	const button = document.createElement("button");
+	button.type = "button";
+	button.className = "wealth-track-card";
+	button.dataset.index = index;
+	button.setAttribute("aria-pressed", "false");
 
-	const tags = renderTags(entry.meta || {}, { compact: true });
-	if (tags) article.append(tags);
+	const metaRow = document.createElement("div");
+	metaRow.className = "wealth-track-meta";
+	const dateLabel = document.createElement("span");
+	dateLabel.textContent = entry.date || pickLang(entry.display_date) || t("wealth_today_digest", "今日纪要");
+	metaRow.append(dateLabel);
+	const badgeLabel = document.createElement("span");
+	badgeLabel.textContent = entry.meta?.difficulty || entry.meta?.level || t("wealth_track_level", "常规");
+	metaRow.append(badgeLabel);
+	button.append(metaRow);
 
-	const metaLine = renderMetaLine(entry, { compact: true });
-	if (metaLine) article.append(metaLine);
-
-	const dateStr = entry.date || "";
-	let audioSlot = null;
-	if (dateStr) {
-		audioSlot = document.createElement("div");
-		audioSlot.dataset.audioSlot = "true";
-		article.append(audioSlot);
-	}
+	const title = document.createElement("p");
+	title.className = "wealth-track-title";
+	title.textContent = pickLang(entry.topic) || pickLang(entry.title) || t("wealth_topic_fallback", "今日主题");
+	button.append(title);
 
 	const summary = document.createElement("p");
-	summary.textContent = pickLang(entry.summary) || t("wealth_summary_history_placeholder", "暂无摘要。");
-	article.append(summary);
+	summary.className = "wealth-track-summary";
+	const preview = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
+	const summaryText = normalizeSummary(preview);
+	summary.textContent = summaryText;
+	button.append(summary);
 
-	if (audioSlot) {
-		attachAudioToCard(article, entry, dateStr, audioSlot);
+	const tagsRow = document.createElement("div");
+	tagsRow.className = "wealth-track-tags";
+	collectTimelineTags(entry).forEach((label) => {
+		const chip = document.createElement("span");
+		chip.className = "wealth-track-tag";
+		chip.textContent = label;
+		tagsRow.append(chip);
+	});
+	if (tagsRow.childElementCount) {
+		button.append(tagsRow);
 	}
 
-	const points = pickList(entry.key_points);
-	if (points.length) {
-		const list = document.createElement("ul");
-		list.className = "wealth-points";
-		points.slice(0, 4).forEach((point) => {
-			const li = document.createElement("li");
-			li.textContent = point;
-			list.append(li);
-		});
-		article.append(list);
-	}
+	const hint = document.createElement("div");
+	hint.className = "wealth-track-hint";
+	const hintLabel = document.createElement("span");
+	hintLabel.textContent = t("wealth_timeline_hint", "点击查看详情");
+	hint.append(hintLabel);
+	const hintIcon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+	hintIcon.setAttribute("viewBox", "0 0 24 24");
+	hintIcon.setAttribute("aria-hidden", "true");
+	const hintPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+	hintPath.setAttribute("d", "M7 12h10m0 0-4-4m4 4-4 4");
+	hintPath.setAttribute("fill", "none");
+	hintPath.setAttribute("stroke", "currentColor");
+	hintPath.setAttribute("stroke-width", "1.8");
+	hintPath.setAttribute("stroke-linecap", "round");
+	hintPath.setAttribute("stroke-linejoin", "round");
+	hintIcon.append(hintPath);
+	hint.append(hintIcon);
+	button.append(hint);
 
-	const practice = renderPractice(entry, { compact: true });
-	if (practice) article.append(practice);
+	button.addEventListener("click", () => setActiveLesson(index, { openModal: true }));
+	return button;
+}
 
-	const risk = renderRisk(entry);
-	if (risk) article.append(risk);
 
-	const references = renderReferences(entry);
-	if (references) article.append(references);
+function openLessonModal(entry) {
+	if (!lessonModal || !lessonModalBody) return;
+	lessonModalBody.innerHTML = "";
+	lessonModalBody.append(createDailyCard(entry));
+	lessonModal.dataset.open = "true";
+	lessonModal.removeAttribute("aria-hidden");
+	document.body.classList.add("wealth-modal-open");
+}
 
-	return article;
+function closeLessonModal() {
+	if (!lessonModal || !lessonModalBody) return;
+	lessonModal.dataset.open = "false";
+	lessonModal.setAttribute("aria-hidden", "true");
+	lessonModalBody.innerHTML = "";
+	document.body.classList.remove("wealth-modal-open");
 }
 
 function renderDaily(data) {
 	__wealth_last_daily = data;
 	if (!dailyContainer) return;
-	const notice = dailyContainer.querySelector(".wealth-notice");
-	dailyContainer.innerHTML = "";
-	if (notice) dailyContainer.append(notice);
+	clearStatus("daily");
+	renderTimeline(Array.isArray(data) ? data : []);
+}
 
-	if (!Array.isArray(data) || !data.length) {
+function flattenPulseGroups(groups) {
+	const rows = [];
+	(groups || []).forEach((group) => {
+		if (!group) return;
+		const stamp = group.date || pickLang(group.title) || "";
+		const items = Array.isArray(group.items) ? group.items : [];
+		items.forEach((item) => {
+			if (!item) return;
+			rows.push({
+				...item,
+				__bucket: stamp,
+				__bucketLabel: pickLang(group.title) || group.title || stamp,
+			});
+		});
+	});
+	return rows;
+}
+
+function describePulseCategory(key) {
+	const normalized = (key || "").toLowerCase();
+	switch (normalized) {
+		case "global":
+			return t("wealth_pulse_category_global", "全球");
+		case "china":
+			return t("wealth_pulse_category_china", "中国");
+		case "macro":
+			return t("wealth_pulse_category_macro", "宏观");
+		case "ai":
+			return t("wealth_pulse_category_ai", "AI 与金融");
+	}
+	return normalized ? normalized.charAt(0).toUpperCase() + normalized.slice(1) : t("wealth_pulse_category_general", "综合");
+}
+
+function buildPulseCategories(items) {
+	const counts = new Map();
+	items.forEach((item) => {
+		const key = (item.category || "general").toLowerCase() || "general";
+		counts.set(key, (counts.get(key) || 0) + 1);
+	});
+	const categories = [{ value: "all", label: t("wealth_pulse_filter_all", "全部"), count: items.length }];
+	for (const [value, count] of counts.entries()) {
+		categories.push({ value, label: describePulseCategory(value), count });
+	}
+	return categories;
+}
+
+function renderPulseTabs() {
+	if (!pulseTabsEl) return;
+	pulseTabsEl.innerHTML = "";
+	pulseState.categories.forEach((category) => {
+		const button = document.createElement("button");
+		button.type = "button";
+		button.className = "wealth-tab";
+		button.dataset.value = category.value;
+		button.textContent = `${category.label} (${category.count})`;
+		if (category.value === pulseState.filter) {
+			button.classList.add("is-active");
+		}
+		button.addEventListener("click", () => {
+			if (pulseState.filter === category.value) return;
+			pulseState.filter = category.value;
+			pulseState.page = 1;
+			renderPulseTabs();
+			renderPulseGrid();
+		});
+		pulseTabsEl.append(button);
+	});
+}
+
+function renderPulseGrid() {
+	if (!pulseGridEl) return;
+	const filtered = getFilteredPulseItems();
+	const visible = filtered.slice(0, pulseState.page * PULSE_PAGE_LIMIT);
+	pulseGridEl.innerHTML = "";
+	if (!visible.length) {
+		const empty = document.createElement("p");
+		empty.className = "wealth-empty";
+		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
+		pulseGridEl.append(empty);
+	} else {
+		visible.forEach((item) => pulseGridEl.append(createPulseCard(item)));
+	}
+	if (pulseMoreBtn) {
+		const allShown = visible.length >= filtered.length;
+		pulseMoreBtn.hidden = allShown;
+		pulseMoreBtn.disabled = allShown;
+	}
+}
+
+function getFilteredPulseItems() {
+	if (pulseState.filter === "all") return pulseState.items;
+	return pulseState.items.filter((item) => {
+		const key = (item.category || "general").toLowerCase() || "general";
+		return key === pulseState.filter;
+	});
+}
+
+function createPulseCard(item) {
+	const card = document.createElement("article");
+	card.className = "wealth-pulse-card";
+
+	const meta = document.createElement("div");
+	meta.className = "wealth-pulse-card__meta";
+	if (item.__bucket) {
+		const badge = document.createElement("span");
+		badge.textContent = item.__bucket;
+		meta.append(badge);
+	}
+	const catLabel = describePulseCategory(item.category);
+	if (catLabel) {
+		const badge = document.createElement("span");
+		badge.textContent = catLabel;
+		meta.append(badge);
+	}
+	if (item.source) {
+		const badge = document.createElement("span");
+		badge.textContent = item.source;
+		meta.append(badge);
+	}
+	if (meta.childElementCount) {
+		card.append(meta);
+	}
+
+	const title = document.createElement("h5");
+	title.className = "wealth-pulse-card__title";
+	title.textContent = pickLang(item.title) || pickLang(item.headline) || t("wealth_pulse_item_title", "市场快讯");
+	card.append(title);
+
+	const summary = document.createElement("p");
+	summary.className = "wealth-pulse-card__impact";
+	summary.textContent = pickLang(item.facts) || pickLang(item.summary) || t("wealth_pulse_facts_fallback", "暂无事实摘要。");
+	card.append(summary);
+
+	const impactText = pickLang(item.impact_one_liner) || pickLang(item.impact) || "";
+	if (impactText) {
+		const impact = document.createElement("p");
+		impact.className = "wealth-pulse-card__impact";
+		impact.textContent = impactText;
+		card.append(impact);
+	}
+
+	const links = Array.isArray(item.links) ? item.links.filter((href) => isHttpUrl(href)) : [];
+	if (links.length) {
+		const primary = links[0];
+		const anchor = document.createElement("a");
+		anchor.href = primary;
+		anchor.target = "_blank";
+		anchor.rel = "noopener";
+		anchor.className = "wealth-link__text";
+		anchor.textContent = t("wealth_pulse_link_label", "延伸阅读");
+		card.append(anchor);
+	}
+
+	return card;
+}
+
+function renderTimeline(entries) {
+	dailyState.items = Array.isArray(entries) ? entries : [];
+	if (!dailyState.items.length) {
+		if (dailyTrackEl) {
+			dailyTrackEl.innerHTML = "";
+			const empty = document.createElement("p");
+			empty.className = "wealth-empty";
+			empty.textContent = t("wealth_daily_empty", "暂未加载到课程内容，稍后再试。");
+			dailyTrackEl.append(empty);
+		}
+		updateTimelinePagination(0, 0);
+		visibleTimelineCards = [];
+		return;
+	}
+	const targetIndex = Math.min(
+		Math.max(typeof dailyState.activeIndex === "number" ? dailyState.activeIndex : 0, 0),
+		dailyState.items.length - 1,
+	);
+	dailyState.page = Math.floor(targetIndex / TRACK_PAGE_SIZE);
+	renderTimelinePage(dailyState.page);
+	setActiveLesson(targetIndex);
+}
+
+function setActiveLesson(index, options = {}) {
+	const { openModal = false } = options;
+	if (!dailyState.items.length) return;
+	const clamped = Math.max(0, Math.min(index, dailyState.items.length - 1));
+	dailyState.activeIndex = clamped;
+	const entry = dailyState.items[clamped];
+	const targetPage = Math.floor(clamped / TRACK_PAGE_SIZE);
+	if (targetPage !== dailyState.page) {
+		renderTimelinePage(targetPage);
+	}
+	if (dailyActiveLabel) {
+		dailyActiveLabel.textContent = entry.date || pickLang(entry.topic) || t("wealth_today_digest", "今日纪要");
+	}
+	updateActiveCardStyles();
+	if (openModal) {
+		openLessonModal(entry);
+	}
+}
+
+function renderTimelinePage(page = dailyState.page) {
+	if (!dailyTrackEl) {
+		visibleTimelineCards = [];
+		return;
+	}
+	const totalItems = dailyState.items.length;
+	const totalPages = totalItems ? Math.ceil(totalItems / TRACK_PAGE_SIZE) : 0;
+	const clampedPage = totalPages ? Math.max(0, Math.min(page, totalPages - 1)) : 0;
+	dailyState.page = clampedPage;
+	dailyTrackEl.innerHTML = "";
+	visibleTimelineCards = [];
+	if (!totalItems) {
 		const empty = document.createElement("p");
 		empty.className = "wealth-empty";
 		empty.textContent = t("wealth_daily_empty", "暂未加载到课程内容，稍后再试。");
-		dailyContainer.append(empty);
+		dailyTrackEl.append(empty);
+		updateTimelinePagination(0, 0);
 		return;
 	}
+	const start = clampedPage * TRACK_PAGE_SIZE;
+	const slice = dailyState.items.slice(start, start + TRACK_PAGE_SIZE);
+	slice.forEach((entry, offset) => {
+		const card = createTimelineCard(entry, start + offset);
+		dailyTrackEl.append(card);
+		visibleTimelineCards.push(card);
+	});
+	updateTimelinePagination(totalPages, totalItems);
+	updateActiveCardStyles();
+}
 
-	const [today, ...history] = data;
-	dailyContainer.append(createDailyCard(today));
-
-	if (!history.length) return;
-
-	const listWrapper = document.createElement("div");
-	listWrapper.className = "wealth-list";
-	listWrapper.setAttribute("aria-live", "polite");
-
-	const state = { page: 1 };
-
-	const renderPage = () => {
-		listWrapper.innerHTML = "";
-		history.slice(0, state.page * PAGE_SIZE).forEach((entry) => {
-			listWrapper.append(createHistoryItem(entry));
-		});
-	};
-
-	renderPage();
-	dailyContainer.append(listWrapper);
-
-	if (history.length > PAGE_SIZE) {
-		const button = document.createElement("button");
-		button.type = "button";
-		button.className = "wealth-load-more";
-		button.textContent = t("wealth_load_more", "加载更多");
-		button.addEventListener("click", () => {
-			state.page += 1;
-			renderPage();
-			if (state.page * PAGE_SIZE >= history.length) {
-				button.disabled = true;
-				button.textContent = t("wealth_load_more_done", "没有更多了");
-			}
-		});
-		dailyContainer.append(button);
+function updateTimelinePagination(totalPages, totalItems) {
+	const hasPages = totalItems && totalPages;
+	const current = hasPages ? dailyState.page + 1 : 0;
+	if (dailyPrevBtn) dailyPrevBtn.disabled = !hasPages || dailyState.page === 0;
+	if (dailyNextBtn) dailyNextBtn.disabled = !hasPages || dailyState.page >= totalPages - 1;
+	const messages = hasPages
+		? {
+			zh: `第 ${current} / ${totalPages} 页`,
+			en: `Page ${current} / ${totalPages}`,
+			es: `Página ${current} / ${totalPages}`,
+		}
+		: { zh: "", en: "", es: "" };
+	if (dailyPageContainer) {
+		dailyPageContainer.hidden = !hasPages;
 	}
+	Object.entries(dailyPageLabels).forEach(([lang, el]) => {
+		if (!el) return;
+		el.textContent = messages[lang] || "";
+		el.hidden = !messages[lang];
+	});
+}
+
+function updateActiveCardStyles() {
+	visibleTimelineCards.forEach((card) => {
+		const indexValue = Number(card.dataset.index);
+		const isActive = indexValue === dailyState.activeIndex;
+		card.classList.toggle("is-active", isActive);
+		card.setAttribute("aria-pressed", String(isActive));
+	});
+}
+
+function changeTimelinePage(direction) {
+	if (!dailyState.items.length) return;
+	const totalPages = Math.ceil(dailyState.items.length / TRACK_PAGE_SIZE);
+	if (!totalPages) return;
+	const nextPage = Math.max(0, Math.min(dailyState.page + direction, totalPages - 1));
+	if (nextPage === dailyState.page) return;
+	renderTimelinePage(nextPage);
+	const nextIndex = Math.min(nextPage * TRACK_PAGE_SIZE, dailyState.items.length - 1);
+	setActiveLesson(nextIndex);
 }
 
 function renderPulse(data) {
 	__wealth_last_pulse = data;
 	if (!pulseContainer) return;
-	const notice = pulseContainer.querySelector(".wealth-notice");
-	pulseContainer.innerHTML = "";
-	if (notice) pulseContainer.append(notice);
-
+	clearStatus("pulse");
 	if (!Array.isArray(data) || !data.length) {
-		const empty = document.createElement("p");
-		empty.className = "wealth-empty";
-		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
-		pulseContainer.append(empty);
+		if (pulseGridEl) {
+			pulseGridEl.innerHTML = "";
+			const empty = document.createElement("p");
+			empty.className = "wealth-empty";
+			empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
+			pulseGridEl.append(empty);
+		}
+		if (pulseMoreBtn) {
+			pulseMoreBtn.hidden = true;
+			pulseMoreBtn.disabled = true;
+		}
+		if (pulseTabsEl) {
+			pulseTabsEl.innerHTML = "";
+		}
 		return;
 	}
 
-	const wrapper = document.createElement("div");
-	wrapper.className = "wealth-pulse-group";
+	const rows = flattenPulseGroups(data.slice(0, 18));
+	pulseState.items = rows;
+	pulseState.categories = buildPulseCategories(rows);
+	pulseState.filter = pulseState.categories[0]?.value || "all";
+	pulseState.page = 1;
+	renderPulseTabs();
+	renderPulseGrid();
+}
 
-	let rendered = 0;
-
-	data.slice(0, 14).forEach((group, groupIndex) => {
-		if (!group) return;
-		const details = document.createElement("details");
-		if (groupIndex === 0) details.open = true;
-
-		const summary = document.createElement("summary");
-		summary.textContent =
-			group.date ||
-			pickLang(group.title) ||
-			t("wealth_pulse_group_label", "分组 {index}", { index: groupIndex + 1 });
-		details.append(summary);
-
-		const items = Array.isArray(group.items) ? group.items : [];
-		items.forEach((item) => {
-			if (!item) return;
-			const row = document.createElement("div");
-			row.className = "wealth-pulse-item";
-
-			const header = document.createElement("div");
-			header.className = "wealth-pulse-header";
-
-			const title = document.createElement("h5");
-			title.className = "wealth-pulse-title";
-			title.textContent =
-				pickLang(item.title) ||
-				pickLang(item.headline) ||
-				t("wealth_pulse_item_title", "市场快讯");
-			header.append(title);
-
-			const meta = document.createElement("div");
-			meta.className = "wealth-pulse-meta";
-
-			// Category badge: Global / China
-			const cat = (item.category || "").toLowerCase();
-			if (cat === "global" || cat === "china") {
-				const badge = document.createElement("span");
-				badge.className = "wealth-pulse-meta-badge";
-				badge.textContent = cat === "global"
-					? t("wealth_pulse_category_global", "全球")
-					: t("wealth_pulse_category_china", "中国");
-				meta.append(badge);
-			}
-
-			if (item.degraded) {
-				const degradedBadge = document.createElement("span");
-				degradedBadge.className = "wealth-pulse-meta-badge wealth-pulse-meta-badge--degraded";
-				degradedBadge.textContent = t("wealth_badge_degraded", "降级");
-				meta.append(degradedBadge);
-			}
-
-			const primaryLink = Array.isArray(item.links) ? item.links.find((href) => isHttpUrl(href)) : null;
-			if (item.source || primaryLink) {
-				const badge = document.createElement(primaryLink ? "a" : "span");
-				badge.className = "wealth-pulse-meta-badge";
-				badge.textContent = item.source || t("wealth_pulse_source_fallback", "资讯源");
-				if (primaryLink) {
-					badge.href = primaryLink;
-					badge.target = "_blank";
-					badge.rel = "noopener";
-				}
-				meta.append(badge);
-			}
-
-			const stamp = formatTime(item.time_utc || item.time);
-			if (stamp) {
-				const time = document.createElement("span");
-				time.className = "wealth-pulse-time";
-				time.textContent = stamp;
-				meta.append(time);
-			}
-
-			if (meta.childNodes.length) {
-				header.append(meta);
-			}
-			row.append(header);
-
-			const facts = document.createElement("p");
-			facts.className = "wealth-pulse-facts";
-			facts.textContent =
-				pickLang(item.facts) ||
-				pickLang(item.summary) ||
-				t("wealth_pulse_facts_fallback", "暂无事实摘要。");
-			row.append(facts);
-
-			const impactText = pickLang(item.impact_one_liner) || pickLang(item.impact) || "";
-			if (impactText) {
-				const impact = document.createElement("p");
-				impact.className = "wealth-pulse-impact";
-				const label = document.createElement("strong");
-				label.textContent = t("wealth_pulse_impact_label", "可能影响：");
-				const span = document.createElement("span");
-				span.textContent = impactText;
-				impact.append(label, span);
-				row.append(impact);
-			}
-
-			const links = Array.isArray(item.links) ? item.links.filter((href) => isHttpUrl(href)) : [];
-			if (links.length) {
-				const linkWrap = document.createElement("div");
-				linkWrap.className = "wealth-links";
-				links.slice(0, 5).forEach((href, index) => {
-					const anchor = document.createElement("a");
-					anchor.href = href;
-					anchor.target = "_blank";
-					anchor.rel = "noopener";
-					anchor.className = "wealth-link__text";
-					anchor.textContent = t("wealth_pulse_link_label", "延伸阅读 {index}", { index: index + 1 });
-					linkWrap.append(anchor);
-				});
-				row.append(linkWrap);
-			}
-
-			details.append(row);
-			rendered += 1;
-		});
-
-		if (details.childNodes.length > 1) {
-			wrapper.append(details);
+if (dailyPrevBtn) dailyPrevBtn.addEventListener("click", () => changeTimelinePage(-1));
+if (dailyNextBtn) dailyNextBtn.addEventListener("click", () => changeTimelinePage(1));
+if (lessonModalClosers.length) {
+	lessonModalClosers.forEach((btn) => btn.addEventListener("click", closeLessonModal));
+}
+if (lessonModal) {
+	lessonModal.addEventListener("click", (event) => {
+		if (event.target === lessonModal) {
+			closeLessonModal();
 		}
 	});
-
-	if (rendered === 0) {
-		const empty = document.createElement("p");
-		empty.className = "wealth-empty";
-		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
-		pulseContainer.append(empty);
-		return;
+}
+document.addEventListener("keydown", (event) => {
+	if (event.key === "Escape" && lessonModal?.dataset.open === "true") {
+		closeLessonModal();
 	}
-
-	pulseContainer.append(wrapper);
+});
+if (pulseMoreBtn) {
+	pulseMoreBtn.addEventListener("click", () => {
+		pulseState.page += 1;
+		renderPulseGrid();
+	});
 }
 
 async function init() {
@@ -1279,19 +1479,21 @@ async function init() {
 		const fallbackPulse = getCache("pulse");
 		if (fallbackDaily) {
 			renderDaily(fallbackDaily);
-		} else if (dailyContainer) {
+		} else if (dailyTrackEl) {
+			dailyTrackEl.innerHTML = "";
 			const message = document.createElement("p");
 			message.className = "wealth-empty";
 			message.textContent = t("wealth_daily_error", "未能加载课程数据，请稍后刷新。");
-			dailyContainer.append(message);
+			dailyTrackEl.append(message);
 		}
 		if (fallbackPulse) {
 			renderPulse(fallbackPulse);
-		} else if (pulseContainer) {
+		} else if (pulseGridEl) {
+			pulseGridEl.innerHTML = "";
 			const message = document.createElement("p");
 			message.className = "wealth-empty";
 			message.textContent = t("wealth_pulse_error", "未能加载市场快讯，请稍后刷新。");
-			pulseContainer.append(message);
+			pulseGridEl.append(message);
 		}
 	}
 }
