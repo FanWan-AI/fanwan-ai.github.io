@@ -1217,7 +1217,7 @@ function renderPulseGrid() {
 		empty.textContent = t("wealth_pulse_empty", "暂无市场快讯，稍后再试。");
 		pulseGridEl.append(empty);
 	} else {
-		visible.forEach((item) => pulseGridEl.append(createPulseCard(item)));
+		visible.forEach((item, index) => pulseGridEl.append(createPulseCard(item, index)));
 	}
 	if (pulseMoreBtn) {
 		const allShown = visible.length >= filtered.length;
@@ -1234,7 +1234,7 @@ function getFilteredPulseItems() {
 	});
 }
 
-function createPulseCard(item) {
+function createPulseCard(item, visibleIndex = 0) {
 	const card = document.createElement("article");
 	card.className = "wealth-pulse-card";
 
@@ -1285,8 +1285,8 @@ function createPulseCard(item) {
 		anchor.href = primary;
 		anchor.target = "_blank";
 		anchor.rel = "noopener";
-		anchor.className = "wealth-link__text";
-		anchor.textContent = t("wealth_pulse_link_label", "延伸阅读");
+		anchor.className = "wealth-link__text wealth-pulse-link";
+		anchor.textContent = t("wealth_pulse_link_label", "延伸阅读 {index}", { index: visibleIndex + 1 });
 		card.append(anchor);
 	}
 
