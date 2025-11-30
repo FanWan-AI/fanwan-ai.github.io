@@ -160,68 +160,74 @@
 > 4. 更新 AI Lab & i18n
 > 5. 文档与运营计划
 
-## 9. LLM Prompt 规范（课程详情 & 开场题）
+## 9. LLM Prompt 规范（Blueprint → Lesson → Critic → Revision → Starter）
 
-### 9.1 课程卡片「查看详情」生成提示
-- **System**：`You are the master instructor of AI Daily Academy. You write bilingual micro-lessons (zh / en) with expert accuracy, concrete examples, and actionable practice.`
-- **Developer 指令**：
-  - 使用输入 payload：`{topic, learner_profile, prerequisites, related_topics, difficulty, references, tone}`。
-  - 输出 JSON（UTF-8）遵循 `daily.schema.json` 里 `content`, `summary`, `practice`, `references`, `meta.contextual_notes` 字段定义。
-  - 语言：`zh` 必填，若 `learner_profile.prefersEnglish=true` 则同步生成 `en`。
-  - 文风：结合 `tone.persona`（如“实验室 mentor”“企业顾问”）与 `tone.style`（如“数据驱动”“故事化”）。
-- **User Prompt 模板**：
-```
-任务：为 AI 每日学堂生成课程详情。
+### 9.0 生成流程
+1. **Blueprint 架构师**：首先让 LLM 以「课程蓝图设计师」身份输出结构化 JSON（sections + practice_suite + reference_pool + toolkit + contextual_hooks）。该步只负责列提纲、量化指标、真实参考来源与多步练习草稿，禁止直接写正文。
+2. **Lesson 扩写**：第二次调用以「首席讲师」身份，根据蓝图扩写 `summary/content/practice/references/meta.contextual_notes`。所有正文遵循 schema，练习与参考必须引用蓝图结果。
+3. **Critic + Revision 循环**：第三次调用 `buildLessonCritiquePrompt` 让 LLM 担任裁判，对草稿进行评分并输出结构化整改指令；若 `revision_required=true`，第四次调用 `buildLessonRevisionPrompt`，用上一轮 critique + blueprint + lesson 原稿进行定向改写，直到满足题量/引用要求（当前实现一次循环，若未来需要可扩展多轮）。
+4. **Starter 反思题**：独立调用 `buildStarterPrompt`，生成 1-2 条情境化提问，并写入 `meta.starter_questions`。
 
-主题：{{topic.name}}
-难度：{{difficulty.label}}
-学习者画像：{{learner_profile.summary}}
-必备前置：{{prerequisites | join(", ")}}
-关联拓展：{{related_topics | join(", ")}}
-内容目标：
-1. 30-60 字摘要，点出今天的核心启发；
-2. 2-3 段正文（每段 <120 Chinese chars 或 <80 English words），包含公式/伪代码/案例；
-3. 给出 1 条「行动建议」与 1 条「常见误区提醒」；
-4. 设计练习题：至少 1 道 MCQ + 1 道应用题（free form），包含解析；
-5. 输出 2-3 条参考资料，涵盖论文/文档/工具；
-6. meta.contextual_notes 写出推荐理由与可视化提示。
+> Prompt 版本号 `PROMPT_VERSION` 维持在代码中统一管理，便于追踪历史输出。
 
-在所有输出中，技术术语使用中英双语（如“自注意力 self-attention”），并明确量化指标（如“<2e-3 learning rate”）。
-```
-- **补充规则**：
-  - 对于 `content.zh` 允许内联 `<strong>`、`<code>`；禁止外链脚本。
-  - 题目答案格式：MCQ 使用索引整型，应用题中的 `rubric` 采用 2-3 条判断标准。
-  - `meta.contextual_notes.zh` 必含 `why_now`、`best_for`, `visual_hint` 三个键，便于前端在 Tooltip 中渲染。
+### 9.1 课程蓝图 Prompt（`buildLessonBlueprintPrompt`）
+- **System**：`You are a curriculum architect for AI Daily Academy. You design exhaustive outlines before any prose is written.`
+- **核心约束**：
+  1. `sections`：固定 4 节（概念诊断/案例飞轮/推导演练/实践冲刺，可按需重命名），字段 `{id,title,angle,pain_signal,key_questions,case,metrics,tools,steps,worked_example}`。`pain_signal` 要描述真实业务痛点，`worked_example` 需写出包含数字、矩阵或代码片段的示例，`metrics` 引用 preferredMetrics 或新增可计算指标，`tools` 必须给出公开网址（缺少则写“敬请期待”并解释用途）。
+  2. `practice_suite`：至少 4 题，含 MCQ + multi + input，多步指令写在 `prompt/steps`，并附 `options/answer/explain/data_asset`；MCQ 至少 4 个选项，multi 至少 3 个选项且 `answer` 使用索引数组，input 题的 `answer` 填评分 rubric，并说明所用数据/公式。
+  3. `reference_pool`：3-5 条真实 HTTPS 链接 + 8-12 字 note，禁止 example.com、dummy、404 链接。
+  4. `toolkit`：列出 2-3 个工具或模板下载提示 `{name,url,usage}`，无真实链接时用“敬请期待”。
+  5. `contextual_hooks`：给出 `why_now / best_for / visual_hint`，供 meta 直接引用。
+- **输出**：纯 JSON 字符串（无 Markdown 包裹），供下一阶段扩写调用。
 
-### 9.2 开场「开始联系」题目生成提示
-- **用途**：课程卡片的「开始联系」按钮，用来引导学习者把概念联系到自身场景。
-- **System**：`You design reflective prompts that connect AI theory with everyday decisions. Each starter question nudges the learner to relate today's topic to their domain.`
-- **Prompt 模板**：
-```
-根据下列信息，输出 1-2 条「开始联系」问题：
+### 9.2 课程详情 Prompt（`buildLessonDetailPrompt`）
+- **System**：`You are the master instructor...`（与代码保持一致）。
+- **Developer 指令**：按 `daily.schema.json` 输出多语言字段，消费 blueprint + learner_profile + tone_profile。
+- **内容目标**：
+  1. `summary.zh` 30-60 字，总结可量化洞察。
+  2. `content.zh` 使用 `<h3>` 拆成固定四节（痛点与直觉 / 推导演练 / 工具与评估 / 实践冲刺），每节 110-160 中文字，包含真实数字或百分比描述、至少 1 个公式/矩阵/伪代码（`<pre><code>` 或 `<table>`），以及 3 步可执行清单（`<ol>`/`<ul>`）。
+  3. 至少一节必须写出完整 worked example：列出原始数据、逐步计算与结果；“实践冲刺”节需列 3 步执行清单 + 工具/模板（无链接写“敬请期待模板”），并说明如何追踪 `time_to_value`、`quality_score` 等指标。
+  4. `practice` 必须沿用蓝图 `practice_suite`，至少 4 题：包含 1 道 MCQ、1 道 multi、1 道 input，多步动作要写在题干中；MCQ/multi 必须附 >=4 / >=3 个选项并用索引用答，input 题 `answer` 填评分 rubric，并至少有 1 道题引用数据表/矩阵/公式。
+  5. `references` 只能取自蓝图 `reference_pool` 的真实 HTTPS 链接；若模型无法确认真实性，直接输出 `label={zh:"暂无公开参考（Internal insight）", en:"Internal insight only"}` 且 `url` 置空。
+  6. `meta.contextual_notes` 继承蓝图 `contextual_hooks` 并根据当天课程微调，确保 `why_now / best_for / visual_hint` 均存在。
+- **防重复策略**：payload 中注入最近 5 条课程（id/date/tags），模型需避免复用上一日的案例或措辞。
 
-主题：{{topic.name}}
-行业画像：{{learner_profile.industries | join(", ")}}
-当前挑战：{{learner_profile.pains}}
-今日核心 takeaway：{{summary.zh}}
+### 9.3 Critic & Revision Prompt（`buildLessonCritiquePrompt` / `buildLessonRevisionPrompt`）
+- **Critic System**：`You are the lead reviewer ...`，要求输出 JSON：
+  ```json
+  {
+    "revision_required": true,
+    "scorecard": {
+      "structure": {"score": 3, "notes": "段落划分可"},
+      "accuracy": {"score": 4, "notes": ""},
+      "depth": {"score": 2, "notes": "缺少推导演练"},
+      "practice": {"score": 2, "notes": "题量不足"},
+      "references": {"score": 3, "notes": ""}
+    },
+    "issues": [{"area": "depth", "severity": "high", "note": "缺少 worked example 与公式", "action": "补齐含数字的推导"}]
+    ,
+    "strengths": ["案例贴近高校"],
+    "directives": ["将成长飞轮指标写成 KPI", "补齐 4 题测试"],
+    "practice_expectations": {"min_questions": 4, "required_types": ["mcq", "multi", "input"], "require_data_driven": true},
+    "content_expectations": {"require_worked_example": true, "require_formula": true, "require_steps": true, "min_sections": 4}
+  }
+  ```
+- **Revision System**：`You are the master instructor revising ...`，需携带 blueprint、critique、previous_lesson，按 `REVISION_OBJECTIVES` 输出全新 JSON。要求：
+  - 完整保留 schema；题目数量 ≥4（含 MCQ + multi + input），练习需引用数据或计算并附答案解析；
+  - 优先按照 `critique.directives` 修改段落、指标、参考，必要时换用 blueprint.reference_pool 中未使用资源；
+  - 若 critic 认为 references 不可信，则返回 “暂无公开参考（Internal insight）”；
+  - 确保每节都含 worked example/公式/步骤，至少写 1 个 `<pre><code>` 或 `<table>` 推导块。
 
-要求：
-1. 每条控制在 60-90 字（中文）或 35-50 词（英文）。
-2. 结构 = 「情境」+「自我评估问题」+「行动提示」；
-3. 使用开放式问句，避免是/否；
-4. 如有 `learner_profile.preferredMetrics`，将指标写入问题中。
+### 9.4 开场「开始联系」Prompt（`buildStarterPrompt`）
+- **用途**：渲染前端“开始联系”按钮，强化自我映射。
+- **要求**：每条 60-90 字（中文）或 35-50 words（英文），遵循“情境 → 自我评估 → 行动提示”结构；若 `preferredMetrics` 存在，必须把指标写入问题；多行业画像时至少覆盖 2 个真实场景。
+- **输出**：JSON 数组，元素结构 `{"lang","question","action_hint"}`，无 Markdown 包裹。
 
-以 JSON 数组返回：`[{"lang":"zh","question":"...","action_hint":"..."}, ...]`。
-```
-- **产出策略**：
-  - 若学习者来自多行业，至少覆盖 2 个行业案例。
-  - `action_hint` 提供下一步可执行动作，如“列出 3 个可监控指标”。
-  - 若 `difficulty=advanced`，可附带比较两个方案的 prompt。
-
-### 9.3 执行建议
-- 将上述 Prompt 模板写入 `tools/academy/prompts/`（下一步 action）供脚本直接引用。
-- 生成器需把 `starter_questions` 存入 `meta.starter_questions`，前端映射到 CTA。
-- 对 Prompt 进行版本化（如 `PROMPT_VERSION=2025-11-29`），让历史记录可追溯。 
+### 9.5 执行备注
+- Prompt 模板集中放在 `tools/academy/prompts/index.mjs`，并由脚本自动注入 `PROMPT_VERSION`。任何更新需同步 bump 版本号。
+- 生成器在 `generate-daily.mjs` 中顺序执行 blueprint → lesson → critic → revision → starter，并把最终 `starter_questions` 写入 `meta.starter_questions`。
+- 校验脚本会剔除 example.com 等占位链接；若全部参考失效，会自动 fallback 为“暂无公开参考（Internal insight）”。
+- Practice 结果至少 4 题，且包含 MCQ / multi / input；若 LLM 仍缺失类型，脚本会自动补题并生成解析。答案与解析全部由 LLM 输出（或由脚本提示 LLM 生成）。
 
 ## 10. 自动化运行流程
 

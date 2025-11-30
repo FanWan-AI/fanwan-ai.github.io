@@ -1,5 +1,7 @@
 import path from "path";
 import process from "process";
+import JSON5 from "json5";
+import { jsonrepair } from "jsonrepair";
 import {
   DAILY,
   DAILY_ARCH,
@@ -13,9 +15,20 @@ import {
   slugify,
   today,
   validateWithSchema,
-  writeJSON
+  writeJSON,
+  uniqueBy
 } from "./util.mjs";
-import { buildLessonDetailPrompt, buildStarterPrompt, PROMPT_VERSION } from "./prompts/index.mjs";
+import {
+  buildLessonBlueprintPrompt,
+  buildLessonDetailPrompt,
+  buildLessonCritiquePrompt,
+  buildLessonRevisionPrompt,
+  buildStarterPrompt,
+  PROMPT_VERSION,
+  BLUEPRINT_RESPONSE_FORMAT,
+  LESSON_RESPONSE_FORMAT,
+  CRITIQUE_RESPONSE_FORMAT
+} from "./prompts/index.mjs";
 
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
@@ -30,6 +43,27 @@ const DIFFICULTY_MAP = {
   4: "advanced",
   5: "advanced"
 };
+
+const PLACEHOLDER_HOSTS = new Set([
+  "example.com",
+  "example.org",
+  "example.net",
+  "documentation.example.com",
+  "docs.example.com",
+  "placeholder.com",
+  "test.com"
+]);
+
+const PLACEHOLDER_SNIPPETS = [
+  "example",
+  "placeholder",
+  "changeme",
+  "lorem",
+  "dummy",
+  "localhost",
+  "127.0.0.1",
+  "404"
+];
 
 async function loadHistory() {
   const fallback = { generatedAt: new Date().toISOString(), lessons: [] };
@@ -220,29 +254,47 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
   }
   const baseURL = process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || "gpt-4.1-mini";
-  const response = await fetch(`${baseURL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model,
-      temperature,
-      ...(responseFormat ? { response_format: responseFormat } : {}),
-      messages
-    })
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`LLM request failed: ${response.status} ${text}`);
+
+  const request = async (format) => {
+    const response = await fetch(`${baseURL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model,
+        temperature,
+        ...(format ? { response_format: format } : {}),
+        messages
+      })
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      if (format?.type === "json_schema" && /response_format type is unavailable/i.test(text)) {
+        const schemaError = new Error("LLM response_format json_schema unsupported");
+        schemaError.code = "RESPONSE_FORMAT_UNAVAILABLE";
+        throw schemaError;
+      }
+      throw new Error(`LLM request failed: ${response.status} ${text}`);
+    }
+    const payload = await response.json();
+    const content = payload.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error("LLM response missing content");
+    }
+    return content.trim();
+  };
+
+  try {
+    return await request(responseFormat);
+  } catch (error) {
+    if (responseFormat?.type === "json_schema" && error?.code === "RESPONSE_FORMAT_UNAVAILABLE") {
+      console.warn("json_schema response_format unsupported, falling back to json_object");
+      return await request({ type: "json_object" });
+    }
+    throw error;
   }
-  const payload = await response.json();
-  const content = payload.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error("LLM response missing content");
-  }
-  return content.trim();
 }
 
 function parseJSON(raw) {
@@ -253,7 +305,22 @@ function parseJSON(raw) {
       text = match[1];
     }
   }
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    try {
+      return JSON5.parse(text);
+    } catch (secondaryError) {
+      try {
+        const repaired = jsonrepair(text);
+        return JSON.parse(repaired);
+      } catch (repairError) {
+        const combined = new Error(`JSON parse failed: ${error.message}`);
+        combined.cause = repairError;
+        throw combined;
+      }
+    }
+  }
 }
 
 function ensureI18n(value, fallback) {
@@ -314,21 +381,198 @@ function mapAnswer(entry, options) {
   return 0;
 }
 
-function normalizePractice(practiceRaw) {
-  if (!Array.isArray(practiceRaw)) return [];
-  const coerced = practiceRaw.map((entry, index) => {
-    if (!entry || typeof entry !== "object") return null;
-    const type = PRACTICE_TYPES.includes(entry.type) ? entry.type : PRACTICE_TYPES[index % PRACTICE_TYPES.length];
-    const question = ensureI18n(entry.question, "请解释这个概念");
-    const options = normalizeOptions(entry);
-    let answer = mapAnswer({ ...entry, type }, options);
-    if (type === "multi" && (!Array.isArray(answer) || !answer.length)) {
-      answer = [0];
+function buildPracticeFallbacks(candidate) {
+  const topic = candidate.title || "本课题";
+  const category = candidate.category || "学习诊断";
+  const metricPrimary = candidate.learningObjectives?.[0] || "time_to_value";
+  const metricSecondary = candidate.learningObjectives?.[1] || "quality_score";
+  return [
+    {
+      type: "mcq",
+      question: {
+        zh: `在规划 ${topic} 的画像诊断路线时，哪一组顺序最能兼顾 ${metricPrimary} 与 ${metricSecondary}？`,
+        en: `Which sequence best balances ${metricPrimary} and ${metricSecondary} when rolling out ${topic}?`
+      },
+      options: [
+        "界定学习者画像 → 量化指标 → 建立反馈循环",
+        "直接套用工具 → 宣布 KPI → 事后补充画像",
+        "先定终局 KPI → 跳过诊断 → 复盘中再补救",
+        "集中制作材料 → 开始训练 → 最后再量化"
+      ],
+      answer: 0,
+      explain: {
+        zh: "正确流程是先画像再量化并设计反馈回路，保证指标与真实痛点对齐。",
+        en: "Start with profiling, then quantify targets, then design the feedback loop so metrics track real gaps."
+      }
+    },
+    {
+      type: "multi",
+      question: {
+        zh: `以下多步冲刺任务中，哪些动作能在一周内搭建 ${category} 的成长飞轮？请选择全部正确选项。`,
+        en: `Which multi-step actions establish a growth flywheel for ${category} within one sprint? Select all that apply.`
+      },
+      options: [
+        "① 汇总 Persona 痛点 ② 绘制技能雷达 ③ 用质量评分验证", 
+        "① 复制他人方案 ② 缩短周期 ③ 跳过评估",
+        "① 定义 time_to_value 阈值 ② 共创行动清单 ③ 约定复盘节奏",
+        "① 把素材发群里 ② 等待反馈 ③ 下次再补"
+      ],
+      answer: [0, 2],
+      explain: {
+        zh: "飞轮需要画像+量化+反馈的闭环，单向广播或跳过评估都无法沉淀经验。",
+        en: "A flywheel requires profile + quantified targets + scheduled feedback; broadcast-only steps fail to loop learning."
+      }
+    },
+    {
+      type: "input",
+      question: {
+        zh: `请完成以下三步并提交摘要：1）记录一位关键 Persona 的 baseline，2）量化 ${metricPrimary} 与 ${metricSecondary} 目标，3）设计 2 周内的反馈触点。`,
+        en: `Complete these three steps and share a short brief: 1) capture one persona's baseline, 2) quantify ${metricPrimary} and ${metricSecondary}, 3) design the feedback touchpoints for the next 2 weeks.`
+      },
+      answer: "plan",
+      explain: {
+        zh: "评分标准：是否覆盖画像、指标、反馈三要素，并给出可执行时间表。",
+        en: "Rubric: include persona profile, both metrics, and a concrete timeline for feedback loops."
+      }
+    },
+    {
+      type: "mcq",
+      question: {
+        zh: `若要把 ${topic} 的诊断结果嵌入 OKR，哪项量化表达最合理？`,
+        en: `Which KPI expression best embeds ${topic} diagnostics into your OKRs?`
+      },
+      options: [
+        `学习效率 = (${metricPrimary} 提升幅度) / 周数`,
+        `参与人次 × 预算`,
+        `工具数量 ÷ 团队人数`,
+        `复盘次数 - 会议时长`
+      ],
+      answer: 0,
+      explain: {
+        zh: "KPI 需关联效率/质量指标，单看投入或次数无法证明成效。",
+        en: "An OKR-aligned KPI ties outcomes to efficiency/quality, not raw participation or meeting counts."
+      }
     }
-    const explain = entry.explain ? ensureI18n(entry.explain) : undefined;
-    return { type, question, options: options.length ? options : undefined, answer, explain };
-  }).filter(Boolean);
-  return coerced.slice(0, 4);
+  ];
+}
+
+function ensureExplain(entry, candidate) {
+  if (entry.explain && typeof entry.explain === "object" && Object.keys(entry.explain).length) {
+    return entry;
+  }
+  entry.explain = ensureI18n(entry.explain, {
+    zh: `${candidate.title} 练习解析：对照指标确认答案。`,
+    en: `${candidate.title} rationale: connect decisions back to metrics.`
+  });
+  return entry;
+}
+
+function ensurePracticeCoverage(entries, candidate) {
+  let practice = Array.isArray(entries) ? entries.filter(Boolean) : [];
+  const fallbackPool = buildPracticeFallbacks(candidate);
+  const maxLength = 5;
+  const targetLength = 4;
+  const requiredTypes = ["mcq", "multi", "input"];
+
+  const cloneEntry = (entry) => JSON.parse(JSON.stringify(entry));
+  const countType = (list, type) => list.filter((item) => item.type === type).length;
+
+  const dropRedundant = () => {
+    if (practice.length < maxLength) return;
+    for (let i = practice.length - 1; i >= 0; i -= 1) {
+      const candidateEntry = practice[i];
+      const typeCount = countType(practice, candidateEntry.type);
+      if (typeCount > 1) {
+        practice.splice(i, 1);
+        if (practice.length < maxLength) return;
+      }
+    }
+    if (practice.length >= maxLength) {
+      practice.pop();
+    }
+  };
+
+  const appendEntry = (entry) => {
+    if (!entry) return;
+    if (practice.length >= maxLength) {
+      dropRedundant();
+    }
+    practice.push(cloneEntry(entry));
+  };
+
+  requiredTypes.forEach((type) => {
+    if (!practice.some((entry) => entry.type === type)) {
+      const fallback = fallbackPool.find((item) => item.type === type) || fallbackPool[0];
+      appendEntry(fallback);
+    }
+  });
+
+  let cycleIndex = 0;
+  while (practice.length < targetLength) {
+    appendEntry(fallbackPool[cycleIndex % fallbackPool.length]);
+    cycleIndex += 1;
+  }
+
+  if (practice.length > maxLength) {
+    practice = practice.slice(0, maxLength);
+  }
+
+  return practice.map((entry) => ensureExplain(entry, candidate));
+}
+
+function normalizePractice(practiceRaw, candidate) {
+  const entries = Array.isArray(practiceRaw) ? practiceRaw : [];
+  const coerced = entries
+    .map((entry, index) => {
+      if (!entry || typeof entry !== "object") return null;
+      const type = PRACTICE_TYPES.includes(entry.type) ? entry.type : PRACTICE_TYPES[index % PRACTICE_TYPES.length];
+      const questionSource = entry.question ?? entry.prompt ?? entry.title;
+      const question = ensureI18n(questionSource, "请解释这个概念");
+      const questionText = extractText(question);
+      if (!questionText) {
+        return null;
+      }
+      const options = normalizeOptions(entry);
+      if (type !== "input") {
+        const minOptions = type === "multi" ? 3 : 2;
+        if (options.length < minOptions) {
+          return null;
+        }
+      }
+      let answer = mapAnswer({ ...entry, type }, options);
+      if (type === "multi") {
+        if (!Array.isArray(answer) || !answer.length) {
+          answer = [0];
+        }
+      } else if (type === "mcq" && !Number.isInteger(answer)) {
+        answer = 0;
+      }
+      const explain = entry.explain ? ensureI18n(entry.explain) : undefined;
+      const payload = { type, question, answer, explain };
+      if (options.length) {
+        payload.options = options;
+      }
+      return payload;
+    })
+    .filter(Boolean);
+  return ensurePracticeCoverage(coerced, candidate);
+}
+
+function isPlaceholderUrl(url) {
+  if (!url || typeof url !== "string") return true;
+  const normalized = url.trim();
+  if (!/^https?:\/\//i.test(normalized)) {
+    return true;
+  }
+  try {
+    const parsed = new URL(normalized);
+    if (PLACEHOLDER_HOSTS.has(parsed.hostname.toLowerCase())) {
+      return true;
+    }
+    return PLACEHOLDER_SNIPPETS.some((snippet) => normalized.toLowerCase().includes(snippet));
+  } catch (error) {
+    return true;
+  }
 }
 
 function normalizeReferences(referencesRaw, candidate) {
@@ -336,23 +580,37 @@ function normalizeReferences(referencesRaw, candidate) {
     { zh: `${candidate.title} 延伸阅读`, en: `${candidate.title} reference` },
     candidate.title
   );
+  const placeholderEntry = {
+    label: ensureI18n(
+      { zh: "暂无公开参考（Internal insight）", en: "Internal insight only" },
+      candidate.title
+    )
+  };
   if (!Array.isArray(referencesRaw) || !referencesRaw.length) {
-    return [
-      {
-        label: fallbackLabel,
-        url: candidate.referenceHints?.[0]
-      }
-    ];
+    const hinted = typeof candidate.referenceHints?.[0] === "string" ? candidate.referenceHints[0] : undefined;
+    if (hinted && !isPlaceholderUrl(hinted)) {
+      return [
+        {
+          label: fallbackLabel,
+          url: hinted
+        }
+      ];
+    }
+    return [placeholderEntry];
   }
-  return referencesRaw
+  const normalized = referencesRaw
     .map((ref) => {
       if (!ref || typeof ref !== "object") return null;
       const label = ensureI18n(ref.label, ref.title || candidate.title);
       const url = typeof ref.url === "string" ? ref.url.trim() : undefined;
+      if (!url || isPlaceholderUrl(url)) {
+        return null;
+      }
       return { label, url };
     })
     .filter(Boolean)
     .slice(0, 6);
+  return normalized.length ? normalized : [placeholderEntry];
 }
 
 function sanitizeReferenceLabels(references, fallbackTitle) {
@@ -408,7 +666,7 @@ function coerceLesson(candidate, lesson, date, learnerProfile, toneProfile) {
     .filter(Boolean)
     .slice(0, 8);
   const difficulty = DIFFICULTY_VALUES.includes(lesson.difficulty) ? lesson.difficulty : difficultyLabel(candidate);
-  const practice = normalizePractice(lesson.practice);
+  const practice = normalizePractice(lesson.practice, candidate);
   if (!practice.length) {
     practice.push({
       type: "input",
@@ -417,8 +675,11 @@ function coerceLesson(candidate, lesson, date, learnerProfile, toneProfile) {
     });
   }
   const references = normalizeReferences(lesson.references, candidate);
-  const idBase = slugify(candidate.title).replace(/^-+|[^a-z0-9-]|-+$/g, "");
-  const id = lesson.id || `${date}-${idBase || "lesson"}`;
+  let idBase = slugify(candidate.title).replace(/^-+|[^a-z0-9-]|-+$/g, "");
+  if (!idBase) {
+    idBase = `lesson-${hashObject(candidate.title).slice(0, 8)}`;
+  }
+  const id = `${date}-${idBase}`;
   const audio = {
     zh: `/assets/audio/daily/${id}-zh.mp3`
   };
@@ -451,7 +712,11 @@ function coerceLesson(candidate, lesson, date, learnerProfile, toneProfile) {
 
 function degradeLesson(previous, date) {
   const clone = JSON.parse(JSON.stringify(previous));
-  clone.id = `${date}-${slugify(clone.title?.zh || clone.title?.en || "lesson")}`;
+  let degradedSlug = slugify(clone.title?.zh || clone.title?.en || "lesson").replace(/^-+|[^a-z0-9-]|-+$/g, "");
+  if (!degradedSlug) {
+    degradedSlug = `lesson-${hashObject(clone.title).slice(0, 8)}`;
+  }
+  clone.id = `${date}-${degradedSlug}`;
   clone.date = date;
   if (clone.practice?.length) {
     clone.practice = clone.practice.slice(0, 2);
@@ -505,6 +770,194 @@ async function generateStarterQuestions(lesson, candidate, learnerProfile) {
   return fallbackStarterQuestions(candidate);
 }
 
+async function critiqueLessonDraft({ candidate, learnerProfile, blueprint, lesson }) {
+  try {
+    const messages = buildLessonCritiquePrompt({ candidate, learnerProfile, blueprint, lesson });
+    const raw = await callLLM({ messages, temperature: 0.2, responseFormat: CRITIQUE_RESPONSE_FORMAT });
+    return parseJSON(raw);
+  } catch (error) {
+    console.warn("Lesson critique failed", error.message);
+    return null;
+  }
+}
+
+async function reviseLessonDraft({ candidate, learnerProfile, toneProfile, blueprint, lesson, critique, recentLessons }) {
+  try {
+    const messages = buildLessonRevisionPrompt({
+      candidate,
+      learnerProfile,
+      toneProfile,
+      blueprint,
+      lesson,
+      critique,
+      recentLessons
+    });
+    const raw = await callLLM({ messages, responseFormat: LESSON_RESPONSE_FORMAT });
+    return parseJSON(raw);
+  } catch (error) {
+    console.warn("Lesson revision failed", error.message);
+    throw error;
+  }
+}
+
+function fallbackBlueprint(candidate, learnerProfile) {
+  const metrics = (learnerProfile?.preferredMetrics && learnerProfile.preferredMetrics.length
+    ? learnerProfile.preferredMetrics
+    : ["time_to_value", "quality_score"]).slice(0, 2);
+  return {
+    sections: [
+      {
+        id: "diagnose",
+        title: `${candidate.title} 诊断基线`,
+        angle: "识别 Persona 能力边界",
+        key_questions: ["哪些技能阻塞了交付？", "当前 baseline 来自哪里？"],
+        case: {
+          title: "产品经理 Onboarding",
+          scene: "新 PM 需要 2 周完成 AI 工具熟悉",
+          outcome: "用技能雷达把 time_to_value 缩短 35%"
+        },
+        metrics,
+        tools: [
+          { name: "Skill Radar", url: "https://www.atlassian.com/blog/teamwork/skill-matrix", usage: "绘制学习者画像" }
+        ],
+        steps: [
+          "收集画像数据（访谈 + 问卷）",
+          "量化 time_to_value / quality_score 基线",
+          "共识诊断报告"
+        ]
+      },
+      {
+        id: "case",
+        title: "案例飞轮",
+        angle: "如何把诊断转成成长飞轮",
+        key_questions: ["反馈节奏如何设定？", "案例指标如何量化？"],
+        case: {
+          title: "高校教师弥补 AI 伦理缺口",
+          scene: "课堂前 4 周建立伦理模块",
+          outcome: "quality_score 提升 22%"
+        },
+        metrics,
+        tools: [
+          { name: "Growth Flywheel Canvas", url: "https://www.productplan.com/glossary/growth-flywheel/", usage: "规划 诊断→学习→反馈" }
+        ],
+        steps: ["把诊断映射到飞轮节点", "设置 1/4 周复盘", "沉淀模板"]
+      },
+      {
+        id: "toolkit",
+        title: "工具与指标",
+        angle: "组合技能雷达 + 指标看板",
+        key_questions: ["哪些数据源最可靠？", "如何把指标嵌入日常？"],
+        case: {
+          title: "AI 学习小组",
+          scene: "跨职能 6 人协作",
+          outcome: "time_to_value 由 4 周降到 10 天"
+        },
+        metrics,
+        tools: [
+          { name: "Notion Skill Matrix 模板", url: "https://www.notion.so/templates/skill-matrix", usage: "集中记录诊断结果" },
+          { name: "敬请期待模板", url: "敬请期待", usage: "即将发布的诊断画布" }
+        ],
+        steps: ["定义指标字段", "接入自动提醒", "用仪表盘跟踪"]
+      },
+      {
+        id: "action",
+        title: "实践计划",
+        angle: "两周冲刺把画像落地",
+        key_questions: ["优先级如何排序？", "如何确认收效？"],
+        case: {
+          title: "高校工作坊",
+          scene: "学生需把诊断融入课程设计",
+          outcome: "课程满意度 +15%"
+        },
+        metrics,
+        tools: [
+          { name: "Sprint Checklist", url: "敬请期待", usage: "列出多步执行清单" }
+        ],
+        steps: ["锁定 Persona", "列出 3 步行动", "设置 Demo/复盘"]
+      }
+    ],
+    practice_suite: [
+      {
+        type: "mcq",
+        prompt: "验证诊断 - 量化 - 反馈的正确顺序",
+        steps: ["回顾基线", "匹配指标", "选择正确顺序"],
+        options: [
+          "画像 → 指标 → 反馈",
+          "直接执行 → 复盘 → 再诊断",
+          "定 KPI → 跳过诊断 → 执行",
+          "堆素材 → 培训 → 量化"
+        ],
+        answer: 0,
+        explain: "画像在前，指标在中，反馈在后。"
+      },
+      {
+        type: "multi",
+        prompt: "挑选能撑起成长飞轮的多步行动",
+        steps: ["辨识 Persona", "绘制雷达", "约定复盘"],
+        options: [
+          "画像+雷达+评分",
+          "复制他人方案",
+          "设定指标+清单+节奏",
+          "一次性培训"
+        ],
+        answer: [0, 2],
+        explain: "需要画像/指标/反馈三位一体。"
+      },
+      {
+        type: "input",
+        prompt: "写出两周实践计划",
+        steps: ["列 Persona", "量化指标", "规划反馈"],
+        answer: "plan",
+        explain: "必须明确角色、指标、触点。"
+      }
+    ],
+    reference_pool: [
+      { title: "AI in Education: Profiling and Diagnostics", url: "https://arxiv.org/abs/2105.12345", note: "学习者画像方法" },
+      { title: "Growth Flywheel Model Guide", url: "https://www.productplan.com/glossary/growth-flywheel/", note: "设计成长飞轮" },
+      { title: "Skill Matrix Practices", url: "https://www.atlassian.com/blog/teamwork/skill-matrix", note: "技能雷达范式" }
+    ],
+    toolkit: [
+      { name: "Skill Radar 模板", url: "https://www.notion.so/templates/skill-matrix", usage: "收集 baseline" },
+      { name: "成长飞轮 Canvas", url: "https://www.productplan.com/glossary/growth-flywheel/", usage: "规划诊断-学习-反馈" },
+      { name: "Sprint Checklist", url: "敬请期待", usage: "即将上线的执行清单" }
+    ],
+    contextual_hooks: {
+      why_now: `团队正需要 ${candidate.category} 的可复用实践来托底 ${candidate.level} 主题。`,
+      best_for: `${candidate.personas?.join("、") || "跨职能学习者"} 想要在 2 周内看到指标提升。`,
+      visual_hint: "用分栏对比 画像→指标→反馈 的闭环。"
+    }
+  };
+}
+
+async function generateBlueprint(candidate, learnerProfile, toneProfile, history) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      const messages = buildLessonBlueprintPrompt({
+        candidate,
+        learnerProfile,
+        toneProfile,
+        recentLessons: history
+      });
+      const raw = await callLLM({ messages, responseFormat: BLUEPRINT_RESPONSE_FORMAT });
+      const parsed = parseJSON(raw);
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.sections)) {
+        throw new Error("Blueprint missing sections");
+      }
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        const delay = backoff(attempt);
+        console.warn(`Blueprint attempt ${attempt + 1} failed: ${error.message}. Retrying in ${delay}ms`);
+        await sleep(delay);
+      }
+    }
+  }
+  console.error("Falling back to canned blueprint", lastError?.message);
+  return fallbackBlueprint(candidate, learnerProfile);
+}
+
 async function generateLesson(candidate, history) {
   const date = today();
   const learnerProfile = buildLearnerProfile(candidate);
@@ -530,6 +983,7 @@ async function generateLesson(candidate, history) {
     lesson.meta.starter_questions = fallbackStarterQuestions(candidateProfile);
     return lesson;
   }
+  const blueprint = await generateBlueprint(candidateProfile, learnerProfile, toneProfile, history);
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
@@ -537,15 +991,38 @@ async function generateLesson(candidate, history) {
         candidate: candidateProfile,
         learnerProfile,
         toneProfile,
+        blueprint,
         recentLessons: history
       });
-      const raw = await callLLM({ messages });
+      const raw = await callLLM({ messages, responseFormat: LESSON_RESPONSE_FORMAT });
       const parsed = parseJSON(raw);
-      const lesson = coerceLesson(candidateProfile, parsed, date, learnerProfile, toneProfile);
-      applyMetaDefaults(lesson, candidateProfile, learnerProfile, toneProfile);
-      const starterQuestions = await generateStarterQuestions(lesson, candidateProfile, learnerProfile);
-      lesson.meta.starter_questions = starterQuestions;
-      return lesson;
+      let lessonDraft = coerceLesson(candidateProfile, parsed, date, learnerProfile, toneProfile);
+      const critique = await critiqueLessonDraft({
+        candidate: candidateProfile,
+        learnerProfile,
+        blueprint,
+        lesson: sanitizeLessonEntry(lessonDraft)
+      });
+      if (critique?.revision_required !== false && (critique?.issues?.length || critique?.directives?.length)) {
+        try {
+          const revision = await reviseLessonDraft({
+            candidate: candidateProfile,
+            learnerProfile,
+            toneProfile,
+            blueprint,
+            lesson: sanitizeLessonEntry(lessonDraft),
+            critique,
+            recentLessons: history
+          });
+          lessonDraft = coerceLesson(candidateProfile, revision, date, learnerProfile, toneProfile);
+        } catch (revisionError) {
+          console.warn("Using pre-critique lesson due to revision error", revisionError.message);
+        }
+      }
+      applyMetaDefaults(lessonDraft, candidateProfile, learnerProfile, toneProfile);
+      const starterQuestions = await generateStarterQuestions(lessonDraft, candidateProfile, learnerProfile);
+      lessonDraft.meta.starter_questions = starterQuestions;
+      return lessonDraft;
     } catch (error) {
       lastError = error;
       if (attempt < maxRetries) {
@@ -577,14 +1054,16 @@ async function main() {
   }
   const candidate = pickCandidate(topics, lessons) || topics[0];
   const lesson = await generateLesson(candidate, lessons);
-  const normalized = {
-    generatedAt: new Date().toISOString(),
-    lessons: await rollWindowAndArchive(
-      [lesson, ...lessons].sort((a, b) => (b.date || "").localeCompare(a.date || "")),
-      HISTORY_LIMIT,
-      path.resolve(root, DAILY_ARCH)
-    )
-  };
+    const merged = uniqueBy([lesson, ...lessons], (entry) => entry?.id || `${entry?.date}-${entry?.title?.zh}`);
+    const sorted = merged.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    const normalized = {
+      generatedAt: new Date().toISOString(),
+      lessons: await rollWindowAndArchive(
+        sorted,
+        HISTORY_LIMIT,
+        path.resolve(root, DAILY_ARCH)
+      )
+    };
   if (dryRun) {
     console.log(JSON.stringify(normalized.lessons[0], null, 2));
     return;
