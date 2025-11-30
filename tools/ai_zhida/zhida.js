@@ -2949,8 +2949,16 @@
       return context;
     } catch (error) {
       const isTimeout = error && error.code === 'timeout';
-      const base = isTimeout ? t('ai_qa_web_search_timeout') : t('ai_qa_web_search_error');
-      const detail = error && error.message ? ' - ' + error.message : '';
+      const isNetworkError = error && (error.message === 'Failed to fetch' || error.message.includes('NetworkError'));
+      
+      let base = t('ai_qa_web_search_error');
+      if (isTimeout) {
+        base = t('ai_qa_web_search_timeout');
+      } else if (isNetworkError) {
+        base = '无法连接到搜索服务 (Proxy Unreachable)';
+      }
+      
+      const detail = error && error.message && !isTimeout && !isNetworkError ? ' - ' + error.message : '';
       searchMessage.content = base + detail;
       searchMessage.meta = { error: true };
       updateMessageContent(searchMessage);
