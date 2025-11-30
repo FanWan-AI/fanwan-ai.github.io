@@ -33,14 +33,19 @@ const RSS_SOURCES = {
 	global: [
 		"https://feeds.a.dj.com/rss/RSSMarketsMain.xml", // WSJ Markets
 		"https://feeds.marketwatch.com/marketwatch/topstories/", // MarketWatch Top
-		"https://www.ecb.europa.eu/rss/press-releases.xml", // ECB press
-		"https://www.federalreserve.gov/feeds/press_monpol.xml", // Fed monetary policy
-		"https://www.ft.com/markets?format=rss" // FT Markets
+		"https://www.federalreserve.gov/feeds/press_all.xml", // Fed Press (Updated)
+		"https://www.ft.com/markets?format=rss", // FT Markets
+		"https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10000664", // CNBC Finance
+		"https://www.investing.com/rss/news.rss" // Investing.com All News
 	],
 	china: [
-		"https://feeds.reuters.com/reuters/ChinaNews", // Reuters China
-		"https://www.scmp.com/rss/41/feed", // SCMP China Business
-		"https://www.hkma.gov.hk/eng/rss/press-releases.xml" // HKMA press
+		"https://gateway.caixin.com/api/data/global/feedlyRss.xml", // Caixin Global
+		"https://www.scmp.com/rss/92/feed", // SCMP Business
+		"https://www.scmp.com/rss/318421/feed", // SCMP China Economy
+		"http://www.xinhuanet.com/english/rss/businessrss.xml", // Xinhua Business
+		"https://www.investing.com/rss/news_14.rss", // Investing.com Economy
+		"https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml&category=6511", // CNA Business (Asia)
+		"https://www.straitstimes.com/news/business/rss.xml" // Straits Times Business
 	]
 };
 
@@ -49,14 +54,22 @@ const POSITIVE_KEYWORDS = [
 	"interest", "rate", "rates", "pmi", "gdp", "trade", "tariff", "export", "import", "real estate", "housing",
 	"monetary policy", "fed", "ecb", "central bank", "inflation", "cpi", "ppi", "employment", "jobs", "unemployment",
 	"bond", "bonds", "treasury", "yield", "yields", "stock", "stocks", "equities", "futures", "etf", "currency", "fx",
+	"revenue", "profit", "earnings", "ipo", "merger", "acquisition", "stimulus", "debt", "deficit", "finance", "economy",
 	// Chinese
-	"利率", "PMI", "GDP", "贸易", "房地产", "货币政策", "美联储", "央行", "通胀", "CPI", "PPI", "就业", "失业", "债券", "国债", "收益率", "股市", "期货", "汇率", "关税", "出口", "进口"
+	"利率", "PMI", "GDP", "贸易", "房地产", "货币政策", "美联储", "央行", "通胀", "CPI", "PPI", "就业", "失业", "债券", "国债", "收益率", "股市", "期货", "汇率", "关税", "出口", "进口",
+	"营收", "利润", "财报", "上市", "并购", "刺激", "债务", "赤字", "金融", "经济"
 ];
 const NEGATIVE_KEYWORDS = [
 	// English
 	"corruption", "politics", "election", "protest", "leader", "geopolit", "conflict", "war", "sanction",
+	"mascot", "sport", "olympic", "game", "entertainment", "viral", "social media", "netizen", "movie", "film",
+	"celebrity", "fashion", "lifestyle", "travel", "food", "culture", "arts", "review", "opinion",
+	"netflix", "disney", "hulu", "hbo", "streaming", "series", "season", "episode", "show", "music", "song",
+	"concert", "ticket", "box office", "gaming", "console", "steam", "twitch",
 	// Chinese
-	"腐败", "政治", "选举", "抗议", "领导人", "地缘", "冲突", "战争", "制裁"
+	"腐败", "政治", "选举", "抗议", "领导人", "地缘", "冲突", "战争", "制裁",
+	"吉祥物", "运动", "奥运", "游戏", "娱乐", "网红", "社交媒体", "网友", "电影", "明星", "时尚", "生活", "旅游", "美食", "文化", "艺术", "评论",
+	"剧集", "综艺", "音乐", "演唱会", "票房"
 ];
 
 const normalizeText = (value) => (typeof value === "string" ? value.trim() : "");
@@ -65,21 +78,35 @@ const isLikelyEnglish = (text) => !!text && LETTER_PATTERN.test(text) && !CJK_PA
 
 function allowedDateSet(dateISO) {
 	const d0 = new Date(dateISO);
-	const prev = new Date(d0.getTime() - 24 * 60 * 60 * 1000);
+	const dates = new Set();
+	for (let i = 0; i < 5; i++) {
+		const d = new Date(d0.getTime() - i * 24 * 60 * 60 * 1000);
+		const pad = (n) => String(n).padStart(2, "0");
+		const ds = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+		dates.add(ds);
+	}
+	// Also allow "tomorrow" in case of timezone differences (e.g. feed is ahead of UTC)
+	const next = new Date(d0.getTime() + 24 * 60 * 60 * 1000);
 	const pad = (n) => String(n).padStart(2, "0");
-	const make = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-	return new Set([make(d0), make(prev)]);
+	dates.add(`${next.getUTCFullYear()}-${pad(next.getUTCMonth() + 1)}-${pad(next.getUTCDate())}`);
+	return dates;
 }
 
 async function fetchAndFilterRSS(urls, category, dateISO) {
-	const parser = new Parser();
+	const parser = new Parser({
+		headers: {
+			"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+		}
+	});
 	const allowDates = allowedDateSet(dateISO);
 	let items = [];
 	for (const url of urls) {
 		try {
 			const feed = await parser.parseURL(url);
 			const feedTitle = (feed?.title || "").trim();
-			const recent = (feed?.items || [])
+			const allItems = feed?.items || [];
+			console.log(`Fetched ${allItems.length} items from ${url}`);
+			const recent = allItems
 				.map((entry) => ({ ...entry, __feed: feedTitle }))
 				.filter((entry) => {
 					const rawDate = entry.isoDate || entry.pubDate || entry.pubdate || entry.date;
@@ -88,8 +115,9 @@ async function fetchAndFilterRSS(urls, category, dateISO) {
 					if (Number.isNaN(dt.getTime())) return false;
 					const ds = dt.toISOString().slice(0, 10);
 					return allowDates.has(ds);
-				})
-				.filter((entry) => {
+				});
+			
+			const filtered = recent.filter((entry) => {
 					const hay = [entry.title, entry.contentSnippet, entry.content, entry.summary]
 						.filter(Boolean)
 						.join(" ")
@@ -97,9 +125,10 @@ async function fetchAndFilterRSS(urls, category, dateISO) {
 					const pos = POSITIVE_KEYWORDS.some((k) => hay.includes(String(k).toLowerCase()));
 					const neg = NEGATIVE_KEYWORDS.some((k) => hay.includes(String(k).toLowerCase()));
 					return pos && !neg;
-				})
-				.slice(0, 10);
-			items.push(...recent);
+				});
+			
+			console.log(`  -> ${recent.length} recent (in 5d window), ${filtered.length} passed filters from ${url}`);
+			items.push(...filtered.slice(0, 10));
 		} catch (error) {
 			console.warn(`RSS fetch failed for ${url}: ${error.message}`);
 		}
@@ -596,6 +625,7 @@ async function main() {
 		return;
 	}
 	console.log(`Generated pulse for ${group.date}: global + china coverage ensured`);
+	process.exit(0);
 }
 
 main().catch((error) => {
