@@ -1124,6 +1124,15 @@ def _find_source_url_by_text(candidates: list, entries: list) -> str:
 
         # Calculate match score
         score = 0
+        
+        # Heuristic: Number matching (Great for cross-language matching)
+        # Extract numbers from candidate and title/summary
+        cand_nums = set(re.findall(r'\d+', ' '.join(norm_candidates)))
+        entry_nums = set(re.findall(r'\d+', norm_title + ' ' + norm_summary))
+        # If we have at least 2 distinct numbers and they overlap significantly
+        if len(cand_nums) >= 2 and len(cand_nums.intersection(entry_nums)) >= len(cand_nums) * 0.6:
+            score += 60
+
         for norm_cand in norm_candidates:
             if norm_cand in norm_title:
                 score += 100  # Strong match in title
@@ -1216,6 +1225,11 @@ def _maybe_attach_source_link(it: dict, title_map: dict, entries: list):
     """If no usable link is present, attach links by matching titles to entries; fill paper/code/project/pdf when possible."""
     try:
         links = it.setdefault("links", {})
+        
+        # 0) Check explicit 'url' field from LLM
+        if it.get("url") and it["url"] != "N/A":
+             _classify_and_attach_link(links, it["url"])
+
         # If already has at least one usable link, still try to enrich missing ones
         # candidates: English/Chinese titles, headline, and brief text
         cand_titles = [
