@@ -332,27 +332,36 @@ function fallbackCandidate(candidates) {
 }
 
 function buildPrompt(candidate) {
-  const related = candidate.related.join(", ") || "无";
-  return `You are a bilingual financial literacy mentor and acclaimed lecturer. Your task is to craft a mini-lesson for complete beginners in finance that sparks curiosity and builds true understanding.
+  const related = candidate.related.join(", ") || "None";
+  return `You are a world-class financial educator (think Ray Dalio meets Richard Feynman). Your goal is to demystify complex financial concepts for intelligent beginners using first principles, vivid analogies, and actionable insights.
 
 Output requirements:
 - Return strict JSON only. No commentary or code fences.
 - Provide fields: topic, summary, key_points, practice, sources, risk_notes.
-- topic, summary, key_points, practice, risk_notes must be objects with zh and en keys; mirror the zh text when other languages are unavailable.
-- key_points.zh and key_points.en must each be an array of 3 to 5 bullet strings. Each bullet should highlight a deeper insight, give a concrete example or statistic, and point out a common misconception or risk.
-- practice.zh and practice.en must each be an array of 2 to 3 activities. Each activity is an object with "title" and "steps" (an array of 2 to 4 clear actions that a learner can follow).
-- sources must be an array with at least two credible references. Each source is an object containing title.zh, title.en, and url (absolute http or https). Prefer authoritative books, research reports, or top-tier financial media.
-- risk_notes should reinforce uncertainties, trade-offs, or scenarios where the topic might not apply. Never recommend specific products.
-- Tone: warm, story-driven, evidence-based, and precise.
+- All text fields (topic, summary, key_points, practice, risk_notes) must be objects with "zh" and "en" keys.
+- **summary**: Must be a cohesive narrative (150-200 words). Structure it as:
+  1. **The Hook**: Start with a powerful, non-financial analogy (e.g., gardening, physics, history) to explain the mechanism.
+  2. **The Concept**: Define the term clearly using simple language.
+  3. **The "So What?"**: Explain why this matters to the reader's personal wealth *right now*.
+  4. **The Connection**: Briefly link to related topics if applicable.
+- **key_points**: An array of 3-4 strings. Do not just list definitions. Each point must be a "Mental Model" or "Critical Insight". Include:
+  - A counter-intuitive fact or common myth buster.
+  - A specific data point or historical example (e.g., "In 2008, ...").
+  - A core principle (e.g., "Risk is the price you pay for returns").
+- **practice**: An array of 2-3 objects. Each object must have:
+  - "title": A catchy name for the exercise.
+  - "steps": An array of 3-4 concrete, actionable steps. Avoid generic advice like "think about it". Use verbs like "Calculate", "Write down", "Compare", "Simulate".
+- **sources**: An array of at least two high-quality sources. Each source is an object with "title" (bilingual object or string) and "url". Prefer .gov, .edu, or reputable financial news/books.
+- **risk_notes**: A paragraph highlighting the "Shadow Side". When does this concept fail? What are the hidden costs or psychological traps?
 
 Context:
-Topic context (Chinese): ${candidate.title}
+Topic: ${candidate.title}
 Related topics: ${related}
-Level: ${candidate.level || "N/A"}
-Category: ${candidate.category || "N/A"}
-Audience: Curious adults with no financial background.
+Level: ${candidate.level || "Beginner"}
+Category: ${candidate.category || "General Finance"}
+Target Audience: Intelligent adults who want to master their financial future but lack formal training.
 
-Ensure the summary weaves analogies or stories from everyday life or other disciplines, explains why the concept matters now, and connects to prior lessons.
+Tone: Insightful, professional, empowering, and crystal clear. Avoid jargon unless defined.
 `;
 }
 
