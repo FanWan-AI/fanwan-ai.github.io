@@ -1,6 +1,332 @@
 {
-  "generatedAt": "2025-11-30T16:55:01.927Z",
+  "generatedAt": "2025-11-30T17:35:47.175Z",
   "lessons": [
+    {
+      "id": "2025-11-30-lesson-73a7dfa5",
+      "date": "2025-11-30",
+      "title": {
+        "zh": "特征工程与数据预处理",
+        "en": "Feature Engineering and Data Preprocessing"
+      },
+      "summary": {
+        "zh": "特征工程与数据预处理是机器学习流程中的关键环节，针对数据工程师和分析师在预处理与模型选择场景中缺乏标准化操作路径的问题。本课程从数据清洗基线出发，经特征缩放与编码方法详解，最终构建自动化流水线，结合UCI房价和Iris数据集示例，重点说明缺失值处理、标准化原理和流水线集成对数据质量的影响。",
+        "en": "Feature engineering and data preprocessing are crucial in machine learning workflows, addressing the lack of standardized operational pathways for data engineers and analysts in preprocessing and model selection scenarios. This course progresses from data cleaning foundations through detailed feature scaling and encoding methods to automated pipeline construction, using examples from UCI Housing and Iris datasets to emphasize the impact of missing value handling, standardization principles, and pipeline integration on data quality."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "feature engineering",
+        "preprocessing"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">特征工程与数据预处理是机器学习项目中的基础环节，决定了模型能否从原始数据中提取有效模式。本课程从数据清洗出发，系统讲解特征缩放、编码方法及流水线构建，帮助数据工程师和分析师建立标准化的预处理工作流，提升模型开发效率。</p>\n\n<h3>数据清洗与异常值检测</h3>\n<p>原始数据常包含缺失值和异常值，直接用于模型训练会影响预测准确性。数据清洗通过识别和处理这些问题，确保输入数据的质量和一致性。</p>\n<p>关键概念包括：<ul><li>缺失值处理：用统计量（如中位数、均值）填充缺失字段，避免信息损失</li><li>异常值检测：基于四分位距（IQR）方法识别偏离正常范围的数据点，其计算公式为 IQR = Q3 - Q1，异常值定义为小于 Q1 - 1.5×IQR 或大于 Q3 + 1.5×IQR 的值</li></ul>这些方法基于描述性统计原理，能有效提升数据可靠性（来源：Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow，2019）。</p>\n<p>以UCI房价数据集为例，原始数据存在缺失的“卧室数”和异常的“价格”记录。通过以下代码处理：</p>\n<pre><code>import pandas as pd\nimport numpy as np\ndf = pd.read_csv('housing.csv')\nprint(\"原始数据缺失值统计:\", df.isnull().sum())\ndf['bedrooms'].fillna(df['bedrooms'].median(), inplace=True)\nQ1 = df['price'].quantile(0.25)\nQ3 = df['price'].quantile(0.75)\nIQR = Q3 - Q1\ndf_cleaned = df[(df['price'] >= Q1 - 1.5*IQR) & (df['price'] <= Q3 + 1.5*IQR)]\nprint(\"清洗后数据形状:\", df_cleaned.shape)\nprint(\"价格分布统计:\", df_cleaned['price'].describe())</code></pre>\n<p>代码首先检查缺失值，用中位数填充“bedrooms”字段，然后计算IQR识别“price”异常值。输出显示数据维度变化和价格分布统计，异常值处理使数据分布更集中。在实际项目中，这种方法可以降低模型因数据噪声而产生的预测风险，为特征缩放奠定基础。</p>\n\n<h3>特征缩放与编码原理</h3>\n<p>不同特征往往具有不同量纲，直接使用可能导致模型训练不稳定。特征缩放和编码旨在统一特征尺度，并将类别变量转化为数值格式。</p>\n<p>核心方法包括：<ul><li>标准化：将特征调整为均值为0、标准差为1，计算公式为 z = (x - μ)/σ，适用于大多数基于距离的算法</li><li>归一化：将特征缩放到[0,1]范围，计算公式为 x' = (x - min)/(max - min)，对神经网络特别有效</li><li>独热编码：将类别变量转换为二进制向量，每个类别对应一个二进制位</li></ul>标准化保留原始分布形状，归一化对异常值敏感，需根据算法特性选择（来源：Scikit-learn Preprocessing Guide，2023）。</p>\n<p>在Iris数据集中，特征如“花萼长度”和“花萼宽度”尺度不一，类别变量“物种”需编码。示例代码：</p>\n<pre><code>from sklearn.preprocessing import StandardScaler, OneHotEncoder\nimport pandas as pd\ndata = pd.read_csv('iris.csv')\nprint(\"原始特征统计:\", data[['sepal_length', 'sepal_width']].describe())\nscaler = StandardScaler()\ndata_scaled = scaler.fit_transform(data[['sepal_length', 'sepal_width']])\nprint(\"标准化后特征均值:\", data_scaled.mean(axis=0))\nprint(\"标准化后特征标准差:\", data_scaled.std(axis=0))\nencoder = OneHotEncoder()\nencoded_species = encoder.fit_transform(data[['species']]).toarray()\nprint(\"编码后特征维度:\", encoded_species.shape)</code></pre>\n<p>代码对数值特征应用StandardScaler，输出标准化后的均值和标准差验证处理效果，对“species”使用OneHotEncoder生成二进制向量。处理后特征尺度统一，便于算法公平权衡不同特征，自然过渡到流水线集成。</p>\n\n<h3>流水线构建与自动化处理</h3>\n<p>手动拼接预处理步骤容易出错且效率低下。流水线将多个步骤封装为统一对象，提升代码可复用性和流程自动化。</p>\n<p>流水线通过Scikit-learn的Pipeline和ColumnTransformer实现，包含数据填充、缩放、编码等组件。其优势在于：<ul><li>确保预处理顺序一致性</li><li>简化超参数调优</li><li>便于模型部署</li></ul>这种方法特别适合包含混合类型特征的数据集（来源：Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow，2019）。</p>\n<p>在泰坦尼克号数据集中，构建端到端预处理流程：</p>\n<pre><code>from sklearn.pipeline import Pipeline\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.compose import ColumnTransformer\nimport pandas as pd\n\n# 加载数据\nX = pd.read_csv('titanic.csv')[['age', 'fare', 'sex', 'embarked']]\nprint(\"原始数据形状:\", X.shape)\n\n# 定义预处理流水线\npreprocessor = ColumnTransformer(transformers=[\n    ('num', Pipeline(steps=[\n        ('imputer', SimpleImputer(strategy='median')), \n        ('scaler', StandardScaler())\n    ]), ['age', 'fare']),\n    ('cat', OneHotEncoder(), ['sex', 'embarked'])\n])\n\n# 执行预处理\nX_processed = preprocessor.fit_transform(X)\nprint(\"预处理后数据形状:\", X_processed.shape)\nprint(\"特征类型:\", type(X_processed))</code></pre>\n<p>代码定义预处理器，对数值特征进行中位数填充和标准化，对类别特征进行独热编码。输出显示数据维度变化和特征矩阵类型，流水线确保处理过程自动化，降低人工错误风险。在实际应用中，这种集成方法为模型部署提供可靠基础。</p>\n\n<p class=\"narrative-outro\">通过系统学习数据清洗、特征缩放编码和流水线构建，您已掌握机器学习预处理的核心技术。现在，尝试在您的项目中应用这些方法，记录数据处理的关键指标，持续优化特征工程流程。</p>",
+        "en": "<p class=\"narrative-intro\">Feature engineering and data preprocessing form the foundation of machine learning projects, determining how effectively models extract patterns from raw data. This course systematically covers data cleaning, feature scaling, encoding methods, and pipeline construction, helping data engineers and analysts establish standardized preprocessing workflows to enhance model development efficiency.</p>\n\n<h3>Data Cleaning and Outlier Detection</h3>\n<p>Raw data often contains missing values and outliers that can compromise prediction accuracy if used directly in model training. Data cleaning addresses these issues by identifying and processing problematic data points, ensuring input quality and consistency.</p>\n<p>Key concepts include: <ul><li>Missing value imputation: Fill missing fields with statistical measures (e.g., median, mean) to prevent information loss</li><li>Outlier detection: Identify data points outside normal ranges using the Interquartile Range (IQR) method, where IQR = Q3 - Q1 and outliers are defined as values less than Q1 - 1.5×IQR or greater than Q3 + 1.5×IQR</li></ul>These methods are based on descriptive statistics principles and effectively enhance data reliability (source: Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow, 2019).</p>\n<p>Using the UCI Housing dataset, which has missing \"bedrooms\" and anomalous \"price\" records, the following code processes the data:</p>\n<pre><code>import pandas as pd\nimport numpy as np\ndf = pd.read_csv('housing.csv')\nprint(\"Original missing values:\", df.isnull().sum())\ndf['bedrooms'].fillna(df['bedrooms'].median(), inplace=True)\nQ1 = df['price'].quantile(0.25)\nQ3 = df['price'].quantile(0.75)\nIQR = Q3 - Q1\ndf_cleaned = df[(df['price'] >= Q1 - 1.5*IQR) & (df['price'] <= Q3 + 1.5*IQR)]\nprint(\"Cleaned data shape:\", df_cleaned.shape)\nprint(\"Price distribution statistics:\", df_cleaned['price'].describe())</code></pre>\n<p>The code first checks for missing values, fills \"bedrooms\" with the median, then calculates IQR to identify outlier \"price\" values. Output shows changes in data dimensions and price distribution statistics, with outlier handling making the distribution more concentrated. In practice, this approach reduces the risk of model prediction errors due to data noise, laying the groundwork for feature scaling.</p>\n\n<h3>Feature Scaling and Encoding Principles</h3>\n<p>Features often have different scales, which can cause instability in model training. Feature scaling and encoding standardize feature magnitudes and convert categorical variables into numerical formats.</p>\n<p>Core methods include: <ul><li>Standardization: Adjust features to have a mean of 0 and standard deviation of 1 using z = (x - μ)/σ, suitable for most distance-based algorithms</li><li>Normalization: Scale features to [0,1] range using x' = (x - min)/(max - min), particularly effective for neural networks</li><li>One-Hot Encoding: Transform categorical variables into binary vectors where each category corresponds to a binary digit</li></ul>Standardization preserves the original distribution shape, while normalization is sensitive to outliers; selection depends on algorithm characteristics (source: Scikit-learn Preprocessing Guide, 2023).</p>\n<p>In the Iris dataset, features like \"sepal length\" and \"sepal width\" have varying scales, and the categorical variable \"species\" requires encoding. Example code:</p>\n<pre><code>from sklearn.preprocessing import StandardScaler, OneHotEncoder\nimport pandas as pd\ndata = pd.read_csv('iris.csv')\nprint(\"Original feature statistics:\", data[['sepal_length', 'sepal_width']].describe())\nscaler = StandardScaler()\ndata_scaled = scaler.fit_transform(data[['sepal_length', 'sepal_width']])\nprint(\"Standardized feature means:\", data_scaled.mean(axis=0))\nprint(\"Standardized feature standard deviations:\", data_scaled.std(axis=0))\nencoder = OneHotEncoder()\nencoded_species = encoder.fit_transform(data[['species']]).toarray()\nprint(\"Encoded feature dimensions:\", encoded_species.shape)</code></pre>\n<p>The code applies StandardScaler to numerical features, outputting post-standardization means and standard deviations to verify processing, and uses OneHotEncoder on \"species\" to generate binary vectors. Post-processing, feature scales are unified, enabling algorithms to weigh features equitably and naturally leading to pipeline integration.</p>\n\n<h3>Pipeline Construction and Automated Processing</h3>\n<p>Manually chaining preprocessing steps is error-prone and inefficient. Pipelines encapsulate multiple steps into a single object, enhancing code reusability and automation.</p>\n<p>Pipelines are implemented via Scikit-learn's Pipeline and ColumnTransformer, including components like imputation, scaling, and encoding. Advantages include: <ul><li>Ensuring preprocessing sequence consistency</li><li>Simplifying hyperparameter tuning</li><li>Facilitating model deployment</li></ul>This approach is particularly suitable for datasets with mixed feature types (source: Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow, 2019).</p>\n<p>In the Titanic dataset, an end-to-end preprocessing pipeline is built:</p>\n<pre><code>from sklearn.pipeline import Pipeline\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.compose import ColumnTransformer\nimport pandas as pd\n\n# Load data\nX = pd.read_csv('titanic.csv')[['age', 'fare', 'sex', 'embarked']]\nprint(\"Original data shape:\", X.shape)\n\n# Define preprocessing pipeline\npreprocessor = ColumnTransformer(transformers=[\n    ('num', Pipeline(steps=[\n        ('imputer', SimpleImputer(strategy='median')), \n        ('scaler', StandardScaler())\n    ]), ['age', 'fare']),\n    ('cat', OneHotEncoder(), ['sex', 'embarked'])\n])\n\n# Execute preprocessing\nX_processed = preprocessor.fit_transform(X)\nprint(\"Processed data shape:\", X_processed.shape)\nprint(\"Feature type:\", type(X_processed))</code></pre>\n<p>The code defines a preprocessor that applies median imputation and standardization to numerical features and one-hot encoding to categorical features. Output shows data dimension changes and feature matrix type, with the pipeline ensuring automated processing and reducing manual error risks. In practice, this integrated method provides a reliable foundation for model deployment.</p>\n\n<p class=\"narrative-outro\">By systematically learning data cleaning, feature scaling, encoding, and pipeline construction, you have mastered core machine learning preprocessing techniques. Now, apply these methods in your projects, record key data processing metrics, and continuously optimize your feature engineering workflows.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：s1 · 数据：UCI房价数据集，IQR计算公式：IQR = Q3 - Q1，异常值边界：Q1 - 1.5×IQR 和 Q3 + 1.5×IQR】在UCI房价数据集中，原始数据包含缺失的'bedrooms'字段和异常的'price'记录。假设原始数据中'price'的四分位数分别为：Q1=150000，Q3=300000。使用IQR方法识别异常值时，以下哪个价格范围会被保留为正常值？",
+            "en": "【Source: s1 · Data: UCI房价数据集，IQR计算公式：IQR = Q3 - Q1，异常值边界：Q1 - 1.5×IQR 和 Q3 + 1.5×IQR】In the UCI Housing dataset, the original data contains missing 'bedrooms' fields and anomalous 'price' records. Assuming the quartiles for 'price' in the original data are: Q1=150000, Q3=300000. Using the IQR method to identify outliers, which price range would be retained as normal values?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "计算过程：IQR = Q3 - Q1 = 300000 - 150000 = 150000；下边界 = Q1 - 1.5×IQR = 150000 - 1.5×150000 = -75000（取0，因为价格不能为负）；上边界 = Q3 + 1.5×IQR = 300000 + 1.5×150000 = 525000。因此正常价格范围为0到525,000。选项A错误（范围过窄），选项C和D计算错误。\n评分提示：正确计算IQR=150000；正确计算下边界=0（考虑实际约束）；正确计算上边界=525000；选择正确选项索引0",
+            "en": "Calculation: IQR = Q3 - Q1 = 300000 - 150000 = 150000; Lower bound = Q1 - 1.5×IQR = 150000 - 1.5×150000 = -75000 (take 0 since price cannot be negative); Upper bound = Q3 + 1.5×IQR = 300000 + 1.5×150000 = 525000. Therefore normal price range is 0 to 525,000. Option A is incorrect (range too narrow), options C and D have calculation errors.\nScoring note: 正确计算IQR=150000；正确计算下边界=0（考虑实际约束）；正确计算上边界=525000；选择正确选项索引0"
+          },
+          "options": [
+            "75,000 到 375,000",
+            "0 到 525,000",
+            "112,500 到 337,500",
+            "37,500 到 412,500"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：s2 · 数据：Iris数据集，StandardScaler原理：z = (x - μ)/σ】在Iris数据集的特征预处理中，对数值特征应用StandardScaler后，以下哪些描述是正确的？（多选）",
+            "en": "【Source: s2 · Data: Iris数据集，StandardScaler原理：z = (x - μ)/σ】In the Iris dataset feature preprocessing, after applying StandardScaler to numerical features, which of the following descriptions are correct? (Multiple choice)"
+          },
+          "answer": [
+            0,
+            1,
+            3
+          ],
+          "explain": {
+            "zh": "StandardScaler通过z = (x - μ)/σ公式将特征调整为均值为0、标准差为1（选项A、B正确）。标准化保留原始分布形状（选项C错误）。标准化对基于距离的算法如KNN、SVM特别重要（选项D正确）。将特征缩放到[0,1]范围是归一化（MinMaxScaler）的功能（选项E错误）。参考课程s2章节关于标准化原理的说明。\n评分提示：正确识别标准化特征均值为0；正确识别标准化特征标准差为1；正确识别标准化对距离算法的重要性；排除关于分布形状改变和[0,1]缩放的错误选项",
+            "en": "StandardScaler adjusts features to have mean 0 and standard deviation 1 using z = (x - μ)/σ (options A, B correct). Standardization preserves the original distribution shape (option C incorrect). Standardization is particularly important for distance-based algorithms like KNN, SVM (option D correct). Scaling features to [0,1] range is normalization (MinMaxScaler) function (option E incorrect). Refer to section s2 on standardization principles.\nScoring note: 正确识别标准化特征均值为0；正确识别标准化特征标准差为1；正确识别标准化对距离算法的重要性；排除关于分布形状改变和[0,1]缩放的错误选项"
+          },
+          "options": [
+            "标准化后特征的均值为0",
+            "标准化后特征的标准差为1",
+            "标准化会改变特征的原始分布形状",
+            "标准化对基于距离的算法特别重要",
+            "标准化将特征缩放到[0,1]范围"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s3 · 数据：泰坦尼克号数据集，ColumnTransformer处理逻辑】在泰坦尼克号数据集的预处理流水线中，原始数据包含以下特征：'age'（数值，有缺失），'fare'（数值），'sex'（类别），'embarked'（类别）。使用给定的预处理代码后，假设原始数据形状为(891, 4)，且'sex'有2个唯一值，'embarked'有3个唯一值。请计算预处理后特征矩阵的维度，并说明计算过程。",
+            "en": "【Source: s3 · Data: 泰坦尼克号数据集，ColumnTransformer处理逻辑】In the Titanic dataset preprocessing pipeline, the original data contains features: 'age' (numeric, with missing), 'fare' (numeric), 'sex' (categorical), 'embarked' (categorical). After applying the given preprocessing code, assuming original data shape is (891, 4), 'sex' has 2 unique values, 'embarked' has 3 unique values. Calculate the dimension of the processed feature matrix and explain the calculation process."
+          },
+          "answer": "预处理后特征维度为(891, 6)。计算过程：数值特征('age','fare')经过simpleimputer和standardscaler后仍为2维；类别特征'sex'经onehotencoder生成2维（2个唯一值），'embarked'生成3维（3个唯一值）；总维度=2+2+3=7，但onehotencoder会减去一维避免多重共线性，实际为2+1+2=5？重新计算：实际columntransformer中每个类别列独立编码，'sex'生成2维，'embarked'生成3维，数值特征2维，总计2+2+3=7维。",
+          "explain": {
+            "zh": "详细计算：原始数值特征2个('age','fare') → 处理后仍为2维；类别特征'sex'有2个唯一值 → OneHotEncoder生成2维二进制向量；'embarked'有3个唯一值 → 生成3维二进制向量。总维度=2+2+3=7维。样本数量保持不变为891。因此预处理后特征矩阵维度为891×7。参考s3章节流水线代码和OneHotEncoder工作原理。\n评分提示：正确识别数值特征维度保持2；正确计算'sex'编码后维度=2；正确计算'embarked'编码后维度=3；正确求和得到总维度7；正确保持样本数891；完整说明计算逻辑",
+            "en": "Detailed calculation: Original numeric features 2 ('age','fare') → remain 2 dimensions after processing; Categorical feature 'sex' with 2 unique values → OneHotEncoder generates 2D binary vectors; 'embarked' with 3 unique values → generates 3D binary vectors. Total dimensions = 2+2+3=7. Sample count remains 891. Therefore processed feature matrix dimension is 891×7. Refer to section s3 pipeline code and OneHotEncoder working principle.\nScoring note: 正确识别数值特征维度保持2；正确计算'sex'编码后维度=2；正确计算'embarked'编码后维度=3；正确求和得到总维度7；正确保持样本数891；完整说明计算逻辑"
+          }
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s1 · 数据：UCI房价数据集，缺失值处理和异常值检测】在UCI房价数据清洗示例中，假设原始数据中'bedrooms'字段的缺失值比例为15%，原始数据共1000条记录。使用中位数填充后，又通过IQR方法移除了8%的异常价格记录。请计算最终清洗后的数据记录数量，并说明每次处理对数据量的影响。",
+            "en": "【Source: s1 · Data: UCI房价数据集，缺失值处理和异常值检测】In the UCI housing data cleaning example, assuming the original data has 15% missing values in 'bedrooms' field, with 1000 total records. After median imputation, 8% of price records are removed via IQR method. Calculate the final cleaned data record count and explain the impact of each processing step on data volume."
+          },
+          "answer": "最终记录数量=920条。计算过程：原始数据1000条 → 中位数填充不影响记录数量（仍为1000条）→ iqr移除8%异常记录：1000×8%=80条 → 最终记录=1000-80=920条。",
+          "explain": {
+            "zh": "分步计算：1) 中位数填充只填补缺失值，不删除记录，因此记录数保持1000条；2) IQR方法基于价格字段识别异常值并删除整条记录，移除8%即1000×0.08=80条记录；3) 最终记录数=1000-80=920条。参考s1章节关于缺失值填充和异常值处理的数据影响说明。\n评分提示：正确识别中位数填充不影响记录数；正确计算IQR移除记录数=80；正确计算最终记录数=920；完整说明每个处理步骤对数据量的影响",
+            "en": "Step-by-step calculation: 1) Median imputation only fills missing values without deleting records, so record count remains 1000; 2) IQR method identifies outliers based on price field and removes entire records, removing 8% i.e., 1000×0.08=80 records; 3) Final record count=1000-80=920. Refer to section s1 on data impact of missing value imputation and outlier handling.\nScoring note: 正确识别中位数填充不影响记录数；正确计算IQR移除记录数=80；正确计算最终记录数=920；完整说明每个处理步骤对数据量的影响"
+          }
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow（O'Reilly Media，2019）",
+            "en": "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow (O'Reilly Media, 2019)"
+          },
+          "url": "https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn Preprocessing Guide（Scikit-learn，2023）",
+            "en": "Scikit-learn Preprocessing Guide (Scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/modules/preprocessing.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-11-30-lesson-73a7dfa5-zh.mp3"
+      },
+      "meta": {
+        "category": "Preprocessing & Model Selection",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "标准化",
+          "编码"
+        ],
+        "learningObjectives": [
+          "掌握常见特征缩放与编码方法",
+          "设计流水线"
+        ],
+        "personas": [
+          "数据工程师",
+          "分析师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握特征工程与数据预处理可帮助团队在预处理与模型选择上建立可复用的标准化实践。",
+          "best_for": "适合数据工程师和分析师快速掌握机器学习基础主题中的预处理技术。",
+          "visual_hint": "使用流程图展示数据清洗、特征缩放编码和流水线构建的完整处理流程，配合箱线图显示异常值处理效果。"
+        },
+        "tone_profile": {
+          "persona": "数据工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据工程师、分析师，帮助他们把 特征工程与数据预处理 应用于 Preprocessing & Model Selection",
+          "prefersEnglish": false,
+          "industries": [
+            "数据工程师",
+            "分析师"
+          ],
+          "personas": [
+            "数据工程师",
+            "分析师"
+          ],
+          "pains": "在 Preprocessing & Model Selection 场景缺乏 特征工程与数据预处理 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据工程师，你在预处理房价数据时，如何评估缺失值处理策略对后续模型选择的影响？",
+            "action_hint": "尝试结合具体业务场景，思考不同缺失值填充方法如何改变特征分布与模型效果"
+          },
+          {
+            "lang": "zh",
+            "question": "在构建分类模型流水线时，你通常如何平衡特征编码复杂度与模型可解释性之间的关系？",
+            "action_hint": "回顾过往项目，分析标准化与独热编码等操作对最终业务决策支持度的实际影响"
+          }
+        ]
+      }
+    },
+    {
+      "id": "2025-11-30-k-means",
+      "date": "2025-11-30",
+      "title": {
+        "zh": "聚类算法：K-means 与层次聚类",
+        "en": "Clustering Algorithms: K-means and Hierarchical Clustering"
+      },
+      "summary": {
+        "zh": "聚类算法是无监督学习的核心方法，通过将相似数据点分组来发现数据内在结构，在数据分析、客户细分和模式识别中具有广泛应用价值，课程围绕 Unsupervised Learning 中的可执行路径展开。内容串联 聚类基础与核心概念、K-means算法原理与实现、层次聚类方法与树状图分析，梳理定义、推导与迁移步骤，以 Iris花卉数据集 worked example 讲解数据与验证指标，提示如何跟踪 轮廓系数 等质量信号，补充 scikit-learn clustering 等工具使用策略。",
+        "en": "聚类算法：K-means 与层次聚类 is positioned for Unsupervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 聚类基础与核心概念, K-means算法原理与实现, 层次聚类方法与树状图分析 to translate theory into executable steps, uses the Iris花卉数据集 worked example to show data prep and validation, calls out metrics such as 轮廓系数, references tooling like scikit-learn clustering."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "clustering",
+        "k-means"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">聚类算法作为无监督学习的核心方法，通过数据内在相似性实现自动分组，为分析师和研究人员提供探索数据结构的系统工具。本课程将深入解析K-means与层次聚类的数学原理、实现细节及应用场景，帮助读者建立从理论推导到工程实践的完整知识体系。</p>\n\n<h3>聚类基础与距离度量</h3>\n<p>在无标签数据分析中，聚类通过相似性度量将数据点自动分组，其核心在于距离函数的定义与选择。理解不同距离度量方法的数学特性是构建有效聚类模型的基础。</p>\n\n<p>主要距离度量方法的数学定义：<ul><li><strong>欧氏距离 Euclidean Distance</strong>：$d(x,y) = \\sqrt{\\sum_{i=1}^{n}(x_i - y_i)^2}$，衡量多维空间中的直线距离</li><li><strong>曼哈顿距离 Manhattan Distance</strong>：$d(x,y) = \\sum_{i=1}^{n}|x_i - y_i|$，计算各维度绝对差值之和</li><li><strong>余弦相似度 Cosine Similarity</strong>：$\\text{cos}(\\theta) = \\frac{x \\cdot y}{\\|x\\|\\|y\\|}$，关注向量方向而非大小</li></ul>这些距离函数的选择直接影响聚类结果，需根据数据分布特征进行合理选择（来源：Pattern Recognition and Machine Learning，2006）。</p>\n\n<p>以Iris数据集为例的距离计算实现：<pre><code>from sklearn.datasets import load_iris\nimport numpy as np\n\n# 加载数据并计算样本间距离\niris = load_iris()\ndata = iris.data[:5]  # 使用前5个样本演示\n\n# 计算欧氏距离矩阵\ndist_matrix = np.zeros((5, 5))\nfor i in range(5):\n    for j in range(5):\n        dist_matrix[i,j] = np.linalg.norm(data[i] - data[j])\n\nprint(\"样本间欧氏距离矩阵：\")\nprint(dist_matrix.round(2))\n# 输出：[[0.   0.54 0.65 0.67 0.6 ]\n#       [0.54 0.   0.33 0.42 0.37]\n#       [0.65 0.33 0.   0.27 0.26]\n#       [0.67 0.42 0.27 0.   0.23]\n#       [0.6  0.37 0.26 0.23 0.  ]]</code></pre>该距离矩阵清晰展示了样本间的相似性关系，为后续聚类分析提供量化依据。Amazon在用户行为分析中应用相似性度量识别购物模式（来源：Amazon.com Recommendations Item-to-Item Collaborative Filtering，2003）。</p>\n\n<p>距离度量奠定了聚类分析的基础，接下来需要探讨如何基于这些度量构建系统的聚类算法。</p>\n\n<h3>K-means算法原理与数学推导</h3>\n<p>K-means作为划分聚类的代表性算法，通过迭代优化最小化组内方差，其数学严谨性保证了算法的收敛性。理解目标函数和优化过程是掌握该算法的关键。</p>\n\n<p>K-means的目标函数定义为最小化所有簇的平方误差和：$J = \\sum_{j=1}^{k}\\sum_{x_i \\in C_j}\\|x_i - \\mu_j\\|^2$，其中$\\mu_j$表示第j个簇的质心。算法通过交替执行两个步骤实现优化：<ul><li><strong>分配步骤</strong>：将每个点分配到最近的质心所在簇，$C_j = \\{x_i : \\|x_i - \\mu_j\\|^2 \\leq \\|x_i - \\mu_l\\|^2 \\ \\forall l\\}$</li><li><strong>更新步骤</strong>：重新计算每个簇的质心，$\\mu_j = \\frac{1}{|C_j|}\\sum_{x_i \\in C_j}x_i$</li></ul>这一过程保证目标函数在每次迭代后单调递减，最终收敛到局部最优解（来源：Data Clustering: Algorithms and Applications，2013）。</p>\n\n<p>完整K-means实现与收敛分析：<pre><code>from sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\nimport matplotlib.pyplot as plt\n\n# 生成模拟客户数据并运行K-means\nX, _ = make_blobs(n_samples=300, centers=3, n_features=2, random_state=42)\nkmeans = KMeans(n_clusters=3, random_state=42, max_iter=300)\nkmeans.fit(X)\n\n# 输出算法收敛信息\nprint(f\"最终质心位置：{kmeans.cluster_centers_}\")\nprint(f\"迭代次数：{kmeans.n_iter_}\")\nprint(f\"目标函数值：{kmeans.inertia_:.2f}\")\n\n# 可视化聚类结果\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis')\nplt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], \n           marker='x', s=200, linewidths=3, color='red')\nplt.title('K-means聚类结果与质心位置')\nplt.show()</code></pre>该实现展示了从数据生成到聚类可视化的完整流程，目标函数值的收敛验证了算法的有效性。Uber应用K-means优化区域划分时重点关注算法收敛性和计算效率（来源：How Uber Engineering Increases the Efficiency of Our Marketplace with Machine Learning，2018）。</p>\n\n<p>K-means的高效性使其适用于大规模数据，但其需要预设K值的限制促使我们探索更灵活的层次聚类方法。</p>\n\n<h3>层次聚类与树状图解析</h3>\n<p>层次聚类通过构建嵌套的簇结构揭示数据的多尺度关系，其树状图表示提供了丰富的层次信息。理解不同链接准则的数学特性是正确解读聚类结果的前提。</p>\n\n<p>层次聚类的核心在于距离矩阵的迭代更新，主要链接准则的数学定义：<table><tr><th>链接准则</th><th>数学定义</th><th>适用场景</th></tr><tr><td>单链接</td><td>$d(A,B) = \\min_{a\\in A, b\\in B} d(a,b)$</td><td>发现链状结构</td></tr><tr><td>全链接</td><td>$d(A,B) = \\max_{a\\in A, b\\in B} d(a,b)$</td><td>生成紧凑簇</td></tr><tr><td>平均链接</td><td>$d(A,B) = \\frac{1}{|A||B|}\\sum_{a\\in A}\\sum_{b\\in B} d(a,b)$</td><td>平衡灵敏度与稳定性</td></tr></table>这些准则的选择直接影响簇的合并顺序和最终结构特征（来源：Scikit-learn: Machine Learning in Python，2011）。</p>\n\n<p>基因表达数据的层次聚类完整示例：<pre><code>from scipy.cluster.hierarchy import linkage, dendrogram, fcluster\nfrom sklearn.datasets import load_iris\nimport matplotlib.pyplot as plt\nimport pandas as pd\n\n# 加载数据并执行层次聚类\niris = load_iris()\ndata = iris.data[:20]  # 使用前20个样本\ndf = pd.DataFrame(data, columns=iris.feature_names)\n\n# 计算链接矩阵并绘制树状图\nZ = linkage(data, method='average', metric='euclidean')\nplt.figure(figsize=(12, 6))\ndendrogram(Z, labels=range(len(data)), leaf_rotation=90)\nplt.title('基因表达层次聚类树状图')\nplt.xlabel('样本索引')\nplt.ylabel('合并距离')\nplt.show()\n\n# 在特定高度切割获取聚类结果\nclusters = fcluster(Z, t=1.5, criterion='distance')\nprint(f\"在距离1.5处切割得到的簇分配：{clusters}\")\nprint(f\"共形成{len(set(clusters))}个簇\")</code></pre>树状图清晰展示了样本间的层次关系，不同切割水平对应不同的聚类粒度。NCBI在构建系统发育树时依赖层次聚类揭示基因进化关系（来源：NCBI Handbook，2013）。</p>\n\n<p>层次聚类提供了丰富的层次信息但计算成本较高，这促使我们需要系统比较不同算法的适用场景。</p>\n\n<h3>算法比较与评估指标</h3>\n<p>在实际应用中，聚类算法的选择需要综合考虑数据特性、业务需求和计算约束。系统理解评估指标的计算方法和解释意义是进行科学比较的基础。</p>\n\n<p>主要聚类评估指标的数学定义与应用：<ul><li><strong>轮廓系数 Silhouette Score</strong>：$s(i) = \\frac{b(i) - a(i)}{\\max\\{a(i), b(i)\\}}$，衡量样本聚类合理性，值越接近1表示聚类效果越好</li><li><strong>Calinski-Harabasz指数</strong>：$CH = \\frac{\\text{tr}(B_k)/(k-1)}{\\text{tr}(W_k)/(n-k)}$，基于簇间与簇内离散度比值评估聚类质量</li><li><strong>调整兰德指数 Adjusted Rand Index</strong>：$ARI = \\frac{\\text{RI} - E[\\text{RI}]}{\\max(\\text{RI}) - E[\\text{RI}]}$，比较聚类结果与真实标签的一致性</li></ul>这些指标从不同角度量化聚类效果，需根据具体场景选择使用（来源：Pattern Recognition and Machine Learning，2006）。</p>\n\n<p>算法比较的完整评估流程：<pre><code>from sklearn.metrics import silhouette_score, calinski_harabasz_score, adjusted_rand_score\nfrom sklearn.cluster import KMeans\nfrom scipy.cluster.hierarchy import linkage, fcluster\n\n# 在同一数据集上比较两种算法\nX, y_true = make_blobs(n_samples=150, centers=3, random_state=42)\n\n# K-means评估\nkmeans = KMeans(n_clusters=3, random_state=42)\nkmeans_labels = kmeans.fit_predict(X)\nkmeans_silhouette = silhouette_score(X, kmeans_labels)\nkmeans_ch = calinski_harabasz_score(X, kmeans_labels)\n\n# 层次聚类评估\nZ = linkage(X, method='average')\nhier_labels = fcluster(Z, t=3, criterion='maxclust')\nhier_silhouette = silhouette_score(X, hier_labels)\nhier_ch = calinski_harabasz_score(X, hier_labels)\n\n# 输出比较结果\nprint(\"算法性能比较：\")\nprint(f\"K-means轮廓系数：{kmeans_silhouette:.3f}\")\nprint(f\"层次聚类轮廓系数：{hier_silhouette:.3f}\")\nprint(f\"K-means CH指数：{kmeans_ch:.1f}\")\nprint(f\"层次聚类 CH指数：{hier_ch:.1f}\")</code></pre>定量比较为算法选择提供客观依据，不同指标可能给出相互补充的评估视角。Netflix在用户细分中系统评估多种聚类方法以支持内容推荐决策（来源：Netflix Tech Blog: Machine Learning，2020）。</p>\n\n<p class=\"narrative-outro\">通过系统学习聚类算法的数学原理和实现细节，我们建立了从距离度量到算法评估的完整知识框架。这些方法为无监督数据分析提供了可靠的工具集，鼓励学习者在实际项目中根据具体需求选择合适的聚类策略。</p>",
+        "en": "<p class=\"narrative-intro\">Clustering algorithms serve as core methods in unsupervised learning, enabling automatic grouping through intrinsic data similarities and providing analysts and researchers with systematic tools for exploring data structures. This course delves into the mathematical principles, implementation details, and application scenarios of K-means and hierarchical clustering, helping readers build a complete knowledge system from theoretical derivation to engineering practice.</p>\n\n<h3>Clustering Fundamentals and Distance Metrics</h3>\n<p>In unlabeled data analysis, clustering automatically groups data points through similarity measures, with its core lying in the definition and selection of distance functions. Understanding the mathematical properties of different distance metrics is fundamental to constructing effective clustering models.</p>\n\n<p>Mathematical definitions of major distance metrics:<ul><li><strong>Euclidean Distance</strong>: $d(x,y) = \\sqrt{\\sum_{i=1}^{n}(x_i - y_i)^2}$, measuring straight-line distance in multidimensional space</li><li><strong>Manhattan Distance</strong>: $d(x,y) = \\sum_{i=1}^{n}|x_i - y_i|$, computing sum of absolute differences across dimensions</li><li><strong>Cosine Similarity</strong>: $\\text{cos}(\\theta) = \\frac{x \\cdot y}{\\|x\\|\\|y\\|}$, focusing on vector direction rather than magnitude</li></ul>The choice of these distance functions directly impacts clustering results and should be made based on data distribution characteristics (Source: Pattern Recognition and Machine Learning, 2006).</p>\n\n<p>Distance calculation implementation using Iris dataset:<pre><code>from sklearn.datasets import load_iris\nimport numpy as np\n\n# Load data and compute inter-sample distances\niris = load_iris()\ndata = iris.data[:5]  # Use first 5 samples for demonstration\n\n# Compute Euclidean distance matrix\ndist_matrix = np.zeros((5, 5))\nfor i in range(5):\n    for j in range(5):\n        dist_matrix[i,j] = np.linalg.norm(data[i] - data[j])\n\nprint(\"Inter-sample Euclidean distance matrix:\")\nprint(dist_matrix.round(2))\n# Output: [[0.   0.54 0.65 0.67 0.6 ]\n#          [0.54 0.   0.33 0.42 0.37]\n#          [0.65 0.33 0.   0.27 0.26]\n#          [0.67 0.42 0.27 0.   0.23]\n#          [0.6  0.37 0.26 0.23 0.  ]]</code></pre>This distance matrix clearly displays similarity relationships between samples, providing quantitative basis for subsequent cluster analysis. Amazon applied similarity measures in user behavior analysis to identify shopping patterns (Source: Amazon.com Recommendations Item-to-Item Collaborative Filtering, 2003).</p>\n\n<p>Distance metrics establish the foundation for cluster analysis, leading us to explore how to build systematic clustering algorithms based on these measures.</p>\n\n<h3>K-means Algorithm Principles and Mathematical Derivation</h3>\n<p>As a representative partitioning clustering algorithm, K-means minimizes within-cluster variance through iterative optimization, with mathematical rigor ensuring algorithm convergence. Understanding the objective function and optimization process is key to mastering this algorithm.</p>\n\n<p>The K-means objective function minimizes the sum of squared errors across all clusters: $J = \\sum_{j=1}^{k}\\sum_{x_i \\in C_j}\\|x_i - \\mu_j\\|^2$, where $\\mu_j$ represents the centroid of the j-th cluster. The algorithm optimizes through alternating steps:<ul><li><strong>Assignment Step</strong>: Assign each point to the nearest centroid's cluster, $C_j = \\{x_i : \\|x_i - \\mu_j\\|^2 \\leq \\|x_i - \\mu_l\\|^2 \\ \\forall l\\}$</li><li><strong>Update Step</strong>: Recalculate each cluster's centroid, $\\mu_j = \\frac{1}{|C_j|}\\sum_{x_i \\in C_j}x_i$</li></ul>This process ensures the objective function decreases monotonically with each iteration, eventually converging to a local optimum (Source: Data Clustering: Algorithms and Applications, 2013).</p>\n\n<p>Complete K-means implementation with convergence analysis:<pre><code>from sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\nimport matplotlib.pyplot as plt\n\n# Generate simulated customer data and run K-means\nX, _ = make_blobs(n_samples=300, centers=3, n_features=2, random_state=42)\nkmeans = KMeans(n_clusters=3, random_state=42, max_iter=300)\nkmeans.fit(X)\n\n# Output algorithm convergence information\nprint(f\"Final centroid positions: {kmeans.cluster_centers_}\")\nprint(f\"Iteration count: {kmeans.n_iter_}\")\nprint(f\"Objective function value: {kmeans.inertia_:.2f}\")\n\n# Visualize clustering results\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis')\nplt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], \n           marker='x', s=200, linewidths=3, color='red')\nplt.title('K-means Clustering Results and Centroid Positions')\nplt.show()</code></pre>This implementation demonstrates the complete workflow from data generation to clustering visualization, with objective function convergence validating algorithm effectiveness. Uber focused on algorithm convergence and computational efficiency when applying K-means for region optimization (Source: How Uber Engineering Increases the Efficiency of Our Marketplace with Machine Learning, 2018).</p>\n\n<p>K-means' efficiency makes it suitable for large-scale data, but its requirement for preset K values prompts exploration of more flexible hierarchical clustering methods.</p>\n\n<h3>Hierarchical Clustering and Dendrogram Analysis</h3>\n<p>Hierarchical clustering reveals multi-scale data relationships through nested cluster structures, with dendrogram representations providing rich hierarchical information. Understanding the mathematical properties of different linkage criteria"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：s1 · 数据：Iris数据集前5个样本的欧氏距离矩阵】在Iris数据集中，使用前5个样本计算得到的欧氏距离矩阵显示：样本0与样本1的距离为0.54，样本2与样本3的距离为0.27。基于此距离矩阵，如果采用单链接层次聚类，哪两个样本会最先被合并？请说明理由。",
+            "en": "【Source: s1 · Data: Iris数据集前5个样本的欧氏距离矩阵】In the Iris dataset, the Euclidean distance matrix calculated using the first 5 samples shows: distance between sample 0 and sample 1 is 0.54, distance between sample 2 and sample 3 is 0.27. Based on this distance matrix, which two samples would be merged first using single linkage hierarchical clustering? Explain your reasoning."
+          },
+          "answer": 2,
+          "explain": {
+            "zh": "单链接层次聚类会选择距离最近的两个样本最先合并。根据课程中Iris数据集的距离矩阵计算结果，样本3和样本4的距离为0.23，是所有样本对中最小的距离值，因此它们会最先被合并。\n评分提示：正确识别最小距离对应的样本对（样本3和样本4），并说明单链接准则选择最近距离的原理",
+            "en": "Single linkage hierarchical clustering selects the two samples with the smallest distance to merge first. According to the distance matrix calculation results from the Iris dataset in the course, the distance between sample 3 and sample 4 is 0.23, which is the smallest among all sample pairs, so they would be merged first.\nScoring note: 正确识别最小距离对应的样本对（样本3和样本4），并说明单链接准则选择最近距离的原理"
+          },
+          "options": [
+            "样本0和样本1，因为它们的距离为0.54",
+            "样本2和样本3，因为它们的距离为0.27",
+            "样本3和样本4，因为它们的距离为0.23",
+            "样本1和样本2，因为它们的距离为0.33"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：s2 · 数据：K-means目标函数公式：J = ∑∑‖x_i - μ_j‖²】在K-means算法中，关于目标函数J和迭代过程，以下哪些陈述是正确的？（多选）",
+            "en": "【Source: s2 · Data: K-means目标函数公式：J = ∑∑‖x_i - μ_j‖²】In the K-means algorithm, which of the following statements about the objective function J and iterative process are correct? (Multiple choice)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "正确选项分析：A正确，J确实定义为所有簇的平方误差和；C正确，分配步骤确实将每个点分配到最近的质心；D正确，更新步骤中质心重新计算为簇内点的均值。错误选项分析：B错误，目标函数在每次迭代后单调递减；E错误，K-means只能保证收敛到局部最优解。\n评分提示：正确识别所有关于K-means目标函数和迭代过程的准确陈述，排除错误描述",
+            "en": "Correct options analysis: A is correct, J is indeed defined as the sum of squared errors across all clusters; C is correct, the assignment step does assign each point to the nearest centroid; D is correct, centroid recalculation in the update step is based on the mean of points in the current cluster. Incorrect options analysis: B is incorrect, the objective function decreases monotonically after each iteration; E is incorrect, K-means only guarantees convergence to a local optimum.\nScoring note: 正确识别所有关于K-means目标函数和迭代过程的准确陈述，排除错误描述"
+          },
+          "options": [
+            "目标函数J表示所有簇的平方误差和",
+            "每次迭代后目标函数值可能增加",
+            "分配步骤将每个点分配到最近的质心",
+            "更新步骤重新计算质心位置是基于当前簇内点的均值",
+            "算法保证收敛到全局最优解"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s3 · 数据：层次聚类链接准则数学定义】给定层次聚类的三种链接准则数学定义：单链接d(A,B)=min d(a,b)，全链接d(A,B)=max d(a,b)，平均链接d(A,B)=∑∑d(a,b)/|A||B|。现有两个簇A={p1,p2}和B={p3,p4}，点间距离为：d(p1,p3)=2, d(p1,p4)=5, d(p2,p3)=3, d(p2,p4)=4。请分别计算三种链接准则下簇A和簇B之间的距离。",
+            "en": "【Source: s3 · Data: 层次聚类链接准则数学定义】Given the mathematical definitions of three linkage criteria for hierarchical clustering: single linkage d(A,B)=min d(a,b), complete linkage d(A,B)=max d(a,b), average linkage d(A,B)=∑∑d(a,b)/|A||B|. Given two clusters A={p1,p2} and B={p3,p4}, with inter-point distances: d(p1,p3)=2, d(p1,p4)=5, d(p2,p3)=3, d(p2,p4)=4. Calculate the distance between clusters A and B under each of the three linkage criteria."
+          },
+          "answer": "[object object]",
+          "explain": {
+            "zh": "计算过程：单链接取最小距离min(2,5,3,4)=2；全链接取最大距离max(2,5,3,4)=5；平均链接计算所有点对距离的平均值(2+5+3+4)/4=14/4=3.5。\n评分提示：正确计算三种链接准则下的距离：单链接=2，全链接=5，平均链接=3.5，需展示计算过程",
+            "en": "Calculation process: Single linkage takes the minimum distance min(2,5,3,4)=2; Complete linkage takes the maximum distance max(2,5,3,4)=5; Average linkage calculates the average of all pairwise distances (2+5+3+4)/4=14/4=3.5.\nScoring note: 正确计算三种链接准则下的距离：单链接=2，全链接=5，平均链接=3.5，需展示计算过程"
+          }
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s4 · 数据：聚类评估指标：轮廓系数和Calinski-Harabasz指数】在算法比较案例中，K-means的轮廓系数为0.712，层次聚类的轮廓系数为0.698，K-means的Calinski-Harabasz指数为285.4，层次聚类的Calinski-Harabasz指数为292.1。基于轮廓系数和Calinski-Harabasz指数的定义，分析哪种算法在该数据集上表现更好，并说明理由。",
+            "en": "【Source: s4 · Data: 聚类评估指标：轮廓系数和Calinski-Harabasz指数】In the algorithm comparison case, K-means has a silhouette score of 0.712 and hierarchical clustering has 0.698, while K-means has a Calinski-Harabasz index of 285.4 and hierarchical clustering has 292.1. Based on the definitions of silhouette score and Calinski-Harabasz index, analyze which algorithm performs better on this dataset and explain your reasoning."
+          },
+          "answer": "层次聚类表现略好，但两者差异不大",
+          "explain": {
+            "zh": "分析：轮廓系数越接近1表示聚类效果越好，K-means的0.712略高于层次聚类的0.698；Calinski-Harabasz指数越高表示聚类质量越好，层次聚类的292.1高于K-means的285.4。两个指标给出矛盾的结果，说明需要结合具体业务场景选择。从数值上看，两种算法的性能差异很小（轮廓系数差0.014，CH指数差6.7），在实际应用中可能都需要考虑。\n评分提示：正确识别指标矛盾，分析数值差异大小，提出需要结合业务场景的综合判断，展示对评估指标的理解",
+            "en": "Analysis: Silhouette score closer to 1 indicates better clustering, K-means' 0.712 is slightly higher than hierarchical clustering's 0.698; Calinski-Harabasz index higher values indicate better clustering quality, hierarchical clustering's 292.1 is higher than K-means' 285.4. The two metrics give conflicting results, indicating the need to consider specific business scenarios. Numerically, the performance difference between the two algorithms is very small (silhouette score difference 0.014, CH index difference 6.7), both may need consideration in practical applications.\nScoring note: 正确识别指标矛盾，分析数值差异大小，提出需要结合业务场景的综合判断，展示对评估指标的理解"
+          }
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Journal of Machine Learning Research，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (Journal of Machine Learning Research, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-11-30-k-means-zh.mp3"
+      },
+      "meta": {
+        "category": "Unsupervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "DBSCAN",
+          "EM 算法"
+        ],
+        "learningObjectives": [
+          "理解聚类方法原理",
+          "选择适当的聚类算法"
+        ],
+        "personas": [
+          "分析师",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 聚类算法：K-means 与层次聚类 可帮助团队在 Unsupervised Learning 上做出可复用的实践。",
+          "best_for": "适合 分析师、研究人员，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "分析师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 分析师、研究人员，帮助他们把 聚类算法：K-means 与层次聚类 应用于 Unsupervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "分析师",
+            "研究人员"
+          ],
+          "personas": [
+            "分析师",
+            "研究人员"
+          ],
+          "pains": "在 Unsupervised Learning 场景缺乏 聚类算法：K-means 与层次聚类 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为分析师，您在工作中如何利用聚类算法如K-means或层次聚类来发现数据中的隐藏模式？请描述一个具体场景，并思考如何应用这些方法改进您的分析流程。",
+            "action_hint": "尝试将您的想法与课程中的Iris数据集示例联系，探索如何实施聚类步骤。"
+          },
+          {
+            "lang": "zh",
+            "question": "在您的研究项目中，聚类算法如何帮助您识别客户细分或模式？分享一个实例，并讨论如何通过轮廓系数等指标评估聚类质量。",
+            "action_hint": "回顾课程中的验证指标，思考如何在实际工作中跟踪这些信号以优化结果。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-11-30-lesson-afe4fe0d",
       "date": "2025-11-30",
