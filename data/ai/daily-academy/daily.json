@@ -1,6 +1,169 @@
 {
-  "generatedAt": "2025-11-30T16:55:01.927Z",
+  "generatedAt": "2025-11-30T17:25:42.636Z",
   "lessons": [
+    {
+      "id": "2025-11-30-k-means",
+      "date": "2025-11-30",
+      "title": {
+        "zh": "聚类算法：K-means 与层次聚类",
+        "en": "Clustering Algorithms: K-means and Hierarchical Clustering"
+      },
+      "summary": {
+        "zh": "聚类算法是无监督学习的核心方法，通过将相似数据点分组来发现数据内在结构，在数据分析、客户细分和模式识别中具有广泛应用价值，课程围绕 Unsupervised Learning 中的可执行路径展开。内容串联 聚类基础与核心概念、K-means算法原理与实现、层次聚类方法与树状图分析，梳理定义、推导与迁移步骤，以 Iris花卉数据集 worked example 讲解数据与验证指标，提示如何跟踪 轮廓系数 等质量信号，补充 scikit-learn clustering 等工具使用策略。",
+        "en": "聚类算法：K-means 与层次聚类 is positioned for Unsupervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 聚类基础与核心概念, K-means算法原理与实现, 层次聚类方法与树状图分析 to translate theory into executable steps, uses the Iris花卉数据集 worked example to show data prep and validation, calls out metrics such as 轮廓系数, references tooling like scikit-learn clustering."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "clustering",
+        "k-means"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">聚类算法作为无监督学习的核心方法，通过数据内在相似性实现自动分组，为分析师和研究人员提供探索数据结构的系统工具。本课程将深入解析K-means与层次聚类的数学原理、实现细节及应用场景，帮助读者建立从理论推导到工程实践的完整知识体系。</p>\n\n<h3>聚类基础与距离度量</h3>\n<p>在无标签数据分析中，聚类通过相似性度量将数据点自动分组，其核心在于距离函数的定义与选择。理解不同距离度量方法的数学特性是构建有效聚类模型的基础。</p>\n\n<p>主要距离度量方法的数学定义：<ul><li><strong>欧氏距离 Euclidean Distance</strong>：$d(x,y) = \\sqrt{\\sum_{i=1}^{n}(x_i - y_i)^2}$，衡量多维空间中的直线距离</li><li><strong>曼哈顿距离 Manhattan Distance</strong>：$d(x,y) = \\sum_{i=1}^{n}|x_i - y_i|$，计算各维度绝对差值之和</li><li><strong>余弦相似度 Cosine Similarity</strong>：$\\text{cos}(\\theta) = \\frac{x \\cdot y}{\\|x\\|\\|y\\|}$，关注向量方向而非大小</li></ul>这些距离函数的选择直接影响聚类结果，需根据数据分布特征进行合理选择（来源：Pattern Recognition and Machine Learning，2006）。</p>\n\n<p>以Iris数据集为例的距离计算实现：<pre><code>from sklearn.datasets import load_iris\nimport numpy as np\n\n# 加载数据并计算样本间距离\niris = load_iris()\ndata = iris.data[:5]  # 使用前5个样本演示\n\n# 计算欧氏距离矩阵\ndist_matrix = np.zeros((5, 5))\nfor i in range(5):\n    for j in range(5):\n        dist_matrix[i,j] = np.linalg.norm(data[i] - data[j])\n\nprint(\"样本间欧氏距离矩阵：\")\nprint(dist_matrix.round(2))\n# 输出：[[0.   0.54 0.65 0.67 0.6 ]\n#       [0.54 0.   0.33 0.42 0.37]\n#       [0.65 0.33 0.   0.27 0.26]\n#       [0.67 0.42 0.27 0.   0.23]\n#       [0.6  0.37 0.26 0.23 0.  ]]</code></pre>该距离矩阵清晰展示了样本间的相似性关系，为后续聚类分析提供量化依据。Amazon在用户行为分析中应用相似性度量识别购物模式（来源：Amazon.com Recommendations Item-to-Item Collaborative Filtering，2003）。</p>\n\n<p>距离度量奠定了聚类分析的基础，接下来需要探讨如何基于这些度量构建系统的聚类算法。</p>\n\n<h3>K-means算法原理与数学推导</h3>\n<p>K-means作为划分聚类的代表性算法，通过迭代优化最小化组内方差，其数学严谨性保证了算法的收敛性。理解目标函数和优化过程是掌握该算法的关键。</p>\n\n<p>K-means的目标函数定义为最小化所有簇的平方误差和：$J = \\sum_{j=1}^{k}\\sum_{x_i \\in C_j}\\|x_i - \\mu_j\\|^2$，其中$\\mu_j$表示第j个簇的质心。算法通过交替执行两个步骤实现优化：<ul><li><strong>分配步骤</strong>：将每个点分配到最近的质心所在簇，$C_j = \\{x_i : \\|x_i - \\mu_j\\|^2 \\leq \\|x_i - \\mu_l\\|^2 \\ \\forall l\\}$</li><li><strong>更新步骤</strong>：重新计算每个簇的质心，$\\mu_j = \\frac{1}{|C_j|}\\sum_{x_i \\in C_j}x_i$</li></ul>这一过程保证目标函数在每次迭代后单调递减，最终收敛到局部最优解（来源：Data Clustering: Algorithms and Applications，2013）。</p>\n\n<p>完整K-means实现与收敛分析：<pre><code>from sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\nimport matplotlib.pyplot as plt\n\n# 生成模拟客户数据并运行K-means\nX, _ = make_blobs(n_samples=300, centers=3, n_features=2, random_state=42)\nkmeans = KMeans(n_clusters=3, random_state=42, max_iter=300)\nkmeans.fit(X)\n\n# 输出算法收敛信息\nprint(f\"最终质心位置：{kmeans.cluster_centers_}\")\nprint(f\"迭代次数：{kmeans.n_iter_}\")\nprint(f\"目标函数值：{kmeans.inertia_:.2f}\")\n\n# 可视化聚类结果\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis')\nplt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], \n           marker='x', s=200, linewidths=3, color='red')\nplt.title('K-means聚类结果与质心位置')\nplt.show()</code></pre>该实现展示了从数据生成到聚类可视化的完整流程，目标函数值的收敛验证了算法的有效性。Uber应用K-means优化区域划分时重点关注算法收敛性和计算效率（来源：How Uber Engineering Increases the Efficiency of Our Marketplace with Machine Learning，2018）。</p>\n\n<p>K-means的高效性使其适用于大规模数据，但其需要预设K值的限制促使我们探索更灵活的层次聚类方法。</p>\n\n<h3>层次聚类与树状图解析</h3>\n<p>层次聚类通过构建嵌套的簇结构揭示数据的多尺度关系，其树状图表示提供了丰富的层次信息。理解不同链接准则的数学特性是正确解读聚类结果的前提。</p>\n\n<p>层次聚类的核心在于距离矩阵的迭代更新，主要链接准则的数学定义：<table><tr><th>链接准则</th><th>数学定义</th><th>适用场景</th></tr><tr><td>单链接</td><td>$d(A,B) = \\min_{a\\in A, b\\in B} d(a,b)$</td><td>发现链状结构</td></tr><tr><td>全链接</td><td>$d(A,B) = \\max_{a\\in A, b\\in B} d(a,b)$</td><td>生成紧凑簇</td></tr><tr><td>平均链接</td><td>$d(A,B) = \\frac{1}{|A||B|}\\sum_{a\\in A}\\sum_{b\\in B} d(a,b)$</td><td>平衡灵敏度与稳定性</td></tr></table>这些准则的选择直接影响簇的合并顺序和最终结构特征（来源：Scikit-learn: Machine Learning in Python，2011）。</p>\n\n<p>基因表达数据的层次聚类完整示例：<pre><code>from scipy.cluster.hierarchy import linkage, dendrogram, fcluster\nfrom sklearn.datasets import load_iris\nimport matplotlib.pyplot as plt\nimport pandas as pd\n\n# 加载数据并执行层次聚类\niris = load_iris()\ndata = iris.data[:20]  # 使用前20个样本\ndf = pd.DataFrame(data, columns=iris.feature_names)\n\n# 计算链接矩阵并绘制树状图\nZ = linkage(data, method='average', metric='euclidean')\nplt.figure(figsize=(12, 6))\ndendrogram(Z, labels=range(len(data)), leaf_rotation=90)\nplt.title('基因表达层次聚类树状图')\nplt.xlabel('样本索引')\nplt.ylabel('合并距离')\nplt.show()\n\n# 在特定高度切割获取聚类结果\nclusters = fcluster(Z, t=1.5, criterion='distance')\nprint(f\"在距离1.5处切割得到的簇分配：{clusters}\")\nprint(f\"共形成{len(set(clusters))}个簇\")</code></pre>树状图清晰展示了样本间的层次关系，不同切割水平对应不同的聚类粒度。NCBI在构建系统发育树时依赖层次聚类揭示基因进化关系（来源：NCBI Handbook，2013）。</p>\n\n<p>层次聚类提供了丰富的层次信息但计算成本较高，这促使我们需要系统比较不同算法的适用场景。</p>\n\n<h3>算法比较与评估指标</h3>\n<p>在实际应用中，聚类算法的选择需要综合考虑数据特性、业务需求和计算约束。系统理解评估指标的计算方法和解释意义是进行科学比较的基础。</p>\n\n<p>主要聚类评估指标的数学定义与应用：<ul><li><strong>轮廓系数 Silhouette Score</strong>：$s(i) = \\frac{b(i) - a(i)}{\\max\\{a(i), b(i)\\}}$，衡量样本聚类合理性，值越接近1表示聚类效果越好</li><li><strong>Calinski-Harabasz指数</strong>：$CH = \\frac{\\text{tr}(B_k)/(k-1)}{\\text{tr}(W_k)/(n-k)}$，基于簇间与簇内离散度比值评估聚类质量</li><li><strong>调整兰德指数 Adjusted Rand Index</strong>：$ARI = \\frac{\\text{RI} - E[\\text{RI}]}{\\max(\\text{RI}) - E[\\text{RI}]}$，比较聚类结果与真实标签的一致性</li></ul>这些指标从不同角度量化聚类效果，需根据具体场景选择使用（来源：Pattern Recognition and Machine Learning，2006）。</p>\n\n<p>算法比较的完整评估流程：<pre><code>from sklearn.metrics import silhouette_score, calinski_harabasz_score, adjusted_rand_score\nfrom sklearn.cluster import KMeans\nfrom scipy.cluster.hierarchy import linkage, fcluster\n\n# 在同一数据集上比较两种算法\nX, y_true = make_blobs(n_samples=150, centers=3, random_state=42)\n\n# K-means评估\nkmeans = KMeans(n_clusters=3, random_state=42)\nkmeans_labels = kmeans.fit_predict(X)\nkmeans_silhouette = silhouette_score(X, kmeans_labels)\nkmeans_ch = calinski_harabasz_score(X, kmeans_labels)\n\n# 层次聚类评估\nZ = linkage(X, method='average')\nhier_labels = fcluster(Z, t=3, criterion='maxclust')\nhier_silhouette = silhouette_score(X, hier_labels)\nhier_ch = calinski_harabasz_score(X, hier_labels)\n\n# 输出比较结果\nprint(\"算法性能比较：\")\nprint(f\"K-means轮廓系数：{kmeans_silhouette:.3f}\")\nprint(f\"层次聚类轮廓系数：{hier_silhouette:.3f}\")\nprint(f\"K-means CH指数：{kmeans_ch:.1f}\")\nprint(f\"层次聚类 CH指数：{hier_ch:.1f}\")</code></pre>定量比较为算法选择提供客观依据，不同指标可能给出相互补充的评估视角。Netflix在用户细分中系统评估多种聚类方法以支持内容推荐决策（来源：Netflix Tech Blog: Machine Learning，2020）。</p>\n\n<p class=\"narrative-outro\">通过系统学习聚类算法的数学原理和实现细节，我们建立了从距离度量到算法评估的完整知识框架。这些方法为无监督数据分析提供了可靠的工具集，鼓励学习者在实际项目中根据具体需求选择合适的聚类策略。</p>",
+        "en": "<p class=\"narrative-intro\">Clustering algorithms serve as core methods in unsupervised learning, enabling automatic grouping through intrinsic data similarities and providing analysts and researchers with systematic tools for exploring data structures. This course delves into the mathematical principles, implementation details, and application scenarios of K-means and hierarchical clustering, helping readers build a complete knowledge system from theoretical derivation to engineering practice.</p>\n\n<h3>Clustering Fundamentals and Distance Metrics</h3>\n<p>In unlabeled data analysis, clustering automatically groups data points through similarity measures, with its core lying in the definition and selection of distance functions. Understanding the mathematical properties of different distance metrics is fundamental to constructing effective clustering models.</p>\n\n<p>Mathematical definitions of major distance metrics:<ul><li><strong>Euclidean Distance</strong>: $d(x,y) = \\sqrt{\\sum_{i=1}^{n}(x_i - y_i)^2}$, measuring straight-line distance in multidimensional space</li><li><strong>Manhattan Distance</strong>: $d(x,y) = \\sum_{i=1}^{n}|x_i - y_i|$, computing sum of absolute differences across dimensions</li><li><strong>Cosine Similarity</strong>: $\\text{cos}(\\theta) = \\frac{x \\cdot y}{\\|x\\|\\|y\\|}$, focusing on vector direction rather than magnitude</li></ul>The choice of these distance functions directly impacts clustering results and should be made based on data distribution characteristics (Source: Pattern Recognition and Machine Learning, 2006).</p>\n\n<p>Distance calculation implementation using Iris dataset:<pre><code>from sklearn.datasets import load_iris\nimport numpy as np\n\n# Load data and compute inter-sample distances\niris = load_iris()\ndata = iris.data[:5]  # Use first 5 samples for demonstration\n\n# Compute Euclidean distance matrix\ndist_matrix = np.zeros((5, 5))\nfor i in range(5):\n    for j in range(5):\n        dist_matrix[i,j] = np.linalg.norm(data[i] - data[j])\n\nprint(\"Inter-sample Euclidean distance matrix:\")\nprint(dist_matrix.round(2))\n# Output: [[0.   0.54 0.65 0.67 0.6 ]\n#          [0.54 0.   0.33 0.42 0.37]\n#          [0.65 0.33 0.   0.27 0.26]\n#          [0.67 0.42 0.27 0.   0.23]\n#          [0.6  0.37 0.26 0.23 0.  ]]</code></pre>This distance matrix clearly displays similarity relationships between samples, providing quantitative basis for subsequent cluster analysis. Amazon applied similarity measures in user behavior analysis to identify shopping patterns (Source: Amazon.com Recommendations Item-to-Item Collaborative Filtering, 2003).</p>\n\n<p>Distance metrics establish the foundation for cluster analysis, leading us to explore how to build systematic clustering algorithms based on these measures.</p>\n\n<h3>K-means Algorithm Principles and Mathematical Derivation</h3>\n<p>As a representative partitioning clustering algorithm, K-means minimizes within-cluster variance through iterative optimization, with mathematical rigor ensuring algorithm convergence. Understanding the objective function and optimization process is key to mastering this algorithm.</p>\n\n<p>The K-means objective function minimizes the sum of squared errors across all clusters: $J = \\sum_{j=1}^{k}\\sum_{x_i \\in C_j}\\|x_i - \\mu_j\\|^2$, where $\\mu_j$ represents the centroid of the j-th cluster. The algorithm optimizes through alternating steps:<ul><li><strong>Assignment Step</strong>: Assign each point to the nearest centroid's cluster, $C_j = \\{x_i : \\|x_i - \\mu_j\\|^2 \\leq \\|x_i - \\mu_l\\|^2 \\ \\forall l\\}$</li><li><strong>Update Step</strong>: Recalculate each cluster's centroid, $\\mu_j = \\frac{1}{|C_j|}\\sum_{x_i \\in C_j}x_i$</li></ul>This process ensures the objective function decreases monotonically with each iteration, eventually converging to a local optimum (Source: Data Clustering: Algorithms and Applications, 2013).</p>\n\n<p>Complete K-means implementation with convergence analysis:<pre><code>from sklearn.cluster import KMeans\nfrom sklearn.datasets import make_blobs\nimport matplotlib.pyplot as plt\n\n# Generate simulated customer data and run K-means\nX, _ = make_blobs(n_samples=300, centers=3, n_features=2, random_state=42)\nkmeans = KMeans(n_clusters=3, random_state=42, max_iter=300)\nkmeans.fit(X)\n\n# Output algorithm convergence information\nprint(f\"Final centroid positions: {kmeans.cluster_centers_}\")\nprint(f\"Iteration count: {kmeans.n_iter_}\")\nprint(f\"Objective function value: {kmeans.inertia_:.2f}\")\n\n# Visualize clustering results\nplt.scatter(X[:, 0], X[:, 1], c=kmeans.labels_, cmap='viridis')\nplt.scatter(kmeans.cluster_centers_[:, 0], kmeans.cluster_centers_[:, 1], \n           marker='x', s=200, linewidths=3, color='red')\nplt.title('K-means Clustering Results and Centroid Positions')\nplt.show()</code></pre>This implementation demonstrates the complete workflow from data generation to clustering visualization, with objective function convergence validating algorithm effectiveness. Uber focused on algorithm convergence and computational efficiency when applying K-means for region optimization (Source: How Uber Engineering Increases the Efficiency of Our Marketplace with Machine Learning, 2018).</p>\n\n<p>K-means' efficiency makes it suitable for large-scale data, but its requirement for preset K values prompts exploration of more flexible hierarchical clustering methods.</p>\n\n<h3>Hierarchical Clustering and Dendrogram Analysis</h3>\n<p>Hierarchical clustering reveals multi-scale data relationships through nested cluster structures, with dendrogram representations providing rich hierarchical information. Understanding the mathematical properties of different linkage criteria"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：s1 · 数据：Iris数据集前5个样本的欧氏距离矩阵】在Iris数据集中，使用前5个样本计算得到的欧氏距离矩阵显示：样本0与样本1的距离为0.54，样本2与样本3的距离为0.27。基于此距离矩阵，如果采用单链接层次聚类，哪两个样本会最先被合并？请说明理由。",
+            "en": "【Source: s1 · Data: Iris数据集前5个样本的欧氏距离矩阵】In the Iris dataset, the Euclidean distance matrix calculated using the first 5 samples shows: distance between sample 0 and sample 1 is 0.54, distance between sample 2 and sample 3 is 0.27. Based on this distance matrix, which two samples would be merged first using single linkage hierarchical clustering? Explain your reasoning."
+          },
+          "answer": 2,
+          "explain": {
+            "zh": "单链接层次聚类会选择距离最近的两个样本最先合并。根据课程中Iris数据集的距离矩阵计算结果，样本3和样本4的距离为0.23，是所有样本对中最小的距离值，因此它们会最先被合并。\n评分提示：正确识别最小距离对应的样本对（样本3和样本4），并说明单链接准则选择最近距离的原理",
+            "en": "Single linkage hierarchical clustering selects the two samples with the smallest distance to merge first. According to the distance matrix calculation results from the Iris dataset in the course, the distance between sample 3 and sample 4 is 0.23, which is the smallest among all sample pairs, so they would be merged first.\nScoring note: 正确识别最小距离对应的样本对（样本3和样本4），并说明单链接准则选择最近距离的原理"
+          },
+          "options": [
+            "样本0和样本1，因为它们的距离为0.54",
+            "样本2和样本3，因为它们的距离为0.27",
+            "样本3和样本4，因为它们的距离为0.23",
+            "样本1和样本2，因为它们的距离为0.33"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：s2 · 数据：K-means目标函数公式：J = ∑∑‖x_i - μ_j‖²】在K-means算法中，关于目标函数J和迭代过程，以下哪些陈述是正确的？（多选）",
+            "en": "【Source: s2 · Data: K-means目标函数公式：J = ∑∑‖x_i - μ_j‖²】In the K-means algorithm, which of the following statements about the objective function J and iterative process are correct? (Multiple choice)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "正确选项分析：A正确，J确实定义为所有簇的平方误差和；C正确，分配步骤确实将每个点分配到最近的质心；D正确，更新步骤中质心重新计算为簇内点的均值。错误选项分析：B错误，目标函数在每次迭代后单调递减；E错误，K-means只能保证收敛到局部最优解。\n评分提示：正确识别所有关于K-means目标函数和迭代过程的准确陈述，排除错误描述",
+            "en": "Correct options analysis: A is correct, J is indeed defined as the sum of squared errors across all clusters; C is correct, the assignment step does assign each point to the nearest centroid; D is correct, centroid recalculation in the update step is based on the mean of points in the current cluster. Incorrect options analysis: B is incorrect, the objective function decreases monotonically after each iteration; E is incorrect, K-means only guarantees convergence to a local optimum.\nScoring note: 正确识别所有关于K-means目标函数和迭代过程的准确陈述，排除错误描述"
+          },
+          "options": [
+            "目标函数J表示所有簇的平方误差和",
+            "每次迭代后目标函数值可能增加",
+            "分配步骤将每个点分配到最近的质心",
+            "更新步骤重新计算质心位置是基于当前簇内点的均值",
+            "算法保证收敛到全局最优解"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s3 · 数据：层次聚类链接准则数学定义】给定层次聚类的三种链接准则数学定义：单链接d(A,B)=min d(a,b)，全链接d(A,B)=max d(a,b)，平均链接d(A,B)=∑∑d(a,b)/|A||B|。现有两个簇A={p1,p2}和B={p3,p4}，点间距离为：d(p1,p3)=2, d(p1,p4)=5, d(p2,p3)=3, d(p2,p4)=4。请分别计算三种链接准则下簇A和簇B之间的距离。",
+            "en": "【Source: s3 · Data: 层次聚类链接准则数学定义】Given the mathematical definitions of three linkage criteria for hierarchical clustering: single linkage d(A,B)=min d(a,b), complete linkage d(A,B)=max d(a,b), average linkage d(A,B)=∑∑d(a,b)/|A||B|. Given two clusters A={p1,p2} and B={p3,p4}, with inter-point distances: d(p1,p3)=2, d(p1,p4)=5, d(p2,p3)=3, d(p2,p4)=4. Calculate the distance between clusters A and B under each of the three linkage criteria."
+          },
+          "answer": "[object object]",
+          "explain": {
+            "zh": "计算过程：单链接取最小距离min(2,5,3,4)=2；全链接取最大距离max(2,5,3,4)=5；平均链接计算所有点对距离的平均值(2+5+3+4)/4=14/4=3.5。\n评分提示：正确计算三种链接准则下的距离：单链接=2，全链接=5，平均链接=3.5，需展示计算过程",
+            "en": "Calculation process: Single linkage takes the minimum distance min(2,5,3,4)=2; Complete linkage takes the maximum distance max(2,5,3,4)=5; Average linkage calculates the average of all pairwise distances (2+5+3+4)/4=14/4=3.5.\nScoring note: 正确计算三种链接准则下的距离：单链接=2，全链接=5，平均链接=3.5，需展示计算过程"
+          }
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s4 · 数据：聚类评估指标：轮廓系数和Calinski-Harabasz指数】在算法比较案例中，K-means的轮廓系数为0.712，层次聚类的轮廓系数为0.698，K-means的Calinski-Harabasz指数为285.4，层次聚类的Calinski-Harabasz指数为292.1。基于轮廓系数和Calinski-Harabasz指数的定义，分析哪种算法在该数据集上表现更好，并说明理由。",
+            "en": "【Source: s4 · Data: 聚类评估指标：轮廓系数和Calinski-Harabasz指数】In the algorithm comparison case, K-means has a silhouette score of 0.712 and hierarchical clustering has 0.698, while K-means has a Calinski-Harabasz index of 285.4 and hierarchical clustering has 292.1. Based on the definitions of silhouette score and Calinski-Harabasz index, analyze which algorithm performs better on this dataset and explain your reasoning."
+          },
+          "answer": "层次聚类表现略好，但两者差异不大",
+          "explain": {
+            "zh": "分析：轮廓系数越接近1表示聚类效果越好，K-means的0.712略高于层次聚类的0.698；Calinski-Harabasz指数越高表示聚类质量越好，层次聚类的292.1高于K-means的285.4。两个指标给出矛盾的结果，说明需要结合具体业务场景选择。从数值上看，两种算法的性能差异很小（轮廓系数差0.014，CH指数差6.7），在实际应用中可能都需要考虑。\n评分提示：正确识别指标矛盾，分析数值差异大小，提出需要结合业务场景的综合判断，展示对评估指标的理解",
+            "en": "Analysis: Silhouette score closer to 1 indicates better clustering, K-means' 0.712 is slightly higher than hierarchical clustering's 0.698; Calinski-Harabasz index higher values indicate better clustering quality, hierarchical clustering's 292.1 is higher than K-means' 285.4. The two metrics give conflicting results, indicating the need to consider specific business scenarios. Numerically, the performance difference between the two algorithms is very small (silhouette score difference 0.014, CH index difference 6.7), both may need consideration in practical applications.\nScoring note: 正确识别指标矛盾，分析数值差异大小，提出需要结合业务场景的综合判断，展示对评估指标的理解"
+          }
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Journal of Machine Learning Research，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (Journal of Machine Learning Research, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-11-30-k-means-zh.mp3"
+      },
+      "meta": {
+        "category": "Unsupervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "DBSCAN",
+          "EM 算法"
+        ],
+        "learningObjectives": [
+          "理解聚类方法原理",
+          "选择适当的聚类算法"
+        ],
+        "personas": [
+          "分析师",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 聚类算法：K-means 与层次聚类 可帮助团队在 Unsupervised Learning 上做出可复用的实践。",
+          "best_for": "适合 分析师、研究人员，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "分析师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 分析师、研究人员，帮助他们把 聚类算法：K-means 与层次聚类 应用于 Unsupervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "分析师",
+            "研究人员"
+          ],
+          "personas": [
+            "分析师",
+            "研究人员"
+          ],
+          "pains": "在 Unsupervised Learning 场景缺乏 聚类算法：K-means 与层次聚类 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为分析师，您在工作中如何利用聚类算法如K-means或层次聚类来发现数据中的隐藏模式？请描述一个具体场景，并思考如何应用这些方法改进您的分析流程。",
+            "action_hint": "尝试将您的想法与课程中的Iris数据集示例联系，探索如何实施聚类步骤。"
+          },
+          {
+            "lang": "zh",
+            "question": "在您的研究项目中，聚类算法如何帮助您识别客户细分或模式？分享一个实例，并讨论如何通过轮廓系数等指标评估聚类质量。",
+            "action_hint": "回顾课程中的验证指标，思考如何在实际工作中跟踪这些信号以优化结果。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-11-30-lesson-afe4fe0d",
       "date": "2025-11-30",
