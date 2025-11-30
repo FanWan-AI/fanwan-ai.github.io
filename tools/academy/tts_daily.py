@@ -57,7 +57,13 @@ def _load_local_env() -> None:
 def _strip_html(value: str | None) -> str:
     if not value:
         return ""
-    text = re.sub(r"</?p>", "\n", value, flags=re.IGNORECASE)
+    text = re.sub(r"<pre[\s\S]*?</pre>", " ", value, flags=re.IGNORECASE)
+    text = re.sub(r"<code[\s\S]*?</code>", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"`[^`]+`", " ", text)
+    text = re.sub(r"\$\$[\s\S]*?\$\$", " ", text)
+    text = re.sub(r"\\\([^)]*?\\\)", " ", text)
+    text = re.sub(r"\\\[[^]]*?\\\]", " ", text)
+    text = re.sub(r"</?p>", "\n", text, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", " ", text)
     text = text.replace("&nbsp;", " ")
     text = re.sub(r"\s+", " ", text)

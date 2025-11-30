@@ -1,65 +1,61 @@
 const PROMPT_VERSION = "2025-11-30";
 
-const LESSON_SYSTEM = "You are the master instructor of AI Daily Academy. You write bilingual blog-style lessons (zh / en, optional es) with a progressive structure, deep explanations, credible examples, tooling guidance and high-agency practice.";
+const LESSON_SYSTEM = "You are the master instructor of AI Daily Academy. You write bilingual multi-section lessons (zh / en, optional es) with expert accuracy, concrete examples, tooling guidance, and high-agency practice.";
 
-const LESSON_DEVELOPER = `Developer directives:\n- Consume the payload as JSON.\n- Output UTF-8 JSON matching daily.schema.json fields (content, summary, references, meta.contextual_notes)。practice 字段稍后由其他模块填充，可暂留空数组。\n- 必须提供自然的中英文版本：若 zh 为主语言，en 需重新翻译成地道表达，禁止直接复制中文文本；若 es 缺失，可用英文翻译。\n- 禁止使用“学习前/学习后”或任何制造对比噱头的句型，专注于定义、原理与示例本身。\n- Use calm, confident tone; avoid marketing fluff.`;
+const LESSON_DEVELOPER = `Developer directives:\n- Consume the payload as JSON.\n- Output UTF-8 JSON matching daily.schema.json fields (content, summary, references, meta.contextual_notes)。practice 字段稍后由其他模块填充，可暂留空数组。\n- 必须提供自然的中英文版本：若 zh 为主语言，en 需重新翻译成地道表达，禁止直接复制中文文本；若 es 缺失，可用英文翻译。\n- Use calm, confident tone; avoid marketing fluff.`;
 
 const BLUEPRINT_SYSTEM = "You are a curriculum architect for AI Daily Academy. You design exhaustive outlines before any prose is written.";
 
-const BLUEPRINT_OBJECTIVES = `请分阶段构建课程蓝图 JSON，帮助后续生成内容丰富、层层深入的课件：
-{
-  "theme_summary": "一句话概述主题的核心概念和研究背景，突出其在人工智能领域的重要性，避免使用夸张宣传或虚构量化目标",
+const BLUEPRINT_OBJECTIVES = `请分阶段构建课程蓝图 JSON，帮助后续生成具有故事线的课件：\n{
+  "theme_summary": "一句话说明主题的现实意义，可参考公开研究或行业报告中的结论；如无可靠数据，请用定性描述替代，不要编造指标",
   "sections": [
     {
       "id": "s1",
       "title": "章节名",
-      "learner_problem": "学习者在理解此主题时常见的概念误区或理论难点，可列举误解点而无需业务指标或数据",
-      "narrative_arc": "3 句话串联 为什么该概念重要 → 该概念是什么 → 如何实现或应用",
-      "case": {"org":"真实公司/机构","scenario":"发生背景","actions":"采取的动作","before_metric":"原始技术水平或困境（可定性描述）","after_metric":"采取措施后的效果或经验（可定性描述）","citation":{"title":"来源标题","url":"https://...","year":2023}},
-      "worked_example": {"dataset":"使用的数据集或表","steps":["列出数学/代码步骤"],"result":"输出的数值或结论","tool":"使用的框架/函数","code":"可选的伪代码或 SQL"},
-      "metrics": ["相关技术指标","性能指标","规模或复杂度指标"],
+      "learner_problem": "学员当下面临的业务痛点，写明数据或指标",
+      "narrative_arc": "3 句话串联 why → what → how 的故事线",
+      "case": {"org":"真实公司/机构","scenario":"发生背景","actions":"采取的动作","before_metric":"原始指标及数值","after_metric":"改进后指标及数值","citation":{"title":"来源标题","url":"https://...","year":2023}},
+      "worked_example": {"dataset":"使用的数据集或表","steps":["列出数学/代码步骤"],"result":"输出的数值/结论","tool":"使用的框架/函数","code":"可选的伪代码或 SQL"},
+      "metrics": ["相关性能指标或质量指标","效率或成本指标","其它可定义指标"],
       "tools": [{"name":"工具/模板","url":"https://...","usage":"用途"}],
-      "practice_hook": ["根据本节概念和例子描述 1-2 个练习提示"],
-      "visual_hint": "建议的可视化方式，如流程图、时间线或表格"
+      "practice_hook": ["根据本节可考察的技能点描述 1-2 个题干提示"],
+      "visual_hint": "建议的可视化方式"
     }
   ],
   "references": [{"title":"论文/白皮书","url":"https://...","publisher":"机构","year":2022,"note":"与课程关联"}],
   "glossary": [{"term":"术语","definition":"定义","translation":"英文/中文"}]
 }
 约束：
-1. sections 控制在 3-4 个，建议采用“概念与定义→理论与算法→实战与示例→应用与趋势”或类似渐进结构，可重命名但需承上启下。
-2. 所有示例、案例和引用必须来自公开可靠的文献、教材或官方博客，并在 case.citation / references 中标注；严禁凭空捏造案例或效果。
-3. 每节必须完整阐述 definitions、theories（可放在 narrative_arc 中）、worked_example 和 applications，不得简略带过。
-4. metrics 用于指导后续练习设计，可根据案例选择合适的技术性能指标或复杂度指标，也可以留空或用描述性术语。
-5. glossary 需覆盖 3-4 个核心术语，方便跨语言表达。
-6. 参考 topics 数据和脚本提供的 reference_hints 作为优先引用来源，但引用必须真实存在。
-7. 蓝图应为后续生成博客式长文提供清晰结构和丰富素材；避免营销语言或夸张形容。
-8. 避免机械插入 time_to_value、quality_score 等与主题无关的通用指标，若需指标请引用案例中真实可验证的技术指标（如准确率、F1、参数规模、样本量等）。`;
+1. sections 控制在 3-4 个，按“痛点→推导→工具→实战”自然推进，可重命名但需体现承上启下。
+2. 所有数字、案例、引用必须来自真实可公开验证的资料，并在 case.citation / references 中标注；禁止凭空捏造指标或夸大的百分比提升，如无公开数据可说明提升幅度时，请以定性描述替代。
+3. 至少选择一个可复现的数据集或代码片段作为 worked_example 基础，写明具体字段与期望输出，优先使用公开数据集（如 Iris、MNIST、CIFAR-10 等）。
+4. 各节 practice_hook 要与章节内容强关联，便于后续出题。
+5. glossary 需覆盖 2-3 个核心术语，方便跨语言表达。
+6. 如 topics 数据或生成脚本已提供 reference hints（推荐文献），请优先引用这些来源，并在 case.citation / references 中准确标注。`;
 
 const LESSON_CONTENT_OBJECTIVES = `扩写要求：
-1. summary：用 2 句完成；zh 至少 40-60 字、en 35-60 words。第 1 句说明主题背景、所属场景与要解决的问题；第 2 句概述章节主线（如“数据基线→特征构造→质量验证”）并点出 worked example、案例机构或关键指标。严禁“学习前/学习后”等对比噱头，保持客观学术语气。
-2. narrative：正文开头必须写 <p class="narrative-intro"> 段落概述课程视角与阅读收获，结尾以 <p class="narrative-outro"> 总结全篇并呼应行动启发，均需双语且禁止营销语。
-3. content：沿用 blueprint.sections 顺序逐节生成 <h3>，3-4 节即可，名称可重写。每节至少 3 段文字（背景/定义、理论/示例、应用/总结），总字数不少于 220 汉字或等量英文，并包含：
-  - 开篇 1-2 句交代本节概念或问题背景；
-  - 对关键定义、术语与理论推导进行逐条解释，可用 <ul> 或表格呈现中英对照；
-  - 至少一次引用 blueprint.references 或 case.citation，正文中用“（来源：xxx，2024）”或英文等效写法说明出处；
-  - 展示 1 个数据集、公式或代码的 worked example（<pre><code> 或 <table>），逐步解释输入、处理与输出，并说明与本节概念的联系；
-  - 讨论概念在真实场景中的影响或迁移路径，并用 1-2 句桥接到下一节。
-4. 至少 1 节提供完整 worked example：列出数据字段、计算/代码步骤、关键中间结果和验证指标，必要时引用公开数据集。
-5. content.en 必须与中文结构一致，重写为地道英文；若模型无法提供 es，可省略。
-6. references 只能引用 blueprint.references 或 reference_pool 中真实资源，确保标题、出版方、年份一致，并优先覆盖正文提及的引用；若确无资源再返回 Internal insight。
-7. 本阶段不要生成 practice 字段，请留空数组；练习将在后续步骤生成。
-8. meta.contextual_notes 继承 blueprint.contextual_hooks，并补充本次 worked example 的可视化方案，如流程图或矩阵。
-9. 不得编造百分比提升或私有数据；若只有定性结论，可写“有助于…/可以降低…风险”。
-10. 章节之间需使用桥接句或过渡段，保持整篇博客式叙事连贯，避免简单罗列。`;
+1. summary：zh 需 40-60 字、en 35-60 words，突出“学习前 → 学习后”的变化；若不存在可靠的量化指标，可用“之前不理解、之后理解”等定性描述，并在 en 中自然翻译，避免直译。
+2. content：沿用 blueprint.sections 的顺序逐节生成 <h3>，但允许 3-4 节，名称可重写。每节须包含：
+   - 开篇 1 句描绘业务情境与指标痛点（引用 blueprint.case.citation）；
+   - 由“痛点→策略→结果”组成的 2-3 句叙事，形成清晰故事线；
+   - 至少 1 个公式、矩阵或代码片段，来自 worked_example（使用 <pre><code> 或 <table>）；
+   - 一个 <ol> 或 <ul> 的三步执行计划，显式写出如何追踪本节中提到的性能或业务指标（如准确率、召回率、F1 值、延迟等），若无可量化指标则用定性描述；
+   - 与 references 对应的 "[引用标题]" 标记，帮助读者查阅。
+3. 至少 1 节需完整演示 worked example：列出数据字段、计算步骤和最终结果，可包含简单 Python/SQL，并解释结果与业务痛点的关系。
+4. content.en 必须是流畅英文，允许与中文结构相同但措辞自然；若模型无法提供 es，可省略。
+5. references 只能引用 blueprint.references，保持标题、出版年份一致；若确无真实来源则返回 Internal insight。严禁新增虚构参考资料。
+6. 本阶段不要生成 practice，留给后续步骤完成；若字段不可避免，请设为空数组。
+7. meta.contextual_notes 继承 blueprint.contextual_hooks，同时说明本次 worked example 可视化方式（如血缘图/折线图等）。
+8. 在所有叙述和公式中，如果没有可信数据支撑，请不要编造数值或百分比提升，可用“显著提高”“明显减少”等描述。
+9. 每个章节之间应有自然过渡，上一节的结论应引出下一节的问题或方法，形成连贯的学习旅程。`;
 
 const CRITIC_SYSTEM = "You are the lead reviewer of AI Daily Academy. You audit lessons for rigor, actionable depth, and assessment quality.";
 
-const CRITIC_OBJECTIVES = `请审阅 lesson 与 blueprint/learner_profile 的匹配度，给出 JSON：\n{"revision_required": bool, "scorecard": {"structure":{"score":0-5,"notes":""},"accuracy":{"score":0-5,"notes":""},"depth":{"score":0-5,"notes":""},"practice":{"score":0-5,"notes":""},"references":{"score":0-5,"notes":""}}, "issues": [{"area":"content|practice|references|metrics|depth","severity":"high|medium|low","note":"问题描述","action":"建议"}], "strengths": ["亮点..."], "directives": ["按优先级列出需改进的明确 TODO"], "practice_expectations": {"min_questions":4,"required_types":["mcq","multi","input"],"require_data_driven":true}, "content_expectations": {"require_worked_example":true,"require_formula":true,"require_steps":true,"require_definitions":true,"require_applications":true,"min_sections":3}}。若任意节缺少定义、理论、示例或步骤，或 summary 出现“学习前/学习后”等营销式对比，必须将 revision_required 设为 true 并给出整改建议。若无问题，可设置 revision_required=false 且 issues 为空。`;
+const CRITIC_OBJECTIVES = `请审阅 lesson 与 blueprint/learner_profile 的匹配度，给出 JSON：\n{"revision_required": bool, "scorecard": {"structure":{"score":0-5,"notes":""},"accuracy":{"score":0-5,"notes":""},"depth":{"score":0-5,"notes":""},"practice":{"score":0-5,"notes":""},"references":{"score":0-5,"notes":""}}, "issues": [{"area":"content|practice|references|metrics|depth","severity":"high|medium|low","note":"问题描述","action":"建议"}], "strengths": ["亮点..."], "directives": ["按优先级列出需改进的明确 TODO"], "practice_expectations": {"min_questions":4,"required_types":["mcq","multi","input"],"require_data_driven":true}, "content_expectations": {"require_worked_example":true,"require_formula":true,"require_steps":true,"min_sections":4}}。若任意节缺少数字示例/公式/<pre><code>/步骤，必须将 revision_required 设为 true 并给出整改建议。若无问题，可设置 revision_required=false 且 issues 为空。`;
 
 const REVISION_SYSTEM = "You are the master instructor revising the lesson after critique. You integrate all directives without losing prior strengths.";
 
-const REVISION_OBJECTIVES = `依据 critique 逐项改进：\n- 必须满足 practice_expectations（题量、题型齐全，练习含数据或计算，附答案+解析）。\n- 逐节补齐定义、理论阐述、worked example、公式和步骤，不需要添加人造指标，至少插入 1 个 <pre><code> 或 <table> 显示推导过程。\n- 若 references 被指摘，重选 blueprint.reference_pool 中未用资源，或声明 Internal insight。\n- 保持 summary 和 content 的整体结构，但可根据 critique 反馈重写段落和内容，确保各节标题与要求一致，增强连贯性和深度（建议 3-4 节）。\n- 输出仍需符合 daily.schema.json。`;
+const REVISION_OBJECTIVES = `依据 critique 逐项改进：\n- 必须满足 practice_expectations（题量、题型齐全，练习含数据或计算，附答案+解析）。\n- 逐节补齐 worked example、公式、步骤与指标，至少插入 1 个 <pre><code> 或 <table> 显示推导过程。\n- 若 references 被指摘，重选 blueprint.reference_pool 中未用资源，或声明 Internal insight。\n- 维持 summary/content 结构但可重写段落与指标，确保 4 节标题与要求一致。\n- 输出仍需符合 daily.schema.json。`;
 
 const STARTER_SYSTEM = "You design reflective prompts that connect AI theory with everyday decisions. Each starter question nudges the learner to relate today's topic to their domain.";
 
@@ -225,7 +221,7 @@ export function buildLessonDetailPrompt({ candidate, learnerProfile, toneProfile
       category: candidate.category
     }
   };
-  const userContent = `任务：依据给定蓝图为 AI 每日学堂生成课程详情。\n\n输入载荷：\n${JSON.stringify(payload, null, 2)}\n\n${LESSON_CONTENT_OBJECTIVES}\n\n在所有输出中，技术术语需使用中英双语（如“自注意力 self-attention”），请专注于阐明概念和原理，无需编造量化指标。返回严格 JSON，禁止额外文本。`;
+  const userContent = `任务：依据给定蓝图为 AI 每日学堂生成课程详情。\n\n输入载荷：\n${JSON.stringify(payload, null, 2)}\n\n${LESSON_CONTENT_OBJECTIVES}\n\n在所有输出中，技术术语使用中英双语（如“自注意力 self-attention”），并明确量化指标。返回严格 JSON，禁止额外文本。`;
   return [
     { role: "system", content: LESSON_SYSTEM },
     { role: "user", content: `${LESSON_DEVELOPER}\n\n${userContent}` }

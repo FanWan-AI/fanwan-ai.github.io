@@ -175,8 +175,7 @@ function buildLearnerProfile(candidate) {
     industries,
     personas,
     pains: `在 ${candidate.category} 场景缺乏 ${candidate.title} 的可执行路径`,
-    // 默认不指定 preferredMetrics，让模型自由发挥或依据章节自行引入适当的性能指标
-    preferredMetrics: [],
+    preferredMetrics: ["time_to_value", "quality_score"],
     maturity: candidate.level
   };
 }
@@ -391,156 +390,6 @@ function ensureI18n(value, fallback) {
   return result;
 }
 
-const SUMMARY_BANNED_PATTERNS = [
-  /学习前/g,
-  /学习后/g,
-  /before learning/gi,
-  /after learning/gi
-];
-
-function collectSummarySignals(blueprint) {
-  const sections = Array.isArray(blueprint?.sections) ? blueprint.sections : [];
-  const focus = sections
-    .map((section) => extractText(section?.title))
-    .filter(Boolean)
-    .slice(0, 3);
-  const dataset = sections
-    .map((section) => extractText(section?.worked_example?.dataset))
-    .find((value) => value && value.length >= 2);
-  const caseOrg = sections
-    .map((section) => extractText(section?.case?.org))
-    .find((value) => value && value.length >= 2);
-  const metric = sections
-    .flatMap((section) => (Array.isArray(section?.metrics) ? section.metrics : []))
-    .map((entry) => extractText(entry))
-    .find((value) => value && value.length >= 2);
-  const tool = sections
-    .flatMap((section) => (Array.isArray(section?.tools) ? section.tools : []))
-    .map((entry) => extractText(entry?.name || entry?.title))
-    .find((value) => value && value.length >= 2);
-  return { focus, dataset, caseOrg, metric, tool };
-}
-
-function buildStructuredSummary(candidate, blueprint) {
-  const title = candidate.title || "本课程";
-  const category = candidate.category || "AI 场景";
-  const theme = extractText(blueprint?.theme_summary);
-  const { focus, dataset, caseOrg, metric, tool } = collectSummarySignals(blueprint);
-  const zhFocus = focus.length ? focus.join("、") : "概念、算法与应用";
-  const enFocus = focus.length ? focus.join(", ") : "concepts, algorithms, and applications";
-  const zhAnchor = theme ? theme.replace(/。+$/g, "") : `${title} 是 ${category} 的关键方法`;
-  const zhSentence1 = `${zhAnchor}，课程围绕 ${category} 中的可执行路径展开。`;
-  const zhParts = [`内容串联 ${zhFocus}，梳理定义、推导与迁移步骤`];
-  if (dataset) {
-    zhParts.push(`以 ${dataset} worked example 讲解数据与验证指标`);
-  } else if (caseOrg) {
-    zhParts.push(`结合 ${caseOrg} 案例说明落地要点`);
-  }
-  if (metric) {
-    zhParts.push(`提示如何跟踪 ${metric} 等质量信号`);
-  }
-  if (tool) {
-    zhParts.push(`补充 ${tool} 等工具使用策略`);
-  }
-  const zhSentence2 = `${zhParts.join("，")}。`;
-  const zh = `${zhSentence1}${zhSentence2}`;
-
-  const enSentence1 = `${title} is positioned for ${category} initiatives, clarifying why the capability emerged and which operating gaps it closes.`;
-  const enParts = [`It threads ${enFocus} to translate theory into executable steps`];
-  if (dataset) {
-    enParts.push(`uses the ${dataset} worked example to show data prep and validation`);
-  } else if (caseOrg) {
-    enParts.push(`grounds the narrative in the ${caseOrg} case study`);
-  }
-  if (metric) {
-    enParts.push(`calls out metrics such as ${metric}`);
-  }
-  if (tool) {
-    enParts.push(`references tooling like ${tool}`);
-  }
-  const enSentence2 = `${enParts.join(", ")}.`;
-  const en = `${enSentence1} ${enSentence2}`;
-
-  return ensureI18n({ zh, en }, title);
-}
-
-function summaryIsWeak(summary) {
-  if (!summary || typeof summary !== "object") {
-    return true;
-  }
-  const zh = extractText(summary.zh);
-  const en = extractText(summary.en);
-  if (!zh || !en) {
-    return true;
-  }
-  const zhLength = zh.length;
-  const enWords = en.split(/\s+/).filter(Boolean).length;
-  return zhLength < 35 || enWords < 30;
-}
-
-function summaryHasBannedFraming(summary) {
-  if (!summary || typeof summary !== "object") {
-    return false;
-  }
-  const zh = extractText(summary.zh);
-  const en = extractText(summary.en);
-  return SUMMARY_BANNED_PATTERNS.some((pattern) => (zh && pattern.test(zh)) || (en && pattern.test(en)));
-}
-
-function sanitizeSummaryValue(summary, candidate, blueprint) {
-  if (!summary || typeof summary !== "object") {
-    return buildStructuredSummary(candidate, blueprint);
-  }
-  if (summaryHasBannedFraming(summary) || summaryIsWeak(summary)) {
-    return buildStructuredSummary(candidate, blueprint);
-  }
-  return summary;
-}
-
-function formatContextPrefix(source, dataAsset, lang) {
-  const parts = [];
-  if (source) {
-    parts.push(lang === "en" ? `Source: ${source}` : `来自：${source}`);
-  }
-  if (dataAsset) {
-    parts.push(lang === "en" ? `Data: ${dataAsset}` : `数据：${dataAsset}`);
-  }
-  if (!parts.length) {
-    return "";
-  }
-  const joined = parts.join(" · ");
-  return `【${joined}】`;
-}
-
-function attachQuestionContext(question, sourceSection, dataAsset) {
-  if (!sourceSection && !dataAsset) {
-    return ensureI18n(question, "请解释这个概念");
-  }
-  const next = ensureI18n(question, "请解释这个概念");
-  const zhPrefix = formatContextPrefix(sourceSection, dataAsset, "zh");
-  const enPrefix = formatContextPrefix(sourceSection, dataAsset, "en");
-  if (zhPrefix) {
-    next.zh = `${zhPrefix}${next.zh || next.en || ""}`;
-  }
-  if (enPrefix) {
-    next.en = `${enPrefix}${next.en || next.zh || ""}`;
-  }
-  return next;
-}
-
-function appendRubricHint(explain, rubric) {
-  const note = typeof rubric === "string" ? rubric.trim() : "";
-  if (!note) {
-    return explain;
-  }
-  const base = ensureI18n(explain, note);
-  const zhNote = `评分提示：${note}`;
-  const enNote = `Scoring note: ${note}`;
-  base.zh = base.zh ? `${base.zh}\n${zhNote}` : zhNote;
-  base.en = base.en ? `${base.en}\n${enNote}` : enNote;
-  return base;
-}
-
 function normalizeOptions(entry) {
   if (!Array.isArray(entry.options)) return [];
   return entry.options.map((option) => (typeof option === "string" ? option.trim() : "")).filter(Boolean).slice(0, 6);
@@ -575,86 +424,75 @@ function mapAnswer(entry, options) {
 
 function buildPracticeFallbacks(candidate) {
   const topic = candidate.title || "本课题";
-  const sectionPrefix = `${topic} · `;
-  const exampleAsset = candidate.learningObjectives?.[0] || "课程 worked example";
+  const category = candidate.category || "学习诊断";
+  const metricPrimary = candidate.learningObjectives?.[0] || "time_to_value";
+  const metricSecondary = candidate.learningObjectives?.[1] || "quality_score";
   return [
     {
       type: "mcq",
-      source_section: `${sectionPrefix}结构总览`,
-      data_asset: "课程大纲",
       question: {
-        zh: `在设计《${topic}》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？`,
-        en: `When outlining "${topic}", which sequence best helps readers progress from concepts to applications?`
+        zh: `在规划 ${topic} 的画像诊断路线时，哪一组顺序最能兼顾 ${metricPrimary} 与 ${metricSecondary}？`,
+        en: `Which sequence best balances ${metricPrimary} and ${metricSecondary} when rolling out ${topic}?`
       },
       options: [
-        "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
-        "直接列公式 → 给出练习 → 最后再解释概念",
-        "只讲历史 → 只列参考文献 → 不展示示例",
-        "先贴代码 → 略过背景 → 简单总结"
+        "界定学习者画像 → 量化指标 → 建立反馈循环",
+        "直接套用工具 → 宣布 KPI → 事后补充画像",
+        "先定终局 KPI → 跳过诊断 → 复盘中再补救",
+        "集中制作材料 → 开始训练 → 最后再量化"
       ],
       answer: 0,
       explain: {
-        zh: "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。",
-        en: "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications."
-      },
-      rubric: "选择能够形成定义→理论→示例→应用闭环的顺序。"
+        zh: "正确流程是先画像再量化并设计反馈回路，保证指标与真实痛点对齐。",
+        en: "Start with profiling, then quantify targets, then design the feedback loop so metrics track real gaps."
+      }
     },
     {
       type: "multi",
-      source_section: `${sectionPrefix}worked example`,
-      data_asset: `${exampleAsset} 数据/代码`,
       question: {
-        zh: `在复现《${topic}》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）`,
-        en: `While reproducing the worked example in "${topic}", which actions improve reproducibility? (Select all that apply)`
+        zh: `以下多步冲刺任务中，哪些动作能在一周内搭建 ${category} 的成长飞轮？请选择全部正确选项。`,
+        en: `Which multi-step actions establish a growth flywheel for ${category} within one sprint? Select all that apply.`
       },
       options: [
-        "列出输入数据字段与来源",
-        "仅口头描述处理步骤",
-        "逐行解释代码或公式逻辑",
-        "记录关键输出指标及其含义"
+        "① 汇总 Persona 痛点 ② 绘制技能雷达 ③ 用质量评分验证", 
+        "① 复制他人方案 ② 缩短周期 ③ 跳过评估",
+        "① 定义 time_to_value 阈值 ② 共创行动清单 ③ 约定复盘节奏",
+        "① 把素材发群里 ② 等待反馈 ③ 下次再补"
       ],
-      answer: [0, 2, 3],
+      answer: [0, 2],
       explain: {
-        zh: "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。",
-        en: "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient."
-      },
-      rubric: "选中所有强调输入、处理、输出完整链路的选项。"
+        zh: "飞轮需要画像+量化+反馈的闭环，单向广播或跳过评估都无法沉淀经验。",
+        en: "A flywheel requires profile + quantified targets + scheduled feedback; broadcast-only steps fail to loop learning."
+      }
     },
     {
       type: "input",
-      source_section: `${sectionPrefix}应用延伸`,
-      data_asset: "个人项目场景",
       question: {
-        zh: `请描述你所在场景如何迁移《${topic}》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。`,
-        en: `Describe how you would transfer one definition or method from "${topic}" into your context: outline the scenario, the reused steps, and the metric you would check.`
+        zh: `请完成以下三步并提交摘要：1）记录一位关键 Persona 的 baseline，2）量化 ${metricPrimary} 与 ${metricSecondary} 目标，3）设计 2 周内的反馈触点。`,
+        en: `Complete these three steps and share a short brief: 1) capture one persona's baseline, 2) quantify ${metricPrimary} and ${metricSecondary}, 3) design the feedback touchpoints for the next 2 weeks.`
       },
       answer: "plan",
       explain: {
-        zh: "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。",
-        en: "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation."
-      },
-      rubric: "需包含场景、迁移步骤、验证指标三要素。"
+        zh: "评分标准：是否覆盖画像、指标、反馈三要素，并给出可执行时间表。",
+        en: "Rubric: include persona profile, both metrics, and a concrete timeline for feedback loops."
+      }
     },
     {
       type: "mcq",
-      source_section: `${sectionPrefix}参考资料`,
-      data_asset: "课程引用文献",
       question: {
-        zh: `当引用文献支撑《${topic}》中的观点时，以下哪一做法能强化可信度？`,
-        en: `When citing a reference to support a claim in "${topic}", which action strengthens credibility?`
+        zh: `若要把 ${topic} 的诊断结果嵌入 OKR，哪项量化表达最合理？`,
+        en: `Which KPI expression best embeds ${topic} diagnostics into your OKRs?`
       },
       options: [
-        "指出文献的年份、作者/机构并提炼与本节的关系",
-        "只在文末集中列出所有链接，不在正文说明",
-        "引用尚未发表的私有数据但不给出处",
-        "用营销口吻概括文献而不提研究方法"
+        `学习效率 = (${metricPrimary} 提升幅度) / 周数`,
+        `参与人次 × 预算`,
+        `工具数量 ÷ 团队人数`,
+        `复盘次数 - 会议时长`
       ],
       answer: 0,
       explain: {
-        zh: "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。",
-        en: "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust."
-      },
-      rubric: "选择能够清楚说明出处与课程观点关系的选项。"
+        zh: "KPI 需关联效率/质量指标，单看投入或次数无法证明成效。",
+        en: "An OKR-aligned KPI ties outcomes to efficiency/quality, not raw participation or meeting counts."
+      }
     }
   ];
 }
@@ -670,52 +508,15 @@ function ensureExplain(entry, candidate) {
   return entry;
 }
 
-function finalizePracticeEntry(entry, candidate) {
-  const sourceSection = typeof entry.source_section === "string" ? entry.source_section.trim() : "";
-  const dataAsset = typeof entry.data_asset === "string" ? entry.data_asset.trim() : "";
-  const rubric = typeof entry.rubric === "string" ? entry.rubric.trim() : "";
-  const question = attachQuestionContext(entry.question, sourceSection, dataAsset);
-  const explain = appendRubricHint(entry.explain, rubric);
-  const cleaned = {
-    type: entry.type,
-    question,
-    answer: entry.answer,
-    explain
-  };
-  if (Array.isArray(entry.options) && entry.options.length) {
-    cleaned.options = entry.options;
-  }
-  return ensureExplain(cleaned, candidate);
-}
-
 function ensurePracticeCoverage(entries, candidate) {
+  let practice = Array.isArray(entries) ? entries.filter(Boolean) : [];
   const fallbackPool = buildPracticeFallbacks(candidate);
   const maxLength = 5;
   const targetLength = 4;
   const requiredTypes = ["mcq", "multi", "input"];
+
   const cloneEntry = (entry) => JSON.parse(JSON.stringify(entry));
   const countType = (list, type) => list.filter((item) => item.type === type).length;
-  const entryKey = (entry) => {
-    if (!entry) return "";
-    const question = entry.question?.zh || entry.question?.en || entry.prompt || entry.title;
-    const text = extractText(question);
-    return text ? `${entry.type}:${text}` : "";
-  };
-
-  let practice = [];
-  const seenKeys = new Set();
-
-  (Array.isArray(entries) ? entries : []).forEach((entry) => {
-    if (!entry) return;
-    const key = entryKey(entry);
-    if (key && seenKeys.has(key)) {
-      return;
-    }
-    if (key) {
-      seenKeys.add(key);
-    }
-    practice.push(entry);
-  });
 
   const dropRedundant = () => {
     if (practice.length < maxLength) return;
@@ -723,37 +524,21 @@ function ensurePracticeCoverage(entries, candidate) {
       const candidateEntry = practice[i];
       const typeCount = countType(practice, candidateEntry.type);
       if (typeCount > 1) {
-        const key = entryKey(candidateEntry);
-        if (key) {
-          seenKeys.delete(key);
-        }
         practice.splice(i, 1);
         if (practice.length < maxLength) return;
       }
     }
     if (practice.length >= maxLength) {
-      const removed = practice.pop();
-      const key = entryKey(removed);
-      if (key) {
-        seenKeys.delete(key);
-      }
+      practice.pop();
     }
   };
 
   const appendEntry = (entry) => {
     if (!entry) return;
-    const prepared = cloneEntry(entry);
-    const key = entryKey(prepared);
-    if (key && seenKeys.has(key)) {
-      return;
-    }
     if (practice.length >= maxLength) {
       dropRedundant();
     }
-    practice.push(prepared);
-    if (key) {
-      seenKeys.add(key);
-    }
+    practice.push(cloneEntry(entry));
   };
 
   requiredTypes.forEach((type) => {
@@ -773,10 +558,10 @@ function ensurePracticeCoverage(entries, candidate) {
     practice = practice.slice(0, maxLength);
   }
 
-  return practice.map((entry) => finalizePracticeEntry(entry, candidate));
+  return practice.map((entry) => ensureExplain(entry, candidate));
 }
 
-function normalizePractice(practiceRaw, candidate) {
+function normalizePractice(practiceRaw, candidate, blueprint) {
   const entries = Array.isArray(practiceRaw) ? practiceRaw : [];
   const coerced = entries
     .map((entry, index) => {
@@ -805,25 +590,140 @@ function normalizePractice(practiceRaw, candidate) {
       }
       const explain = entry.explain ? ensureI18n(entry.explain) : undefined;
       const payload = { type, question, answer, explain };
-      const sourceSection = typeof entry.source_section === "string" ? entry.source_section.trim() : "";
-      if (sourceSection) {
-        payload.source_section = sourceSection;
-      }
-      const dataAsset = typeof entry.data_asset === "string" ? entry.data_asset.trim() : "";
-      if (dataAsset) {
-        payload.data_asset = dataAsset;
-      }
-      const rubric = typeof entry.rubric === "string" ? entry.rubric.trim() : "";
-      if (rubric) {
-        payload.rubric = rubric;
-      }
       if (options.length) {
         payload.options = options;
+      }
+      const sourceSection = typeof entry.source_section === "string"
+        ? entry.source_section
+        : typeof entry.section_id === "string"
+          ? entry.section_id
+          : typeof entry.section === "string"
+            ? entry.section
+            : undefined;
+      if (sourceSection) {
+        payload.__section_source = sourceSection;
       }
       return payload;
     })
     .filter(Boolean);
-  return ensurePracticeCoverage(coerced, candidate);
+  const covered = ensurePracticeCoverage(coerced, candidate);
+  return annotatePracticeWithSections(covered, blueprint);
+}
+
+function deriveSectionLabels(section) {
+  if (!section) {
+    return { zh: "", en: "" };
+  }
+  if (typeof section.title === "object" && section.title) {
+    return {
+      zh: extractText(section.title.zh || section.title.cn || section.title) || extractText(section.title.en) || "",
+      en: extractText(section.title.en || section.title) || extractText(section.title.zh) || ""
+    };
+  }
+  const text = extractText(section.title || section.id || "");
+  return { zh: text, en: text };
+}
+
+function buildSectionLookup(blueprint) {
+  const lookup = new Map();
+  const sections = Array.isArray(blueprint?.sections) ? blueprint.sections : [];
+  sections.forEach((section) => {
+    const labels = deriveSectionLabels(section);
+    const keys = [section.id, labels.zh, labels.en]
+      .filter((value) => typeof value === "string" && value.trim())
+      .map((value) => value.trim().toLowerCase());
+    keys.forEach((key) => {
+      lookup.set(key, labels);
+      const slug = slugify(key);
+      if (slug && !lookup.has(slug)) {
+        lookup.set(slug, labels);
+      }
+    });
+  });
+  return lookup;
+}
+
+function prefixWithSectionLabel(text, prefix) {
+  if (!text || !prefix) return text;
+  return text.startsWith(prefix) ? text : `${prefix}${text}`;
+}
+
+function prefixQuestionWithSection(question, labels) {
+  const enriched = ensureI18n(question, "请解释这个概念");
+  const zhLabel = labels.zh || labels.en || "本节";
+  const enLabel = labels.en || labels.zh || "this section";
+  const zhPrefix = `【来自：${zhLabel}】`;
+  const enPrefix = `[From ${enLabel}] `;
+  enriched.zh = prefixWithSectionLabel(enriched.zh, zhPrefix);
+  enriched.en = prefixWithSectionLabel(enriched.en, enPrefix);
+  return enriched;
+}
+
+function prefixExplainWithSection(explain, labels) {
+  const enriched = ensureI18n(explain, "参考章节解释");
+  const zhLabel = labels.zh || labels.en || "本节";
+  const enLabel = labels.en || labels.zh || "this section";
+  const zhPrefix = `（对应 ${zhLabel}）`;
+  const enPrefix = ` (see ${enLabel})`;
+  enriched.zh = prefixWithSectionLabel(enriched.zh, zhPrefix);
+  enriched.en = prefixWithSectionLabel(enriched.en, enPrefix);
+  return enriched;
+}
+
+function annotatePracticeWithSections(entries, blueprint) {
+  if (!Array.isArray(entries) || !entries.length || !blueprint?.sections?.length) {
+    return entries.map((entry) => {
+      if (entry && "__section_source" in entry) {
+        delete entry.__section_source;
+      }
+      return entry;
+    });
+  }
+  const lookup = buildSectionLookup(blueprint);
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== "object") return entry;
+    const sourceKey = typeof entry.__section_source === "string" ? entry.__section_source.trim().toLowerCase() : "";
+    const label = lookup.get(sourceKey) || lookup.get(slugify(sourceKey));
+    if (label) {
+      entry.question = prefixQuestionWithSection(entry.question, label);
+      if (entry.explain) {
+        entry.explain = prefixExplainWithSection(entry.explain, label);
+      }
+    }
+    delete entry.__section_source;
+    return entry;
+  });
+}
+
+function validateLessonStructure(content, blueprint) {
+  if (!content || !blueprint?.sections?.length) {
+    return;
+  }
+  const languages = ["zh", "en"].filter((lang) => typeof content[lang] === "string" && content[lang].trim());
+  if (!languages.length) {
+    return;
+  }
+  const missing = new Set();
+  const requiredMarkers = ["narrative-intro", "narrative-outro"];
+  languages.forEach((lang) => {
+    requiredMarkers.forEach((marker) => {
+      if (!content[lang].includes(marker)) {
+        missing.add(`${marker}-${lang}`);
+      }
+    });
+  });
+  blueprint.sections.forEach((section) => {
+    const anchor = section?.id ? `data-section="${section.id}"` : null;
+    if (!anchor) return;
+    languages.forEach((lang) => {
+      if (!content[lang].includes(anchor)) {
+        missing.add(`${anchor}-${lang}`);
+      }
+    });
+  });
+  if (missing.size) {
+    throw new Error(`Lesson content missing structured segments: ${Array.from(missing).join(", ")}`);
+  }
 }
 
 function isPlaceholderUrl(url) {
@@ -962,10 +862,6 @@ function sanitizeLessonEntry(lesson) {
   if (clone.references) {
     clone.references = sanitizeReferenceLabels(clone.references, fallbackTitle);
   }
-  if (Array.isArray(clone.practice)) {
-    const pseudoCandidate = { title: fallbackTitle || lesson?.title?.zh || lesson?.title?.en || lesson?.title || "lesson" };
-    clone.practice = clone.practice.map((entry) => finalizePracticeEntry(entry || {}, pseudoCandidate));
-  }
   return clone;
 }
 
@@ -993,15 +889,14 @@ function normalizeContextualNotes(notes, candidate) {
 
 function coerceLesson(candidate, lesson, date, learnerProfile, toneProfile, blueprint) {
   const title = ensureI18n(lesson.title, candidate.title);
-  const summaryValue = ensureI18n(lesson.summary, `${candidate.title} 概要`);
-  const summary = sanitizeSummaryValue(summaryValue, candidate, blueprint);
+  const summary = ensureI18n(lesson.summary, `${candidate.title} 概要`);
   const content = ensureI18n(lesson.content, `<p>${summary.zh}</p>`);
   const tags = Array.from(new Set([...(lesson.tags || []), ...(candidate.tags || []), ...(candidate.keywords || [])]))
     .map((tag) => (typeof tag === "string" ? tag.trim() : ""))
     .filter(Boolean)
     .slice(0, 8);
   const difficulty = DIFFICULTY_VALUES.includes(lesson.difficulty) ? lesson.difficulty : difficultyLabel(candidate);
-  const practice = normalizePractice(lesson.practice, candidate);
+  const practice = normalizePractice(lesson.practice, candidate, blueprint);
   if (!practice.length) {
     practice.push({
       type: "input",
@@ -1122,13 +1017,13 @@ async function generatePracticeSuite({ candidate, learnerProfile, blueprint, les
       const collection = Array.isArray(parsed)
         ? parsed
         : parsed?.practice || parsed?.items || parsed?.data || [];
-      return normalizePractice(collection, candidate);
+      return normalizePractice(collection, candidate, blueprint);
     } catch (error) {
       lastError = error;
     }
   }
   console.warn("Practice generation failed, using fallback", lastError?.message || "unknown error");
-  return normalizePractice([], candidate);
+  return normalizePractice([], candidate, blueprint);
 }
 
 const TRANSLATION_SYSTEM = "You are a bilingual localization editor for AI Daily Academy. Translate Chinese source text into natural, domain-accurate English while preserving HTML tags, numbers, metrics, and proper nouns.";
@@ -1154,6 +1049,7 @@ const TRANSLATION_RESPONSE_FORMAT = {
 };
 
 const HAN_REGEX = /[\u3400-\u9fff]/;
+const HAN_SEQUENCE_REGEX = /[\u3400-\u9fff]{2,}/;
 const ASCII_LETTER_REGEX = /[a-z]/i;
 
 function needsEnglishRewrite(zhValue, enValue) {
@@ -1163,6 +1059,7 @@ function needsEnglishRewrite(zhValue, enValue) {
   if (!en) return true;
   if (en === zh) return true;
   if (HAN_REGEX.test(en) && !ASCII_LETTER_REGEX.test(en)) return true;
+  if (HAN_SEQUENCE_REGEX.test(en)) return true;
   if (en.length <= 8 && zh.length >= 12) return true;
   return false;
 }
@@ -1199,41 +1096,54 @@ function collectTranslationRequests(lesson) {
 }
 
 async function enforceTranslations({ lesson, candidate }) {
-  const requests = collectTranslationRequests(lesson);
-  if (!requests.length) {
-    return;
-  }
-  const payload = requests.map((item) => ({ id: item.id, zh: item.zh, preserve_html: item.preserveHtml }));
-  const userContent = `主题：${candidate.title}\n请将下列中文文本翻译成自然英文；若 preserve_html=true，务必保留 HTML 标签结构，只替换文字内容。\n输入：\n${JSON.stringify(payload, null, 2)}\n\n输出：仅返回 JSON 数组，元素包含 id 与 en 字段。`;
-  const messages = [
-    { role: "system", content: TRANSLATION_SYSTEM },
-    { role: "user", content: userContent }
-  ];
-  const responseFormats = [TRANSLATION_RESPONSE_FORMAT, { type: "json_object" }, null];
+  let pass = 0;
   let lastError = null;
-  for (const format of responseFormats) {
-    try {
-      const raw = await callLLM({ messages, temperature: 0.2, responseFormat: format });
-      const parsed = parseJSON(raw);
-      const list = Array.isArray(parsed) ? parsed : parsed?.translations || [];
-      const map = new Map();
-      list.forEach((item) => {
-        if (item && typeof item === "object" && typeof item.id === "string" && typeof item.en === "string") {
-          map.set(item.id, item.en.trim());
-        }
-      });
-      requests.forEach((request) => {
-        const text = map.get(request.id);
-        if (text) {
-          request.apply(text);
-        }
-      });
+  while (pass < 2) {
+    const requests = collectTranslationRequests(lesson);
+    if (!requests.length) {
       return;
-    } catch (error) {
-      lastError = error;
     }
+    const payload = requests.map((item) => ({ id: item.id, zh: item.zh, preserve_html: item.preserveHtml }));
+    const userContent = `主题：${candidate.title}\n请将下列中文文本翻译成自然英文；若 preserve_html=true，务必保留 HTML 标签结构，只替换文字内容。所有 en 字段禁止保留中文字符，若有术语请使用 "self-attention (自注意力)" 形式。\n输入：\n${JSON.stringify(payload, null, 2)}\n\n输出：仅返回 JSON 数组，元素包含 id 与 en 字段。`;
+    const messages = [
+      { role: "system", content: TRANSLATION_SYSTEM },
+      { role: "user", content: userContent }
+    ];
+    const responseFormats = [TRANSLATION_RESPONSE_FORMAT, { type: "json_object" }, null];
+    let applied = false;
+    for (const format of responseFormats) {
+      try {
+        const raw = await callLLM({ messages, temperature: 0.2, responseFormat: format });
+        const parsed = parseJSON(raw);
+        const list = Array.isArray(parsed) ? parsed : parsed?.translations || [];
+        const map = new Map();
+        list.forEach((item) => {
+          if (item && typeof item === "object" && typeof item.id === "string" && typeof item.en === "string") {
+            map.set(item.id, item.en.trim());
+          }
+        });
+        requests.forEach((request) => {
+          const text = map.get(request.id);
+          if (text) {
+            request.apply(text);
+            applied = true;
+          }
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (!applied) {
+      console.warn("Translation enforcement skipped", lastError?.message || "unknown error");
+      break;
+    }
+    pass += 1;
   }
-  console.warn("Translation enforcement skipped", lastError?.message || "unknown error");
+  const pending = collectTranslationRequests(lesson);
+  if (pending.length) {
+    console.warn("Translation still pending for", pending.map((item) => item.id).join(", "));
+  }
 }
 
 async function critiqueLessonDraft({ candidate, learnerProfile, blueprint, lesson }) {
@@ -1496,6 +1406,9 @@ async function generateLesson(candidate, history) {
       });
       lessonDraft.practice = practiceSuite;
       await enforceTranslations({ lesson: lessonDraft, candidate: candidateProfile });
+      if (!dryRun) {
+        validateLessonStructure(lessonDraft.content, blueprint);
+      }
       return lessonDraft;
     } catch (error) {
       lastError = error;

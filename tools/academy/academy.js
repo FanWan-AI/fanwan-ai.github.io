@@ -2,7 +2,9 @@ const DAILY_URL = "/data/ai/daily-academy/daily.json";
 const CACHE_KEY_DAILY = "academy_daily_v1";
 const CACHE_TTL = 1000 * 60 * 60; // 1 hour cache
 const PROGRESS_KEY = "academy_progress_v1";
-const PAGE_SIZE = 3;
+const NOTE_KEY = "academy_note_v1";
+const NOTE_STATUS_TIMEOUT = 2600;
+const PAGE_SIZE = 5;
 const XP_PER_LESSON = 15;
 const MIN_PASS_RATE = 0.6;
 
@@ -20,9 +22,11 @@ const pageLabels = {
   es: document.querySelector('[data-role="daily-page-label-es"]'),
 };
 const paginationHost = document.querySelector('[data-role="daily-pagination"]');
+const statusState = { type: "loading", extra: null, timestamp: null };
 
 const modal = document.getElementById("academy-modal");
 const modalBody = modal?.querySelector('[data-role="modal-body"]');
+const modalTitle = modal?.querySelector("#academy-modal-title");
 const modalClosers = modal ? Array.from(modal.querySelectorAll('[data-role="modal-close"]')) : [];
 
 const progressEls = {
@@ -35,11 +39,35 @@ const progressEls = {
   clearBtn: document.querySelector('[data-role="clear-progress"]'),
 };
 
+const filterEls = {
+  search: document.querySelector('[data-role="filter-search"]'),
+  difficulty: document.querySelector('[data-role="filter-difficulty"]'),
+  topic: document.querySelector('[data-role="filter-topic"]'),
+  reset: document.querySelector('[data-role="filter-reset"]'),
+  personalize: document.querySelector('[data-role="filter-personalize"]'),
+};
+
+const noteEls = {
+  field: document.querySelector('[data-role="note-field"]'),
+  saveBtn: document.querySelector('[data-role="note-save"]'),
+  status: document.querySelector('[data-role="note-status"]'),
+};
+
+const recommendationHost = document.querySelector('[data-role="recommendations"]');
+
 const state = {
   lessons: [],
+  filtered: [],
   page: 0,
   pageSize: PAGE_SIZE,
   loading: false,
+  generatedAt: null,
+  filters: {
+    query: "",
+    difficulty: "all",
+    topic: "all",
+    personalize: false,
+  },
 };
 
 const modalState = {
@@ -48,6 +76,8 @@ const modalState = {
 };
 
 let progressState = loadProgress();
+let noteStatusTimer = null;
+let expandedLessonId = null;
 
 if (dailyRoot) {
   bootstrap();
@@ -56,7 +86,10 @@ if (dailyRoot) {
 function bootstrap() {
   bindPagination();
   bindProgressActions();
+  bindFilters();
+  bindNotes();
   bindModal();
+  bindLanguageChange();
   renderProgress();
   fetchLessons();
 }
@@ -73,6 +106,97 @@ function bindProgressActions() {
   if (progressEls.clearBtn) {
     progressEls.clearBtn.addEventListener("click", clearProgress);
   }
+}
+
+function bindFilters() {
+  if (filterEls.search) {
+    filterEls.search.addEventListener("input", (event) => {
+      updateFilters({ query: event.target.value || "" });
+    });
+  }
+  if (filterEls.difficulty) {
+    filterEls.difficulty.addEventListener("change", (event) => {
+      updateFilters({ difficulty: event.target.value || "all" });
+    });
+  }
+  if (filterEls.topic) {
+    filterEls.topic.addEventListener("change", (event) => {
+      updateFilters({ topic: event.target.value || "all" });
+    });
+  }
+  if (filterEls.reset) {
+    filterEls.reset.addEventListener("click", () => resetFilters());
+  }
+  if (filterEls.personalize) {
+    filterEls.personalize.addEventListener("click", () => togglePersonalize());
+  }
+}
+
+function bindNotes() {
+  if (!noteEls.field) return;
+  noteEls.field.value = loadNote();
+  if (noteEls.saveBtn) {
+    noteEls.saveBtn.addEventListener("click", () => saveNote(noteEls.field.value));
+  }
+}
+
+function loadNote() {
+  try {
+    return localStorage.getItem(NOTE_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function saveNote(value) {
+  try {
+    localStorage.setItem(NOTE_KEY, value || "");
+    showNoteStatus(t("academy_note_saved", "Note saved"));
+  } catch (error) {
+    console.warn("Unable to save note", error);
+    showNoteStatus(t("academy_note_error", "Unable to save"));
+  }
+}
+
+function showNoteStatus(message) {
+  if (!noteEls.status) return;
+  noteEls.status.textContent = message;
+  if (noteStatusTimer) {
+    clearTimeout(noteStatusTimer);
+  }
+  noteStatusTimer = setTimeout(() => {
+    noteEls.status.textContent = "";
+  }, NOTE_STATUS_TIMEOUT);
+}
+
+function updateFilters(patch) {
+  state.filters = { ...state.filters, ...patch };
+  applyFilters();
+}
+
+function resetFilters() {
+  state.filters = {
+    query: "",
+    difficulty: "all",
+    topic: "all",
+    personalize: false,
+  };
+  if (filterEls.search) filterEls.search.value = "";
+  if (filterEls.difficulty) filterEls.difficulty.value = "all";
+  if (filterEls.topic) filterEls.topic.value = "all";
+  updatePersonalizeButton();
+  applyFilters();
+}
+
+function togglePersonalize() {
+  state.filters.personalize = !state.filters.personalize;
+  updatePersonalizeButton();
+  applyFilters();
+}
+
+function updatePersonalizeButton() {
+  if (!filterEls.personalize) return;
+  filterEls.personalize.dataset.active = state.filters.personalize ? "true" : "false";
 }
 
 function bindModal() {
@@ -92,6 +216,20 @@ function bindModal() {
   });
 }
 
+function bindLanguageChange() {
+  window.addEventListener("language-changed", () => {
+    if (statusState.type) {
+      renderStatus(statusState.type, statusState.extra, statusState.timestamp);
+    }
+    renderProgress();
+    renderLessons();
+    updatePagination();
+    if (modalState.entry && modal?.dataset?.open === "true") {
+      renderModal(modalState.entry, modalState.mode);
+    }
+  });
+}
+
 async function fetchLessons() {
   state.loading = true;
   renderStatus("loading");
@@ -99,14 +237,19 @@ async function fetchLessons() {
     const payload = await loadDailyData();
     const lessons = normalizeLessons(payload);
     state.lessons = lessons;
+    state.generatedAt = payload?.generatedAt || payload?.updatedAt || null;
     state.page = 0;
+    populateTopicOptions(lessons);
     if (!lessons.length) {
+      state.filtered = [];
       renderEmptyList();
+      togglePagination(false);
       renderStatus("empty");
+      updateRecommendations();
     } else {
-      renderLessons();
-      updatePagination();
-      renderStatus("success", lessons.length, payload?.generatedAt);
+      state.filtered = lessons.slice();
+      applyFilters({ silent: true });
+      renderStatus("success", state.filtered.length, state.generatedAt);
     }
   } catch (error) {
     console.error("Failed to load academy lessons", error);
@@ -118,131 +261,342 @@ async function fetchLessons() {
 
 function renderStatus(type, extra, timestamp) {
   if (!statusEl) return;
+  statusState.type = type;
+  statusState.extra = extra;
+  statusState.timestamp = timestamp || null;
   if (type === "loading") {
-    statusEl.textContent = t("academy_loading", "正在加载今日课程...");
+    statusEl.textContent = t("academy_loading", "Loading today's lessons...");
     return;
   }
   if (type === "empty") {
-    statusEl.textContent = t("academy_list_empty", "暂未找到课程，稍后再试。");
+    statusEl.textContent = t("academy_list_empty", "No lessons available yet. Please check back soon.");
     return;
   }
   if (type === "error") {
-    const message = extra instanceof Error ? extra.message : t("academy_error_generic", "加载失败，请稍后再试。");
-    statusEl.textContent = `${t("academy_error_prefix", "加载失败：")} ${message}`;
+    const message = extra instanceof Error ? extra.message : t("academy_error_generic", "Failed to load lessons. Please try again later.");
+    statusEl.textContent = `${t("academy_error_prefix", "Failed to load:")} ${message}`;
     return;
   }
   if (type === "success") {
-    const count = Number(extra) || 0;
-    const dateText = timestamp ? formatTimestamp(timestamp) : "";
-    statusEl.textContent = dateText
-      ? t("academy_status_loaded_ts", "已加载 {count} 条课程 · 更新于 {time}", { count, time: dateText })
-      : t("academy_status_loaded", "已加载 {count} 条课程", { count });
+    statusEl.textContent = "";
   }
 }
 
 function renderEmptyList() {
-  dailyRoot.innerHTML = `<p class="academy-status">${t("academy_list_empty", "暂未找到课程，稍后再试。")}</p>`;
+  dailyRoot.innerHTML = `<p class="academy-status">${t("academy_list_empty", "No lessons available yet. Please check back soon.")}</p>`;
 }
 
 function changePage(step) {
-  const totalPages = Math.max(1, Math.ceil(state.lessons.length / state.pageSize));
+  const totalPages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
   state.page = Math.min(Math.max(0, state.page + step), totalPages - 1);
   renderLessons();
   updatePagination();
 }
 
 function renderLessons() {
+  if (!dailyRoot) return;
   dailyRoot.replaceChildren();
-  const totalPages = Math.max(1, Math.ceil(state.lessons.length / state.pageSize));
+  const totalPages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
   state.page = Math.min(state.page, totalPages - 1);
   const start = state.page * state.pageSize;
-  const items = state.lessons.slice(start, start + state.pageSize);
+  const items = state.filtered.slice(start, start + state.pageSize);
   if (!items.length) {
     renderEmptyList();
     togglePagination(false);
     return;
   }
   const fragment = document.createDocumentFragment();
-  items.forEach((entry) => {
-    fragment.appendChild(renderLessonCard(entry));
+  const totalCount = state.filtered.length;
+  items.forEach((entry, index) => {
+    fragment.appendChild(renderLessonCard(entry, start + index, totalCount));
   });
   dailyRoot.appendChild(fragment);
   togglePagination(true);
+  restoreAccordionState();
 }
 
-function renderLessonCard(entry) {
-  const card = document.createElement("article");
-  card.className = "academy-track-card";
-  card.dataset.lessonId = entry.id;
+function renderLessonCard(entry, absoluteIndex, totalCount) {
+  const item = document.createElement("li");
+  item.className = "curriculum-item";
+  item.dataset.lessonId = entry.id;
+  item.dataset.open = "false";
+
+  const header = document.createElement("button");
+  header.type = "button";
+  header.className = "curriculum-head";
+  header.setAttribute("aria-expanded", "false");
+
+  const info = document.createElement("div");
+  info.className = "curriculum-head__info";
+  const unit = document.createElement("p");
+  unit.className = "curriculum-unit";
+  unit.textContent = formatUnitLabel(absoluteIndex, totalCount, entry);
+  const title = document.createElement("h3");
+  title.textContent = pickLang(entry.title) || t("academy_default_title", "Untitled lesson");
+  info.append(unit, title);
 
   const meta = document.createElement("div");
-  meta.className = "academy-track-card__meta";
-  const dateSpan = document.createElement("span");
-  dateSpan.textContent = formatDate(entry.date);
-  meta.appendChild(dateSpan);
-  if (entry.difficulty) {
-    const difficulty = document.createElement("span");
-    difficulty.textContent = formatDifficulty(entry.difficulty);
-    meta.appendChild(difficulty);
+  meta.className = "curriculum-head__meta";
+  if (entry.difficulty) meta.appendChild(createPill(formatDifficulty(entry.difficulty)));
+  if (progressState.completed[entry.id]) {
+    meta.appendChild(createPill(t("academy_status_completed", "已完成"), true));
   }
 
-  const title = document.createElement("h3");
-  title.className = "academy-track-card__title";
-  title.textContent = pickLang(entry.title) || t("academy_default_title", "未命名课程");
+  const chevron = document.createElement("span");
+  chevron.className = "curriculum-chevron";
+  chevron.setAttribute("aria-hidden", "true");
+  chevron.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  meta.appendChild(chevron);
+
+  header.append(info, meta);
+
+  const body = document.createElement("div");
+  body.className = "curriculum-body";
+  body.hidden = true;
 
   const summary = document.createElement("p");
-  summary.className = "academy-track-card__summary";
-  summary.textContent = pickLang(entry.summary) || pickLang(entry.subtitle) || t("academy_default_summary", "敬请期待课程摘要。");
+  summary.className = "curriculum-summary";
+  summary.textContent = pickLang(entry.summary) || pickLang(entry.subtitle) || t("academy_default_summary", "Lesson summary coming soon.");
+  body.appendChild(summary);
 
-  const tagList = document.createElement("div");
-  tagList.className = "academy-track-card__tags";
-  entry.tags.slice(0, 6).forEach((tag) => {
-    const tagEl = document.createElement("span");
-    tagEl.className = "academy-tag";
-    tagEl.textContent = tag;
-    tagList.appendChild(tagEl);
-  });
-  if (!entry.tags.length && entry.theme) {
-    const tagEl = document.createElement("span");
-    tagEl.className = "academy-tag";
-    tagEl.textContent = entry.theme;
-    tagList.appendChild(tagEl);
-  }
+  const highlights = renderLessonHighlights(entry);
+  if (highlights) body.appendChild(highlights);
 
+  const coverage = renderLessonTags(entry);
+  if (coverage) body.appendChild(coverage);
+
+  const metrics = renderLessonMetrics(entry);
+  if (metrics) body.appendChild(metrics);
+
+  const resources = document.createElement("div");
+  resources.className = "curriculum-resources";
   const referencesEl = renderReferences(entry);
-  const audioEl = renderAudio(entry);
+  if (referencesEl) resources.appendChild(referencesEl);
+  if (resources.children.length) body.appendChild(resources);
 
-  const controls = document.createElement("div");
-  controls.className = "academy-track-card__controls";
-
-  if (audioEl) {
-    controls.appendChild(createButton(
-      "academy_audio_label",
-      "播放音频",
-      () => toggleAudio(audioEl)
-    ));
-  }
-
-  controls.appendChild(createButton(
+  const actions = document.createElement("div");
+  actions.className = "curriculum-actions";
+  actions.appendChild(createButton(
     "academy_detail_cta",
-    "查看详情",
-    () => openModal("detail", entry)
+    "开始学习",
+    () => openModal("detail", entry),
+    true
   ));
-
   if (Array.isArray(entry.practice) && entry.practice.length) {
-    controls.appendChild(createButton(
+    actions.appendChild(createButton(
       "academy_practice_cta",
-      "开始练习",
-      () => openModal("practice", entry),
-      true
+      "开始答题",
+      () => openModal("practice", entry)
+    ));
+  }
+  body.appendChild(actions);
+
+  item.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+    if (!event.target.closest(".curriculum-head")) return;
+    toggleCurriculumItem(item);
+  });
+
+  item.append(header, body);
+  return item;
+}
+
+function restoreAccordionState() {
+  if (!dailyRoot) return;
+  collapseCurrentAccordion();
+  if (!expandedLessonId) return;
+  const safeId = typeof expandedLessonId === "string" && window.CSS?.escape
+    ? CSS.escape(expandedLessonId)
+    : expandedLessonId;
+  if (!safeId) return;
+  const target = dailyRoot.querySelector(`[data-lesson-id="${safeId}"]`);
+  if (target) {
+    openCurriculumItem(target);
+  }
+}
+
+function collapseCurrentAccordion() {
+  if (!dailyRoot) return;
+  const openItems = dailyRoot.querySelectorAll('.curriculum-item[data-open="true"]');
+  openItems.forEach((node) => collapseCurriculumItem(node));
+}
+
+function toggleCurriculumItem(item) {
+  if (!item) return;
+  if (item.dataset.open === "true") {
+    collapseCurriculumItem(item);
+    expandedLessonId = null;
+  } else {
+    collapseCurrentAccordion();
+    openCurriculumItem(item);
+  }
+}
+
+function openCurriculumItem(item) {
+  if (!item) return;
+  const body = item.querySelector(".curriculum-body");
+  const header = item.querySelector(".curriculum-head");
+  if (body) body.hidden = false;
+  if (header) header.setAttribute("aria-expanded", "true");
+  item.dataset.open = "true";
+  expandedLessonId = item.dataset.lessonId || null;
+}
+
+function collapseCurriculumItem(item) {
+  if (!item) return;
+  const body = item.querySelector(".curriculum-body");
+  const header = item.querySelector(".curriculum-head");
+  if (body) body.hidden = true;
+  if (header) header.setAttribute("aria-expanded", "false");
+  item.dataset.open = "false";
+}
+
+function renderLessonHighlights(entry) {
+  const items = [];
+  if (entry.theme) {
+    items.push(`${t("academy_highlight_theme", "Theme")} · ${entry.theme}`);
+  }
+  if (Array.isArray(entry.tags) && entry.tags.length) {
+    items.push(`${t("academy_highlight_tags", "Tags")} · ${entry.tags.slice(0, 3).join(" / ")}`);
+  }
+  if (Array.isArray(entry.practice) && entry.practice.length) {
+    items.push(t("academy_highlight_practice", "Includes {count} exercises", { count: entry.practice.length }));
+  }
+  if (!items.length) return null;
+  const list = document.createElement("ul");
+  list.className = "curriculum-highlights";
+  items.forEach((text) => {
+    const li = document.createElement("li");
+    li.textContent = text;
+    list.appendChild(li);
+  });
+  return list;
+}
+
+function renderLessonMetrics(entry) {
+  const metrics = [];
+  const practiceCount = Array.isArray(entry.practice) ? entry.practice.length : 0;
+  const referenceCount = Array.isArray(entry.references) ? entry.references.length : 0;
+
+  if (practiceCount) {
+    metrics.push(createMetric(
+      t("academy_metric_practice", "Practice count"),
+      t("academy_metric_practice_value", "{count} problems", { count: practiceCount })
     ));
   }
 
-  card.append(meta, title, summary, tagList);
-  if (audioEl) card.appendChild(audioEl);
-  if (referencesEl) card.appendChild(referencesEl);
-  card.appendChild(controls);
-  return card;
+  if (referenceCount) {
+    metrics.push(createMetric(
+      t("academy_metric_references", "References"),
+      t("academy_metric_references_value", "{count} links", { count: referenceCount })
+    ));
+  }
+
+  if (entry.date) {
+    metrics.push(createMetric(
+      t("academy_metric_updated", "Updated"),
+      formatDate(entry.date)
+    ));
+  }
+
+  if (!metrics.length) return null;
+  const container = document.createElement("div");
+  container.className = "curriculum-metrics";
+  metrics.forEach((metric) => container.appendChild(metric));
+  return container;
+}
+
+function renderLessonTags(entry) {
+  if (!Array.isArray(entry.tags) || !entry.tags.length) return null;
+  const block = document.createElement("div");
+  block.className = "curriculum-tags";
+  const label = document.createElement("p");
+  label.className = "curriculum-tags__label";
+  label.textContent = t("academy_tags_label", "Covered tags");
+  block.appendChild(label);
+  const list = document.createElement("div");
+  list.className = "curriculum-tags__list";
+  entry.tags.slice(0, 6).forEach((tag) => {
+    if (!tag) return;
+    list.appendChild(createPill(tag, true));
+  });
+  block.appendChild(list);
+  return block;
+}
+
+function renderModal(entry, mode) {
+  if (!modalBody) return;
+  modalBody.replaceChildren();
+
+  const lessonTitle = pickLang(entry.title) || t("academy_default_title", "Untitled lesson");
+  if (modalTitle) {
+    modalTitle.textContent = t("academy_modal_details_heading", "Details: {title}", { title: lessonTitle });
+  }
+
+  if (mode === "detail") {
+    const audioBlock = renderAudio(entry);
+    if (audioBlock) {
+      audioBlock.classList.add("academy-modal-audio");
+      modalBody.appendChild(audioBlock);
+    }
+
+    const subtitle = document.createElement("p");
+    subtitle.className = "academy-status";
+    subtitle.textContent = pickLang(entry.summary) || pickLang(entry.subtitle) || "";
+    modalBody.appendChild(subtitle);
+
+    const content = document.createElement("div");
+    content.className = "academy-modal__content";
+    const html = pickLang(entry.content);
+    if (html) {
+      content.innerHTML = html;
+    } else {
+      const fallback = document.createElement("p");
+      fallback.textContent = t("academy_detail_placeholder", "Full lesson content is still being prepared.");
+      content.appendChild(fallback);
+    }
+    modalBody.appendChild(content);
+  }
+
+  if (mode === "practice") {
+    const intro = document.createElement("p");
+    intro.className = "academy-status";
+    intro.textContent = t("academy_practice_intro", "Answer the questions below for instant feedback.");
+    modalBody.appendChild(intro);
+  }
+
+  if (mode === "practice" && Array.isArray(entry.practice) && entry.practice.length) {
+    modalBody.appendChild(renderPractice(entry));
+  }
+
+  refreshMath(modalBody);
+}
+
+function createMetric(label, value) {
+  const block = document.createElement("div");
+  block.className = "curriculum-metric";
+  const span = document.createElement("span");
+  span.textContent = label;
+  const strong = document.createElement("strong");
+  strong.textContent = value;
+  block.append(span, strong);
+  return block;
+}
+
+function createPill(text, ghost = false) {
+  const pill = document.createElement("span");
+  pill.className = ghost ? "curriculum-pill curriculum-pill--ghost" : "curriculum-pill";
+  pill.textContent = text;
+  return pill;
+}
+
+function formatUnitLabel(position, totalCount, entry) {
+  const total = Number(totalCount) || 0;
+  const index = Number(position) || 0;
+  const unit = total > 0 ? total - index : index + 1;
+  const unitLabel = t("academy_unit_label", "第 {unit} 单元", { unit });
+  const dateLabel = formatDate(entry.date);
+  return `${unitLabel} · ${dateLabel}`;
 }
 
 function createButton(key, fallback, handler, primary = false) {
@@ -259,14 +613,21 @@ function renderAudio(entry) {
   if (!audioUrl) return null;
   const wrapper = document.createElement("div");
   wrapper.className = "academy-audio";
+  wrapper.hidden = true;
   const label = document.createElement("p");
   label.className = "academy-status";
   label.textContent = t("academy_audio_instructions", "可在下方播放音频讲解");
   const audio = document.createElement("audio");
   audio.controls = true;
-  audio.preload = "none";
+  audio.preload = "metadata";
   audio.src = audioUrl;
   audio.setAttribute("aria-label", t("academy_audio_label", "播放音频"));
+  audio.addEventListener("loadeddata", () => {
+    wrapper.hidden = false;
+  });
+  audio.addEventListener("error", () => {
+    wrapper.remove();
+  });
   wrapper.append(label, audio);
   return wrapper;
 }
@@ -306,7 +667,7 @@ function renderReferences(entry) {
 }
 
 function updatePagination() {
-  const totalPages = Math.max(1, Math.ceil(state.lessons.length / state.pageSize));
+  const totalPages = Math.max(1, Math.ceil(state.filtered.length / state.pageSize));
   const current = Math.min(state.page + 1, totalPages);
   if (prevBtn) prevBtn.disabled = current <= 1;
   if (nextBtn) nextBtn.disabled = current >= totalPages;
@@ -322,6 +683,86 @@ function updatePaginationLabels(current, total) {
   if (pageLabels.zh) pageLabels.zh.textContent = `第 ${current}/${total} 页`;
   if (pageLabels.en) pageLabels.en.textContent = `Page ${current} of ${total}`;
   if (pageLabels.es) pageLabels.es.textContent = `Página ${current} de ${total}`;
+}
+
+function populateTopicOptions(lessons) {
+  if (!filterEls.topic) return;
+  const tags = new Set();
+  lessons.forEach((lesson) => {
+    lesson.tags.forEach((tag) => tags.add(tag));
+  });
+  const options = ["all", ...Array.from(tags).sort((a, b) => a.localeCompare(b))];
+  filterEls.topic.replaceChildren();
+  options.forEach((value) => {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value === "all" ? t("academy_filter_topic_all", "全部标签") : value;
+    filterEls.topic.appendChild(option);
+  });
+}
+
+function applyFilters({ silent = false } = {}) {
+  const { query, difficulty, topic, personalize } = state.filters;
+  const normalizedQuery = (query || "").trim().toLowerCase();
+  const selectedTopic = topic && topic !== "all" ? topic.toLowerCase() : null;
+  state.filtered = state.lessons.filter((lesson) => {
+    if (difficulty !== "all" && lesson.difficulty !== difficulty) return false;
+    if (selectedTopic && !lesson.tags.some((tag) => tag.toLowerCase() === selectedTopic)) return false;
+    if (normalizedQuery) {
+      const haystack = [
+        pickLang(lesson.title),
+        pickLang(lesson.summary),
+        pickLang(lesson.subtitle),
+        lesson.tags.join(" "),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      if (!haystack.includes(normalizedQuery)) return false;
+    }
+    return true;
+  });
+
+  sortLessonsForPersonalization(state.filtered);
+
+  state.page = 0;
+  if (!state.filtered.length) {
+    renderEmptyList();
+    togglePagination(false);
+  } else {
+    renderLessons();
+    updatePagination();
+  }
+  if (!silent) {
+    renderStatus("success", state.filtered.length, state.generatedAt);
+  }
+  updateRecommendations();
+}
+
+function updateRecommendations() {
+  if (!recommendationHost) return;
+  recommendationHost.replaceChildren();
+  if (!state.filtered.length) {
+    const empty = document.createElement("div");
+    empty.className = "recommendation-card";
+    empty.textContent = t("academy_reco_empty", "暂无推荐，调整筛选试试。");
+    recommendationHost.appendChild(empty);
+    return;
+  }
+  const shortlist = state.filtered.slice(0, 3);
+  shortlist.forEach((lesson) => {
+    const card = document.createElement("div");
+    card.className = "recommendation-card";
+    const title = document.createElement("strong");
+    title.textContent = pickLang(lesson.title) || lesson.id;
+    const meta = document.createElement("span");
+    const status = progressState.completed[lesson.id]
+      ? t("academy_reco_done", "已完成")
+      : formatDifficulty(lesson.difficulty);
+    meta.textContent = `${formatDate(lesson.date)} · ${status}`;
+    card.append(title, meta);
+    recommendationHost.appendChild(card);
+  });
 }
 
 function openModal(mode, entry) {
@@ -340,48 +781,31 @@ function closeModal() {
   modalState.entry = null;
 }
 
-function renderModal(entry, mode) {
-  if (!modalBody) return;
-  modalBody.replaceChildren();
-  const title = document.createElement("h3");
-  title.textContent = pickLang(entry.title) || t("academy_default_title", "未命名课程");
-  const subtitle = document.createElement("p");
-  subtitle.className = "academy-status";
-  subtitle.textContent = pickLang(entry.summary) || pickLang(entry.subtitle) || "";
-  modalBody.append(title, subtitle);
-
-  const content = document.createElement("div");
-  content.className = "academy-modal__content";
-  const html = pickLang(entry.content);
-  if (html) {
-    content.innerHTML = html;
-  } else {
-    const fallback = document.createElement("p");
-    fallback.textContent = t("academy_detail_placeholder", "详细内容即将上线。");
-    content.appendChild(fallback);
-  }
-  modalBody.appendChild(content);
-
-  if (mode === "practice" && Array.isArray(entry.practice) && entry.practice.length) {
-    modalBody.appendChild(renderPractice(entry));
-  }
-}
-
 function renderPractice(entry) {
   const container = document.createElement("section");
   container.className = "academy-practice";
   const heading = document.createElement("h4");
-  heading.textContent = t("academy_practice_title", "练习");
+  heading.textContent = t("academy_practice_title", "Start quiz");
   container.appendChild(heading);
+
   const form = document.createElement("form");
   form.dataset.practiceForm = "true";
+  form.className = "academy-practice__form";
   form.addEventListener("submit", (event) => handlePracticeSubmit(event, entry));
+
   entry.practice.forEach((question, index) => {
     const fieldset = document.createElement("fieldset");
     fieldset.className = "academy-practice__item";
+
     const legend = document.createElement("legend");
-    legend.textContent = `${index + 1}. ${pickLang(question.question) || t("academy_practice_question", "练习题")}`;
+    legend.textContent = t("academy_practice_problem_label", "Question {index}", { index: index + 1 });
     fieldset.appendChild(legend);
+
+    const prompt = document.createElement("p");
+    prompt.className = "academy-practice__prompt";
+    prompt.textContent = pickLang(question.question) || t("academy_practice_question", "Practice question");
+    fieldset.appendChild(prompt);
+
     const name = `q-${index}`;
     if (question.type === "multi" && Array.isArray(question.options)) {
       question.options.forEach((option, optIndex) => {
@@ -411,43 +835,52 @@ function renderPractice(entry) {
       const input = document.createElement("input");
       input.type = "text";
       input.name = name;
-      input.placeholder = t("academy_practice_input_placeholder", "请输入答案");
+      input.placeholder = t("academy_practice_input_placeholder", "Enter your answer");
       fieldset.appendChild(input);
     }
+
     const feedback = document.createElement("p");
     feedback.className = "academy-practice__feedback";
     feedback.dataset.feedbackFor = name;
     feedback.hidden = true;
     fieldset.appendChild(feedback);
+
     form.appendChild(fieldset);
   });
+
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.className = "academy-btn academy-btn--primary";
-  submit.textContent = t("academy_practice_submit", "提交答案");
+  submit.textContent = t("academy_practice_submit", "Submit answers");
   form.appendChild(submit);
+
   const note = document.createElement("p");
   note.className = "academy-status";
   note.dataset.role = "practice-summary";
+  note.textContent = "";
   container.append(form, note);
+  refreshMath(container);
   return container;
 }
 
 function handlePracticeSubmit(event, entry) {
   event.preventDefault();
   const form = event.currentTarget;
-  const data = new FormData(form);
-  const results = gradePractice(entry.practice, data);
-  updatePracticeFeedback(form, results);
+  if (!(form instanceof HTMLFormElement)) return;
   const summary = form.parentElement?.querySelector('[data-role="practice-summary"]');
-  if (summary) {
-    summary.textContent = results.isPass
-      ? t("academy_practice_correct", "全部答对，太棒了！")
-      : t("academy_practice_incorrect", "再试一次，查看提示。");
-    summary.textContent += ` ${t("academy_practice_score", "得分：{score}", { score: `${results.correct}/${results.total}` })}`;
-  }
-  if (results.isPass) {
-    markLessonCompleted(entry, results.correct);
+  const note = summary instanceof HTMLElement ? summary : null;
+  const formData = new FormData(form);
+  const result = gradePractice(entry.practice, formData);
+  updatePracticeFeedback(form, result);
+  if (note) {
+    const score = Math.round((result.correct / result.total) * 100);
+    if (result.isPass) {
+      note.textContent = t("academy_practice_correct", "Great job—you nailed every question!");
+      markLessonCompleted(entry, result.correct);
+    } else {
+      note.textContent = t("academy_practice_incorrect", "Not quite. Review the hints and try again.");
+    }
+    note.dataset.score = String(score);
   }
 }
 
@@ -457,8 +890,8 @@ function updatePracticeFeedback(form, results) {
     if (!feedback) return;
     feedback.hidden = false;
     feedback.textContent = item.correct
-      ? t("academy_practice_feedback_correct", "回答正确")
-      : `${t("academy_practice_feedback_incorrect", "正确答案：")} ${item.answerText}`;
+      ? t("academy_practice_feedback_correct", "Correct")
+      : `${t("academy_practice_feedback_incorrect", "Correct answer:")} ${item.answerText}`;
   });
 }
 
@@ -477,10 +910,16 @@ function gradePractice(questions, formData) {
         : [];
       isCorrect = values.length === expected.length && values.every((val, idx) => val === expected[idx]);
     } else if (Array.isArray(question.options)) {
-      const value = Number(formData.get(name));
-      isCorrect = Number(correctAnswer) === value;
+      const raw = formData.get(name);
+      if (raw === null) {
+        isCorrect = false;
+      } else {
+        const value = Number(raw);
+        isCorrect = !Number.isNaN(value) && Number(correctAnswer) === value;
+      }
     } else {
-      const value = String(formData.get(name) || "").trim().toLowerCase();
+      const raw = formData.get(name);
+      const value = typeof raw === "string" ? raw.trim().toLowerCase() : "";
       if (typeof correctAnswer === "string") {
         isCorrect = value === correctAnswer.trim().toLowerCase();
       }
@@ -516,7 +955,22 @@ function markLessonCompleted(entry, correctCount) {
     syncBadges();
     saveProgress();
     renderProgress();
+    sortLessonsForPersonalization(state.filtered);
+    renderLessons();
+    updatePagination();
   }
+}
+
+function sortLessonsForPersonalization(list) {
+  if (!state.filters.personalize || !Array.isArray(list) || !list.length) return list;
+  if (!Object.keys(progressState.completed).length) return list;
+  list.sort((a, b) => {
+    const aCompleted = Boolean(progressState.completed[a.id]);
+    const bCompleted = Boolean(progressState.completed[b.id]);
+    if (aCompleted === bCompleted) return 0;
+    return aCompleted ? 1 : -1;
+  });
+  return list;
 }
 
 function updateStreak() {
@@ -584,6 +1038,23 @@ function renderHeatmap() {
     grid.appendChild(cell);
   });
   host.appendChild(grid);
+}
+
+function refreshMath(target) {
+  if (typeof window.renderMathInElement !== "function") return;
+  const root = target || document.body;
+  try {
+    window.renderMathInElement(root, {
+      delimiters: [
+        { left: "$$", right: "$$", display: true },
+        { left: "\\(", right: "\\)", display: false },
+        { left: "$", right: "$", display: false },
+      ],
+      throwOnError: false,
+    });
+  } catch (error) {
+    console.warn("Math rendering failed", error);
+  }
 }
 
 function collectHeatmapData() {
@@ -688,6 +1159,9 @@ async function fetchWithCache(url, key) {
   }
 }
 
+/**
+ * Normalizes upstream JSON into hydrated lesson objects for rendering/filtering.
+ */
 function normalizeLessons(payload) {
   const list = Array.isArray(payload)
     ? payload
