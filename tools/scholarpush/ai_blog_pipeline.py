@@ -2194,7 +2194,31 @@ def make_scholarpush(entries, n_items=8, daily=None):
 
             # 标题 i18n：中文来自 headline；英文来自 entries
             zh_title = (it.get("headline") or "").strip()
-            en_title = (entries_map.get(u_norm, {}).get("title_en") or zh_title)
+            
+            # Try to find matched entry to get English title
+            matched_entry = entries_map.get(u_norm)
+            if not matched_entry:
+                # Try to find by code/project link
+                other_links = [it.get("links", {}).get(k) for k in ["code", "project"] if it.get("links", {}).get(k) not in (None, "N/A", "")]
+                for link in other_links:
+                    norm_link = _normalize_url(link)
+                    if not norm_link: continue
+                    if norm_link in entries_map:
+                        matched_entry = entries_map[norm_link]
+                        break
+                    # Fallback: search in base_entries if URL matches (e.g. un-normalized match or different normalization)
+                    for entry in base_entries:
+                        if _normalize_url(entry.get("url")) == norm_link:
+                             matched_entry = {
+                                "title_en": BS(entry.get("title", ""), "html.parser").text.strip(),
+                                "summary_en": _clean_arxiv_announce_prefix(BS(entry.get("summary", ""), "html.parser").text.strip()),
+                                "ts": entry.get("ts", ""),
+                                "host": _hostname(entry.get("url")),
+                            }
+                             break
+                    if matched_entry: break
+
+            en_title = (matched_entry.get("title_en") if matched_entry else zh_title) or zh_title
             it["title_i18n"] = {"zh": zh_title, "en": en_title}
 
             # 摘要 i18n（中文）：统一使用 _best_zh_summary 以获得更长且信息更全的提要

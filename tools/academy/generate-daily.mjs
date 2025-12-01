@@ -123,7 +123,7 @@ function flattenTopics(levels) {
           baseId = slugify(topic.keywords[0]);
         }
         if (!baseId) {
-          baseId = `topic-${hashObject({ level: level.level, category: category.category, topic: topic.topic }).slice(0, 12)}`;
+          baseId = `lesson-${hashObject(topic.topic).slice(0, 8)}`;
         }
         items.push({
           id: baseId,
@@ -1010,9 +1010,12 @@ function coerceLesson(candidate, lesson, date, learnerProfile, toneProfile, blue
     });
   }
   const references = normalizeReferences(lesson.references, candidate, blueprint);
-  let idBase = slugify(candidate.title).replace(/^-+|[^a-z0-9-]|-+$/g, "");
+  let idBase = candidate.id;
   if (!idBase) {
-    idBase = `lesson-${hashObject(candidate.title).slice(0, 8)}`;
+    idBase = slugify(candidate.title).replace(/^-+|[^a-z0-9-]|-+$/g, "");
+    if (!idBase) {
+      idBase = `lesson-${hashObject(candidate.title).slice(0, 8)}`;
+    }
   }
   const id = `${date}-${idBase}`;
   const audio = {

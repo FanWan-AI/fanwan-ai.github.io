@@ -3,7 +3,7 @@ name: "Academy Daily: LLM + TTS"
 on:
   workflow_dispatch:
   schedule:
-    - cron: '20 0 * * *'
+    - cron: '20 0,12 * * *'
 
 permissions:
   contents: write
@@ -50,7 +50,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install dashscope requests
 
-      - name: Run Academy pipeline twice
+      - name: Run Academy pipeline
         env:
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
@@ -60,18 +60,16 @@ jobs:
           git config user.name "$GIT_AUTHOR_NAME"
           git config user.email "$GIT_AUTHOR_EMAIL"
 
-          for iteration in 1 2; do
-            echo "::group::Academy pipeline run ${iteration}"
-            npm run academy:generate
-            npm run academy:validate
-            npm run academy:tts
+          echo "::group::Academy pipeline run"
+          npm run academy:generate
+          npm run academy:validate
+          npm run academy:tts
 
-            if git diff --quiet; then
-              echo "Run ${iteration}: No changes to commit"
-            else
-              git add -A
-              git commit -m "chore(academy): daily lesson & tts auto-update (run ${iteration}) [skip ci]" || true
-              git push || true
-            fi
-            echo "::endgroup::"
-          done
+          if git diff --quiet; then
+            echo "No changes to commit"
+          else
+            git add -A
+            git commit -m "chore(academy): daily lesson & tts auto-update [skip ci]" || true
+            git push || true
+          fi
+          echo "::endgroup::"
