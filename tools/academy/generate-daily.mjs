@@ -276,9 +276,16 @@ function daysBetween(a, b) {
 function pickCandidate(candidates, lessons) {
   if (!candidates.length) return null;
   const summary = summarizeHistory(lessons);
-  const scored = candidates.map((candidate) => ({ candidate, score: scoreCandidate(candidate, lessons, summary) }));
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0].candidate;
+  // Strictly follow the order in topics.json (candidates array)
+  // Find the first candidate that has not been generated yet
+  for (const candidate of candidates) {
+    if (!summary.has(candidate.id)) {
+      return candidate;
+    }
+  }
+  // If all topics are covered, return null
+  console.warn("All topics have been covered. No new candidate found.");
+  return null;
 }
 
 function difficultyLabel(candidate) {
@@ -1529,7 +1536,11 @@ async function main() {
   if (!topics.length) {
     throw new Error("No academy topics available");
   }
-  const candidate = pickCandidate(topics, lessons) || topics[0];
+  const candidate = pickCandidate(topics, lessons);
+  if (!candidate) {
+    console.log("No new topics available to generate.");
+    return;
+  }
   const lesson = await generateLesson(candidate, lessons);
     const merged = uniqueBy([lesson, ...lessons], (entry) => entry?.id || `${entry?.date}-${entry?.title?.zh}`);
     const sorted = merged.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
