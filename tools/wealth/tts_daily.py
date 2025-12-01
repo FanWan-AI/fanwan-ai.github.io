@@ -296,7 +296,10 @@ def _collect_segments(entry: dict, lang: str) -> List[str]:
             if not text:
                 continue
             text = text.rstrip("。")
-            segments.append(f"重点洞察{idx}：{text}。")
+            if idx == 1:
+                segments.append(f"重点洞察 1：{text}。")
+            else:
+                segments.append(f"{idx}：{text}。")
 
     practice_raw = entry.get("practice")
     practice_text = ""
@@ -313,7 +316,10 @@ def _collect_segments(entry: dict, lang: str) -> List[str]:
             part = part.lstrip("-•0123456789. ")
             cleaned_lines.append(part)
         for idx, item in enumerate(cleaned_lines, start=1):
-            segments.append(f"实践建议{idx}：{item}")
+            if idx == 1:
+                segments.append(f"实践建议 1：{item}")
+            else:
+                segments.append(f"{idx}：{item}")
 
     risk_raw = entry.get("risk_notes")
     risk_text = ""
@@ -670,7 +676,8 @@ def main() -> int:
     voice = (os.getenv("DASHSCOPE_TTS_VOICE") or "Cherry").strip()
     if voice.lower() == "zhitian_emo":
         voice = "Cherry"
-    keep_flag = (os.getenv("DASHSCOPE_TTS_KEEP_SEGMENTS") or "1").strip().lower()
+    # Default to 0 (False) to ensure we get a single merged file by default, solving the "segments not combined" issue.
+    keep_flag = (os.getenv("DASHSCOPE_TTS_KEEP_SEGMENTS") or "0").strip().lower()
     keep_segments = keep_flag not in {"0", "false", "no"}
 
     with open(DATA_PATH, "r", encoding="utf-8") as f:

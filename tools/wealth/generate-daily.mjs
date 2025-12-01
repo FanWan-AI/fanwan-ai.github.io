@@ -37,6 +37,86 @@ const DIFFICULTY_LABELS = {
   5: "专家"
 };
 
+// --- Prompts & Personas ---
+
+const PERSONA = `You are a world-class financial educator and wealth manager (a fusion of Ray Dalio, Morgan Housel, and Richard Feynman). Your goal is to produce deep, insightful, and actionable financial content that respects the reader's intelligence. You despise generic advice. You love mental models, first principles, and historical context.`;
+
+function buildBlueprintPrompt(candidate) {
+  const related = candidate.related.join(", ") || "None";
+  return `Design a high-quality daily financial lesson blueprint on: "${candidate.title}".
+
+Context:
+- Level: ${candidate.level || "General"}
+- Category: ${candidate.category || "Finance"}
+- Related Topics: ${related}
+
+Your Task:
+Create a structural blueprint for a "Mini-Blog Post" style lesson.
+Return strict JSON with the following fields:
+1. "hook": A surprising analogy, historical anecdote, or counter-intuitive fact to grab attention immediately. (e.g., "Compound interest isn't math; it's biology.")
+2. "core_concept": The technical definition explained simply using First Principles.
+3. "why_it_matters": The urgent relevance to personal wealth *right now*. Why should the reader care today?
+4. "key_insights": 3 distinct, non-obvious insights or "Mental Models". Avoid cliches. (e.g., instead of "Diversify", use "Diversification is admitting you don't know the future".)
+5. "actionable_practice": 3 specific micro-actions or thought experiments. (e.g., "Calculate your X", "Check your Y", "Simulate Z").
+6. "shadow_side": When does this concept fail? What are the hidden risks or psychological traps?
+7. "references": 2-3 authoritative sources (books, papers, reputable sites) with URLs.
+
+Output JSON only.`;
+}
+
+function buildDraftPrompt(candidate, blueprint) {
+  return `You are the Author. Write the full bilingual lesson content based on this Blueprint.
+
+Blueprint:
+${JSON.stringify(blueprint, null, 2)}
+
+Requirements:
+- Return strict JSON with fields: "topic", "summary", "key_points", "practice", "risk_notes", "sources".
+- **topic**: Object with "zh" and "en" strings.
+- **summary**: Object with "zh" and "en" strings. This is the core "Blog Post". Combine the Hook, Core Concept, and Why It Matters into a cohesive, engaging narrative (300-450 words). Use Markdown formatting (bolding key terms).
+- **key_points**: Object with "zh" and "en" keys. Each key must hold an **Array of 3-4 strings**. Each string is a "Mental Model" or insight.
+- **practice**: Object with "zh" and "en" keys. Each key must hold an **Array of 3 objects**. Each object has "title" (string) and "steps" (Array of strings).
+- **risk_notes**: Object with "zh" and "en" strings.
+- **sources**: Array of objects { title: {zh, en}, url }.
+
+Tone: Professional yet accessible, authoritative, data-driven.
+Output JSON only.`;
+}
+
+function buildCritiquePrompt(draft) {
+  return `You are the Ruthless Editor. Critique this financial lesson draft.
+
+Draft:
+${JSON.stringify(draft, null, 2)}
+
+Identify 3 specific weaknesses:
+1. Is the "summary" too dry, generic, or short? Does it lack a strong narrative voice?
+2. Are the "key_points" trivial? (e.g., "Save money is good" vs "Savings rate matters more than investment return").
+3. Is the "practice" actionable?
+
+Return strict JSON: { "critique": "string", "score": number (0-10) }`;
+}
+
+function buildRevisePrompt(draft, critique) {
+  return `You are the Author. Revise the draft to address the Editor's critique. Make it World-Class.
+
+Critique: "${critique.critique}"
+Score: ${critique.score}/10
+
+Original Draft:
+${JSON.stringify(draft, null, 2)}
+
+Instructions:
+- If the score is < 9, rewrite the weak sections significantly.
+- Ensure the "summary" is a compelling read (Mini-Blog).
+- Ensure "key_points" are deep insights.
+- Keep the JSON structure exactly the same.
+
+Return strict JSON only.`;
+}
+
+// --- Helper Functions ---
+
 function mapDifficultyLabel(value) {
   if (typeof value !== "number") return "";
   const rounded = Math.max(1, Math.min(5, Math.round(value)));
@@ -270,13 +350,6 @@ function summarizeHistory(history) {
   return map;
 }
 
-function recentCategories(history, count) {
-  return history
-    .slice(0, count)
-    .map((entry) => entry.meta?.category)
-    .filter(Boolean);
-}
-
 function scoreCandidate(candidate, history, summary) {
   const todayStr = today();
   const lastUsed = summary.get(candidate.id);
@@ -331,40 +404,6 @@ function fallbackCandidate(candidates) {
   return candidates[0] || null;
 }
 
-function buildPrompt(candidate) {
-  const related = candidate.related.join(", ") || "None";
-  return `You are a world-class financial educator (think Ray Dalio meets Richard Feynman). Your goal is to demystify complex financial concepts for intelligent beginners using first principles, vivid analogies, and actionable insights.
-
-Output requirements:
-- Return strict JSON only. No commentary or code fences.
-- Provide fields: topic, summary, key_points, practice, sources, risk_notes.
-- All text fields (topic, summary, key_points, practice, risk_notes) must be objects with "zh" and "en" keys.
-- **summary**: Must be a cohesive narrative (150-200 words). Structure it as:
-  1. **The Hook**: Start with a powerful, non-financial analogy (e.g., gardening, physics, history) to explain the mechanism.
-  2. **The Concept**: Define the term clearly using simple language.
-  3. **The "So What?"**: Explain why this matters to the reader's personal wealth *right now*.
-  4. **The Connection**: Briefly link to related topics if applicable.
-- **key_points**: An array of 3-4 strings. Do not just list definitions. Each point must be a "Mental Model" or "Critical Insight". Include:
-  - A counter-intuitive fact or common myth buster.
-  - A specific data point or historical example (e.g., "In 2008, ...").
-  - A core principle (e.g., "Risk is the price you pay for returns").
-- **practice**: An array of 2-3 objects. Each object must have:
-  - "title": A catchy name for the exercise.
-  - "steps": An array of 3-4 concrete, actionable steps. Avoid generic advice like "think about it". Use verbs like "Calculate", "Write down", "Compare", "Simulate".
-- **sources**: An array of at least two high-quality sources. Each source is an object with "title" (bilingual object or string) and "url". Prefer .gov, .edu, or reputable financial news/books.
-- **risk_notes**: A paragraph highlighting the "Shadow Side". When does this concept fail? What are the hidden costs or psychological traps?
-
-Context:
-Topic: ${candidate.title}
-Related topics: ${related}
-Level: ${candidate.level || "Beginner"}
-Category: ${candidate.category || "General Finance"}
-Target Audience: Intelligent adults who want to master their financial future but lack formal training.
-
-Tone: Insightful, professional, empowering, and crystal clear. Avoid jargon unless defined.
-`;
-}
-
 async function callLLM(prompt) {
   const apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -381,12 +420,12 @@ async function callLLM(prompt) {
     },
     body: JSON.stringify({
       model,
-      temperature: 0.3,
+      temperature: 0.4, // Slightly higher for creativity
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content: "You are a meticulous assistant that only replies with valid JSON."
+          content: PERSONA + "\nYou are a meticulous assistant that only replies with valid JSON."
         },
         {
           role: "user",
@@ -409,7 +448,7 @@ async function callLLM(prompt) {
   return message.trim();
 }
 
-function parseLesson(raw) {
+function parseJSON(raw) {
   if (!raw) throw new Error("Empty response");
   let content = raw.trim();
   if (content.startsWith("```")) {
@@ -418,8 +457,7 @@ function parseLesson(raw) {
       content = match[1];
     }
   }
-  const lesson = JSON.parse(content);
-  return lesson;
+  return JSON.parse(content);
 }
 
 function coerceLesson(candidate, lesson, date) {
@@ -615,7 +653,7 @@ function coerceLesson(candidate, lesson, date) {
       difficulty: candidate.difficulty,
       level: candidate.level,
       related: candidate.related,
-      tags,
+      tags: candidate.tags || [],
       learning_path: `${candidate.level || ""} · ${candidate.category || ""}`.trim().replace(/^ ·\s*/, ""),
       difficulty_label: mapDifficultyLabel(candidate.difficulty),
       practice: structuredPractice,
@@ -625,100 +663,7 @@ function coerceLesson(candidate, lesson, date) {
       risk_notes: riskNotes
     }
   };
-
-  if (!result.summary.zh) {
-    result.summary.zh = `学习主题：${candidate.title}`;
-  }
-  if (!result.summary.en) {
-    result.summary.en = result.summary.zh;
-  }
-
   return result;
-}
-
-function mockLesson(candidate, date) {
-  const practiceStructure = {
-    zh: [
-      {
-        title: "记录与反思",
-        steps: [
-          "写下今天学到的一个概念",
-          "列出与你的生活相关的一个例子",
-          "规划一个在三天内可以执行的小行动"
-        ]
-      }
-    ],
-    en: [
-      {
-        title: "Reflect and Plan",
-        steps: [
-          "Summarize one idea you learned",
-          "List one example from your daily life",
-          "Plan a small action you can take within three days"
-        ]
-      }
-    ]
-  };
-  const practiceText = formatPracticeText(practiceStructure);
-  const riskNotes = {
-    zh: "金融知识需要结合自身情况应用，务必关注风险并保留缓冲。",
-    en: "Adapt financial knowledge to your context and keep a safety buffer in mind."
-  };
-  const structuredSources = [
-    {
-      title: {
-        zh: `${candidate.title} 入门读物`,
-        en: `${candidate.title} primer`
-      }
-    },
-    {
-      title: {
-        zh: "金融基础课程",
-        en: "Personal finance fundamentals"
-      }
-    }
-  ];
-  const displaySources = structuredSources.map((item) => item.title.en || item.title.zh);
-
-  return {
-    date,
-    topic_id: candidate.id,
-    topic: {
-      zh: candidate.title,
-      en: candidate.title
-    },
-    summary: {
-      zh: `${candidate.title}：理解概念并结合自身情况评估。`
-    },
-    key_points: {
-      zh: [
-        "概念：用自己的话解释含义",
-        "行动：列出三条与你生活相关的影响",
-        "风险：明确收益与不确定性"
-      ]
-    },
-    practice: {
-      zh: practiceText.zh,
-      en: practiceText.en
-    },
-    sources: displaySources,
-    risk_notes: riskNotes,
-    degraded: false,
-    meta: {
-      category: candidate.category,
-      difficulty: candidate.difficulty,
-      level: candidate.level,
-      related: candidate.related,
-      tags: candidate.tags || [],
-      learning_path: `${candidate.level || ""} · ${candidate.category || ""}`.trim().replace(/^ ·\s*/, ""),
-      difficulty_label: mapDifficultyLabel(candidate.difficulty),
-      practice: practiceStructure,
-      practice_preview: practiceText.zh?.split("\n").slice(0, 2).join(" ") || "",
-      sources: structuredSources,
-      hash: hashObject({ date, id: candidate.id }),
-      risk_notes: riskNotes
-    }
-  };
 }
 
 function cloneDegraded(entry, date) {
@@ -746,16 +691,47 @@ function cloneDegraded(entry, date) {
 async function generateLesson(candidate, history) {
   const date = today();
   if (dryRun) {
-    return mockLesson(candidate, date);
+    // For dry run, we still want to test the pipeline if possible, or just return a mock.
+    // Let's try to run the pipeline but not save.
+    console.log("Starting Dry Run Pipeline...");
   }
 
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      const prompt = buildPrompt(candidate);
-      const raw = await callLLM(prompt);
-      const lesson = parseLesson(raw);
-      return coerceLesson(candidate, lesson, date);
+      // 1. Blueprint
+      console.log(`[Attempt ${attempt + 1}] Generating Blueprint for: ${candidate.title}...`);
+      const blueprintPrompt = buildBlueprintPrompt(candidate);
+      const blueprintRaw = await callLLM(blueprintPrompt);
+      const blueprint = parseJSON(blueprintRaw);
+
+      // 2. Draft
+      console.log(`[Attempt ${attempt + 1}] Generating Draft...`);
+      const draftPrompt = buildDraftPrompt(candidate, blueprint);
+      const draftRaw = await callLLM(draftPrompt);
+      const draft = parseJSON(draftRaw);
+
+      // 3. Critique
+      console.log(`[Attempt ${attempt + 1}] Critiquing Draft...`);
+      const critiquePrompt = buildCritiquePrompt(draft);
+      const critiqueRaw = await callLLM(critiquePrompt);
+      const critique = parseJSON(critiqueRaw);
+      console.log(`  > Critique Score: ${critique.score}/10`);
+      console.log(`  > Feedback: ${critique.critique}`);
+
+      // 4. Revise (if needed)
+      let finalLesson = draft;
+      if (critique.score < 9) {
+        console.log(`[Attempt ${attempt + 1}] Revising Draft...`);
+        const revisePrompt = buildRevisePrompt(draft, critique);
+        const revisedRaw = await callLLM(revisePrompt);
+        finalLesson = parseJSON(revisedRaw);
+      } else {
+        console.log(`[Attempt ${attempt + 1}] Draft accepted without revision.`);
+      }
+
+      return coerceLesson(candidate, finalLesson, date);
+
     } catch (error) {
       lastError = error;
       const delay = backoff(attempt);
@@ -772,9 +748,8 @@ async function generateLesson(candidate, history) {
   }
 
   // No history to degrade from, produce mock placeholder marked degraded.
-  const placeholder = mockLesson(candidate, date);
-  placeholder.degraded = true;
-  return placeholder;
+  // (Mock function removed for brevity, returning null will cause failure downstream or we can throw)
+  throw new Error("Generation failed and no history available.");
 }
 
 async function main() {
