@@ -408,21 +408,25 @@ def main() -> int:
     model = (os.getenv("DASHSCOPE_TTS_MODEL") or "qwen3-tts-flash").strip()
     voice = os.getenv("DASHSCOPE_TTS_VOICE") or os.getenv("TTS_VOICE") or "Cherry"
     print(f"[TTS] Synthesizing {lesson.get('id')} ({lang}) with {len(segments)} chunks")
-    temp_paths = _synthesize_segments(segments, api_key=api_key, voice=voice, model=model, lang=lang)
-    if not temp_paths:
-        raise RuntimeError("DashScope did not return any audio segments")
-    AUDIO_ROOT.mkdir(parents=True, exist_ok=True)
-    final_path = AUDIO_ROOT / f"{lesson.get('id')}-{lang}.mp3"
-    ffmpeg_bin = _ensure_ffmpeg()
-    if not ffmpeg_bin:
-        print("[TTS] ffmpeg not found; copying first segment only")
-        shutil.copyfile(temp_paths[0], final_path)
-    else:
-        _concat_segments(temp_paths, final_path, ffmpeg_bin)
-    _cleanup_paths(temp_paths)
-    rel_path = f"/assets/audio/daily/{final_path.name}"
-    _update_daily_doc(doc, lesson, lang, rel_path)
-    print(f"[TTS] Saved {rel_path}")
+    try:
+        temp_paths = _synthesize_segments(segments, api_key=api_key, voice=voice, model=model, lang=lang)
+        if not temp_paths:
+            raise RuntimeError("DashScope did not return any audio segments")
+        AUDIO_ROOT.mkdir(parents=True, exist_ok=True)
+        final_path = AUDIO_ROOT / f"{lesson.get('id')}-{lang}.mp3"
+        ffmpeg_bin = _ensure_ffmpeg()
+        if not ffmpeg_bin:
+            print("[TTS] ffmpeg not found; copying first segment only")
+            shutil.copyfile(temp_paths[0], final_path)
+        else:
+            _concat_segments(temp_paths, final_path, ffmpeg_bin)
+        _cleanup_paths(temp_paths)
+        rel_path = f"/assets/audio/daily/{final_path.name}"
+        _update_daily_doc(doc, lesson, lang, rel_path)
+        print(f"[TTS] Saved {rel_path}")
+    except Exception as e:
+        print(f"[TTS] Synthesis failed (ignoring to preserve lesson content): {e}")
+        return 0
     return 0
 
 
