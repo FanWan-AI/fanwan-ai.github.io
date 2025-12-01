@@ -546,11 +546,24 @@ function renderMetaLine(entry, { compact = false } = {}) {
 	return line;
 }
 
+function parseMarkdown(text) {
+	if (!text) return "";
+	let safeText = String(text)
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#039;");
+	safeText = safeText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+	safeText = safeText.replace(/\n/g, "<br>");
+	return safeText;
+}
+
 function appendMultiline(target, text) {
 	if (!target) return;
 	const str = typeof text === "string" ? text : text == null ? "" : String(text);
 	if (!str) return;
-	target.textContent = str.replace(/\r\n/g, "\n");
+	target.innerHTML = parseMarkdown(str);
 }
 
 // Trim helper to remove leading bullets or numbering from summary snippets.
@@ -993,7 +1006,9 @@ function createDailyCard(entry) {
 	}
 
 	const summary = document.createElement("p");
-	summary.textContent = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
+	const fullSummary = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
+	const firstParagraph = fullSummary.split(/\n+/)[0];
+	summary.innerHTML = parseMarkdown(firstParagraph);
 	card.append(summary);
 
 	if (audioSlot) {
@@ -1006,7 +1021,7 @@ function createDailyCard(entry) {
 		list.className = "wealth-points";
 		points.slice(0, 5).forEach((point) => {
 			const li = document.createElement("li");
-			li.textContent = point;
+			li.innerHTML = parseMarkdown(point);
 			list.append(li);
 		});
 		card.append(list);
@@ -1074,7 +1089,7 @@ function createTimelineCard(entry, index) {
 	summary.className = "wealth-track-summary";
 	const preview = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
 	const summaryText = normalizeSummary(preview);
-	summary.textContent = summaryText;
+	summary.innerHTML = parseMarkdown(summaryText);
 	button.append(summary);
 
 	const tagsRow = document.createElement("div");
