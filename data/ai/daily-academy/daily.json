@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-02T10:36:43.096Z",
+  "generatedAt": "2025-12-02T12:44:28.552Z",
   "lessons": [
+    {
+      "id": "2025-12-02-logistic-regression",
+      "date": "2025-12-02",
+      "title": {
+        "zh": "逻辑回归与分类",
+        "en": "Logistic Regression and Classification"
+      },
+      "summary": {
+        "zh": "逻辑回归是监督学习中用于二分类问题的经典算法，通过Sigmoid函数将线性回归结果映射到概率空间，广泛应用于金融风控、医疗诊断和推荐系统等领域，课程围绕 Supervised Learning 中的可执行路径展开。内容串联 从线性回归到分类问题、损失函数与优化原理、多分类扩展与正则化应用，梳理定义、推导与迁移步骤，以 泰坦尼克号数据集（Kaggle提供） worked example 讲解数据与验证指标，提示如何跟踪 准确率 等质量信号，补充 scikit-learn LogisticRegression 等工具使用策略。",
+        "en": "逻辑回归与分类 is positioned for Supervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从线性回归到分类问题, 损失函数与优化原理, 多分类扩展与正则化应用 to translate theory into executable steps, uses the 泰坦尼克号数据集（Kaggle提供） worked example to show data prep and validation, calls out metrics such as 准确率, references tooling like scikit-learn LogisticRegression."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "logistic regression",
+        "classification"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的基础框架出发，深入探讨逻辑回归这一经典分类算法。您将理解如何将线性回归的连续输出转化为概率预测，掌握交叉熵损失函数的数学原理，并学习如何将模型扩展到多分类场景。通过泰坦尼克号生存预测、垃圾邮件分类等实际案例，您将获得从理论推导到代码实现的完整知识路径。</p>\n\n<h3>从线性回归到分类问题</h3>\n<p>线性回归擅长预测连续数值，但现实中的许多决策问题需要离散的分类结果。例如，银行需要判断客户是否会违约（是/否），医疗系统需要诊断患者是否患病（阳性/阴性）。这些二分类问题要求模型输出概率而非连续值。</p>\n<p>逻辑回归通过Sigmoid函数（又称逻辑函数）解决这一转换需求。该函数将线性组合 $z = w^Tx + b$ 映射到(0,1)区间：</p>\n<pre><code>σ(z) = 1 / (1 + e^{-z})</code></pre>\n<p>这个S形曲线具有重要特性：当z趋近正无穷时，σ(z)趋近1；当z趋近负无穷时，σ(z)趋近0；在z=0处，σ(z)=0.5，形成自然的决策边界。在Kaggle的泰坦尼克号生存预测竞赛中（来源：Kaggle，2012），参赛者使用逻辑回归基于乘客年龄、性别、舱位等级等特征预测生存概率，将连续特征转化为生存/死亡的二分类预测。</p>\n<p>以下使用scikit-learn在泰坦尼克号数据集上的示例展示了基本流程：</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\n\n# 数据预处理后\nX_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)\nmodel = LogisticRegression()\nmodel.fit(X_train, y_train)\npredictions = model.predict(X_test)\naccuracy = accuracy_score(y_test, predictions)  # 约0.78</code></pre>\n<p>这个简单的实现揭示了逻辑回归的核心优势：模型输出可直接解释为概率，决策边界是线性的（在特征空间中是超平面）。理解这一基础转换机制后，我们需要进一步探讨如何优化模型参数。</p>\n\n<h3>损失函数与优化原理</h3>\n<p>确定了概率输出形式后，逻辑回归需要衡量预测概率与真实标签之间的差异。与线性回归使用均方误差不同，分类问题需要专门的损失函数。</p>\n<p>交叉熵损失函数（Cross-Entropy Loss）从最大似然估计推导而来。对于单个样本，损失定义为：</p>\n<pre><code>L(y, p) = -[y·log(p) + (1-y)·log(1-p)]</code></pre>\n<p>其中y是真实标签（0或1），p是预测概率。这个函数具有凸性，保证了优化过程能找到全局最优解。在斯坦福大学CS229课程中（来源：CS229 Lecture Notes，2022），教授通过垃圾邮件分类案例详细推导了这一损失函数的数学基础。</p>\n<p>优化过程通常使用梯度下降算法。损失函数对权重w的梯度为：</p>\n<pre><code>∂L/∂w = (p - y)·x</code></pre>\n<p>权重更新公式为：</p>\n<pre><code>w := w - α·∂L/∂w</code></pre>\n<p>其中α是学习率，控制每次更新的步长。以下NumPy实现展示了自定义梯度下降的过程：</p>\n<pre><code>import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))\n\ndef gradient_descent(X, y, learning_rate=0.01, epochs=1000):\n    w = np.zeros(X.shape[1])\n    for epoch in range(epochs):\n        z = X.dot(w)\n        p = sigmoid(z)\n        gradient = X.T.dot(p - y) / len(y)\n        w -= learning_rate * gradient\n        # 可在此记录损失值用于可视化\n    return w</code></pre>\n<p>通过迭代更新，模型参数逐渐收敛到使损失最小化的值。这种优化框架不仅适用于逻辑回归，也为理解更复杂的神经网络训练奠定了基础。掌握了二分类问题的完整解决方案后，我们自然需要考虑更复杂的多分类场景。</p>\n\n<h3>多分类扩展与正则化应用</h3>\n<p>现实世界中的分类问题往往涉及多个类别，如手写数字识别（0-9共10类）、新闻主题分类等。逻辑回归可通过两种主要策略扩展到多分类问题。</p>\n<p>第一种是One-vs-Rest（OvR）策略：为每个类别训练一个二分类器，判断样本是否属于该类别。第二种是直接使用Softmax函数（多项逻辑回归），将输出转化为多个类别的概率分布：</p>\n<pre><code>P(y=k|x) = e^{w_k^Tx} / Σ_{j=1}^K e^{w_j^Tx}</code></pre>\n<p>其中K是类别总数。在MNIST手写数字识别任务中（来源：The MNIST Database，1998），研究者使用Softmax函数配合逻辑回归实现了多分类，测试准确率达到约92%。</p>\n<p>随着模型复杂度增加，过拟合风险也随之上升。正则化技术通过在损失函数中添加惩罚项来控制模型复杂度：</p>\n<ul>\n<li><strong>L1正则化</strong>：添加λΣ|w_i|项，倾向于产生稀疏权重，可用于特征选择</li>\n<li><strong>L2正则化</strong>：添加λΣw_i²项，使权重趋向于较小值，提高模型稳定性</li>\n</ul>\n<p>scikit-learn中的实现示例：</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\n\n# 多分类 + L2正则化\nmodel = LogisticRegression(\n    multi_class='multinomial',  # Softmax\n    solver='lbfgs',            # 优化算法\n    C=1.0,                     # 正则化强度的倒数，C越小正则化越强\n    max_iter=1000\n)\nmodel.fit(X_train, y_train)\naccuracy = model.score(X_test, y_test)</code></pre>\n<p>正则化参数C需要根据验证集性能进行调整。较小的C值增强正则化效果，防止过拟合但可能欠拟合；较大的C值减弱正则化，模型更复杂但可能过拟合。这种平衡艺术在实际应用中至关重要，特别是在业务敏感领域。</p>\n\n<h3>行业应用与前沿趋势</h3>\n<p>逻辑回归因其可解释性强、计算效率高、概率输出直观等优点，在多个行业有成熟应用。模型系数可直接解释为特征对结果的影响程度，这在需要透明决策的领域尤为重要。</p>\n<p>在金融风控领域，FICO信用评分系统使用逻辑回归预测贷款违约概率（来源：FICO Score，2023）。基于收入、负债收入比、信用历史长度等特征，模型输出违约概率，银行据此制定差异化利率策略。以下展示了简化版的信用评分API实现：</p>\n<pre><code>import pickle\nimport numpy as np\n\n# 加载训练好的模型\nwith open('credit_model.pkl', 'rb') as f:\n    model = pickle.load(f)\n\ndef predict_credit_risk(features):\n    \"\"\"预测违约概率并给出决策建议\"\"\"\n    # 特征应与训练时顺序一致\n    prob_default = model.predict_proba([features])[0][1]\n    \n    if prob_default < 0.1:\n        decision = \"自动批准\"\n        rate = \"优惠利率\"\n    elif prob_default < 0.3:\n        decision = \"人工审核\"\n        rate = \"标准利率\"\n    else:\n        decision = \"建议拒绝\"\n        rate = \"不适用\"\n    \n    return {\n        \"default_probability\": round(prob_default, 4),\n        \"decision\": decision,\n        \"recommended_rate\": rate\n    }\n\n# 示例调用\nsample_client = [45000, 0.35, 5, 1, 0]  # 月收入、负债比、信用年限等\nresult = predict_credit_risk(sample_client)\nprint(result)  # 输出: {'default_probability': 0.1562, 'decision': '人工审核', ...}</code></pre>\n<p>在医疗诊断中，逻辑回归用于疾病风险预测，如基于年龄、血压、胆固醇水平等预测心脏病发作概率。模型输出的概率值可帮助医生制定个性化预防方案。</p>\n<p>随着深度学习的发展，逻辑回归作为神经网络的基础组件继续发挥作用。实际上，单个神经元的激活函数常使用Sigmoid，而Softmax则是多分类神经网络的常用输出层。理解逻辑回归的数学原理为学习更复杂的深度学习模型奠定了坚实基础。</p>\n\n<p class=\"narrative-outro\">逻辑回归作为监督学习的基石算法，完美平衡了理论严谨性与实践可用性。从二分类的概率映射到多分类的扩展，从损失函数的数学推导到正则化的工程实践，这条学习路径为您打开了分类算法的大门。掌握这些原理后，您将能够更自信地处理实际业务中的分类问题，并为学习更复杂的机器学习模型做好准备。</p>",
+        "en": "<p class=\"narrative-intro\">This course explores logistic regression, a foundational classification algorithm in supervised learning. You'll learn how to transform continuous outputs into probability predictions, understand the mathematical principles behind cross-entropy loss, and extend the model to multi-class scenarios. Through practical cases like Titanic survival prediction and spam email classification, you'll gain a complete knowledge path from theoretical derivation to code implementation.</p>\n\n<h3>From Linear Regression to Classification Problems</h3>\n<p>Linear regression excels at predicting continuous values, but many real-world decision problems require discrete categorical outcomes. For instance, banks need to determine whether a client will default (yes/no), and healthcare systems must diagnose whether a patient has a disease (positive/negative). These binary classification problems require models to output probabilities rather than continuous values.</p>\n<p>Logistic regression addresses this transformation need through the Sigmoid function (also called the logistic function). This function maps the linear combination $z = w^Tx + b$ to the (0,1) interval:</p>\n<pre><code>σ(z) = 1 / (1 + e^{-z})</code></pre>\n<p>This S-shaped curve has important properties: as z approaches positive infinity, σ(z) approaches 1; as z approaches negative infinity, σ(z) approaches 0; at z=0, σ(z)=0.5, forming a natural decision boundary. In Kaggle's Titanic survival prediction competition (Source: Kaggle, 2012), participants used logistic regression to predict survival probability based on passenger age, gender, cabin class, and other features, transforming continuous features into binary survival/death predictions.</p>\n<p>The following scikit-learn example on the Titanic dataset demonstrates the basic workflow:</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\n\n# After data preprocessing\nX_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)\nmodel = LogisticRegression()\nmodel.fit(X_train, y_train)\npredictions = model.predict(X_test)\naccuracy = accuracy_score(y_test, predictions)  # Approximately 0.78</code></pre>\n<p>This simple implementation reveals logistic regression's core advantages: model outputs can be directly interpreted as probabilities, and decision boundaries are linear (hyperplanes in feature space). Understanding this fundamental transformation mechanism leads us to explore how to optimize model parameters.</p>\n\n<h3>Loss Functions and Optimization Principles</h3>\n<p>After establishing the probability output form, logistic regression needs to measure the difference between predicted probabilities and true labels. Unlike linear regression which uses mean squared error, classification problems require specialized loss functions.</p>\n<p>The cross-entropy loss function derives from maximum likelihood estimation. For a single sample, the loss is defined as:</p>\n<pre><code>L(y, p) = -[y·log(p) + (1-y)·log(1-p)]</code></pre>\n<p>where y is the true label (0 or 1) and p is the predicted probability. This function is convex, ensuring the optimization process can find the global optimum. In Stanford University's CS229 course (Source: CS229 Lecture Notes, 2022), instructors derive the mathematical foundation of this loss function through spam email classification cases.</p>\n<p>The optimization process typically uses gradient descent. The gradient of the loss function with respect to weights w is:</p>\n<pre><code>∂L/∂w = (p - y)·x</code></pre>\n<p>The weight update formula is:</p>\n<pre><code>w := w - α·∂L/∂w</code></pre>\n<p>where α is the learning rate, controlling the step size of each update. The following NumPy implementation demonstrates custom gradient descent:</p>\n<pre><code>import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))\n\ndef gradient_descent(X, y, learning_rate=0.01, epochs=1000):\n    w = np.zeros(X.shape[1])\n    for epoch in range(epochs):\n        z = X.dot(w)\n        p = sigmoid(z)\n        gradient = X.T.dot(p - y) / len(y)\n        w -= learning_rate * gradient\n        # Loss values can be recorded here for visualization\n    return w</code></pre>\n<p>Through iterative updates, model parameters gradually converge to values that minimize the loss. This optimization framework not only applies to logistic regression but also lays the foundation for understanding more complex neural network training. Having mastered the complete solution for binary classification, we naturally consider more complex multi-class scenarios.</p>\n\n<h3>Multi-class Extension and Regularization Applications</h3>\n<p>Real-world classification problems often involve multiple categories, such as handwritten digit recognition (10 classes from 0-9) or news topic classification. Logistic regression can be extended to multi-class problems through two main strategies.</p>\n<p>The first is the One-vs-Rest (OvR) strategy: train one binary classifier for each class to determine whether a sample belongs to that class. The second directly uses the Softmax function (multinomial logistic regression) to transform outputs into probability distributions across multiple classes:</p>\n<pre><code>P(y=k|x) = e^{w_k^Tx} / Σ_{j=1}^K e^{w_j^Tx}</code></pre>\n<p>where K is the total number of classes. In the MNIST handwritten digit recognition task (Source: The MNIST Database, 1998), researchers used the Softmax function with logistic regression to achieve multi-class classification with approximately 92% test accuracy.</p>\n<p>As model complexity increases, so does the risk of overfitting. Regularization techniques control model complexity by adding penalty terms to the loss function:</p>\n<ul>\n<li><strong>L1 Regularization</strong>: Adds λΣ|w_i| term, tends to produce sparse weights, useful for feature selection</li>\n<li><strong>L2 Regularization</strong>: Adds λΣw_i² term, drives weights toward smaller values, improves model stability</li>\n</ul>\n<p>Example implementation in scikit-learn:</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\n\n# Multi-class + L2 regularization\nmodel = LogisticRegression(\n    multi_class='multinomial',  # Softmax\n    solver='lbfgs',            # Optimization algorithm\n    C=1.0,                     # Inverse of regularization strength, smaller C means stronger regularization\n    max_iter=1000\n)\nmodel.fit(X_train, y_train)\naccuracy = model.score(X_test, y_test)</code></pre>\n<p>The regularization parameter C needs adjustment based on validation set performance. Smaller C values enhance regularization, preventing overfitting but potentially causing underfitting; larger C values weaken regularization, making models more complex but potentially overfitting. This balancing act is crucial in practical applications, especially in business-sensitive domains.</p>\n\n<h3>Industry Applications and Emerging Trends</h3>\n<p>Logistic regression has mature applications across multiple industries due to its strong interpretability, computational efficiency, and intuitive probability outputs. Model coefficients can be directly interpreted as the degree of feature influence on outcomes, which is particularly important in domains requiring transparent decision-making.</p>\n<p>In financial risk control, the FICO credit scoring system uses logistic regression to predict loan default probability (Source: FICO Score, 2023). Based on features like income, debt-to-income ratio, and credit history length, the model outputs default probability, allowing banks to develop differentiated interest rate strategies. The following shows a simplified credit scoring API implementation:</p>\n<pre><code>import pickle\nimport numpy as np\n\n# Load trained model\nwith open('credit_model.pkl', 'rb') as f:\n    model = pickle.load(f)\n\ndef predict_credit_risk(features):\n    \"\"\"Predict default probability and provide decision recommendations\"\"\"\n    # Features should be in the same order as during training\n    prob_default = model.predict_proba([features])[0][1]\n    \n    if prob_default < 0.1:\n        decision = \"Auto-approve\"\n        rate = \"Preferred rate\"\n    elif prob_default < 0.3:\n        decision = \"Manual review\"\n        rate = \"Standard rate\"\n    else:\n        decision = \"Recommend decline\"\n        rate = \"Not applicable\"\n    \n    return {\n        \"default_probability\": round(prob_default, 4),\n        \"decision\": decision,\n        \"recommended_rate\": rate\n    }\n\n# Example call\nsample_client = [45000, 0.35, 5, 1, 0]  # Monthly income, debt ratio, credit years, etc.\nresult = predict_credit_risk(sample_client)\nprint"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 结构总览 · 数据：课程大纲】在设计《逻辑回归与分类》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 逻辑回归与分类 · 结构总览 · Data: 课程大纲】When outlining \"逻辑回归与分类\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · worked example · 数据：实现二分类模型 数据/代码】在复现《逻辑回归与分类》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 逻辑回归与分类 · worked example · Data: 实现二分类模型 数据/代码】While reproducing the worked example in \"逻辑回归与分类\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《逻辑回归与分类》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 逻辑回归与分类 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"逻辑回归与分类\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 参考资料 · 数据：课程引用文献】当引用文献支撑《逻辑回归与分类》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 逻辑回归与分类 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"逻辑回归与分类\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn Documentation: Logistic Regression（scikit-learn，2023）",
+            "en": "Scikit-learn Documentation: Logistic Regression (scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-02-logistic-regression-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "Sigmoid",
+          "损失函数"
+        ],
+        "learningObjectives": [
+          "实现二分类模型",
+          "理解损失函数与优化"
+        ],
+        "personas": [
+          "数据分析师",
+          "开发者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 逻辑回归与分类 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 数据分析师、开发者，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据分析师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据分析师、开发者，帮助他们把 逻辑回归与分类 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "数据分析师",
+            "开发者"
+          ],
+          "personas": [
+            "数据分析师",
+            "开发者"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 逻辑回归与分类 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据分析师，你正在处理用户流失预测项目。如何将逻辑回归的Sigmoid函数概率输出，转化为业务可理解的分类决策阈值？",
+            "action_hint": "思考你的业务场景中，误判成本与收益的平衡点，并尝试用Python调整分类阈值观察准确率变化。"
+          },
+          {
+            "lang": "zh",
+            "question": "在开发推荐系统时，面对用户点击/未点击的二分类问题，逻辑回归的线性决策边界如何帮助你理解特征重要性？",
+            "action_hint": "回顾你最近处理的特征数据，尝试用逻辑回归系数分析哪些特征对分类影响最大，并可视化决策边界。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-02-linear-regression",
       "date": "2025-12-02",
