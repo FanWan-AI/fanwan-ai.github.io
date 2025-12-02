@@ -538,6 +538,22 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Mobile dropdown toggle
+  const dropdownToggles = document.querySelectorAll('.dropdown-toggle');
+  dropdownToggles.forEach(toggle => {
+    toggle.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', !expanded);
+      
+      const menu = toggle.closest('.has-dropdown').querySelector('.dropdown-menu');
+      if (menu) {
+        menu.classList.toggle('open');
+      }
+    });
+  });
+
   // Normalize top-level navigation anchors to root-relative paths.
   // This avoids 404s when the current page is inside a subfolder (e.g. /blog/foo.html)
   (function normalizeTopNavLinks(){
