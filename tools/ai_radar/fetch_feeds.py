@@ -73,6 +73,14 @@ def clean_hn_boilerplate(text: str) -> str:
     s = re.sub(r"\s{2,}", ' ', s).strip()
     return s
 
+def clean_title(title: str) -> str:
+    if not title:
+        return ''
+    # Remove HN prefixes like "Ask HN:", "Show HN:", "Tell HN:", "Launch HN:", "问HN:", "展示HN:", "HN展示:", "展示作品:", "展示项目:", "展示:"
+    # Also handle cases where there might be no colon or different spacing
+    pattern = r"^(Ask HN|Show HN|Tell HN|Launch HN|问\s*HN|展示\s*HN|HN\s*展示|展示作品|展示项目|展示)\s*[:：\-]?\s*"
+    return re.sub(pattern, '', title, flags=re.I).strip()
+
 for url in feeds:
     try:
         d = feedparser.parse(url)
@@ -84,7 +92,8 @@ for url in feeds:
         # Drop arXiv and GitHub items early
         if re.search(r"(^|\.)arxiv\.org", link, re.I) or re.search(r"(^|\.)github\.com", link, re.I):
             continue
-        title = getattr(e, 'title', '').strip()
+        raw_title = getattr(e, 'title', '').strip()
+        title = clean_title(raw_title)
         published = getattr(e, 'published', '') or getattr(e, 'updated', '')
         try:
             ts = dtp.parse(published)
