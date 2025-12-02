@@ -1005,10 +1005,9 @@ function createDailyCard(entry) {
 		card.append(audioSlot);
 	}
 
-	const summary = document.createElement("p");
+	const summary = document.createElement("div");
 	const fullSummary = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
-	const firstParagraph = fullSummary.split(/\n+/)[0];
-	summary.innerHTML = parseMarkdown(firstParagraph);
+	appendMultiline(summary, fullSummary);
 	card.append(summary);
 
 	if (audioSlot) {
@@ -1089,7 +1088,8 @@ function createTimelineCard(entry, index) {
 	summary.className = "wealth-track-summary";
 	const preview = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
 	const summaryText = normalizeSummary(preview);
-	summary.innerHTML = parseMarkdown(summaryText);
+	const firstParagraph = summaryText.split(/\n+/)[0];
+	summary.innerHTML = parseMarkdown(firstParagraph);
 	button.append(summary);
 
 	const tagsRow = document.createElement("div");
