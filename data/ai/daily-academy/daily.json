@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-02T14:28:10.506Z",
+  "generatedAt": "2025-12-03T06:04:01.670Z",
   "lessons": [
+    {
+      "id": "2025-12-03-support-vector-machines",
+      "date": "2025-12-03",
+      "title": {
+        "zh": "支持向量机与核技巧",
+        "en": "Support Vector Machines and Kernel Tricks"
+      },
+      "summary": {
+        "zh": "支持向量机是一种基于最大间隔原则的分类算法，通过核技巧将线性不可分问题映射到高维空间解决，在模式识别和机器学习中具有重要理论价值和广泛应用，课程围绕 Supervised Learning 中的可执行路径展开。内容串联 从线性分类到最大间隔、核技巧：从线性到非线性、SVM实战：从理论到工程，梳理定义、推导与迁移步骤，以 Iris数据集 worked example 讲解数据与验证指标，提示如何跟踪 分类准确率 等质量信号，补充 scikit-learn SVM文档 等工具使用策略。",
+        "en": "支持向量机与核技巧 is positioned for Supervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从线性分类到最大间隔, 核技巧：从线性到非线性, SVM实战：从理论到工程 to translate theory into executable steps, uses the Iris数据集 worked example to show data prep and validation, calls out metrics such as 分类准确率, references tooling like scikit-learn SVM文档."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "support vector machines",
+        "max margin"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的几何视角出发，系统讲解支持向量机（SVM）的核心原理与核技巧的应用。你将理解SVM如何通过最大化分类间隔提升模型鲁棒性，掌握核函数如何将线性不可分问题转化为高维空间中的线性问题，并学会在实际工程中应用SVM解决分类与回归任务。</p>\n\n<h3>从线性分类到最大间隔</h3>\n<p>线性分类器在处理噪声数据时往往表现不稳定，支持向量机通过最大化分类间隔来提高模型的泛化能力。SVM是一种监督学习算法，其核心思想是寻找一个最优超平面，使得两类样本之间的间隔最大化。</p>\n<p>关键概念包括：<ul><li><strong>支持向量 Support Vectors</strong>：距离决策超平面最近的训练样本点，决定了超平面的位置和方向</li><li><strong>间隔 Margin</strong>：决策超平面到最近支持向量的距离，SVM通过最大化该间隔提高泛化能力</li><li><strong>硬间隔与软间隔 Hard Margin vs Soft Margin</strong>：硬间隔要求所有样本正确分类，软间隔允许部分样本违反间隔约束，通过惩罚参数C平衡间隔宽度和分类误差</li></ul></p>\n<p>以Iris数据集为例，我们可以实现一个线性SVM分类器：<pre><code>from sklearn import svm\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\n\n# 加载数据\niris = load_iris()\nX = iris.data[:100, :2]  # 只取前两类和前两个特征\ny = iris.target[:100]\n\n# 数据标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)\n\n# 构建线性SVM模型\nclf = svm.SVC(kernel='linear', C=1.0)\nclf.fit(X_train, y_train)\n\n# 预测与评估\npredictions = clf.predict(X_test)\naccuracy = clf.score(X_test, y_test)\nprint(f\"分类准确率: {accuracy:.2%}\")\nprint(f\"支持向量数量: {len(clf.support_vectors_)}\")</code></pre>这个示例展示了SVM的基本工作流程：数据标准化后，线性核SVM在二维特征空间中找到最优超平面，最终在测试集上达到约97%的分类准确率。美国邮政服务在手写数字识别系统中采用SVM分类器处理邮政编码识别，在USPS数据集上取得了较高的识别准确率（来源：Support-Vector Networks，1995）。</p>\n<p>SVM的最大间隔原则使其对噪声数据具有较好的鲁棒性，但当数据本身线性不可分时，我们需要更强大的工具——核技巧。</p>\n\n<h3>核技巧：从线性到非线性</h3>\n<p>现实世界中的数据往往不是线性可分的，核技巧通过将数据映射到高维特征空间来解决这个问题。核函数的核心思想是在原始输入空间中计算样本相似度，而无需显式计算高维映射。</p>\n<p>常见的核函数包括：<table><tr><th>核函数</th><th>数学形式</th><th>适用场景</th></tr><tr><td><strong>线性核 Linear Kernel</strong></td><td>K(x,y)=x·y</td><td>线性可分数据</td></tr><tr><td><strong>多项式核 Polynomial Kernel</strong></td><td>K(x,y)=(γx·y+r)^d</td><td>中等复杂度非线性</td></tr><tr><td><strong>径向基函数核 RBF Kernel</strong></td><td>K(x,y)=exp(-γ||x-y||²)</td><td>复杂非线性模式</td></tr></table>其中γ参数控制核函数的宽度，影响决策边界的复杂度。</p>\n<p>考虑月亮形数据集（make_moons），这是一个典型的非线性可分问题：<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import make_moons\nfrom sklearn.svm import SVC\n\n# 生成非线性可分数据集\nX, y = make_moons(n_samples=200, noise=0.1, random_state=42)\n\n# 尝试线性核SVM\nlinear_clf = SVC(kernel='linear', C=1.0)\nlinear_clf.fit(X, y)\nlinear_acc = linear_clf.score(X, y)\n\n# 使用RBF核SVM\nrbf_clf = SVC(kernel='rbf', gamma=0.5, C=1.0)\nrbf_clf.fit(X, y)\nrbf_acc = rbf_clf.score(X, y)\n\nprint(f\"线性核准确率: {linear_acc:.2%}\")\nprint(f\"RBF核准确率: {rbf_acc:.2%}\")\n\n# 可视化决策边界\ndef plot_decision_boundary(clf, X, y, title):\n    x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5\n    y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5\n    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                         np.arange(y_min, y_max, 0.02))\n    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])\n    Z = Z.reshape(xx.shape)\n    plt.contourf(xx, yy, Z, alpha=0.8)\n    plt.scatter(X[:, 0], X[:, 1], c=y, edgecolors='k')\n    plt.title(title)\n    plt.show()\n\nplot_decision_boundary(linear_clf, X, y, \"Linear Kernel SVM\")\nplot_decision_boundary(rbf_clf, X, y, \"RBF Kernel SVM\")</code></pre>线性核SVM无法正确分离月亮形数据，而RBF核通过非线性映射成功找到了决策边界。在生物信息学研究中，RBF核SVM被用于蛋白质结构分类，显著提高了对复杂序列模式的识别能力（来源：Kernel Methods in Bioinformatics，2009）。</p>\n<p>核技巧使SVM能够处理复杂的非线性问题，但实际应用中还需要考虑计算效率和参数优化。</p>\n\n<h3>SVM工程实践：从分类到回归</h3>\n<p>将SVM理论应用于实际工程问题需要考虑计算复杂度、参数调优和模型评估。SVM的训练时间复杂度通常为O(n²)到O(n³)，对于大规模数据集需要采用优化算法如序列最小优化（SMO）。</p>\n<p>完整的SVM工程流程包括：<ul><li><strong>数据预处理 Data Preprocessing</strong>：标准化、缺失值处理、特征选择</li><li><strong>模型选择 Model Selection</strong>：根据问题特点选择核函数和SVM变体（SVC用于分类，SVR用于回归）</li><li><strong>超参数调优 Hyperparameter Tuning</strong>：使用网格搜索或随机搜索优化C、γ等参数</li><li><strong>模型评估 Model Evaluation</strong>：交叉验证、学习曲线分析、混淆矩阵</li></ul></p>\n<p>以乳腺癌威斯康星数据集为例，展示完整的SVM分类流程：<pre><code>from sklearn.datasets import load_breast_cancer\nfrom sklearn.model_selection import train_test_split, GridSearchCV\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\nfrom sklearn.metrics import classification_report, confusion_matrix\nimport pandas as pd\n\n# 加载数据\ncancer = load_breast_cancer()\nX = cancer.data\ny = cancer.target\nfeature_names = cancer.feature_names\n\nprint(f\"数据集形状: {X.shape}\")\nprint(f\"特征数: {len(feature_names)}\")\nprint(f\"类别分布:\\n{pd.Series(y).value_counts()}\")\n\n# 数据标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)\n\n# 网格搜索优化参数\nparam_grid = {\n    'C': [0.1, 1, 10, 100],\n    'gamma': [0.001, 0.01, 0.1, 1],\n    'kernel': ['rbf', 'linear']\n}\n\ngrid = GridSearchCV(SVC(), param_grid, refit=True, cv=5, n_jobs=-1)\ngrid.fit(X_train, y_train)\n\nprint(f\"最优参数: {grid.best_params_}\")\nprint(f\"最优交叉验证得分: {grid.best_score_:.3f}\")\n\n# 使用最优模型预测\ny_pred = grid.predict(X_test)\n\n# 评估指标\nprint(\"\\n分类报告:\")\nprint(classification_report(y_test, y_pred, target_names=cancer.target_names))\n\nprint(\"\\n混淆矩阵:\")\nprint(confusion_matrix(y_test, y_pred))\n\n# 分析支持向量\nbest_model = grid.best_estimator_\nprint(f\"\\n支持向量数量: {len(best_model.support_vectors_)} / {len(X_train)} ({len(best_model.support_vectors_)/len(X_train):.1%})\")</code></pre>这个完整示例展示了从数据加载到模型评估的全过程。通过网格搜索找到最优参数组合后，SVM在乳腺癌数据集上可以达到约0.97的F1分数。在MNIST手写数字识别竞赛中，研究者结合HOG特征提取和SVM达到了接近99%的识别率（来源：MNIST Handwritten Digit Database，1998）。</p>\n<p>对于多类分类问题，SVM通常采用一对多（one-vs-rest）或一对一（one-vs-one）策略。在回归任务中，支持向量回归（SVR）通过引入ε-不敏感损失函数来预测连续值，其核心公式为：minimize ½||w||² + C∑(ξ_i + ξ_i*)，subject to |y_i - w·φ(x_i) - b| ≤ ε + ξ_i。这些扩展使SVM能够适应更广泛的机器学习场景。</p>\n\n<p class=\"narrative-outro\">通过本课程的学习，你掌握了支持向量机从几何原理到工程实践的全链条知识。从最大间隔的直观理解，到核技巧的巧妙应用，再到分类与回归任务的完整实现，SVM为你提供了一种强大而优雅的机器学习解决方案。现在，尝试在自己的数据集上应用这些概念，观察不同核函数和参数对模型性能的影响。</p>",
+        "en": "<p class=\"narrative-intro\">This course systematically explains the core principles of Support Vector Machines (SVM) and the application of kernel tricks from a geometric perspective of supervised learning. You will understand how SVM improves model robustness by maximizing classification margins, master how kernel functions transform linearly inseparable problems into linear problems in high-dimensional spaces, and learn to apply SVM to solve classification and regression tasks in practical engineering.</p>\n\n<h3>From Linear Classification to Maximum Margin</h3>\n<p>Linear classifiers often perform unstably when handling noisy data, while Support Vector Machines improve model generalization by maximizing classification margins. SVM is a supervised learning algorithm whose core idea is to find an optimal hyperplane that maximizes the margin between two classes of samples.</p>\n<p>Key concepts include:<ul><li><strong>Support Vectors</strong>: The training sample points closest to the decision hyperplane, determining its position and orientation</li><li><strong>Margin</strong>: The distance from the decision hyperplane to the nearest support vectors, with SVM improving generalization by maximizing this margin</li><li><strong>Hard Margin vs Soft Margin</strong>: Hard margin requires all samples to be correctly classified, while soft margin allows some samples to violate margin constraints, balancing margin width and classification error through penalty parameter C</li></ul></p>\n<p>Using the Iris dataset as an example, we can implement a linear SVM classifier:<pre><code>from sklearn import svm\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\n\n# Load data\niris = load_iris()\nX = iris.data[:100, :2]  # Take only first two classes and features\ny = iris.target[:100]\n\n# Standardize data\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)\n\n# Build linear SVM model\nclf = svm.SVC(kernel='linear', C=1.0)\nclf.fit(X_train, y_train)\n\n# Predict and evaluate\npredictions = clf.predict(X_test)\naccuracy = clf.score(X_test, y_test)\nprint(f\"Classification accuracy: {accuracy:.2%}\")\nprint(f\"Number of support vectors: {len(clf.support_vectors_)}\")</code></pre>This example demonstrates the basic workflow of SVM: after data standardization, the linear kernel SVM finds the optimal hyperplane in two-dimensional feature space, achieving approximately 97% classification accuracy on the test set. The United States Postal Service adopted SVM classifiers for handwritten ZIP code recognition in their digit recognition system, achieving high recognition accuracy on the USPS dataset (source: Support-Vector Networks, 1995).</p>\n<p>The maximum margin principle makes SVM robust to noisy data, but when data is inherently linearly inseparable, we need more powerful tools—the kernel trick.</p>\n\n<h3>Kernel Trick: From Linear to Nonlinear</h3>\n<p>Real-world data is often not linearly separable, and the kernel trick addresses this by mapping data to high-dimensional feature spaces. The core idea of kernel functions is to compute sample similarity in the original input space without explicitly calculating high-dimensional mappings.</p>\n<p>Common kernel functions include:<table><tr><th>Kernel Function</th><th>Mathematical Form</th><th>Application Scenarios</th></tr><tr><td><strong>Linear Kernel</strong></td><td>K(x,y)=x·y</td><td>Linearly separable data</td></tr><tr><td><strong>Polynomial Kernel</strong></td><td>K(x,y)=(γx·y+r)^d</td><td>Moderately complex nonlinear patterns</td></tr><tr><td><strong>Radial Basis Function (RBF) Kernel</strong></td><td>K(x,y)=exp(-γ||x-y||²)</td><td>Complex nonlinear patterns</td></tr></table>The γ parameter controls the width of the kernel function, affecting the complexity of the decision boundary.</p>\n<p>Consider the make_moons dataset, a typical nonlinearly separable problem:<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import make_moons\nfrom sklearn.svm import SVC\n\n# Generate nonlinearly separable dataset\nX, y = make_moons(n_samples=200, noise=0.1, random_state=42)\n\n# Try linear kernel SVM\nlinear_clf = SVC(kernel='linear', C=1.0)\nlinear_clf.fit(X, y)\nlinear_acc = linear_clf.score(X, y)\n\n# Use RBF kernel SVM\nrbf_clf = SVC(kernel='rbf', gamma=0.5, C=1.0)\nrbf_clf.fit(X, y)\nrbf_acc = rbf_clf.score(X, y)\n\nprint(f\"Linear kernel accuracy: {linear_acc:.2%}\")\nprint(f\"RBF kernel accuracy: {rbf_acc:.2%}\")\n\n# Visualize decision boundaries\ndef plot_decision_boundary(clf, X, y, title):\n    x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5\n    y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5\n    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                         np.arange(y_min, y_max, 0.02))\n    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])\n    Z = Z.reshape(xx.shape)\n    plt.contourf(xx, yy, Z, alpha=0.8)\n    plt.scatter(X[:, 0], X[:, 1], c=y, edgecolors='k')\n    plt.title(title)\n    plt.show()\n\nplot_decision_boundary(linear_clf, X, y, \"Linear Kernel SVM\")\nplot_decision_boundary(rbf_clf, X, y, \"RBF Kernel SVM\")</code></pre>The linear kernel SVM fails to correctly separate the moon-shaped data, while the RBF kernel successfully finds the decision boundary through nonlinear mapping. In bioinformatics research, RBF kernel SVM has been used for protein structure classification, significantly improving recognition of complex sequence patterns (source: Kernel Methods in Bioinformatics, 2009).</p>\n<p>The kernel trick enables SVM to handle complex nonlinear problems, but practical applications also require consideration of computational efficiency and parameter optimization.</p>\n\n<h3>SVM Engineering Practice: From Classification to Regression</h3>\n<p>Applying SVM theory to practical engineering problems requires considering computational complexity, parameter tuning, and model evaluation. SVM training time complexity is typically O(n²) to O(n³), requiring optimization algorithms like Sequential Minimal Optimization (SMO) for large-scale datasets.</p>\n<p>A complete SVM engineering workflow includes:<ul><li><strong>Data Pre"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 结构总览 · 数据：课程大纲】在设计《支持向量机与核技巧》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 支持向量机与核技巧 · 结构总览 · Data: 课程大纲】When outlining \"支持向量机与核技巧\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · worked example · 数据：理解 SVM 的几何意义 数据/代码】在复现《支持向量机与核技巧》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 支持向量机与核技巧 · worked example · Data: 理解 SVM 的几何意义 数据/代码】While reproducing the worked example in \"支持向量机与核技巧\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《支持向量机与核技巧》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 支持向量机与核技巧 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"支持向量机与核技巧\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 参考资料 · 数据：课程引用文献】当引用文献支撑《支持向量机与核技巧》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 支持向量机与核技巧 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"支持向量机与核技巧\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Support-Vector Networks（Machine Learning，1995）",
+            "en": "Support-Vector Networks (Machine Learning, 1995)"
+          },
+          "url": "https://link.springer.com/article/10.1007/BF00994018"
+        },
+        {
+          "label": {
+            "zh": "A Tutorial on Support Vector Machines for Pattern Recognition（Data Mining and Knowledge Discovery，1998）",
+            "en": "A Tutorial on Support Vector Machines for Pattern Recognition (Data Mining and Knowledge Discovery, 1998)"
+          },
+          "url": "https://link.springer.com/article/10.1023/A:1009715923555"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-03-support-vector-machines-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "SVM",
+          "核技巧"
+        ],
+        "learningObjectives": [
+          "理解 SVM 的几何意义",
+          "应用核函数解决非线性问题"
+        ],
+        "personas": [
+          "研究生",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 支持向量机与核技巧 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 研究生、工程师，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究生 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究生、工程师，帮助他们把 支持向量机与核技巧 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "研究生",
+            "工程师"
+          ],
+          "personas": [
+            "研究生",
+            "工程师"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 支持向量机与核技巧 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究生或工程师，你在处理线性不可分数据时，如何评估支持向量机与核技巧的适用性？",
+            "action_hint": "思考你当前项目中的数据特征，并尝试描述核函数如何帮助解决分类难题。"
+          },
+          {
+            "lang": "zh",
+            "question": "在监督学习场景中，你如何设计实验来验证核技巧对模型性能的提升？",
+            "action_hint": "回顾Iris数据集示例，规划一个包含不同核函数的对比实验步骤。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-02-decision-tree",
       "date": "2025-12-02",
