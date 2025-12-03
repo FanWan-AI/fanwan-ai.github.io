@@ -1,6 +1,853 @@
 {
-  "generatedAt": "2025-12-02T09:45:04.822Z",
+  "generatedAt": "2025-12-03T06:34:41.028Z",
   "lessons": [
+    {
+      "id": "2025-12-03-evaluation-metrics",
+      "date": "2025-12-03",
+      "title": {
+        "zh": "模型评估与偏差方差权衡",
+        "en": "Model Evaluation and Bias-Variance Tradeoff"
+      },
+      "summary": {
+        "zh": "模型评估与偏差方差权衡是监督学习的核心概念，通过交叉验证和评估指标衡量模型性能，理解模型复杂度与泛化能力的关系，为构建稳健的机器学习模型提供理论基础，课程围绕 Supervised Learning 中的可执行路径展开。内容串联 模型评估基础：交叉验证与评估指标、偏差方差权衡：理论解析与模型复杂度、实战应用：集成方法与模型选择，梳理定义、推导与迁移步骤，以 Iris数据集（鸢尾花分类） worked example 讲解数据与验证指标，提示如何跟踪 准确率 等质量信号，补充 Scikit-learn 等工具使用策略。",
+        "en": "模型评估与偏差方差权衡 is positioned for Supervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 模型评估基础：交叉验证与评估指标, 偏差方差权衡：理论解析与模型复杂度, 实战应用：集成方法与模型选择 to translate theory into executable steps, uses the Iris数据集（鸢尾花分类） worked example to show data prep and validation, calls out metrics such as 准确率, references tooling like Scikit-learn."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "evaluation metrics",
+        "bias-variance"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">在监督学习项目中，构建模型只是第一步，如何评估其真实性能并理解其行为模式才是确保实用价值的关键。本课程将从数据科学家的视角出发，系统讲解模型评估的核心方法与偏差方差权衡的理论基础，帮助您建立从验证到优化的完整工作流，掌握选择稳健模型的科学依据。</p>\n\n<h3>模型评估基础：交叉验证与评估指标</h3>\n<p>在机器学习实践中，仅依赖训练集上的表现来评判模型往往会导致过度乐观的估计，因为模型可能只是记住了训练数据的噪声而非学到了通用模式。交叉验证通过系统性地分割数据集来模拟模型在未见数据上的表现，从而提供更可靠的性能估计。</p>\n<p>交叉验证的核心思想是将原始数据划分为k个大小相似的子集（称为“折”），依次将每个子集作为验证集，其余作为训练集，重复k次后取平均性能。这种方法有效利用了有限数据，减少了因单次划分带来的随机性影响。常用的评估指标包括：</p>\n<ul>\n<li><strong>准确率</strong>：分类正确的样本占总样本的比例，适用于类别平衡的数据集。</li>\n<li><strong>精确率与召回率</strong>：在二分类问题中，精确率关注预测为正类的样本中实际为正类的比例，召回率关注实际为正类的样本中被正确预测的比例，两者常通过F1分数综合衡量。</li>\n<li><strong>AUC-ROC</strong>：通过绘制真正例率与假正例率的关系曲线来评估分类器在不同阈值下的整体性能，值越接近1表示模型区分能力越强。</li>\n</ul>\n<p>以Kaggle的泰坦尼克生存预测竞赛为例，参赛者需要预测乘客是否幸存。通过应用5折交叉验证，可以比较逻辑回归、决策树等不同模型在准确率和AUC-ROC指标上的表现，从而选择泛化能力更优的模型（来源：Titanic: Machine Learning from Disaster，2012）。</p>\n<pre><code>from sklearn.model_selection import cross_val_score, train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.datasets import load_iris\n\n# 加载Iris数据集\niris = load_iris()\nX, y = iris.data, iris.target\n\n# 划分训练集和测试集\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# 初始化逻辑回归模型\nmodel = LogisticRegression(max_iter=200)\n\n# 使用5折交叉验证计算准确率\ncv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='accuracy')\nprint(f\"交叉验证准确率: {cv_scores.mean():.3f} (±{cv_scores.std():.3f})\")\n\n# 在测试集上评估\nmodel.fit(X_train, y_train)\ntest_accuracy = model.score(X_test, y_test)\nprint(f\"测试集准确率: {test_accuracy:.3f}\")</code></pre>\n<p>这段代码展示了在Iris数据集上应用交叉验证的基本流程：加载数据后，先划分出独立的测试集，然后在训练集上执行5折交叉验证，得到平均准确率约为0.95（标准差反映稳定性），最后在测试集上验证得到约0.93的准确率。交叉验证分数与测试集性能的接近程度反映了评估过程的可靠性。理解这些评估方法为后续分析模型误差来源奠定了基础。</p>\n\n<h3>偏差方差权衡：模型复杂度的双刃剑</h3>\n<p>当模型在训练集上表现优异但在新数据上表现不佳时，我们常面临过拟合问题，这背后是偏差与方差的权衡关系。偏差衡量模型预测值与真实值之间的系统性误差，高偏差通常意味着模型过于简单，未能捕捉数据中的潜在模式；方差衡量模型对训练数据微小变化的敏感性，高方差则意味着模型过于复杂，过度拟合了训练数据中的噪声。</p>\n<p>泛化误差可以分解为偏差、方差和不可避免的噪声项：泛化误差 = 偏差² + 方差 + 噪声。理想情况下，我们希望找到偏差和方差都较低的模型，但这在实践中往往需要权衡。随着模型复杂度增加，偏差倾向于减小（模型拟合能力增强），但方差倾向于增大（模型对数据波动更敏感）。</p>\n<p>正则化是控制模型复杂度的有效技术，通过在损失函数中添加惩罚项来限制参数的大小。以L2正则化（岭回归）为例，它在最小二乘损失的基础上增加参数平方和的惩罚：损失函数 = Σ(y_i - ŷ_i)² + λΣβ_j²，其中λ是正则化强度参数。增大λ会增强惩罚效果，降低模型复杂度，从而减少方差但可能增加偏差（来源：Regularization for Deep Learning: A Taxonomy，2017）。</p>\n<p>在波士顿房价预测任务中，我们可以观察多项式回归模型随着多项式次数增加的变化：</p>\n<table>\n<thead>\n<tr><th>多项式次数</th><th>训练集MSE</th><th>验证集MSE</th><th>偏差特征</th><th>方差特征</th></tr>\n</thead>\n<tbody>\n<tr><td>1（线性）</td><td>较高</td><td>中等</td><td>高偏差</td><td>低方差</td></tr>\n<tr><td>3</td><td>降低</td><td>最低</td><td>适中</td><td>适中</td></tr>\n<tr><td>10</td><td>很低</td><td>升高</td><td>低偏差</td><td>高方差</td></tr>\n</tbody>\n</table>\n<p>当次数为1时，模型过于简单，无法捕捉房价与特征间的非线性关系，表现为高偏差；当次数增至10时，模型完美拟合训练数据但泛化能力下降，表现为高方差。通过交叉验证选择合适次数或应用正则化，可以找到偏差与方差的最佳平衡点。这种对误差来源的理解自然引出了如何通过模型组合来进一步优化性能。</p>\n\n<h3>集成方法：通过集体智慧降低方差</h3>\n<p>当单一模型难以在偏差和方差间取得理想平衡时，集成方法提供了一种有效解决方案。其核心思想是组合多个基础模型的预测，通过平均或投票机制来减少整体方差，同时保持较低的偏差。随机森林和梯度提升是两种广泛应用的集成技术。</p>\n<p>随机森林通过构建多棵决策树并聚合它们的预测来工作：每棵树在训练时使用自助采样法从原始数据中有放回地抽取样本，同时在每个节点分裂时随机选择特征子集。这种双重随机性确保各棵树具有多样性，聚合后的预测方差显著低于单棵树。模型的关键参数包括树的数量和最大深度，前者影响方差减少程度，后者控制每棵树的复杂度。</p>\n<p>在Netflix电影推荐系统中，预测用户评分需要处理高维稀疏数据。比较线性回归、单棵决策树和随机森林的交叉验证性能时，随机森林通常表现出更低的均方根误差和更高的R²分数，这得益于其通过集成降低了方差，使推荐结果更加稳定（来源：The Netflix Prize: A Case Study in Collaborative Filtering，2009）。</p>\n<pre><code>from sklearn.ensemble import RandomForestRegressor\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.datasets import load_diabetes\nimport numpy as np\n\n# 加载糖尿病数据集\n糖尿病 = load_diabetes()\nX, y = 糖尿病.data, 糖尿病.target\n\n# 初始化随机森林模型\nrf_model = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=42)\n\n# 使用5折交叉验证计算负均方误差（Scikit-learn约定）\nmse_scores = cross_val_score(rf_model, X, y, cv=5, scoring='neg_mean_squared_error')\nrmse_scores = np.sqrt(-mse_scores)\nprint(f\"RMSE交叉验证: {rmse_scores.mean():.1f} (±{rmse_scores.std():.1f})\")\n\n# 计算R²分数\nr2_scores = cross_val_score(rf_model, X, y, cv=5, scoring='r2')\nprint(f\"R²交叉验证: {r2_scores.mean():.3f} (±{r2_scores.std():.3f})\")\n\n# 与线性回归比较（简要示意）\nfrom sklearn.linear_model import LinearRegression\nlr_model = LinearRegression()\nlr_r2 = cross_val_score(lr_model, X, y, cv=5, scoring='r2').mean()\nprint(f\"线性回归R²: {lr_r2:.3f}\")</code></pre>\n<p>这段代码展示了在糖尿病数据集上评估随机森林回归器的过程：使用100棵树、最大深度5的配置，通过5折交叉验证得到RMSE和R²分数。随机森林通常比线性回归获得更高的R²值（例如0.45对比0.40），因为其能够捕捉非线性关系且方差较低。集成方法通过模型组合有效管理了偏差方差权衡，为复杂预测任务提供了稳健的解决方案。</p>\n\n<p class=\"narrative-outro\">模型评估与偏差方差权衡构成了监督学习质量保障的基石：交叉验证提供了性能估计的可靠框架，偏差方差分析揭示了模型行为的内在机制，而集成方法则展示了通过集体决策优化预测的实用路径。掌握这些概念后，您可以在实际项目中系统性地验证模型、诊断问题并选择适当策略，从而构建出既准确又稳健的机器学习系统。</p>",
+        "en": "<p class=\"narrative-intro\">In supervised learning projects, building a model is only the first step; evaluating its true performance and understanding its behavioral patterns are crucial for ensuring practical value. This course adopts a data scientist's perspective to systematically explain core model evaluation methods and the theoretical foundations of bias-variance tradeoff, helping you establish a complete workflow from validation to optimization and master the scientific basis for selecting robust models.</p>\n\n<h3>Model Evaluation Fundamentals: Cross-Validation and Metrics</h3>\n<p>In machine learning practice, relying solely on training set performance to judge a model often leads to overly optimistic estimates, as the model may have merely memorized noise in the training data rather than learning general patterns. Cross-validation systematically partitions the dataset to simulate model performance on unseen data, providing more reliable performance estimates.</p>\n<p>The core idea of cross-validation is to divide the original data into k similarly sized subsets (called \"folds\"), using each subset as a validation set while the others serve as training, repeating k times and averaging the performance. This approach efficiently utilizes limited data and reduces randomness from a single split. Common evaluation metrics include:</p>\n<ul>\n<li><strong>Accuracy</strong>: The proportion of correctly classified samples out of the total, suitable for balanced datasets.</li>\n<li><strong>Precision and Recall</strong>: In binary classification, precision focuses on the proportion of true positives among predicted positives, while recall focuses on the proportion of true positives correctly predicted, often combined via the F1-score.</li>\n<li><strong>AUC-ROC</strong>: Evaluates classifier performance across different thresholds by plotting the true positive rate against the false positive rate, with values closer to 1 indicating better discriminative ability.</li>\n</ul>\n<p>Taking Kaggle's Titanic survival prediction competition as an example, participants need to predict whether passengers survived. By applying 5-fold cross-validation, one can compare different models like logistic regression and decision trees on metrics such as accuracy and AUC-ROC to select models with better generalization (source: Titanic: Machine Learning from Disaster, 2012).</p>\n<pre><code>from sklearn.model_selection import cross_val_score, train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.datasets import load_iris\n\n# Load Iris dataset\niris = load_iris()\nX, y = iris.data, iris.target\n\n# Split into training and test sets\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# Initialize logistic regression model\nmodel = LogisticRegression(max_iter=200)\n\n# Compute accuracy using 5-fold cross-validation\ncv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='accuracy')\nprint(f\"Cross-validation accuracy: {cv_scores.mean():.3f} (±{cv_scores.std():.3f})\")\n\n# Evaluate on test set\nmodel.fit(X_train, y_train)\ntest_accuracy = model.score(X_test, y_test)\nprint(f\"Test set accuracy: {test_accuracy:.3f}\")</code></pre>\n<p>This code demonstrates the basic workflow of applying cross-validation on the Iris dataset: after loading data, an independent test set is split out, then 5-fold cross-validation is performed on the training set, yielding an average accuracy of about 0.95 (with standard deviation reflecting stability), and finally validation on the test set gives about 0.93 accuracy. The closeness between cross-validation scores and test performance indicates the reliability of the evaluation process. Understanding these evaluation methods lays the groundwork for analyzing model error sources.</p>\n\n<h3>Bias-Variance Tradeoff: The Double-Edged Sword of Model Complexity</h3>\n<p>When a model performs excellently on training data but poorly on new data, we often face overfitting, which stems from the tradeoff between bias and variance. Bias measures the systematic error between model predictions and true values, with high bias typically indicating an overly simple model that fails to capture underlying patterns. Variance measures the model's sensitivity to small changes in training data, with high variance indicating an overly complex model that overfits noise.</p>\n<p>Generalization error can be decomposed into bias, variance, and irreducible noise: generalization error = bias² + variance + noise. Ideally, we seek models with both low bias and low variance, but this often requires tradeoffs in practice. As model complexity increases, bias tends to decrease (better fitting capacity) but variance tends to increase (greater sensitivity to data fluctuations).</p>\n<p>Regularization is an effective technique for controlling model complexity by adding penalty terms to the loss function to limit parameter magnitudes. Taking L2 regularization (Ridge Regression) as an example, it adds a penalty on the sum of squared parameters to the least squares loss: loss function = Σ(y_i - ŷ_i)² + λΣβ_j², where λ is the regularization strength parameter. Increasing λ enhances the penalty, reducing model complexity and thus decreasing variance but potentially increasing bias (source: Regularization for Deep Learning: A Taxonomy, 2017).</p>\n<p>In the Boston housing price prediction task, we can observe changes in polynomial regression models as polynomial degree increases:</p>\n<table>\n<thead>\n<tr><th>Polynomial Degree</th><th>Training MSE</th><th>Validation MSE</th><th>Bias Characteristic</th><th>Variance Characteristic</th></tr>\n</thead>\n<tbody>\n<tr><td>1 (linear)</td><td>High</td><td>Medium</td><td>High bias</td><td>Low variance</td></tr>\n<tr><td>3</td><td>Lower</td><td>Lowest</td><td>Moderate</td><td>Moderate</td></tr>\n<tr><td>10</td><td>Very low</td><td>Higher</td><td>Low bias</td><td>High variance</td></tr>\n</tbody>\n</table>\n<p>At degree 1, the model is too simple to capture nonlinear relationships between features and prices, showing high bias; at degree 10, the model fits training data perfectly but generalizes poorly, showing high variance. Selecting an appropriate degree via cross-validation or applying regularization can find the optimal balance between bias and variance. This understanding of error sources naturally leads to how model combination can further optimize performance.</p>\n\n<h3>Ensemble Methods: Reducing Variance Through Collective Wisdom</h3>\n<p>When a single model struggles to achieve an ideal balance between bias and variance, ensemble methods provide an effective solution. The core idea is to combine predictions from multiple base models, reducing overall variance through averaging or voting while maintaining low bias. Random Forest and Gradient Boosting are two widely used ensemble techniques.</p>\n<p>Random Forest works by constructing multiple decision trees and aggregating their predictions: each tree is trained using bootstrap sampling (sampling with replacement from the original data) and random feature subsets at each node split. This double randomness ensures diversity among trees, making the aggregated prediction variance significantly lower than that of a single tree. Key parameters include the number of trees (n_estimators) and maximum depth (max_depth), where the former affects variance reduction and the latter controls each tree's complexity.</p>\n<p>In Netflix's movie recommendation system, predicting user ratings requires handling high-dimensional sparse data. When comparing cross-validation performance of linear regression, single decision trees, and Random Forest, Random Forest typically shows lower Root Mean Square Error (RMSE) and higher R² scores, benefiting from reduced variance through ensembling, leading to more stable recommendations (source: The Netflix Prize: A Case Study in Collaborative Filtering, 2009).</p>\n<pre><code>from sklearn.ensemble import RandomForestRegressor\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.datasets import load_diabetes\nimport numpy as np\n\n# Load diabetes dataset\ndiabetes = load_diabetes()\nX, y = diabetes.data, diabetes.target\n\n# Initialize Random Forest model\nrf_model = RandomForestRegressor(n_estimators=100, max_depth=5, random_state=42)\n\n# Compute negative mean squared error using 5-fold cross-validation (Scikit-learn convention)\nmse_scores = cross_val_score(rf_model, X, y, cv=5, scoring='neg_mean_squared_error')\nrmse_scores = np.sqrt(-mse_scores)\nprint(f\"Cross-validation RMSE: {rmse_scores.mean():.1f} (±{rmse_scores.std():.1f})\")\n\n# Compute R² scores\nr2_scores = cross_val_score(rf_model, X, y, cv=5, scoring='r2')\nprint(f\"Cross-validation R²: {r2_scores.mean():.3f"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：模型评估与偏差方差权衡 · 结构总览 · 数据：课程大纲】在设计《模型评估与偏差方差权衡》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 模型评估与偏差方差权衡 · 结构总览 · Data: 课程大纲】When outlining \"模型评估与偏差方差权衡\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：模型评估与偏差方差权衡 · worked example · 数据：掌握交叉验证和评估指标 数据/代码】在复现《模型评估与偏差方差权衡》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 模型评估与偏差方差权衡 · worked example · Data: 掌握交叉验证和评估指标 数据/代码】While reproducing the worked example in \"模型评估与偏差方差权衡\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：模型评估与偏差方差权衡 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《模型评估与偏差方差权衡》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 模型评估与偏差方差权衡 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"模型评估与偏差方差权衡\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：模型评估与偏差方差权衡 · 参考资料 · 数据：课程引用文献】当引用文献支撑《模型评估与偏差方差权衡》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 模型评估与偏差方差权衡 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"模型评估与偏差方差权衡\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.springer.com/gp/book/9780387310732"
+        },
+        {
+          "label": {
+            "zh": "An Introduction to Statistical Learning（Springer，2013）",
+            "en": "An Introduction to Statistical Learning (Springer, 2013)"
+          },
+          "url": "https://www.statlearning.com/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-03-evaluation-metrics-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "交叉验证",
+          "正则化"
+        ],
+        "learningObjectives": [
+          "掌握交叉验证和评估指标",
+          "理解模型复杂度与泛化能力"
+        ],
+        "personas": [
+          "数据科学家",
+          "学生"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 模型评估与偏差方差权衡 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 数据科学家、学生，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、学生，帮助他们把 模型评估与偏差方差权衡 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "学生"
+          ],
+          "personas": [
+            "数据科学家",
+            "学生"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 模型评估与偏差方差权衡 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，你在监督学习项目中如何选择评估指标？请描述一个具体场景，并思考偏差和方差如何影响你的模型选择决策。",
+            "action_hint": "尝试用鸢尾花分类案例，对比不同模型复杂度下的准确率变化，分析偏差-方差权衡如何指导你的实践。"
+          },
+          {
+            "lang": "zh",
+            "question": "回想你最近的数据科学项目，模型在训练集和测试集上的表现差异有多大？这种差异反映了偏差还是方差问题，你当时是如何调整模型复杂度的？",
+            "action_hint": "结合交叉验证结果，思考如何通过集成方法或正则化技术优化模型泛化能力，并记录调整过程。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "2025-12-03-support-vector-machines",
+      "date": "2025-12-03",
+      "title": {
+        "zh": "支持向量机与核技巧",
+        "en": "Support Vector Machines and Kernel Tricks"
+      },
+      "summary": {
+        "zh": "支持向量机是一种基于最大间隔原则的分类算法，通过核技巧将线性不可分问题映射到高维空间解决，在模式识别和机器学习中具有重要理论价值和广泛应用，课程围绕 Supervised Learning 中的可执行路径展开。内容串联 从线性分类到最大间隔、核技巧：从线性到非线性、SVM实战：从理论到工程，梳理定义、推导与迁移步骤，以 Iris数据集 worked example 讲解数据与验证指标，提示如何跟踪 分类准确率 等质量信号，补充 scikit-learn SVM文档 等工具使用策略。",
+        "en": "支持向量机与核技巧 is positioned for Supervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从线性分类到最大间隔, 核技巧：从线性到非线性, SVM实战：从理论到工程 to translate theory into executable steps, uses the Iris数据集 worked example to show data prep and validation, calls out metrics such as 分类准确率, references tooling like scikit-learn SVM文档."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "support vector machines",
+        "max margin"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的几何视角出发，系统讲解支持向量机（SVM）的核心原理与核技巧的应用。你将理解SVM如何通过最大化分类间隔提升模型鲁棒性，掌握核函数如何将线性不可分问题转化为高维空间中的线性问题，并学会在实际工程中应用SVM解决分类与回归任务。</p>\n\n<h3>从线性分类到最大间隔</h3>\n<p>线性分类器在处理噪声数据时往往表现不稳定，支持向量机通过最大化分类间隔来提高模型的泛化能力。SVM是一种监督学习算法，其核心思想是寻找一个最优超平面，使得两类样本之间的间隔最大化。</p>\n<p>关键概念包括：<ul><li><strong>支持向量 Support Vectors</strong>：距离决策超平面最近的训练样本点，决定了超平面的位置和方向</li><li><strong>间隔 Margin</strong>：决策超平面到最近支持向量的距离，SVM通过最大化该间隔提高泛化能力</li><li><strong>硬间隔与软间隔 Hard Margin vs Soft Margin</strong>：硬间隔要求所有样本正确分类，软间隔允许部分样本违反间隔约束，通过惩罚参数C平衡间隔宽度和分类误差</li></ul></p>\n<p>以Iris数据集为例，我们可以实现一个线性SVM分类器：<pre><code>from sklearn import svm\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\n\n# 加载数据\niris = load_iris()\nX = iris.data[:100, :2]  # 只取前两类和前两个特征\ny = iris.target[:100]\n\n# 数据标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)\n\n# 构建线性SVM模型\nclf = svm.SVC(kernel='linear', C=1.0)\nclf.fit(X_train, y_train)\n\n# 预测与评估\npredictions = clf.predict(X_test)\naccuracy = clf.score(X_test, y_test)\nprint(f\"分类准确率: {accuracy:.2%}\")\nprint(f\"支持向量数量: {len(clf.support_vectors_)}\")</code></pre>这个示例展示了SVM的基本工作流程：数据标准化后，线性核SVM在二维特征空间中找到最优超平面，最终在测试集上达到约97%的分类准确率。美国邮政服务在手写数字识别系统中采用SVM分类器处理邮政编码识别，在USPS数据集上取得了较高的识别准确率（来源：Support-Vector Networks，1995）。</p>\n<p>SVM的最大间隔原则使其对噪声数据具有较好的鲁棒性，但当数据本身线性不可分时，我们需要更强大的工具——核技巧。</p>\n\n<h3>核技巧：从线性到非线性</h3>\n<p>现实世界中的数据往往不是线性可分的，核技巧通过将数据映射到高维特征空间来解决这个问题。核函数的核心思想是在原始输入空间中计算样本相似度，而无需显式计算高维映射。</p>\n<p>常见的核函数包括：<table><tr><th>核函数</th><th>数学形式</th><th>适用场景</th></tr><tr><td><strong>线性核 Linear Kernel</strong></td><td>K(x,y)=x·y</td><td>线性可分数据</td></tr><tr><td><strong>多项式核 Polynomial Kernel</strong></td><td>K(x,y)=(γx·y+r)^d</td><td>中等复杂度非线性</td></tr><tr><td><strong>径向基函数核 RBF Kernel</strong></td><td>K(x,y)=exp(-γ||x-y||²)</td><td>复杂非线性模式</td></tr></table>其中γ参数控制核函数的宽度，影响决策边界的复杂度。</p>\n<p>考虑月亮形数据集（make_moons），这是一个典型的非线性可分问题：<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import make_moons\nfrom sklearn.svm import SVC\n\n# 生成非线性可分数据集\nX, y = make_moons(n_samples=200, noise=0.1, random_state=42)\n\n# 尝试线性核SVM\nlinear_clf = SVC(kernel='linear', C=1.0)\nlinear_clf.fit(X, y)\nlinear_acc = linear_clf.score(X, y)\n\n# 使用RBF核SVM\nrbf_clf = SVC(kernel='rbf', gamma=0.5, C=1.0)\nrbf_clf.fit(X, y)\nrbf_acc = rbf_clf.score(X, y)\n\nprint(f\"线性核准确率: {linear_acc:.2%}\")\nprint(f\"RBF核准确率: {rbf_acc:.2%}\")\n\n# 可视化决策边界\ndef plot_decision_boundary(clf, X, y, title):\n    x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5\n    y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5\n    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                         np.arange(y_min, y_max, 0.02))\n    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])\n    Z = Z.reshape(xx.shape)\n    plt.contourf(xx, yy, Z, alpha=0.8)\n    plt.scatter(X[:, 0], X[:, 1], c=y, edgecolors='k')\n    plt.title(title)\n    plt.show()\n\nplot_decision_boundary(linear_clf, X, y, \"Linear Kernel SVM\")\nplot_decision_boundary(rbf_clf, X, y, \"RBF Kernel SVM\")</code></pre>线性核SVM无法正确分离月亮形数据，而RBF核通过非线性映射成功找到了决策边界。在生物信息学研究中，RBF核SVM被用于蛋白质结构分类，显著提高了对复杂序列模式的识别能力（来源：Kernel Methods in Bioinformatics，2009）。</p>\n<p>核技巧使SVM能够处理复杂的非线性问题，但实际应用中还需要考虑计算效率和参数优化。</p>\n\n<h3>SVM工程实践：从分类到回归</h3>\n<p>将SVM理论应用于实际工程问题需要考虑计算复杂度、参数调优和模型评估。SVM的训练时间复杂度通常为O(n²)到O(n³)，对于大规模数据集需要采用优化算法如序列最小优化（SMO）。</p>\n<p>完整的SVM工程流程包括：<ul><li><strong>数据预处理 Data Preprocessing</strong>：标准化、缺失值处理、特征选择</li><li><strong>模型选择 Model Selection</strong>：根据问题特点选择核函数和SVM变体（SVC用于分类，SVR用于回归）</li><li><strong>超参数调优 Hyperparameter Tuning</strong>：使用网格搜索或随机搜索优化C、γ等参数</li><li><strong>模型评估 Model Evaluation</strong>：交叉验证、学习曲线分析、混淆矩阵</li></ul></p>\n<p>以乳腺癌威斯康星数据集为例，展示完整的SVM分类流程：<pre><code>from sklearn.datasets import load_breast_cancer\nfrom sklearn.model_selection import train_test_split, GridSearchCV\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\nfrom sklearn.metrics import classification_report, confusion_matrix\nimport pandas as pd\n\n# 加载数据\ncancer = load_breast_cancer()\nX = cancer.data\ny = cancer.target\nfeature_names = cancer.feature_names\n\nprint(f\"数据集形状: {X.shape}\")\nprint(f\"特征数: {len(feature_names)}\")\nprint(f\"类别分布:\\n{pd.Series(y).value_counts()}\")\n\n# 数据标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)\n\n# 网格搜索优化参数\nparam_grid = {\n    'C': [0.1, 1, 10, 100],\n    'gamma': [0.001, 0.01, 0.1, 1],\n    'kernel': ['rbf', 'linear']\n}\n\ngrid = GridSearchCV(SVC(), param_grid, refit=True, cv=5, n_jobs=-1)\ngrid.fit(X_train, y_train)\n\nprint(f\"最优参数: {grid.best_params_}\")\nprint(f\"最优交叉验证得分: {grid.best_score_:.3f}\")\n\n# 使用最优模型预测\ny_pred = grid.predict(X_test)\n\n# 评估指标\nprint(\"\\n分类报告:\")\nprint(classification_report(y_test, y_pred, target_names=cancer.target_names))\n\nprint(\"\\n混淆矩阵:\")\nprint(confusion_matrix(y_test, y_pred))\n\n# 分析支持向量\nbest_model = grid.best_estimator_\nprint(f\"\\n支持向量数量: {len(best_model.support_vectors_)} / {len(X_train)} ({len(best_model.support_vectors_)/len(X_train):.1%})\")</code></pre>这个完整示例展示了从数据加载到模型评估的全过程。通过网格搜索找到最优参数组合后，SVM在乳腺癌数据集上可以达到约0.97的F1分数。在MNIST手写数字识别竞赛中，研究者结合HOG特征提取和SVM达到了接近99%的识别率（来源：MNIST Handwritten Digit Database，1998）。</p>\n<p>对于多类分类问题，SVM通常采用一对多（one-vs-rest）或一对一（one-vs-one）策略。在回归任务中，支持向量回归（SVR）通过引入ε-不敏感损失函数来预测连续值，其核心公式为：minimize ½||w||² + C∑(ξ_i + ξ_i*)，subject to |y_i - w·φ(x_i) - b| ≤ ε + ξ_i。这些扩展使SVM能够适应更广泛的机器学习场景。</p>\n\n<p class=\"narrative-outro\">通过本课程的学习，你掌握了支持向量机从几何原理到工程实践的全链条知识。从最大间隔的直观理解，到核技巧的巧妙应用，再到分类与回归任务的完整实现，SVM为你提供了一种强大而优雅的机器学习解决方案。现在，尝试在自己的数据集上应用这些概念，观察不同核函数和参数对模型性能的影响。</p>",
+        "en": "<p class=\"narrative-intro\">This course systematically explains the core principles of Support Vector Machines (SVM) and the application of kernel tricks from a geometric perspective of supervised learning. You will understand how SVM improves model robustness by maximizing classification margins, master how kernel functions transform linearly inseparable problems into linear problems in high-dimensional spaces, and learn to apply SVM to solve classification and regression tasks in practical engineering.</p>\n\n<h3>From Linear Classification to Maximum Margin</h3>\n<p>Linear classifiers often perform unstably when handling noisy data, while Support Vector Machines improve model generalization by maximizing classification margins. SVM is a supervised learning algorithm whose core idea is to find an optimal hyperplane that maximizes the margin between two classes of samples.</p>\n<p>Key concepts include:<ul><li><strong>Support Vectors</strong>: The training sample points closest to the decision hyperplane, determining its position and orientation</li><li><strong>Margin</strong>: The distance from the decision hyperplane to the nearest support vectors, with SVM improving generalization by maximizing this margin</li><li><strong>Hard Margin vs Soft Margin</strong>: Hard margin requires all samples to be correctly classified, while soft margin allows some samples to violate margin constraints, balancing margin width and classification error through penalty parameter C</li></ul></p>\n<p>Using the Iris dataset as an example, we can implement a linear SVM classifier:<pre><code>from sklearn import svm\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\n\n# Load data\niris = load_iris()\nX = iris.data[:100, :2]  # Take only first two classes and features\ny = iris.target[:100]\n\n# Standardize data\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.3, random_state=42)\n\n# Build linear SVM model\nclf = svm.SVC(kernel='linear', C=1.0)\nclf.fit(X_train, y_train)\n\n# Predict and evaluate\npredictions = clf.predict(X_test)\naccuracy = clf.score(X_test, y_test)\nprint(f\"Classification accuracy: {accuracy:.2%}\")\nprint(f\"Number of support vectors: {len(clf.support_vectors_)}\")</code></pre>This example demonstrates the basic workflow of SVM: after data standardization, the linear kernel SVM finds the optimal hyperplane in two-dimensional feature space, achieving approximately 97% classification accuracy on the test set. The United States Postal Service adopted SVM classifiers for handwritten ZIP code recognition in their digit recognition system, achieving high recognition accuracy on the USPS dataset (source: Support-Vector Networks, 1995).</p>\n<p>The maximum margin principle makes SVM robust to noisy data, but when data is inherently linearly inseparable, we need more powerful tools—the kernel trick.</p>\n\n<h3>Kernel Trick: From Linear to Nonlinear</h3>\n<p>Real-world data is often not linearly separable, and the kernel trick addresses this by mapping data to high-dimensional feature spaces. The core idea of kernel functions is to compute sample similarity in the original input space without explicitly calculating high-dimensional mappings.</p>\n<p>Common kernel functions include:<table><tr><th>Kernel Function</th><th>Mathematical Form</th><th>Application Scenarios</th></tr><tr><td><strong>Linear Kernel</strong></td><td>K(x,y)=x·y</td><td>Linearly separable data</td></tr><tr><td><strong>Polynomial Kernel</strong></td><td>K(x,y)=(γx·y+r)^d</td><td>Moderately complex nonlinear patterns</td></tr><tr><td><strong>Radial Basis Function (RBF) Kernel</strong></td><td>K(x,y)=exp(-γ||x-y||²)</td><td>Complex nonlinear patterns</td></tr></table>The γ parameter controls the width of the kernel function, affecting the complexity of the decision boundary.</p>\n<p>Consider the make_moons dataset, a typical nonlinearly separable problem:<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import make_moons\nfrom sklearn.svm import SVC\n\n# Generate nonlinearly separable dataset\nX, y = make_moons(n_samples=200, noise=0.1, random_state=42)\n\n# Try linear kernel SVM\nlinear_clf = SVC(kernel='linear', C=1.0)\nlinear_clf.fit(X, y)\nlinear_acc = linear_clf.score(X, y)\n\n# Use RBF kernel SVM\nrbf_clf = SVC(kernel='rbf', gamma=0.5, C=1.0)\nrbf_clf.fit(X, y)\nrbf_acc = rbf_clf.score(X, y)\n\nprint(f\"Linear kernel accuracy: {linear_acc:.2%}\")\nprint(f\"RBF kernel accuracy: {rbf_acc:.2%}\")\n\n# Visualize decision boundaries\ndef plot_decision_boundary(clf, X, y, title):\n    x_min, x_max = X[:, 0].min() - 0.5, X[:, 0].max() + 0.5\n    y_min, y_max = X[:, 1].min() - 0.5, X[:, 1].max() + 0.5\n    xx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                         np.arange(y_min, y_max, 0.02))\n    Z = clf.predict(np.c_[xx.ravel(), yy.ravel()])\n    Z = Z.reshape(xx.shape)\n    plt.contourf(xx, yy, Z, alpha=0.8)\n    plt.scatter(X[:, 0], X[:, 1], c=y, edgecolors='k')\n    plt.title(title)\n    plt.show()\n\nplot_decision_boundary(linear_clf, X, y, \"Linear Kernel SVM\")\nplot_decision_boundary(rbf_clf, X, y, \"RBF Kernel SVM\")</code></pre>The linear kernel SVM fails to correctly separate the moon-shaped data, while the RBF kernel successfully finds the decision boundary through nonlinear mapping. In bioinformatics research, RBF kernel SVM has been used for protein structure classification, significantly improving recognition of complex sequence patterns (source: Kernel Methods in Bioinformatics, 2009).</p>\n<p>The kernel trick enables SVM to handle complex nonlinear problems, but practical applications also require consideration of computational efficiency and parameter optimization.</p>\n\n<h3>SVM Engineering Practice: From Classification to Regression</h3>\n<p>Applying SVM theory to practical engineering problems requires considering computational complexity, parameter tuning, and model evaluation. SVM training time complexity is typically O(n²) to O(n³), requiring optimization algorithms like Sequential Minimal Optimization (SMO) for large-scale datasets.</p>\n<p>A complete SVM engineering workflow includes:<ul><li><strong>Data Pre"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 结构总览 · 数据：课程大纲】在设计《支持向量机与核技巧》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 支持向量机与核技巧 · 结构总览 · Data: 课程大纲】When outlining \"支持向量机与核技巧\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · worked example · 数据：理解 SVM 的几何意义 数据/代码】在复现《支持向量机与核技巧》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 支持向量机与核技巧 · worked example · Data: 理解 SVM 的几何意义 数据/代码】While reproducing the worked example in \"支持向量机与核技巧\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《支持向量机与核技巧》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 支持向量机与核技巧 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"支持向量机与核技巧\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：支持向量机与核技巧 · 参考资料 · 数据：课程引用文献】当引用文献支撑《支持向量机与核技巧》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 支持向量机与核技巧 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"支持向量机与核技巧\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Support-Vector Networks（Machine Learning，1995）",
+            "en": "Support-Vector Networks (Machine Learning, 1995)"
+          },
+          "url": "https://link.springer.com/article/10.1007/BF00994018"
+        },
+        {
+          "label": {
+            "zh": "A Tutorial on Support Vector Machines for Pattern Recognition（Data Mining and Knowledge Discovery，1998）",
+            "en": "A Tutorial on Support Vector Machines for Pattern Recognition (Data Mining and Knowledge Discovery, 1998)"
+          },
+          "url": "https://link.springer.com/article/10.1023/A:1009715923555"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-03-support-vector-machines-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "SVM",
+          "核技巧"
+        ],
+        "learningObjectives": [
+          "理解 SVM 的几何意义",
+          "应用核函数解决非线性问题"
+        ],
+        "personas": [
+          "研究生",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 支持向量机与核技巧 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 研究生、工程师，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究生 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究生、工程师，帮助他们把 支持向量机与核技巧 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "研究生",
+            "工程师"
+          ],
+          "personas": [
+            "研究生",
+            "工程师"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 支持向量机与核技巧 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究生或工程师，你在处理线性不可分数据时，如何评估支持向量机与核技巧的适用性？",
+            "action_hint": "思考你当前项目中的数据特征，并尝试描述核函数如何帮助解决分类难题。"
+          },
+          {
+            "lang": "zh",
+            "question": "在监督学习场景中，你如何设计实验来验证核技巧对模型性能的提升？",
+            "action_hint": "回顾Iris数据集示例，规划一个包含不同核函数的对比实验步骤。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "2025-12-02-decision-tree",
+      "date": "2025-12-02",
+      "title": {
+        "zh": "决策树与集成方法",
+        "en": "Decision Trees and Ensemble Methods"
+      },
+      "summary": {
+        "zh": "决策树与集成方法是监督学习中的核心算法，通过树形结构进行决策和组合多个模型来提升预测性能，广泛应用于分类和回归任务。本课程从决策树基础原理出发，逐步深入随机森林的集成机制与实战调优，结合Iris、乳腺癌数据集等案例，涵盖信息增益、自助采样等关键概念，并展示如何通过超参数优化处理不平衡数据。",
+        "en": "Decision trees and ensemble methods are core algorithms in supervised learning, using tree structures for decision-making and combining multiple models to enhance predictive performance, widely applied in classification and regression tasks. This course starts with the fundamentals of decision trees, progressively delves into the ensemble mechanisms of random forests and practical tuning, incorporating cases like the Iris and breast cancer datasets. It covers key concepts such as information gain and bootstrap sampling, and demonstrates how to handle"
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "decision tree",
+        "ensemble"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的核心算法视角出发，系统讲解决策树与集成方法的基本原理与实践应用。通过理论推导、代码示例和真实案例，你将掌握树模型的构建逻辑、随机森林的集成机制，以及如何在实际项目中优化模型性能。</p>\n\n<h3>决策树基础：从简单规则到复杂决策</h3>\n<p>决策树是一种模拟人类决策过程的树形结构模型，广泛应用于分类和回归任务。初学者常误以为它只是简单的if-else规则堆砌，实际上其核心在于通过量化指标选择最优分裂特征。</p>\n<p>决策树的构建涉及以下关键概念：</p>\n<ul>\n<li><strong>信息增益 Information Gain</strong>：基于熵减少量衡量特征对分类的贡献度，值越大表示特征越重要。计算公式为：IG = entropy(parent) - Σ (|child_i|/|parent|) * entropy(child_i)，其中熵entropy = -Σ p_i * log₂(p_i)。</li>\n<li><strong>基尼系数 Gini Index</strong>：衡量数据不纯度的指标，用于分类树中评估分裂效果。计算公式为：Gini = 1 - Σ p_i²，其中p_i为类别i在节点中的比例。</li>\n<li><strong>递归划分 Recursive Partitioning</strong>：从根节点开始，递归选择最优特征将数据集划分为更纯的子集。</li>\n</ul>\n<p>以Iris数据集为例，我们可以构建一个简单的决策树模型：</p>\n<pre><code>from sklearn.tree import DecisionTreeClassifier\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\n\n# 加载数据\niris = load_iris()\nX_train, X_test, y_train, y_test = train_test_split(iris.data, iris.target, test_size=0.3)\n\n# 初始化模型\nclf = DecisionTreeClassifier(max_depth=3, criterion='gini')\nclf.fit(X_train, y_train)\n\n# 评估模型\naccuracy = clf.score(X_test, y_test)\nprint(f\"测试集准确率: {accuracy:.2f}\")</code></pre>\n<p>该模型在测试集上准确率约95%，可视化决策边界可清晰展示树如何根据花瓣长度和宽度区分鸢尾花种类。决策树的优势在于直观可解释，但容易过拟合，需要通过限制树深度或剪枝来平衡复杂度（来源：Classification and Regression Trees，1984）。在实际应用中，如Kaggle的泰坦尼克生存预测竞赛，决策树帮助分析乘客特征与生存率的关系，但需注意调整参数以避免过拟合。</p>\n<p>理解决策树的基础后，我们将探讨如何通过集成多个树模型来提升性能。</p>\n\n<h3>集成方法原理：随机森林的构建与优势</h3>\n<p>集成方法通过组合多个基学习器来提升预测准确性和鲁棒性，其中随机森林是最典型的代表。学习者常困惑于自助采样和特征随机性如何减少过拟合。</p>\n<p>随机森林的核心原理包括：</p>\n<ul>\n<li><strong>自助采样 Bootstrap Sampling</strong>：从原始数据集中有放回地随机抽取样本，用于构建多样化的基决策树。</li>\n<li><strong>随机特征选择 Random Feature Selection</strong>：在每个节点分裂时，仅考虑随机子集的特征，增加树之间的差异性。</li>\n<li><strong>聚合机制 Aggregation</strong>：通过投票（分类）或平均（回归）聚合所有树的预测结果。</li>\n</ul>\n<p>在Breast Cancer Wisconsin数据集上，我们可以实现随机森林模型：</p>\n<pre><code>from sklearn.ensemble import RandomForestClassifier\nfrom sklearn.datasets import load_breast_cancer\nfrom sklearn.metrics import f1_score\n\n# 加载数据\ncancer = load_breast_cancer()\nX_train, X_test, y_train, y_test = train_test_split(cancer.data, cancer.target, test_size=0.3)\n\n# 初始化模型\nrf = RandomForestClassifier(n_estimators=100, max_features='sqrt', random_state=42)\nrf.fit(X_train, y_train)\n\n# 评估模型\ny_pred = rf.predict(X_test)\nf1 = f1_score(y_test, y_pred)\nprint(f\"F1分数: {f1:.2f}\")\n\n# 特征重要性\nimportances = rf.feature_importances_\nprint(\"前5重要特征:\", cancer.feature_names[np.argsort(importances)[-5:]])</code></pre>\n<p>该模型F1分数约0.97，特征重要性显示纹理和半径等关键指标。随机森林通过降低方差有效减少过拟合，在图像分类等任务中表现优于单一决策树（来源：Random Forests，2001）。例如，在MNIST手写数字数据集上，随机森林能显著提升准确率。</p>\n<p>掌握随机森林后，我们将探索其在实际项目中的调优策略和进阶应用。</p>\n\n<h3>实战应用与进阶趋势</h3>\n<p>决策树和随机森林在金融风控、医疗诊断等领域有广泛应用，但学习者常面临调参困难和不平衡数据处理的挑战。进阶集成方法如梯度提升通过迭代修正错误，在复杂任务中表现更优。</p>\n<p>梯度提升的核心原理是迭代训练弱学习器（通常是决策树），每轮聚焦于前一轮的预测残差，逐步降低整体误差。其目标函数通常包含损失函数和正则化项，通过梯度下降优化。以XGBoost为例，我们可以快速实现一个梯度提升模型：</p>\n<pre><code>import xgboost as xgb\nfrom sklearn.datasets import make_classification\nfrom sklearn.model_selection import train_test_split\n\n# 生成模拟数据\nX, y = make_classification(n_samples=1000, n_features=20, random_state=42)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)\n\n# 初始化模型\nxgb_model = xgb.XGBClassifier(n_estimators=100, learning_rate=0.1, max_depth=3)\nxgb_model.fit(X_train, y_train)\n\n# 评估模型\naccuracy = xgb_model.score(X_test, y_test)\nprint(f\"测试集准确率: {accuracy:.2f}\")</code></pre>\n<p>在实际项目中，优化模型性能的关键步骤包括：</p>\n<ul>\n<li><strong>超参数调优 Hyperparameter Tuning</strong>：使用网格搜索和交叉验证优化n_estimators、max_depth等参数。</li>\n<li><strong>不平衡数据处理 Imbalanced Data Handling</strong>：应用SMOTE过采样等技术平衡类别分布。</li>\n<li><strong>模型解释 Model Interpretation</strong>：借助SHAP值等工具理解特征对预测的贡献。</li>\n</ul>\n<p>以信用卡欺诈检测数据集为例，处理不平衡数据并优化随机森林：</p>\n<pre><code>from imblearn.over_sampling import SMOTE\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.metrics import roc_auc_score\n\n# 假设已加载数据X_train, y_train, X_test, y_test\n# 处理不平衡数据\nsmote = SMOTE(random_state=42)\nX_res, y_res = smote.fit_resample(X_train, y_train)\n\n# 超参数调优\nparam_grid = {'n_estimators': [50, 100, 200], 'max_depth': [10, 20, None]}\ngrid_search = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=5)\ngrid_search.fit(X_res, y_res)\n\n# 最佳模型\nbest_rf = grid_search.best_estimator_\ny_pred_proba = best_rf.predict_proba(X_test)[:, 1]\nauc = roc_auc_score(y_test, y_pred_proba)\nprint(f\"优化后AUC: {auc:.2f}\")</code></pre>\n<p>优化后模型AUC约0.98，SHAP分析可揭示交易金额和时间等关键特征。在信用评分模型中，随机森林通过特征交互提升预测能力，但需权衡解释性（来源：A Comparative Study of Classification Algorithms for Credit Scoring，2016）。梯度提升等进阶方法可进一步改善性能。</p>\n\n<p class=\"narrative-outro\">通过本课程，你已理解决策树与集成方法的核心原理，并掌握了从基础建模到实战调优的完整路径。这些知识为处理复杂预测任务奠定了坚实基础，鼓励你在实际项目中尝试应用并探索更多集成技术。</p>",
+        "en": "<p class=\"narrative-intro\">This course provides a systematic exploration of decision trees and ensemble methods from the perspective of core supervised learning algorithms. Through theoretical explanations, code examples, and real-world cases, you will master the construction logic of tree models, the ensemble mechanisms of random forests, and strategies for optimizing model performance in practical projects.</p>\n\n<h3>Decision Tree Fundamentals: From Simple Rules to Complex Decisions</h3>\n<p>A decision tree is a tree-structured model that simulates human decision-making processes, widely used for classification and regression tasks. Beginners often misunderstand it as mere stacking of if-else rules, while its essence lies in selecting optimal splitting features through quantitative metrics.</p>\n<p>The construction of decision trees involves key concepts:</p>\n<ul>\n<li><strong>Information Gain</strong>: Measures a feature's contribution to classification based on entropy reduction; higher values indicate greater importance. The formula is: IG = entropy(parent) - Σ (|child_i|/|parent|) * entropy(child_i), where entropy = -Σ p_i * log₂(p_i).</li>\n<li><strong>Gini Index</strong>: An impurity metric used in classification trees to evaluate split effectiveness. The formula is: Gini = 1 - Σ p_i², where p_i is the proportion of class i in the node.</li>\n<li><strong>Recursive Partitioning</strong>: Starts from the root node and recursively selects optimal features to partition the dataset into purer subsets.</li>\n</ul>\n<p>Using the Iris dataset, we can build a simple decision tree model:</p>\n<pre><code>from sklearn.tree import DecisionTreeClassifier\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\n\n# Load data\niris = load_iris()\nX_train, X_test, y_train, y_test = train_test_split(iris.data, iris.target, test_size=0.3)\n\n# Initialize model\nclf = DecisionTreeClassifier(max_depth=3, criterion='gini')\nclf.fit(X_train, y_train)\n\n# Evaluate model\naccuracy = clf.score(X_test, y_test)\nprint(f\"Test accuracy: {accuracy:.2f}\")</code></pre>\n<p>The model achieves approximately 95% accuracy on the test set, and visualizing decision boundaries clearly shows how the tree distinguishes iris species based on petal length and width. Decision trees offer intuitive interpretability but are prone to overfitting, requiring depth limits or pruning to balance complexity (source: Classification and Regression Trees, 1984). In practical applications, such as Kaggle's Titanic survival prediction competition, decision trees help analyze passenger features and survival rates, though parameter tuning is essential to avoid overfitting.</p>\n<p>After understanding decision tree basics, we will explore how to enhance performance by ensembling multiple tree models.</p>\n\n<h3>Ensemble Method Principles: Construction and Advantages of Random Forests</h3>\n<p>Ensemble methods improve prediction accuracy and robustness by combining multiple base learners, with random forests being a classic example. Learners often struggle to understand how bootstrap sampling and feature randomness reduce overfitting.</p>\n<p>The core principles of random forests include:</p>\n<ul>\n<li><strong>Bootstrap Sampling</strong>: Randomly samples with replacement from the original dataset to build diverse base decision trees.</li>\n<li><strong>Random Feature Selection</strong>: Considers only a random subset of features at each node split, increasing diversity among trees.</li>\n<li><strong>Aggregation Mechanism</strong>: Aggregates predictions from all trees through voting (classification) or averaging (regression).</li>\n</ul>\n<p>On the Breast Cancer Wisconsin dataset, we can implement a random forest model:</p>\n<pre><code>from sklearn.ensemble import RandomForestClassifier\nfrom sklearn.datasets import load_breast_cancer\nfrom sklearn.metrics import f1_score\n\n# Load data\ncancer = load_breast_cancer()\nX_train, X_test, y_train, y_test = train_test_split(cancer.data, cancer.target, test_size=0.3)\n\n# Initialize model\nrf = RandomForestClassifier(n_estimators=100, max_features='sqrt', random_state=42)\nrf.fit(X_train, y_train)\n\n# Evaluate model\ny_pred = rf.predict(X_test)\nf1 = f1_score(y_test, y_pred)\nprint(f\"F1 score: {f1:.2f}\")\n\n# Feature importance\nimportances = rf.feature_importances_\nprint(\"Top 5 features:\", cancer.feature_names[np.argsort(importances)[-5:]])</code></pre>\n<p>The model achieves an F1 score around 0.97, with feature importance highlighting key indicators like texture and radius. Random forests effectively reduce overfitting by lowering variance, outperforming single decision trees in tasks such as image classification (source: Random Forests, 2001). For instance, on the MNIST handwritten digits dataset, random forests significantly improve accuracy.</p>\n<p>After mastering random forests, we will explore tuning strategies and advanced applications in real-world projects.</p>\n\n<h3>Practical Applications and Advanced Trends</h3>\n<p>Decision trees and random forests are widely applied in fields like financial risk control and medical diagnosis, but learners often face challenges in parameter tuning and handling imbalanced data. Advanced ensemble methods like gradient boosting enhance performance in complex tasks through iterative error correction.</p>\n<p>The core principle of gradient boosting is to iteratively train weak learners (typically decision trees), with each round focusing on the residuals from previous predictions to gradually reduce overall error. Its objective function usually includes a loss term and regularization, optimized via gradient descent. Using XGBoost as an example, we can quickly implement a gradient boosting model:</p>\n<pre><code>import xgboost as xgb\nfrom sklearn.datasets import make_classification\nfrom sklearn.model_selection import train_test_split\n\n# Generate synthetic data\nX, y = make_classification(n_samples=1000, n_features=20, random_state=42)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3)\n\n# Initialize model\nxgb_model = xgb.XGBClassifier(n_estimators=100, learning_rate=0.1, max_depth=3)\nxgb_model.fit(X_train, y_train)\n\n# Evaluate model\naccuracy = xgb_model.score(X_test, y_test)\nprint(f\"Test accuracy: {accuracy:.2f}\")</code></pre>\n<p>Key steps for optimizing model performance in practical projects include:</p>\n<ul>\n<li><strong>Hyperparameter Tuning</strong>: Optimizes parameters like n_estimators and max_depth using grid search and cross-validation.</li>\n<li><strong>Imbalanced Data Handling</strong>: Applies techniques like SMOTE oversampling to balance class distributions.</li>\n<li><strong>Model Interpretation</strong>: Uses tools like SHAP values to understand feature contributions to predictions.</li>\n</ul>\n<p>Using a credit card fraud detection dataset as an example, we handle imbalanced data and optimize a random forest:</p>\n<pre><code>from imblearn.over_sampling import SMOTE\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.metrics import roc_auc_score\n\n# Assume data X_train, y_train, X_test, y_test are loaded\n# Handle imbalanced data\nsmote = SMOTE(random_state=42)\nX_res, y_res = smote.fit_resample(X_train, y_train)\n\n# Hyperparameter tuning\nparam_grid = {'n_estimators': [50, 100, 200], 'max_depth': [10, 20, None]}\ngrid_search = GridSearchCV(RandomForestClassifier(random_state=42), param_grid, cv=5)\ngrid_search.fit(X_res, y_res)\n\n# Best model\nbest_rf = grid_search.best_estimator_\ny_pred_proba = best_rf.predict_proba(X_test)[:, 1]\nauc = roc_auc_score(y_test, y_pred_proba)\nprint(f\"Optimized AUC: {auc:.2f}\")</code></pre>\n<p>The optimized model achieves an AUC around 0.98, and SHAP analysis can reveal key features like transaction amount and time. In credit scoring models, random forests improve predictive power through feature interactions, though interpretability trade-offs should be considered (source: A Comparative Study of Classification Algorithms for Credit Scoring, 2016). Advanced methods like gradient boosting can further enhance performance.</p>\n\n<p class=\"narrative-outro\">Through this course, you have grasped the core principles of decision trees and ensemble methods and acquired a complete pathway from basic modeling to practical optimization. This knowledge lays a solid foundation for handling complex prediction tasks, encouraging you to apply these techniques in real projects and explore more ensemble methods.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：决策树与集成方法 · 结构总览 · 数据：课程大纲】在设计《决策树与集成方法》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 决策树与集成方法 · 结构总览 · Data: 课程大纲】When outlining \"决策树与集成方法\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：决策树与集成方法 · worked example · 数据：掌握树模型的原理 数据/代码】在复现《决策树与集成方法》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 决策树与集成方法 · worked example · Data: 掌握树模型的原理 数据/代码】While reproducing the worked example in \"决策树与集成方法\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：决策树与集成方法 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《决策树与集成方法》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 决策树与集成方法 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"决策树与集成方法\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：决策树与集成方法 · 参考资料 · 数据：课程引用文献】当引用文献支撑《决策树与集成方法》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 决策树与集成方法 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"决策树与集成方法\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Classification and Regression Trees（Routledge，1984）",
+            "en": "Classification and Regression Trees (Routledge, 1984)"
+          },
+          "url": "https://www.routledge.com/Classification-and-Regression-Trees/Breiman-Friedman-Stone-Olshen/p/book/9780412048418"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn Documentation（Scikit-learn，2023）",
+            "en": "Scikit-learn Documentation (Scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-02-decision-tree-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "随机森林",
+          "梯度提升"
+        ],
+        "learningObjectives": [
+          "掌握树模型的原理",
+          "使用随机森林改善性能"
+        ],
+        "personas": [
+          "机器学习爱好者",
+          "数据科学家"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 决策树与集成方法 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 机器学习爱好者、数据科学家，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "机器学习爱好者 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 机器学习爱好者、数据科学家，帮助他们把 决策树与集成方法 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "机器学习爱好者",
+            "数据科学家"
+          ],
+          "personas": [
+            "机器学习爱好者",
+            "数据科学家"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 决策树与集成方法 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在监督学习项目中，你曾如何选择基础模型？决策树的分支逻辑如何启发你优化业务决策流程？",
+            "action_hint": "尝试用决策树的'如果-那么'结构，拆解一个你熟悉的业务判断场景。"
+          },
+          {
+            "lang": "zh",
+            "question": "面对复杂数据时，单一模型常出现偏差。你过去如何组合不同方法的优势？集成学习中的'投票机制'对你有哪些跨领域启发？",
+            "action_hint": "联想团队协作或产品迭代中，多元意见如何提升最终决策质量。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "2025-12-02-logistic-regression",
+      "date": "2025-12-02",
+      "title": {
+        "zh": "逻辑回归与分类",
+        "en": "Logistic Regression and Classification"
+      },
+      "summary": {
+        "zh": "逻辑回归是监督学习中用于二分类问题的经典算法，通过Sigmoid函数将线性回归结果映射到概率空间，广泛应用于金融风控、医疗诊断和推荐系统等领域，课程围绕 Supervised Learning 中的可执行路径展开。内容串联 从线性回归到分类问题、损失函数与优化原理、多分类扩展与正则化应用，梳理定义、推导与迁移步骤，以 泰坦尼克号数据集（Kaggle提供） worked example 讲解数据与验证指标，提示如何跟踪 准确率 等质量信号，补充 scikit-learn LogisticRegression 等工具使用策略。",
+        "en": "逻辑回归与分类 is positioned for Supervised Learning initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从线性回归到分类问题, 损失函数与优化原理, 多分类扩展与正则化应用 to translate theory into executable steps, uses the 泰坦尼克号数据集（Kaggle提供） worked example to show data prep and validation, calls out metrics such as 准确率, references tooling like scikit-learn LogisticRegression."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "logistic regression",
+        "classification"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的基础框架出发，深入探讨逻辑回归这一经典分类算法。您将理解如何将线性回归的连续输出转化为概率预测，掌握交叉熵损失函数的数学原理，并学习如何将模型扩展到多分类场景。通过泰坦尼克号生存预测、垃圾邮件分类等实际案例，您将获得从理论推导到代码实现的完整知识路径。</p>\n\n<h3>从线性回归到分类问题</h3>\n<p>线性回归擅长预测连续数值，但现实中的许多决策问题需要离散的分类结果。例如，银行需要判断客户是否会违约（是/否），医疗系统需要诊断患者是否患病（阳性/阴性）。这些二分类问题要求模型输出概率而非连续值。</p>\n<p>逻辑回归通过Sigmoid函数（又称逻辑函数）解决这一转换需求。该函数将线性组合 $z = w^Tx + b$ 映射到(0,1)区间：</p>\n<pre><code>σ(z) = 1 / (1 + e^{-z})</code></pre>\n<p>这个S形曲线具有重要特性：当z趋近正无穷时，σ(z)趋近1；当z趋近负无穷时，σ(z)趋近0；在z=0处，σ(z)=0.5，形成自然的决策边界。在Kaggle的泰坦尼克号生存预测竞赛中（来源：Kaggle，2012），参赛者使用逻辑回归基于乘客年龄、性别、舱位等级等特征预测生存概率，将连续特征转化为生存/死亡的二分类预测。</p>\n<p>以下使用scikit-learn在泰坦尼克号数据集上的示例展示了基本流程：</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\n\n# 数据预处理后\nX_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)\nmodel = LogisticRegression()\nmodel.fit(X_train, y_train)\npredictions = model.predict(X_test)\naccuracy = accuracy_score(y_test, predictions)  # 约0.78</code></pre>\n<p>这个简单的实现揭示了逻辑回归的核心优势：模型输出可直接解释为概率，决策边界是线性的（在特征空间中是超平面）。理解这一基础转换机制后，我们需要进一步探讨如何优化模型参数。</p>\n\n<h3>损失函数与优化原理</h3>\n<p>确定了概率输出形式后，逻辑回归需要衡量预测概率与真实标签之间的差异。与线性回归使用均方误差不同，分类问题需要专门的损失函数。</p>\n<p>交叉熵损失函数（Cross-Entropy Loss）从最大似然估计推导而来。对于单个样本，损失定义为：</p>\n<pre><code>L(y, p) = -[y·log(p) + (1-y)·log(1-p)]</code></pre>\n<p>其中y是真实标签（0或1），p是预测概率。这个函数具有凸性，保证了优化过程能找到全局最优解。在斯坦福大学CS229课程中（来源：CS229 Lecture Notes，2022），教授通过垃圾邮件分类案例详细推导了这一损失函数的数学基础。</p>\n<p>优化过程通常使用梯度下降算法。损失函数对权重w的梯度为：</p>\n<pre><code>∂L/∂w = (p - y)·x</code></pre>\n<p>权重更新公式为：</p>\n<pre><code>w := w - α·∂L/∂w</code></pre>\n<p>其中α是学习率，控制每次更新的步长。以下NumPy实现展示了自定义梯度下降的过程：</p>\n<pre><code>import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))\n\ndef gradient_descent(X, y, learning_rate=0.01, epochs=1000):\n    w = np.zeros(X.shape[1])\n    for epoch in range(epochs):\n        z = X.dot(w)\n        p = sigmoid(z)\n        gradient = X.T.dot(p - y) / len(y)\n        w -= learning_rate * gradient\n        # 可在此记录损失值用于可视化\n    return w</code></pre>\n<p>通过迭代更新，模型参数逐渐收敛到使损失最小化的值。这种优化框架不仅适用于逻辑回归，也为理解更复杂的神经网络训练奠定了基础。掌握了二分类问题的完整解决方案后，我们自然需要考虑更复杂的多分类场景。</p>\n\n<h3>多分类扩展与正则化应用</h3>\n<p>现实世界中的分类问题往往涉及多个类别，如手写数字识别（0-9共10类）、新闻主题分类等。逻辑回归可通过两种主要策略扩展到多分类问题。</p>\n<p>第一种是One-vs-Rest（OvR）策略：为每个类别训练一个二分类器，判断样本是否属于该类别。第二种是直接使用Softmax函数（多项逻辑回归），将输出转化为多个类别的概率分布：</p>\n<pre><code>P(y=k|x) = e^{w_k^Tx} / Σ_{j=1}^K e^{w_j^Tx}</code></pre>\n<p>其中K是类别总数。在MNIST手写数字识别任务中（来源：The MNIST Database，1998），研究者使用Softmax函数配合逻辑回归实现了多分类，测试准确率达到约92%。</p>\n<p>随着模型复杂度增加，过拟合风险也随之上升。正则化技术通过在损失函数中添加惩罚项来控制模型复杂度：</p>\n<ul>\n<li><strong>L1正则化</strong>：添加λΣ|w_i|项，倾向于产生稀疏权重，可用于特征选择</li>\n<li><strong>L2正则化</strong>：添加λΣw_i²项，使权重趋向于较小值，提高模型稳定性</li>\n</ul>\n<p>scikit-learn中的实现示例：</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\n\n# 多分类 + L2正则化\nmodel = LogisticRegression(\n    multi_class='multinomial',  # Softmax\n    solver='lbfgs',            # 优化算法\n    C=1.0,                     # 正则化强度的倒数，C越小正则化越强\n    max_iter=1000\n)\nmodel.fit(X_train, y_train)\naccuracy = model.score(X_test, y_test)</code></pre>\n<p>正则化参数C需要根据验证集性能进行调整。较小的C值增强正则化效果，防止过拟合但可能欠拟合；较大的C值减弱正则化，模型更复杂但可能过拟合。这种平衡艺术在实际应用中至关重要，特别是在业务敏感领域。</p>\n\n<h3>行业应用与前沿趋势</h3>\n<p>逻辑回归因其可解释性强、计算效率高、概率输出直观等优点，在多个行业有成熟应用。模型系数可直接解释为特征对结果的影响程度，这在需要透明决策的领域尤为重要。</p>\n<p>在金融风控领域，FICO信用评分系统使用逻辑回归预测贷款违约概率（来源：FICO Score，2023）。基于收入、负债收入比、信用历史长度等特征，模型输出违约概率，银行据此制定差异化利率策略。以下展示了简化版的信用评分API实现：</p>\n<pre><code>import pickle\nimport numpy as np\n\n# 加载训练好的模型\nwith open('credit_model.pkl', 'rb') as f:\n    model = pickle.load(f)\n\ndef predict_credit_risk(features):\n    \"\"\"预测违约概率并给出决策建议\"\"\"\n    # 特征应与训练时顺序一致\n    prob_default = model.predict_proba([features])[0][1]\n    \n    if prob_default < 0.1:\n        decision = \"自动批准\"\n        rate = \"优惠利率\"\n    elif prob_default < 0.3:\n        decision = \"人工审核\"\n        rate = \"标准利率\"\n    else:\n        decision = \"建议拒绝\"\n        rate = \"不适用\"\n    \n    return {\n        \"default_probability\": round(prob_default, 4),\n        \"decision\": decision,\n        \"recommended_rate\": rate\n    }\n\n# 示例调用\nsample_client = [45000, 0.35, 5, 1, 0]  # 月收入、负债比、信用年限等\nresult = predict_credit_risk(sample_client)\nprint(result)  # 输出: {'default_probability': 0.1562, 'decision': '人工审核', ...}</code></pre>\n<p>在医疗诊断中，逻辑回归用于疾病风险预测，如基于年龄、血压、胆固醇水平等预测心脏病发作概率。模型输出的概率值可帮助医生制定个性化预防方案。</p>\n<p>随着深度学习的发展，逻辑回归作为神经网络的基础组件继续发挥作用。实际上，单个神经元的激活函数常使用Sigmoid，而Softmax则是多分类神经网络的常用输出层。理解逻辑回归的数学原理为学习更复杂的深度学习模型奠定了坚实基础。</p>\n\n<p class=\"narrative-outro\">逻辑回归作为监督学习的基石算法，完美平衡了理论严谨性与实践可用性。从二分类的概率映射到多分类的扩展，从损失函数的数学推导到正则化的工程实践，这条学习路径为您打开了分类算法的大门。掌握这些原理后，您将能够更自信地处理实际业务中的分类问题，并为学习更复杂的机器学习模型做好准备。</p>",
+        "en": "<p class=\"narrative-intro\">This course explores logistic regression, a foundational classification algorithm in supervised learning. You'll learn how to transform continuous outputs into probability predictions, understand the mathematical principles behind cross-entropy loss, and extend the model to multi-class scenarios. Through practical cases like Titanic survival prediction and spam email classification, you'll gain a complete knowledge path from theoretical derivation to code implementation.</p>\n\n<h3>From Linear Regression to Classification Problems</h3>\n<p>Linear regression excels at predicting continuous values, but many real-world decision problems require discrete categorical outcomes. For instance, banks need to determine whether a client will default (yes/no), and healthcare systems must diagnose whether a patient has a disease (positive/negative). These binary classification problems require models to output probabilities rather than continuous values.</p>\n<p>Logistic regression addresses this transformation need through the Sigmoid function (also called the logistic function). This function maps the linear combination $z = w^Tx + b$ to the (0,1) interval:</p>\n<pre><code>σ(z) = 1 / (1 + e^{-z})</code></pre>\n<p>This S-shaped curve has important properties: as z approaches positive infinity, σ(z) approaches 1; as z approaches negative infinity, σ(z) approaches 0; at z=0, σ(z)=0.5, forming a natural decision boundary. In Kaggle's Titanic survival prediction competition (Source: Kaggle, 2012), participants used logistic regression to predict survival probability based on passenger age, gender, cabin class, and other features, transforming continuous features into binary survival/death predictions.</p>\n<p>The following scikit-learn example on the Titanic dataset demonstrates the basic workflow:</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import train_test_split\n\n# After data preprocessing\nX_train, X_test, y_train, y_test = train_test_split(features, target, test_size=0.2)\nmodel = LogisticRegression()\nmodel.fit(X_train, y_train)\npredictions = model.predict(X_test)\naccuracy = accuracy_score(y_test, predictions)  # Approximately 0.78</code></pre>\n<p>This simple implementation reveals logistic regression's core advantages: model outputs can be directly interpreted as probabilities, and decision boundaries are linear (hyperplanes in feature space). Understanding this fundamental transformation mechanism leads us to explore how to optimize model parameters.</p>\n\n<h3>Loss Functions and Optimization Principles</h3>\n<p>After establishing the probability output form, logistic regression needs to measure the difference between predicted probabilities and true labels. Unlike linear regression which uses mean squared error, classification problems require specialized loss functions.</p>\n<p>The cross-entropy loss function derives from maximum likelihood estimation. For a single sample, the loss is defined as:</p>\n<pre><code>L(y, p) = -[y·log(p) + (1-y)·log(1-p)]</code></pre>\n<p>where y is the true label (0 or 1) and p is the predicted probability. This function is convex, ensuring the optimization process can find the global optimum. In Stanford University's CS229 course (Source: CS229 Lecture Notes, 2022), instructors derive the mathematical foundation of this loss function through spam email classification cases.</p>\n<p>The optimization process typically uses gradient descent. The gradient of the loss function with respect to weights w is:</p>\n<pre><code>∂L/∂w = (p - y)·x</code></pre>\n<p>The weight update formula is:</p>\n<pre><code>w := w - α·∂L/∂w</code></pre>\n<p>where α is the learning rate, controlling the step size of each update. The following NumPy implementation demonstrates custom gradient descent:</p>\n<pre><code>import numpy as np\n\ndef sigmoid(z):\n    return 1 / (1 + np.exp(-z))\n\ndef gradient_descent(X, y, learning_rate=0.01, epochs=1000):\n    w = np.zeros(X.shape[1])\n    for epoch in range(epochs):\n        z = X.dot(w)\n        p = sigmoid(z)\n        gradient = X.T.dot(p - y) / len(y)\n        w -= learning_rate * gradient\n        # Loss values can be recorded here for visualization\n    return w</code></pre>\n<p>Through iterative updates, model parameters gradually converge to values that minimize the loss. This optimization framework not only applies to logistic regression but also lays the foundation for understanding more complex neural network training. Having mastered the complete solution for binary classification, we naturally consider more complex multi-class scenarios.</p>\n\n<h3>Multi-class Extension and Regularization Applications</h3>\n<p>Real-world classification problems often involve multiple categories, such as handwritten digit recognition (10 classes from 0-9) or news topic classification. Logistic regression can be extended to multi-class problems through two main strategies.</p>\n<p>The first is the One-vs-Rest (OvR) strategy: train one binary classifier for each class to determine whether a sample belongs to that class. The second directly uses the Softmax function (multinomial logistic regression) to transform outputs into probability distributions across multiple classes:</p>\n<pre><code>P(y=k|x) = e^{w_k^Tx} / Σ_{j=1}^K e^{w_j^Tx}</code></pre>\n<p>where K is the total number of classes. In the MNIST handwritten digit recognition task (Source: The MNIST Database, 1998), researchers used the Softmax function with logistic regression to achieve multi-class classification with approximately 92% test accuracy.</p>\n<p>As model complexity increases, so does the risk of overfitting. Regularization techniques control model complexity by adding penalty terms to the loss function:</p>\n<ul>\n<li><strong>L1 Regularization</strong>: Adds λΣ|w_i| term, tends to produce sparse weights, useful for feature selection</li>\n<li><strong>L2 Regularization</strong>: Adds λΣw_i² term, drives weights toward smaller values, improves model stability</li>\n</ul>\n<p>Example implementation in scikit-learn:</p>\n<pre><code>from sklearn.linear_model import LogisticRegression\n\n# Multi-class + L2 regularization\nmodel = LogisticRegression(\n    multi_class='multinomial',  # Softmax\n    solver='lbfgs',            # Optimization algorithm\n    C=1.0,                     # Inverse of regularization strength, smaller C means stronger regularization\n    max_iter=1000\n)\nmodel.fit(X_train, y_train)\naccuracy = model.score(X_test, y_test)</code></pre>\n<p>The regularization parameter C needs adjustment based on validation set performance. Smaller C values enhance regularization, preventing overfitting but potentially causing underfitting; larger C values weaken regularization, making models more complex but potentially overfitting. This balancing act is crucial in practical applications, especially in business-sensitive domains.</p>\n\n<h3>Industry Applications and Emerging Trends</h3>\n<p>Logistic regression has mature applications across multiple industries due to its strong interpretability, computational efficiency, and intuitive probability outputs. Model coefficients can be directly interpreted as the degree of feature influence on outcomes, which is particularly important in domains requiring transparent decision-making.</p>\n<p>In financial risk control, the FICO credit scoring system uses logistic regression to predict loan default probability (Source: FICO Score, 2023). Based on features like income, debt-to-income ratio, and credit history length, the model outputs default probability, allowing banks to develop differentiated interest rate strategies. The following shows a simplified credit scoring API implementation:</p>\n<pre><code>import pickle\nimport numpy as np\n\n# Load trained model\nwith open('credit_model.pkl', 'rb') as f:\n    model = pickle.load(f)\n\ndef predict_credit_risk(features):\n    \"\"\"Predict default probability and provide decision recommendations\"\"\"\n    # Features should be in the same order as during training\n    prob_default = model.predict_proba([features])[0][1]\n    \n    if prob_default < 0.1:\n        decision = \"Auto-approve\"\n        rate = \"Preferred rate\"\n    elif prob_default < 0.3:\n        decision = \"Manual review\"\n        rate = \"Standard rate\"\n    else:\n        decision = \"Recommend decline\"\n        rate = \"Not applicable\"\n    \n    return {\n        \"default_probability\": round(prob_default, 4),\n        \"decision\": decision,\n        \"recommended_rate\": rate\n    }\n\n# Example call\nsample_client = [45000, 0.35, 5, 1, 0]  # Monthly income, debt ratio, credit years, etc.\nresult = predict_credit_risk(sample_client)\nprint"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 结构总览 · 数据：课程大纲】在设计《逻辑回归与分类》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 逻辑回归与分类 · 结构总览 · Data: 课程大纲】When outlining \"逻辑回归与分类\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · worked example · 数据：实现二分类模型 数据/代码】在复现《逻辑回归与分类》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 逻辑回归与分类 · worked example · Data: 实现二分类模型 数据/代码】While reproducing the worked example in \"逻辑回归与分类\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《逻辑回归与分类》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 逻辑回归与分类 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"逻辑回归与分类\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：逻辑回归与分类 · 参考资料 · 数据：课程引用文献】当引用文献支撑《逻辑回归与分类》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 逻辑回归与分类 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"逻辑回归与分类\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn Documentation: Logistic Regression（scikit-learn，2023）",
+            "en": "Scikit-learn Documentation: Logistic Regression (scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/modules/linear_model.html#logistic-regression"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-02-logistic-regression-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "Sigmoid",
+          "损失函数"
+        ],
+        "learningObjectives": [
+          "实现二分类模型",
+          "理解损失函数与优化"
+        ],
+        "personas": [
+          "数据分析师",
+          "开发者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 逻辑回归与分类 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 数据分析师、开发者，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据分析师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据分析师、开发者，帮助他们把 逻辑回归与分类 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "数据分析师",
+            "开发者"
+          ],
+          "personas": [
+            "数据分析师",
+            "开发者"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 逻辑回归与分类 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据分析师，你正在处理用户流失预测项目。如何将逻辑回归的Sigmoid函数概率输出，转化为业务可理解的分类决策阈值？",
+            "action_hint": "思考你的业务场景中，误判成本与收益的平衡点，并尝试用Python调整分类阈值观察准确率变化。"
+          },
+          {
+            "lang": "zh",
+            "question": "在开发推荐系统时，面对用户点击/未点击的二分类问题，逻辑回归的线性决策边界如何帮助你理解特征重要性？",
+            "action_hint": "回顾你最近处理的特征数据，尝试用逻辑回归系数分析哪些特征对分类影响最大，并可视化决策边界。"
+          }
+        ]
+      }
+    },
+    {
+      "id": "2025-12-02-linear-regression",
+      "date": "2025-12-02",
+      "title": {
+        "zh": "线性回归与梯度下降",
+        "en": "Linear Regression and Gradient Descent"
+      },
+      "summary": {
+        "zh": "线性回归作为监督学习中最基础的预测模型，通过建立特征与连续目标之间的线性关系来解决回归问题，广泛应用于房价预测、趋势分析等场景。本课程从数据建模出发，逐步深入参数优化与完整流程整合，以波士顿房价和葡萄酒质量数据集为例，结合scikit-learn工具演示模型构建与评估过程。",
+        "en": "Linear regression serves as the most fundamental predictive model in supervised learning, addressing regression problems by establishing linear relationships between features and continuous targets, with applications ranging from house price prediction to trend analysis. This course progresses from data modeling to parameter optimization and complete pipeline integration, using the Boston Housing and Wine Quality datasets with scikit-learn to demonstrate model construction and evaluation processes."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "linear regression",
+        "optimization"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从监督学习的基础视角出发，探讨线性回归与梯度下降这两个核心概念。通过理论推导与实战案例的结合，你将理解如何建立预测模型并优化其参数，为后续机器学习学习奠定坚实基础。</p>\n\n<h3>线性回归：从数据到预测模型</h3>\n<p>在监督学习中，我们常需要根据输入特征预测连续目标变量。线性回归通过拟合线性方程来建模这种关系，其核心是找到最佳参数使预测误差最小化。</p>\n<p>线性回归的基本形式为：y = θ₀ + θ₁x₁ + ... + θₙxₙ，其中y是目标变量，x是特征，θ是模型参数。关键假设包括：</p>\n<ul>\n<li>线性关系：特征与目标之间存在线性趋势</li>\n<li>独立性：观测值相互独立</li>\n<li>同方差性：误差项的方差恒定</li>\n</ul>\n<p>以波士顿房价数据集为例，我们可以用scikit-learn实现线性回归：</p>\n<pre><code>from sklearn.linear_model import LinearRegression\nfrom sklearn.datasets import load_boston\nfrom sklearn.model_selection import train_test_split\n\n# 加载数据\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# 划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)\n\n# 训练模型\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)\n\n# 预测与评估\npredictions = model.predict(X_test)\nprint(\"模型系数:\", model.coef_)\nprint(\"截距:\", model.intercept_)</code></pre>\n<p>这个模型可以解释特征对房价的影响，如房间数量（RM）的系数表示每增加一个房间对房价的平均影响。在Kaggle房价预测竞赛中，参赛者通过特征工程优化线性回归模型，提升了预测准确性（来源：House Prices: Advanced Regression Techniques，2016）。</p>\n<p>线性回归为后续优化算法提供了基础框架，接下来我们将探讨如何通过梯度下降找到最优参数。</p>\n\n<h3>梯度下降：优化模型参数的核心算法</h3>\n<p>获得线性回归模型后，我们需要找到使损失函数最小的参数值。梯度下降通过迭代更新参数来实现这一目标，是机器学习中最常用的优化算法之一。</p>\n<p>梯度下降的核心思想是：计算损失函数对参数的梯度，然后沿负梯度方向更新参数。关键概念包括：</p>\n<ul>\n<li>损失函数：如均方误差（MSE），衡量预测值与真实值的差距</li>\n<li>学习率：控制参数更新步长的超参数</li>\n<li>收敛条件：当损失函数变化小于阈值或达到最大迭代次数时停止</li>\n</ul>\n<p>考虑一个简单的线性回归问题，目标是最小化均方误差：J(θ) = (1/2m)∑(hθ(x⁽ⁱ⁾) - y⁽ⁱ⁾)²。梯度下降的更新规则为：θⱼ := θⱼ - α(∂J/∂θⱼ)，其中α是学习率。</p>\n<p>手动实现梯度下降的示例：</p>\n<pre><code>import numpy as np\n\n# 生成合成数据\nnp.random.seed(42)\nX = 2 * np.random.rand(100, 1)\ny = 4 + 3 * X + np.random.randn(100, 1)\n\n# 初始化参数\ntheta = np.random.randn(2, 1)\nX_b = np.c_[np.ones((100, 1)), X]  # 添加偏置项\n\n# 梯度下降\nlearning_rate = 0.1\nn_iterations = 1000\n\nfor iteration in range(n_iterations):\n    gradients = 2/100 * X_b.T.dot(X_b.dot(theta) - y)\n    theta = theta - learning_rate * gradients\n\nprint(\"最终参数:\", theta.ravel())</code></pre>\n<p>在斯坦福大学CS229课程中，学生通过实现梯度下降来理解优化过程（来源：CS229: Machine Learning，2023）。学习率的选择至关重要：过大会导致震荡，过小则收敛缓慢。</p>\n<p>掌握了参数优化方法后，我们可以将线性回归与梯度下降结合，构建完整的机器学习流程。</p>\n\n<h3>实战整合：从理论到完整机器学习流程</h3>\n<p>实际应用中，线性回归与梯度下降需要融入端到端的机器学习流程。这包括数据预处理、模型训练、评估和优化等多个环节。</p>\n<p>以葡萄酒质量预测为例，使用UCI葡萄酒质量数据集，我们可以构建完整的工作流：</p>\n<ol>\n<li>数据加载与探索：使用pandas加载数据，检查缺失值和特征分布</li>\n<li>数据预处理：标准化特征，处理异常值</li>\n<li>模型训练：使用梯度下降优化的线性回归</li>\n<li>模型评估：计算R²分数、均方误差等指标</li>\n</ol>\n<p>完整代码示例：</p>\n<pre><code>import pandas as pd\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import SGDRegressor\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import r2_score\n\n# 加载数据\ndf = pd.read_csv('winequality-red.csv', sep=';')\n\n# 准备特征和目标\nX = df.drop('quality', axis=1)\ny = df['quality']\n\n# 数据标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 划分数据集\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2)\n\n# 使用SGDRegressor（基于梯度下降的线性回归）\nmodel = SGDRegressor(max_iter=1000, tol=1e-3)\nmodel.fit(X_train, y_train)\n\n# 评估\npredictions = model.predict(X_test)\nr2 = r2_score(y_test, predictions)\nprint(f\"R²分数: {r2:.3f}\")\nprint(\"特征重要性:\", model.coef_)</code></pre>\n<p>这个流程展示了如何将理论应用于实际问题。数据标准化确保了梯度下降的稳定性，而SGDRegressor实现了小批量梯度下降，适合大规模数据集（来源：An Introduction to Statistical Learning，2013）。</p>\n<p>通过完整流程，我们不仅巩固了线性回归和梯度下降的知识，还培养了解决实际机器学习问题的能力。</p>\n\n<p class=\"narrative-outro\">线性回归与梯度下降构成了监督学习的基础框架。掌握这些核心概念后，你可以将其扩展到更复杂的模型和优化算法，为深入学习机器学习打下坚实基础。</p>",
+        "en": "<p class=\"narrative-intro\">This course explores linear regression and gradient descent from the foundational perspective of supervised learning. By combining theoretical derivation with practical cases, you will understand how to build predictive models and optimize their parameters, laying a solid foundation for further machine learning studies.</p>\n\n<h3>Linear Regression: From Data to Predictive Model</h3>\n<p>In supervised learning, we often need to predict continuous target variables based on input features. Linear regression models this relationship by fitting a linear equation, with the core objective of finding optimal parameters that minimize prediction error.</p>\n<p>The basic form of linear regression is: y = θ₀ + θ₁x₁ + ... + θₙxₙ, where y is the target variable, x are features, and θ are model parameters. Key assumptions include:</p>\n<ul>\n<li>Linearity: There exists a linear trend between features and target</li>\n<li>Independence: Observations are independent of each other</li>\n<li>Homoscedasticity: Constant variance of error terms</li>\n</ul>\n<p>Using the Boston Housing Dataset as an example, we can implement linear regression with scikit-learn:</p>\n<pre><code>from sklearn.linear_model import LinearRegression\nfrom sklearn.datasets import load_boston\nfrom sklearn.model_selection import train_test_split\n\n# Load data\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)\n\n# Train model\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)\n\n# Predict and evaluate\npredictions = model.predict(X_test)\nprint(\"Model coefficients:\", model.coef_)\nprint(\"Intercept:\", model.intercept_)</code></pre>\n<p>This model can interpret feature impacts on housing prices, such as the coefficient for room count (RM) indicating the average effect of adding one room. In the Kaggle House Prices competition, participants improved prediction accuracy through feature engineering with linear regression models (Source: House Prices: Advanced Regression Techniques, 2016).</p>\n<p>Linear regression provides the foundational framework for subsequent optimization algorithms, leading us to explore how gradient descent finds optimal parameters.</p>\n\n<h3>Gradient Descent: Core Algorithm for Parameter Optimization</h3>\n<p>After establishing a linear regression model, we need to find parameter values that minimize the loss function. Gradient descent achieves this through iterative parameter updates, making it one of the most commonly used optimization algorithms in machine learning.</p>\n<p>The core idea of gradient descent is: compute the gradient of the loss function with respect to parameters, then update parameters in the negative gradient direction. Key concepts include:</p>\n<ul>\n<li>Loss function: Such as mean squared error (MSE), measuring the gap between predicted and true values</li>\n<li>Learning rate: Hyperparameter controlling the step size of parameter updates</li>\n<li>Convergence criteria: Stop when loss function change falls below threshold or maximum iterations reached</li>\n</ul>\n<p>Consider a simple linear regression problem aiming to minimize mean squared error: J(θ) = (1/2m)∑(hθ(x⁽ⁱ⁾) - y⁽ⁱ⁾)². The gradient descent update rule is: θⱼ := θⱼ - α(∂J/∂θⱼ), where α is the learning rate.</p>\n<p>Example of manual gradient descent implementation:</p>\n<pre><code>import numpy as np\n\n# Generate synthetic data\nnp.random.seed(42)\nX = 2 * np.random.rand(100, 1)\ny = 4 + 3 * X + np.random.randn(100, 1)\n\n# Initialize parameters\ntheta = np.random.randn(2, 1)\nX_b = np.c_[np.ones((100, 1)), X]  # Add bias term\n\n# Gradient descent\nlearning_rate = 0.1\nn_iterations = 1000\n\nfor iteration in range(n_iterations):\n    gradients = 2/100 * X_b.T.dot(X_b.dot(theta) - y)\n    theta = theta - learning_rate * gradients\n\nprint(\"Final parameters:\", theta.ravel())</code></pre>\n<p>In Stanford University's CS229 course, students implement gradient descent to understand the optimization process (Source: CS229: Machine Learning, 2023). Learning rate selection is crucial: too large causes oscillation, while too small leads to slow convergence.</p>\n<p>With parameter optimization methods mastered, we can combine linear regression with gradient descent to build complete machine learning workflows.</p>\n\n<h3>Practical Integration: From Theory to Complete Machine Learning Pipeline</h3>\n<p>In practical applications, linear regression and gradient descent need to be integrated into end-to-end machine learning pipelines. This includes multiple stages: data preprocessing, model training, evaluation, and optimization.</p>\n<p>Taking wine quality prediction as an example, using the UCI Wine Quality Dataset, we can construct a complete workflow:</p>\n<ol>\n<li>Data loading and exploration: Load data with pandas, check for missing values and feature distributions</li>\n<li>Data preprocessing: Standardize features, handle outliers</li>\n<li>Model training: Linear regression optimized with gradient descent</li>\n<li>Model evaluation: Compute metrics like R² score and mean squared error</li>\n</ol>\n<p>Complete code example:</p>\n<pre><code>import pandas as pd\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import SGDRegressor\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import r2_score\n\n# Load data\ndf = pd.read_csv('winequality-red.csv', sep=';')\n\n# Prepare features and target\nX = df.drop('quality', axis=1)\ny = df['quality']\n\n# Data standardization\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# Split dataset\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2)\n\n# Use SGDRegressor (linear regression with gradient descent)\nmodel = SGDRegressor(max_iter=1000, tol=1e-3)\nmodel.fit(X_train, y_train)\n\n# Evaluate\npredictions = model.predict(X_test)\nr2 = r2_score(y_test, predictions)\nprint(f\"R² score: {r2:.3f}\")\nprint(\"Feature importance:\", model.coef_)</code></pre>\n<p>This workflow demonstrates how to apply theory to practical problems. Data standardization ensures gradient descent stability, while SGDRegressor implements mini-batch gradient descent suitable for large datasets (Source: An Introduction to Statistical Learning, 2013).</p>\n<p>Through complete pipelines, we not only consolidate knowledge of linear regression and gradient descent but also develop skills for solving practical machine learning problems.</p>\n\n<p class=\"narrative-outro\">Linear regression and gradient descent form the foundational framework of supervised learning. Mastering these core concepts enables you to extend them to more complex models and optimization algorithms, establishing a solid basis for deeper machine learning exploration.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：线性回归与梯度下降 · 结构总览 · 数据：课程大纲】在设计《线性回归与梯度下降》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 线性回归与梯度下降 · 结构总览 · Data: 课程大纲】When outlining \"线性回归与梯度下降\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：线性回归与梯度下降 · worked example · 数据：学会建立简单回归模型 数据/代码】在复现《线性回归与梯度下降》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 线性回归与梯度下降 · worked example · Data: 学会建立简单回归模型 数据/代码】While reproducing the worked example in \"线性回归与梯度下降\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：线性回归与梯度下降 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《线性回归与梯度下降》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 线性回归与梯度下降 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"线性回归与梯度下降\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：线性回归与梯度下降 · 参考资料 · 数据：课程引用文献】当引用文献支撑《线性回归与梯度下降》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 线性回归与梯度下降 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"线性回归与梯度下降\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "An Introduction to Statistical Learning（Springer，2013）",
+            "en": "An Introduction to Statistical Learning (Springer, 2013)"
+          },
+          "url": "https://www.statlearning.com/"
+        },
+        {
+          "label": {
+            "zh": "Gradient Descent: The Ultimate Optimizer（Sebastian Ruder，2017）",
+            "en": "Gradient Descent: The Ultimate Optimizer (Sebastian Ruder, 2017)"
+          },
+          "url": "https://ruder.io/optimizing-gradient-descent/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-02-linear-regression-zh.mp3"
+      },
+      "meta": {
+        "category": "Supervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "最小二乘法",
+          "梯度下降"
+        ],
+        "learningObjectives": [
+          "学会建立简单回归模型",
+          "理解梯度下降算法"
+        ],
+        "personas": [
+          "初级数据科学家",
+          "学生"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 线性回归与梯度下降 可帮助团队在 Supervised Learning 上做出可复用的实践。",
+          "best_for": "适合 初级数据科学家、学生，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "初级数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 初级数据科学家、学生，帮助他们把 线性回归与梯度下降 应用于 Supervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "初级数据科学家",
+            "学生"
+          ],
+          "personas": [
+            "初级数据科学家",
+            "学生"
+          ],
+          "pains": "在 Supervised Learning 场景缺乏 线性回归与梯度下降 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "假设你正在分析某电商平台的用户消费数据，想预测未来销售额。你会如何选择特征变量来建立线性关系？请描述你考虑的关键因素。",
+            "action_hint": "尝试列出3-4个可能影响销售额的特征，并思考它们与目标变量的线性假设是否合理。"
+          },
+          {
+            "lang": "zh",
+            "question": "在优化模型参数时，如果发现预测误差较大，你会从哪些角度调整梯度下降的学习率？请结合具体场景说明你的决策思路。",
+            "action_hint": "想象一个实际案例（如房价预测），分析学习率过高或过低可能带来的影响，并规划调整步骤。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-02-datasets",
       "date": "2025-12-02",
