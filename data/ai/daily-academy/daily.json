@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2025-12-05T10:26:38.588Z",
+  "generatedAt": "2025-12-05T12:43:36.657Z",
   "lessons": [
+    {
+      "id": "2025-12-05-regularization",
+      "date": "2025-12-05",
+      "title": {
+        "zh": "正则化与模型选择",
+        "en": "Regularization and Model Selection"
+      },
+      "summary": {
+        "zh": "正则化与模型选择是机器学习中防止过拟合、提升模型泛化能力的关键技术，属于数据预处理与模型优化场景，主要解决模型复杂度控制问题。课程从过拟合与欠拟合的基础概念出发，依次讲解L1/L2正则化的数学原理、交叉验证等模型选择方法，并延伸至深度学习中的正则化应用，通过波士顿房价、糖尿病等公开数据集的实例演示，帮助学习者掌握约束模型复杂度的实用技术。",
+        "en": "Regularization and model selection are key techniques in machine learning for preventing overfitting and improving model generalization, belonging to data preprocessing and model optimization scenarios, primarily addressing model complexity control. The course begins with fundamental concepts of overfitting and underfitting, sequentially explains mathematical principles of L1/L2 regularization, model selection methods like cross-validation, and extends to regularization applications in deep learning. Through practical demonstrations using public datasets including Boston housing and diabetes data, it helps learners master practical techniques for constraining model complexity."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "regularization",
+        "model selection"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">正则化与模型选择是机器学习中平衡模型复杂度的核心技术，旨在提升模型在新数据上的泛化能力。本课程将从过拟合与欠拟合的基本概念出发，逐步深入L1/L2正则化的数学原理，探讨交叉验证等模型选择方法，并延伸至深度学习中的正则化应用。通过系统学习，您将掌握约束模型复杂度的实用技术，为构建稳健的机器学习模型奠定基础。</p>\n\n<h3>过拟合与欠拟合：模型复杂度的平衡艺术</h3>\n<p>在机器学习实践中，模型复杂度与泛化能力之间存在微妙的平衡关系。过拟合（overfitting）指模型过度拟合训练数据中的噪声，导致在新数据上表现不佳；欠拟合（underfitting）则是模型过于简单，未能捕捉数据中的基本模式。理解这一平衡是应用正则化技术的前提。</p>\n<p>偏差-方差权衡（bias-variance tradeoff）是这一现象的理论基础：</p>\n<ul>\n<li><strong>偏差（bias）</strong>：模型预测值与真实值之间的系统性误差，通常由模型过于简单引起</li>\n<li><strong>方差（variance）</strong>：模型对训练数据微小变化的敏感程度，复杂模型通常方差较高</li>\n<li><strong>总误差</strong> = 偏差² + 方差 + 不可约误差</li>\n</ul>\n<p>以Kaggle房价预测竞赛为例，参赛者使用高阶多项式回归时，虽然训练集R²接近1.0，但测试集R²仅0.6，表明模型过拟合（来源：House Prices: Advanced Regression Techniques，2016）。正则化技术通过约束模型参数，可以有效缓解这一问题。</p>\n<pre><code>from sklearn.linear_model import Ridge\nridge = Ridge(alpha=1.0)\nridge.fit(X_train, y_train)\n# 比较正则化前后的测试集均方误差(MSE)</code></pre>\n<p>在波士顿房价数据集上，引入L2正则化（岭回归）后，测试集误差可降低约20%。这展示了正则化如何通过惩罚大系数值，防止模型过度依赖特定特征。理解这一基础后，我们将深入正则化的具体形式。</p>\n\n<h3>L1与L2正则化：从数学原理到算法实现</h3>\n<p>正则化通过在损失函数中添加惩罚项来约束模型参数，L1和L2是两种最常用的正则化形式。它们在数学表达和作用机制上存在显著差异，适用于不同的应用场景。</p>\n<p>两种正则化的数学定义：</p>\n<ul>\n<li><strong>L1正则化（Lasso）</strong>：损失函数 = 原始损失 + λ∑|θᵢ|，其中θ为模型参数</li>\n<li><strong>L2正则化（Ridge）</strong>：损失函数 = 原始损失 + λ∑θᵢ²</li>\n</ul>\n<p>L1正则化倾向于产生稀疏解（sparse solution），即部分参数恰好为零，这使其具有自动特征选择的能力。L2正则化则使参数平滑收缩，但不会完全归零。这种差异源于两种范数的几何特性：L1范数在坐标轴处有“尖角”，优化时容易使参数落在这些点上。</p>\n<p>在UCI糖尿病数据集上，原始线性模型使用所有20个特征，其中部分特征贡献度较低。应用L1正则化后，当正则化强度α=0.1时，15个特征的系数被压缩为零，实现了自动特征选择（来源：Diabetes dataset，1990）。</p>\n<pre><code>from sklearn.linear_model import Lasso\nlasso = Lasso(alpha=0.1)\nlasso.fit(X_scaled, y)\n# 查看非零系数的数量\nprint(f\"Selected features: {np.sum(lasso.coef_ != 0)}\")</code></pre>\n<p>正则化路径可视化可以清晰展示系数随正则化强度的变化规律。随着α增大，L1正则化的系数逐渐归零，而L2正则化的系数平滑收缩。理解这些数学特性后，我们需要考虑如何系统性地选择最佳正则化强度。</p>\n\n<h3>模型选择方法：从交叉验证到集成策略</h3>\n<p>确定正则化强度等超参数需要可靠的模型选择方法。交叉验证（cross-validation）通过多次数据划分来无偏估计模型性能，是模型选择的核心技术。</p>\n<p>常见的交叉验证方法包括：</p>\n<ul>\n<li><strong>k折交叉验证（k-fold CV）</strong>：将数据随机分为k个互斥子集，每次用k-1个子集训练，剩余子集验证</li>\n<li><strong>留一法交叉验证（LOOCV）</strong>：k等于样本数的特殊情况，计算成本高但偏差低</li>\n<li><strong>分层k折交叉验证</strong>：保持每个折中类别比例与原始数据一致，适用于分类问题</li>\n</ul>\n<p>在ISLR教材的Auto数据集案例中，研究者需要选择多项式回归的最佳阶数。使用10折交叉验证比较不同阶数模型的测试误差，发现3阶多项式在交叉验证中表现最佳（来源：An Introduction to Statistical Learning，2013）。这种方法比单一验证集选择更稳定可靠。</p>\n<pre><code>from sklearn.model_selection import cross_val_score\nfrom sklearn.preprocessing import PolynomialFeatures\n\n# 生成多项式特征\npoly = PolynomialFeatures(degree=3)\nX_poly = poly.fit_transform(X)\n\n# 10折交叉验证\nscores = cross_val_score(model, X_poly, y, cv=10, scoring='neg_mean_squared_error')\nprint(f\"CV MSE: {-scores.mean():.3f} ± {scores.std():.3f}\")</code></pre>\n<p>交叉验证的平均误差和标准差提供了模型性能的稳健估计。结合网格搜索（GridSearchCV）可以自动化超参数调优过程。这些方法不仅适用于传统机器学习模型，在深度学习中也同样重要。</p>\n\n<h3>正则化在深度学习中的应用与前沿趋势</h3>\n<p>深度神经网络参数量巨大，过拟合风险极高，正则化技术在此领域有特殊重要性。除了权重衰减（weight decay，即L2正则化在深度学习中的实现），还发展出多种专门的正则化方法。</p>\n<p>深度学习中的主要正则化技术：</p>\n<ul>\n<li><strong>Dropout</strong>：训练时随机“丢弃”部分神经元，防止神经元间过度协同适应</li>\n<li><strong>批量归一化（Batch Normalization）</strong>：通过标准化层输入稳定训练过程，间接起到正则化作用</li>\n<li><strong>早停法（Early Stopping）</strong>：监控验证集性能，在过拟合发生前停止训练</li>\n<li><strong>数据增强（Data Augmentation）</strong>：通过对训练数据进行变换扩充数据集</li>\n</ul>\n<p>在经典的AlexNet图像分类网络中，研究者结合Dropout和权重衰减，将ImageNet数据集的Top-5错误率从约25%降至约16%，显著提升了模型的泛化能力（来源：ImageNet Classification with Deep Convolutional Neural Networks，2012）。</p>\n<pre><code>import tensorflow as tf\nfrom tensorflow.keras import layers, regularizers\n\nmodel = tf.keras.Sequential([\n    layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001)),\n    layers.Dropout(0.5),\n    layers.Dense(10, activation='softmax')\n])\n# 在MNIST数据集上，正则化可将验证准确率从95%提升至98%</code></pre>\n<p>训练与验证损失曲线的对比可以直观展示正则化效果：未正则化的模型验证损失可能随训练而上升，而正则化后的模型两者差距更小。这些技术已成为现代深度学习架构的标准组件。</p>\n\n<p class=\"narrative-outro\">正则化与模型选择构成了机器学习模型稳健性的双重保障。从基础的偏差-方差权衡到深度学习的Dropout技术，这些方法共同解决了模型复杂度的控制问题。掌握这些技术后，您可以在实际项目中系统性地评估和提升模型泛化能力，为构建可靠的机器学习系统提供方法论支持。</p>",
+        "en": "<p class=\"narrative-intro\">Regularization and model selection are core techniques in machine learning for balancing model complexity and improving generalization to new data. This course begins with the fundamental concepts of overfitting and underfitting, delves into the mathematical principles of L1/L2 regularization, explores model selection methods like cross-validation, and extends to regularization applications in deep learning. Through systematic learning, you will master practical techniques for constraining model complexity, laying the foundation for building robust machine learning models.</p>\n\n<h3>Overfitting and Underfitting: The Art of Balancing Model Complexity</h3>\n<p>In machine learning practice, there exists a delicate balance between model complexity and generalization capability. Overfitting occurs when a model excessively fits noise in the training data, leading to poor performance on new data; underfitting happens when a model is too simple to capture underlying patterns in the data. Understanding this balance is prerequisite for applying regularization techniques.</p>\n<p>The bias-variance tradeoff provides the theoretical foundation for this phenomenon:</p>\n<ul>\n<li><strong>Bias</strong>: Systematic error between model predictions and true values, typically caused by overly simple models</li>\n<li><strong>Variance</strong>: Sensitivity of the model to small fluctuations in training data, with complex models usually having higher variance</li>\n<li><strong>Total error</strong> = Bias² + Variance + Irreducible error</li>\n</ul>\n<p>In the Kaggle house price prediction competition, participants using high-degree polynomial regression achieved training R² near 1.0 but test R² only 0.6, indicating overfitting (source: House Prices: Advanced Regression Techniques, 2016). Regularization techniques address this by constraining model parameters.</p>\n<pre><code>from sklearn.linear_model import Ridge\nridge = Ridge(alpha=1.0)\nridge.fit(X_train, y_train)\n# Compare test mean squared error (MSE) before and after regularization</code></pre>\n<p>On the Boston housing dataset, introducing L2 regularization (ridge regression) can reduce test error by approximately 20%. This demonstrates how regularization prevents over-reliance on specific features by penalizing large coefficient values. With this foundation understood, we now examine specific regularization forms.</p>\n\n<h3>L1 and L2 Regularization: From Mathematical Principles to Algorithm Implementation</h3>\n<p>Regularization constrains model parameters by adding penalty terms to the loss function, with L1 and L2 being the two most common forms. They differ significantly in mathematical expression and mechanism, serving different application scenarios.</p>\n<p>Mathematical definitions of the two regularizations:</p>\n<ul>\n<li><strong>L1 regularization (Lasso)</strong>: Loss function = Original loss + λ∑|θᵢ|, where θ represents model parameters</li>\n<li><strong>L2 regularization (Ridge)</strong>: Loss function = Original loss + λ∑θᵢ²</li>\n</ul>\n<p>L1 regularization tends to produce sparse solutions, where some parameters become exactly zero, giving it automatic feature selection capability. L2 regularization shrinks parameters smoothly without driving them to zero. This difference stems from geometric properties: L1 norm has \"corners\" at coordinate axes where parameters easily settle during optimization.</p>\n<p>On the UCI diabetes dataset, the original linear model used all 20 features, with some contributing minimally. Applying L1 regularization with strength α=0.1 compressed coefficients of 15 features to zero, achieving automatic feature selection (source: Diabetes dataset, 1990).</p>\n<pre><code>from sklearn.linear_model import Lasso\nlasso = Lasso(alpha=0.1)\nlasso.fit(X_scaled, y)\n# Check number of non-zero coefficients\nprint(f\"Selected features: {np.sum(lasso.coef_ != 0)}\")</code></pre>\n<p>Regularization path visualization clearly shows coefficient changes with regularization strength. As α increases, L1 coefficients gradually become zero while L2 coefficients shrink smoothly. Understanding these mathematical properties leads us to consider systematic methods for selecting optimal regularization strength.</p>\n\n<h3>Model Selection Methods: From Cross-Validation to Ensemble Strategies</h3>\n<p>Determining hyperparameters like regularization strength requires reliable model selection methods. Cross-validation provides unbiased performance estimation through multiple data splits, serving as the core technology for model selection.</p>\n<p>Common cross-validation methods include:</p>\n<ul>\n<li><strong>k-fold cross-validation</strong>: Randomly partition data into k mutually exclusive subsets, each time training on k-1 subsets and validating on the remaining one</li>\n<li><strong>Leave-one-out cross-validation (LOOCV)</strong>: Special case where k equals sample size, computationally expensive but low bias</li>\n<li><strong>Stratified k-fold cross-validation</strong>: Maintains class proportions in each fold matching original data, suitable for classification problems</li>\n</ul>\n<p>In the ISLR textbook's Auto dataset case, researchers needed to select the optimal degree for polynomial regression. Using 10-fold cross-validation to compare test errors across different degrees revealed that cubic polynomial performed best in cross-validation (source: An Introduction to Statistical Learning, 2013). This approach proves more stable than single validation set selection.</p>\n<pre><code>from sklearn.model_selection import cross_val_score\nfrom sklearn.preprocessing import PolynomialFeatures\n\n# Generate polynomial features\npoly = PolynomialFeatures(degree=3)\nX_poly = poly.fit_transform(X)\n\n# 10-fold cross-validation\nscores = cross_val_score(model, X_poly, y, cv=10, scoring='neg_mean_squared_error')\nprint(f\"CV MSE: {-scores.mean():.3f} ± {scores.std():.3f}\")</code></pre>\n<p>Cross-validation's mean error and standard deviation provide robust estimates of model performance. Combined with grid search (GridSearchCV), this automates hyperparameter tuning. These methods apply not only to traditional machine learning models but remain equally important in deep learning.</p>\n\n<h3>Regularization in Deep Learning: Applications and Emerging Trends</h3>\n<p>Deep neural networks contain massive parameters with high overfitting risk, making regularization particularly important in this domain. Beyond weight decay (the deep learning implementation of L2 regularization), various specialized regularization methods have emerged.</p>\n<p>Major regularization techniques in deep learning:</p>\n<ul>\n<li><strong>Dropout</strong>: Randomly \"drops\" neurons during training to prevent co-adaptation among neurons</li>\n<li><strong>Batch Normalization</strong>: Stabilizes training by normalizing layer inputs, indirectly providing regularization</li>\n<li><strong>Early Stopping</strong>: Monitors validation performance and stops training before overfitting occurs</li>\n<li><strong>Data Augmentation</strong>: Expands dataset by applying transformations to training data</li>\n</ul>\n<p>In the classic AlexNet image classification network, researchers combined Dropout with weight decay to reduce Top-5 error rate on ImageNet from approximately 25% to 16%, significantly improving model generalization (source: ImageNet Classification with Deep Convolutional Neural Networks, 2012).</p>\n<pre><code>import tensorflow as tf\nfrom tensorflow.keras import layers, regularizers\n\nmodel = tf.keras.Sequential([\n    layers.Dense(128, activation='relu', kernel_regularizer=regularizers.l2(0.001)),\n    layers.Dropout(0.5),\n    layers.Dense(10, activation='softmax')\n])\n# On MNIST dataset, regularization can improve validation accuracy from 95% to 98%</code></pre>\n<p>Comparing training and validation loss curves visually demonstrates regularization effects: unregularized models may show increasing validation loss during training, while regularized models maintain smaller gaps between the two. These techniques have become standard components in modern deep learning architectures.</p>\n\n<p class=\"narrative-outro\">Regularization and model selection together provide dual safeguards for machine learning model robustness. From fundamental bias-variance tradeoff to Dropout in deep learning, these methods collectively address model complexity control. Mastering these techniques enables systematic evaluation and improvement of model generalization in practical projects, offering methodological support for building reliable machine learning systems.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：正则化与模型选择 · 结构总览 · 数据：课程大纲】在设计《正则化与模型选择》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 正则化与模型选择 · 结构总览 · Data: 课程大纲】When outlining \"正则化与模型选择\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：正则化与模型选择 · worked example · 数据：理解过拟合与欠拟合原因 数据/代码】在复现《正则化与模型选择》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 正则化与模型选择 · worked example · Data: 理解过拟合与欠拟合原因 数据/代码】While reproducing the worked example in \"正则化与模型选择\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：正则化与模型选择 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《正则化与模型选择》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 正则化与模型选择 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"正则化与模型选择\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：正则化与模型选择 · 参考资料 · 数据：课程引用文献】当引用文献支撑《正则化与模型选择》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 正则化与模型选择 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"正则化与模型选择\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "An Introduction to Statistical Learning（Springer，2013）",
+            "en": "An Introduction to Statistical Learning (Springer, 2013)"
+          },
+          "url": "https://www.statlearning.com"
+        },
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/prml-book/"
+        },
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-05-regularization-zh.mp3"
+      },
+      "meta": {
+        "category": "Preprocessing & Model Selection",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 2,
+        "related": [
+          "L1",
+          "L2"
+        ],
+        "learningObjectives": [
+          "理解过拟合与欠拟合原因",
+          "使用 L1/L2 正则约束模型复杂度"
+        ],
+        "personas": [
+          "研究人员",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 正则化与模型选择 可帮助团队在 Preprocessing & Model Selection 上做出可复用的实践。",
+          "best_for": "适合 研究人员、工程师，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究人员 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究人员、工程师，帮助他们把 正则化与模型选择 应用于 Preprocessing & Model Selection",
+          "prefersEnglish": false,
+          "industries": [
+            "研究人员",
+            "工程师"
+          ],
+          "personas": [
+            "研究人员",
+            "工程师"
+          ],
+          "pains": "在 Preprocessing & Model Selection 场景缺乏 正则化与模型选择 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究人员或工程师，在构建机器学习模型时，您通常如何判断模型是否过拟合？请描述您当前项目中遇到的具体现象，并思考正则化技术如何帮助您控制模型复杂度。",
+            "action_hint": "尝试回顾最近一次模型训练过程，记录验证集与训练集性能差异，并设想如何通过L1/L2正则化调整模型参数。"
+          },
+          {
+            "lang": "zh",
+            "question": "在数据预处理与模型选择阶段，您如何平衡模型复杂度与泛化能力？请结合您熟悉的领域（如房价预测或医疗数据分析），说明交叉验证方法在您工作流程中的潜在应用场景。",
+            "action_hint": "选择一个具体项目案例，分析当前模型选择方法的局限性，并规划如何引入正则化策略优化模型性能。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-05-feature-engineering",
       "date": "2025-12-05",
