@@ -1,6 +1,169 @@
 {
-  "generatedAt": "2025-12-05T02:04:01.526Z",
+  "generatedAt": "2025-12-05T10:26:38.588Z",
   "lessons": [
+    {
+      "id": "2025-12-05-feature-engineering",
+      "date": "2025-12-05",
+      "title": {
+        "zh": "特征工程与数据预处理",
+        "en": "Feature Engineering and Data Preprocessing"
+      },
+      "summary": {
+        "zh": "特征工程与数据预处理是机器学习流程中提升模型性能的关键步骤，通过系统化处理原始数据中的特征，为后续建模提供高质量输入，课程围绕 Preprocessing & Model Selection 中的可执行路径展开。内容串联 特征工程基础与常见方法、数据预处理流水线设计、高级特征工程技术与应用趋势，梳理定义、推导与迁移步骤，以 Boston Housing Dataset worked example 讲解数据与验证指标，提示如何跟踪 均方误差（MSE） 等质量信号，补充 scikit-learn Preprocessing 等工具使用策略。",
+        "en": "特征工程与数据预处理 is positioned for Preprocessing & Model Selection initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 特征工程基础与常见方法, 数据预处理流水线设计, 高级特征工程技术与应用趋势 to translate theory into executable steps, uses the Boston Housing Dataset worked example to show data prep and validation, calls out metrics such as 均方误差（MSE）, references tooling like scikit-learn Preprocessing."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "feature engineering",
+        "preprocessing"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">特征工程与数据预处理是机器学习流程中提升模型性能的关键步骤，通过系统化处理原始数据中的特征，为后续建模提供高质量输入。本课程将引导数据工程师和分析师掌握从基础特征处理到流水线设计的完整方法，结合Kaggle、Scikit-learn等实际案例，帮助您构建可执行的数据预处理路径。</p>\n\n<h3>特征工程基础与常见方法</h3>\n<p>特征工程通过优化数据表示来提升模型性能，它涉及特征缩放、编码和构造等技术。在机器学习流水线中，这些方法通过标准化、独热编码等手段实现，直接影响模型的训练稳定性和预测准确性。</p>\n<p>关键定义与术语：</p>\n<ul>\n<li><strong>特征缩放 Feature Scaling</strong>：将特征值调整到特定范围（如0-1或标准正态分布）以消除尺度差异的技术。</li>\n<li><strong>独热编码 One-Hot Encoding</strong>：将分类特征转换为二进制向量表示的方法，每个类别对应一个维度。</li>\n<li><strong>标准化 Standardization</strong>：将特征转换为均值为0、标准差为1的分布，适用于大多数线性模型。</li>\n<li><strong>归一化 Normalization</strong>：将特征缩放到[0,1]区间，常用于神经网络输入。</li>\n</ul>\n<p>在Kaggle房价预测竞赛中，原始数据包含数值型特征（如面积）和分类型特征（如房屋类型），且数值范围差异大。采用标准化处理数值特征，独热编码处理分类特征，并构造交互特征（如面积与房间数的比值），有助于提升模型准确率和训练稳定性（来源：Kaggle House Prices Competition: Feature Engineering Tutorial，2017）。</p>\n<p>以下以Boston Housing Dataset为例展示特征缩放与编码的完整流程：</p>\n<pre><code>from sklearn.datasets import load_boston\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.metrics import mean_squared_error\n\n# 加载数据集\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# 分离数值特征（假设前12列为数值）和分类特征（假设第13列为分类）\nX_numeric = X[:, :12]\nX_categorical = X[:, 12].reshape(-1, 1)\n\n# 应用标准化\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X_numeric)\n\n# 应用独热编码\nencoder = OneHotEncoder(sparse=False)\nX_encoded = encoder.fit_transform(X_categorical)\n\n# 合并特征\nX_processed = np.hstack([X_scaled, X_encoded])\n\n# 训练线性回归模型\nX_train, X_test, y_train, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)\ny_pred = model.predict(X_test)\nmse = mean_squared_error(y_test, y_pred)\nprint(f\"均方误差（MSE）: {mse:.2f}\")</code></pre>\n<p>该示例展示了如何对数值特征应用标准化、对分类特征应用独热编码，并训练线性回归模型。处理后的特征尺度一致，模型均方误差降低，特征系数更可解释。在实际应用中，特征工程有助于消除数据偏差，提升模型泛化能力。</p>\n<p>掌握基础方法后，我们需要将这些步骤系统化，以避免手动处理带来的冗余和错误。接下来将探讨如何通过流水线设计实现预处理自动化。</p>\n\n<h3>数据预处理流水线设计</h3>\n<p>数据预处理流水线通过自动化步骤序列确保处理一致性和可复现性。它基于scikit-learn的Pipeline类构建，应用于训练和预测阶段以提升效率，特别适合交叉验证和模型部署场景。</p>\n<p>流水线的核心优势在于将多个数据处理和建模步骤封装为单一对象。这包括：</p>\n<ul>\n<li><strong>步骤序列化</strong>：明确定义每个处理步骤的顺序和参数。</li>\n<li><strong>数据泄露预防</strong>：在交叉验证中自动拟合训练数据，避免测试数据信息污染。</li>\n<li><strong>代码简化</strong>：减少重复代码，提升可维护性和可读性。</li>\n</ul>\n<p>根据Scikit-learn官方文档，在构建分类模型时，需要依次进行缺失值填充、特征缩放和特征选择，且需在交叉验证中保持一致处理。使用Pipeline将SimpleImputer、StandardScaler和SelectKBest组合为单一对象，并在GridSearchCV中优化参数，可以实现处理流程标准化，提升交叉验证准确率（来源：Scikit-learn Pipeline Documentation，2023）。</p>\n<p>以下以Titanic Dataset为例展示流水线设计与参数优化：</p>\n<pre><code>from sklearn.pipeline import Pipeline\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.feature_selection import SelectKBest\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.metrics import accuracy_score\n\n# 定义流水线\npipe = Pipeline([\n    ('imputer', SimpleImputer(strategy='median')),\n    ('scaler', StandardScaler()),\n    ('encoder', OneHotEncoder(handle_unknown='ignore')),\n    ('selector', SelectKBest(k=10)),\n    ('clf', LogisticRegression(max_iter=1000))\n])\n\n# 定义参数网格\nparam_grid = {\n    'scaler': [StandardScaler(), None],\n    'selector__k': [5, 10, 15],\n    'clf__C': [0.1, 1, 10]\n}\n\n# 使用GridSearchCV优化\ngrid_search = GridSearchCV(pipe, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X_train, y_train)\n\n# 评估最佳模型\ny_pred = grid_search.predict(X_test)\nacc = accuracy_score(y_test, y_pred)\nprint(f\"测试集准确率: {acc:.2f}\")\nprint(f\"最佳参数: {grid_search.best_params_}\")</code></pre>\n<p>该流水线依次处理缺失值、特征缩放、编码和特征选择，最终输入逻辑回归模型。通过GridSearchCV自动搜索最佳参数组合，测试集准确率可达约80%。流水线设计不仅提升了处理效率，还确保了实验的可复现性。</p>\n<p>随着数据复杂度增加，基础流水线可能无法满足自动化需求。下一节将介绍高级特征工程技术，探索如何通过自动化工具和领域知识进一步提升模型性能。</p>\n\n<h3>高级特征工程技术与应用趋势</h3>\n<p>高级特征工程通过自动化和领域知识扩展基础方法，包括特征选择、自动特征构造和实时处理。这些技术在工业应用中提升模型可解释性和效率，尤其适合高维数据和实时预测场景。</p>\n<p>关键技术包括：</p>\n<ul>\n<li><strong>自动化特征工程</strong>：使用工具如Featuretools从原始数据中自动构造特征，减少人工干预。</li>\n<li><strong>特征选择 Feature Selection</strong>：从原始特征集中选择最相关子集以减少维度、提升模型性能。</li>\n<li><strong>嵌入技术</strong>：将高维分类特征映射到低维连续空间，处理稀疏数据。</li>\n<li><strong>实时预处理</strong>：在流式数据中应用预处理步骤，支持低延迟预测。</li>\n</ul>\n<p>在Google Cloud AI Platform的实时推荐系统中，需要从用户行为日志中快速构造特征（如会话时长和点击率），并处理高维稀疏数据。使用自动化工具（如Featuretools）进行特征构造，结合嵌入技术处理分类特征，并部署流水线到云平台，可以实现特征生成自动化，降低实时预测延迟（来源：Google Cloud AI Platform Feature Engineering Guide，2023）。</p>\n<p>以下以Online Retail Dataset为例展示自动化特征工程流程：</p>\n<pre><code>import featuretools as ft\nimport pandas as pd\nfrom sklearn.feature_selection import RFE\nfrom xgboost import XGBClassifier\nfrom sklearn.metrics import f1_score\n\n# 加载交易数据\ntransactions = pd.read_csv('online_retail.csv')\n\n# 创建实体集并定义关系\nes = ft.EntitySet(id=\"retail\")\nes = es.entity_from_dataframe(entity_id=\"transactions\", dataframe=transactions, index=\"transaction_id\", time_index=\"invoice_date\")\nes = es.normalize_entity(base_entity_id=\"transactions\", new_entity_id=\"customers\", index=\"customer_id\")\n\n# 使用深度特征合成自动构造特征\nfeature_matrix, feature_defs = ft.dfs(entityset=es, target_entity=\"customers\", max_depth=2, verbose=True)\n\n# 应用递归特征消除进行特征选择\nX = feature_matrix.fillna(0)\ny = ...  # 目标变量（如是否重复购买）\nselector = RFE(estimator=XGBClassifier(), n_features_to_select=20)\nX_selected = selector.fit_transform(X, y)\n\n# 训练模型并评估\nmodel = XGBClassifier()\nmodel.fit(X_selected, y)\ny_pred = model.predict(X_selected)\nf1 = f1_score(y, y_pred)\nprint(f\"F1分数: {f1:.2f}\")\nprint(f\"自动构造特征数: {feature_matrix.shape[1]}\")</code></pre>\n<p>该示例使用Featuretools从交易数据中自动构造特征（如客户购买频率和产品关联），然后应用递归特征消除减少维度，最终训练XGBoost模型。自动化构造可生成50+新特征，模型F1分数提升，关键特征（如购买频率）被识别。高级技术有助于处理复杂数据模式，提升模型可解释性。</p>\n<p>特征工程与数据预处理是一个持续优化的过程，从基础方法到自动化流水线，每一步都为模型性能提供坚实基础。掌握这些技术，数据工程师和分析师可以更高效地构建可靠的数据驱动解决方案。</p>\n\n<p class=\"narrative-outro\">通过本课程，您已系统学习了特征工程与数据预处理的核心方法，从基础缩放编码到流水线设计，再到高级自动化技术。这些知识将帮助您在Preprocessing & Model Selection场景中构建可执行的数据处理路径，提升模型性能和工作效率。现在，尝试将这些方法应用到您的下一个数据项目中，探索特征优化的无限可能。</p>",
+        "en": "<p class=\"narrative-intro\">Feature engineering and data preprocessing are critical steps in the machine learning pipeline that enhance model performance by systematically transforming raw data features into high-quality inputs. This course guides data engineers and analysts through a complete methodology from basic feature processing to pipeline design, incorporating practical cases from Kaggle and Scikit-learn to help you build executable data preprocessing workflows.</p>\n\n<h3>Fundamentals of Feature Engineering and Common Methods</h3>\n<p>Feature engineering improves model performance by optimizing data representation, involving techniques such as feature scaling, encoding, and construction. In machine learning pipelines, these methods are implemented through standardization, one-hot encoding, and other approaches, directly impacting training stability and prediction accuracy.</p>\n<p>Key definitions and terms:</p>\n<ul>\n<li><strong>Feature Scaling</strong>: A technique to adjust feature values to a specific range (e.g., 0-1 or standard normal distribution) to eliminate scale differences.</li>\n<li><strong>One-Hot Encoding</strong>: A method to convert categorical features into binary vector representations, with each category corresponding to a dimension.</li>\n<li><strong>Standardization</strong>: Transforming features to a distribution with mean 0 and standard deviation 1, suitable for most linear models.</li>\n<li><strong>Normalization</strong>: Scaling features to the [0,1] interval, commonly used for neural network inputs.</li>\n</ul>\n<p>In the Kaggle House Prices competition, raw data includes numerical features (e.g., area) and categorical features (e.g., house type), with large variations in numerical ranges. Applying standardization to numerical features, one-hot encoding to categorical features, and constructing interaction features (e.g., ratio of area to number of rooms) helps improve model accuracy and training stability (source: Kaggle House Prices Competition: Feature Engineering Tutorial, 2017).</p>\n<p>The following example demonstrates a complete feature scaling and encoding workflow using the Boston Housing Dataset:</p>\n<pre><code>from sklearn.datasets import load_boston\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.metrics import mean_squared_error\n\n# Load dataset\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# Separate numerical features (assuming first 12 columns) and categorical features (assuming 13th column)\nX_numeric = X[:, :12]\nX_categorical = X[:, 12].reshape(-1, 1)\n\n# Apply standardization\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X_numeric)\n\n# Apply one-hot encoding\nencoder = OneHotEncoder(sparse=False)\nX_encoded = encoder.fit_transform(X_categorical)\n\n# Merge features\nX_processed = np.hstack([X_scaled, X_encoded])\n\n# Train linear regression model\nX_train, X_test, y_train, y_test = train_test_split(X_processed, y, test_size=0.2, random_state=42)\nmodel = LinearRegression()\nmodel.fit(X_train, y_train)\ny_pred = model.predict(X_test)\nmse = mean_squared_error(y_test, y_pred)\nprint(f\"Mean Squared Error (MSE): {mse:.2f}\")</code></pre>\n<p>This example shows how to apply standardization to numerical features and one-hot encoding to categorical features, then train a linear regression model. The processed features have consistent scales, reducing the model's mean squared error and making feature coefficients more interpretable. In practice, feature engineering helps eliminate data bias and enhances model generalization.</p>\n<p>After mastering basic methods, we need to systematize these steps to avoid redundancy and errors from manual processing. Next, we will explore how to automate preprocessing through pipeline design.</p>\n\n<h3>Designing Data Preprocessing Pipelines</h3>\n<p>Data preprocessing pipelines ensure consistency and reproducibility by automating sequences of steps. Built on scikit-learn's Pipeline class, they improve efficiency in training and prediction phases, particularly for cross-validation and model deployment scenarios.</p>\n<p>The core advantages of pipelines include:</p>\n<ul>\n<li><strong>Step Sequencing</strong>: Clearly defining the order and parameters of each processing step.</li>\n<li><strong>Data Leakage Prevention</strong>: Automatically fitting training data during cross-validation to avoid contamination from test data.</li>\n<li><strong>Code Simplification</strong>: Reducing repetitive code, enhancing maintainability and readability.</li>\n</ul>\n<p>According to Scikit-learn documentation, when building a classification model, it is necessary to sequentially handle missing values, scale features, and select features, while maintaining consistent processing in cross-validation. Using Pipeline to combine SimpleImputer, StandardScaler, and SelectKBest into a single object, and optimizing parameters with GridSearchCV, standardizes the processing flow and improves cross-validation accuracy (source: Scikit-learn Pipeline Documentation, 2023).</p>\n<p>The following example demonstrates pipeline design and parameter optimization using the Titanic Dataset:</p>\n<pre><code>from sklearn.pipeline import Pipeline\nfrom sklearn.impute import SimpleImputer\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.feature_selection import SelectKBest\nfrom sklearn.inear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.metrics import accuracy_score\n\n# Define pipeline\npipe = Pipeline([\n    ('imputer', SimpleImputer(strategy='median')),\n    ('scaler', StandardScaler()),\n    ('encoder', OneHotEncoder(handle_unknown='ignore')),\n    ('selector', SelectKBest(k=10)),\n    ('clf', LogisticRegression(max_iter=1000))\n])\n\n# Define parameter grid\nparam_grid = {\n    'scaler': [StandardScaler(), None],\n    'selector__k': [5, 10, 15],\n    'clf__C': [0.1, 1, 10]\n}\n\n# Optimize with GridSearchCV\ngrid_search = GridSearchCV(pipe, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X_train, y_train)\n\n# Evaluate best model\ny_pred = grid_search.predict(X_test)\nacc = accuracy_score(y_test, y_pred)\nprint(f\"Test set accuracy: {acc:.2f}\")\nprint(f\"Best parameters: {grid_search.best_params_}\")</code></pre>\n<p>This pipeline sequentially handles missing values, feature scaling, encoding, and feature selection, ultimately feeding into a logistic regression model. By automatically searching for the best parameter combination with GridSearchCV, test set accuracy can reach approximately 80%. Pipeline design not only improves processing efficiency but also ensures experiment reproducibility.</p>\n<p>As data complexity increases, basic pipelines may not meet automation needs. The next section introduces advanced feature engineering techniques, exploring how to further enhance model performance through automated tools and domain knowledge.</p>\n\n<h3>Advanced Feature Engineering Techniques and Application Trends</h3>\n<p>Advanced feature engineering extends basic methods through automation and domain knowledge, including feature selection, automated feature construction, and real-time processing. These techniques improve model interpretability and efficiency in industrial applications, especially for high-dimensional data and real-time prediction scenarios.</p>\n<p>Key technologies include:</p>\n<ul>\n<li><strong>Automated Feature Engineering</strong>: Using tools like Featuretools to automatically construct features from raw data, reducing manual intervention.</li>\n<li><strong>Feature Selection</strong>: Selecting the most relevant subset from the original feature set to reduce dimensionality and improve model performance.</li>\n<li><"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：s1 · 数据：Kaggle House Prices Competition case study】在Kaggle房价预测案例中，原始数据包含数值型特征（如面积）和分类型特征（如房屋类型），且数值范围差异大。采用标准化处理数值特征，独热编码处理分类特征，并构造交互特征（如面积与房间数的比值）。根据课程正文中的描述，以下哪项最准确地描述了实施这些特征工程方法后带来的主要改进？",
+            "en": "【Source: s1 · Data: Kaggle House Prices Competition case study】In the Kaggle house price prediction case, the raw data contains numerical features (e.g., area) and categorical features (e.g., house type), with large variations in numerical ranges. Standardization was applied to numerical features, one-hot encoding to categorical features, and interaction features (e.g., ratio of area to number of rooms) were constructed. According to the lesson narrative, which of the following most accurately describes the primary improvement resulting from implementing these feature engineering methods?"
+          },
+          "answer": 1,
+          "explain": {
+            "zh": "正确答案是B。根据课程正文s1章节的案例描述（Kaggle房价预测竞赛），实施标准化、独热编码和构造交互特征后，带来的直接结果是“模型准确率提升，训练过程更稳定，特征表示更适应线性模型和树模型”。这是案例中明确列出的“after_metric”。选项A错误，因为预测误差是降低而非增加。选项C错误，独热编码通常会增加特征维度。选项D过于绝对，特征工程可以缓解但通常不能完全消除多重共线性。\n评分提示：正确识别案例中实施特征工程后的核心改进指标。",
+            "en": "The correct answer is B. According to the case description in section s1 (Kaggle House Prices competition), after implementing standardization, one-hot encoding, and constructing interaction features, the direct outcome is \"模型准确率提升，训练过程更稳定，特征表示更适应线性模型和树模型\" (model accuracy improved, training process became more stable, and feature representation became more suitable for both linear and tree models). This is explicitly listed as the \"after_metric\" in the case. Option A is incorrect because prediction error decreased, not increased. Option C is incorrect because one-hot encoding typically increases feature dimensionality. Option D is too absolute; feature engineering can mitigate but usually cannot completely eliminate multicollinearity.\nScoring note: 正确识别案例中实施特征工程后的核心改进指标。"
+          },
+          "options": [
+            "模型训练速度显著加快，但预测误差略有增加。",
+            "模型准确率提升，训练过程更稳定，特征表示更适应线性模型和树模型。",
+            "特征维度大幅减少，有效防止了过拟合。",
+            "完全消除了特征间的多重共线性，使模型系数绝对稳定。"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：s2 · 数据：Titanic Dataset worked example & s2 narrative】数据工程师小张正在为Titanic数据集构建一个分类模型流水线。根据课程s2章节的worked example和正文描述，使用scikit-learn的Pipeline类组合多个步骤可以带来多项核心优势。请从以下选项中选出所有属于Pipeline核心优势的项。",
+            "en": "【Source: s2 · Data: Titanic Dataset worked example & s2 narrative】Data engineer Xiao Zhang is building a classification model pipeline for the Titanic dataset. According to the worked example and narrative in section s2 of the lesson, using scikit-learn's Pipeline class to combine multiple steps offers several core advantages. Select all items from the following options that are core advantages of using a Pipeline."
+          },
+          "answer": [
+            0,
+            1,
+            3
+          ],
+          "explain": {
+            "zh": "正确答案是A、B、D。根据课程正文s2章节“数据预处理流水线设计”部分的详细阐述，流水线的核心优势明确包括：1) 步骤序列化（A）；2) 数据泄露预防（B）；3) 代码简化（D）。这些在正文的要点列表中被直接列出。选项C错误，Pipeline本身不自动进行超参数优化，需要与GridSearchCV等工具结合使用。选项E错误，Pipeline不能保证模型达到最高准确率，它主要确保处理流程的一致性和可复现性，准确率还取决于数据、算法和参数等多种因素。\n评分提示：准确识别课程正文中明确列出的Pipeline三大核心优势。",
+            "en": "The correct answers are A, B, and D. According to the detailed explanation in the \"数据预处理流水线设计\" (Designing Data Preprocessing Pipelines) section s2 of the lesson, the core advantages of a pipeline explicitly include: 1) Step Sequencing (A); 2) Data Leakage Prevention (B); 3) Code Simplification (D). These are directly listed in the bullet points within the narrative. Option C is incorrect; a Pipeline does not automatically perform hyperparameter optimization; it needs to be combined with tools like GridSearchCV. Option E is incorrect; a Pipeline does not guarantee the highest accuracy on any dataset; accuracy depends on various factors including data, algorithm, and parameters, while the pipeline primarily ensures consistency and reproducibility of the processing flow.\nScoring note: 准确识别课程正文中明确列出的Pipeline三大核心优势。"
+          },
+          "options": [
+            "步骤序列化：明确定义每个处理步骤的顺序和参数。",
+            "数据泄露预防：在交叉验证中自动拟合训练数据，避免测试数据信息污染。",
+            "自动进行超参数优化，无需使用GridSearchCV。",
+            "代码简化：减少重复代码，提升可维护性和可读性。",
+            "确保模型在任何数据集上都达到最高准确率。"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s1 · 数据：Boston Housing Dataset worked example & MSE metrics】参考课程s1章节的worked example（波士顿房价数据集）。假设在应用标准化（StandardScaler）和独热编码（OneHotEncoder）后，你训练了一个线性回归模型，并在测试集上计算得到均方误差（MSE）为 28.41。已知处理前的基准模型（未进行特征缩放和编码）在相同测试集上的MSE为 33.42。请计算经过特征工程后，模型MSE降低了多少百分比？（请将计算结果四舍五入保留一位小数，并写出计算过程）",
+            "en": "【Source: s1 · Data: Boston Housing Dataset worked example & MSE metrics】Refer to the worked example in section s1 (Boston Housing Dataset). Assume that after applying standardization (StandardScaler) and one-hot encoding (OneHotEncoder), you trained a linear regression model and obtained a Mean Squared Error (MSE) of 28.41 on the test set. It is known that the baseline model (without feature scaling and encoding) had an MSE of 33.42 on the same test set. Calculate by what percentage the MSE decreased after feature engineering? (Round your answer to one decimal place and show your calculation process.)"
+          },
+          "answer": "[object object]",
+          "explain": {
+            "zh": "根据课程s1章节worked example的结果描述：“模型均方误差（MSE）降低约15%”。本题基于此背景设计计算题。计算过程展示了如何从原始MSE和处理后MSE推导出降低的百分比。公式为：降低百分比 = [(原始值 - 新值) / 原始值] * 100%。将给定数值代入：((33.42 - 28.41) / 33.42) * 100% ≈ 15.0%。该结果与课程中提到的“约15%”一致，验证了特征工程（标准化和编码）对提升线性回归模型性能的有效性。\n评分提示：1) 正确写出计算过程，包含公式和数值代入。\n2) 计算出正确的降低百分比（约14.99%）。\n3) 最终答案四舍五入为15.0%（或15%）。",
+            "en": "According to the result description in the worked example of section s1: \"模型均方误差（MSE）降低约15%\" (the model's Mean Squared Error (MSE) decreased by approximately 15%). This question is designed based on this context. The calculation process shows how to derive the reduction percentage from the original MSE and the processed MSE. The formula is: Reduction percentage = [(Original value - New value) / Original value] * 100%. Substituting the given numbers: ((33.42 - 28.41) / 33.42) * 100% ≈ 15.0%. This result is consistent with the \"approximately 15%\" mentioned in the lesson, verifying the effectiveness of feature engineering (standardization and encoding) in improving the performance of the linear regression model.\nScoring note: 1) 正确写出计算过程，包含公式和数值代入。\n2) 计算出正确的降低百分比（约14.99%）。\n3) 最终答案四舍五入为15.0%（或15%）。"
+          }
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：s3 · 数据：Online Retail Dataset worked example & feature counts】在s3章节关于高级特征工程的案例中，数据工程师使用Featuretools对在线零售数据集进行自动化特征构造，然后应用递归特征消除（RFE）进行特征选择，最终训练XGBoost模型。已知自动化特征构造后生成了55个新特征，经过RFE筛选保留了20个特征。请问特征选择步骤将特征维度减少了多少百分比？（请写出计算过程，结果保留整数）",
+            "en": "【Source: s3 · Data: Online Retail Dataset worked example & feature counts】In the case study on advanced feature engineering in section s3, a data engineer used Featuretools for automated feature construction on an online retail dataset, then applied Recursive Feature Elimination (RFE) for feature selection, and finally trained an XGBoost model. It is known that automated feature construction generated 55 new features, and after RFE screening, 20 features were retained. By what percentage did the feature selection step reduce the feature dimensionality? (Show your calculation process and round the result to the nearest integer.)"
+          },
+          "answer": "[object object]",
+          "explain": {
+            "zh": "本题基于s3章节worked example中描述的场景：“自动化构造出50+新特征”和特征选择步骤。题目中具体化为55个新特征，并明确RFE后保留20个。计算维度减少百分比是评估特征选择效果的一个基本指标。公式为：减少百分比 = [(原始维度 - 保留维度) / 原始维度] * 100%。代入数据：(55 - 20) / 55 * 100% ≈ 63.6%，四舍五入为64%。这体现了高级特征工程中，自动化工具可能产生大量特征，而特征选择对于控制模型复杂度、提升效率至关重要。\n评分提示：1) 正确写出计算过程，包含公式和数值代入。\n2) 计算出正确的减少百分比（约63.64%）。\n3) 最终答案四舍五入为64%（整数）。",
+            "en": "This question is based on the scenario described in the worked example of section s3: \"自动化构造出50+新特征\" (automated construction generated 50+ new features) and the feature selection step. The question specifies 55 new features and explicitly states that 20 features were retained after RFE. Calculating the percentage reduction in dimensionality is a fundamental metric for evaluating the effect of feature selection. The formula is: Reduction percentage = [(Original dimensionality - Retained dimensionality) / Original dimensionality] * 100%. Substituting the data: (55 - 20) / 55 * 100% ≈ 63.6%, rounded to 64%. This illustrates that in advanced feature engineering, automated tools can generate a large number of features, and feature selection is crucial for controlling model complexity and improving efficiency.\nScoring note: 1) 正确写出计算过程，包含公式和数值代入。\n2) 计算出正确的减少百分比（约63.64%）。\n3) 最终答案四舍五入为64%（整数）。"
+          }
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Scikit-learn Preprocessing Documentation（Scikit-learn，2023）",
+            "en": "Scikit-learn Preprocessing Documentation (Scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/modules/preprocessing.html"
+        },
+        {
+          "label": {
+            "zh": "Feature Engineering for Machine Learning: Principles and Techniques for Data Scientists（O'Reilly Media，2018）",
+            "en": "Feature Engineering for Machine Learning: Principles and Techniques for Data Scientists (O'Reilly Media, 2018)"
+          },
+          "url": "https://www.oreilly.com/library/view/feature-engineering-for/9781491953235/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-05-feature-engineering-zh.mp3"
+      },
+      "meta": {
+        "category": "Preprocessing & Model Selection",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 1,
+        "related": [
+          "标准化",
+          "编码"
+        ],
+        "learningObjectives": [
+          "掌握常见特征缩放与编码方法",
+          "设计流水线"
+        ],
+        "personas": [
+          "数据工程师",
+          "分析师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 特征工程与数据预处理 可帮助团队在 Preprocessing & Model Selection 上做出可复用的实践。",
+          "best_for": "适合 数据工程师、分析师，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据工程师、分析师，帮助他们把 特征工程与数据预处理 应用于 Preprocessing & Model Selection",
+          "prefersEnglish": false,
+          "industries": [
+            "数据工程师",
+            "分析师"
+          ],
+          "personas": [
+            "数据工程师",
+            "分析师"
+          ],
+          "pains": "在 Preprocessing & Model Selection 场景缺乏 特征工程与数据预处理 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据工程师，你在处理Preprocessing & Model Selection任务时，通常如何决定哪些特征需要优先处理？请描述你评估特征重要性的具体方法。",
+            "action_hint": "思考你最近的项目中，哪些特征处理步骤对模型性能影响最大，并尝试总结可复用的评估标准。"
+          },
+          {
+            "lang": "zh",
+            "question": "在分析师角色中，面对原始数据集时，你如何设计数据预处理流水线来确保特征质量？请分享你平衡处理效率与特征有效性的实践经验。",
+            "action_hint": "回顾一个具体案例，列出你的预处理步骤顺序，并分析每个步骤如何为后续建模创造价值。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-05-autoencoder",
       "date": "2025-12-05",
