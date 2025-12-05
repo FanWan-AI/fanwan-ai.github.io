@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2025-12-04T12:45:00.747Z",
+  "generatedAt": "2025-12-05T02:04:01.526Z",
   "lessons": [
+    {
+      "id": "2025-12-05-autoencoder",
+      "date": "2025-12-05",
+      "title": {
+        "zh": "自编码器与非监督表示学习",
+        "en": "Autoencoders and Unsupervised Representation Learning"
+      },
+      "summary": {
+        "zh": "自编码器作为无监督表示学习的核心方法，通过编码-解码架构实现数据特征的自动提取，适用于无标签场景下的特征学习任务。课程从基础结构出发，经过去噪增强，最终落地到异常检测等实际应用，结合MNIST、CIFAR-10等数据集示例，重点探讨了重构损失、潜在空间维度等关键指标的设计与优化。",
+        "en": "Autoencoders serve as a core method in unsupervised representation learning, enabling automatic feature extraction from data through encode-decode architectures for tasks in unlabeled scenarios. The course progresses from fundamental structures through denoising enhancements to practical applications like anomaly detection, utilizing datasets such as MNIST and CIFAR-10 to explore key metrics including reconstruction loss and latent space dimension design and optimization."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "autoencoder",
+        "feature learning"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从无监督表示学习的视角出发，系统探讨自编码器的核心原理与实践应用。通过结构化的理论解析与实战示例，您将掌握自编码器的设计逻辑、训练方法及其在特征学习中的关键作用，为后续高级表示学习技术奠定基础。</p>\n\n<h3>自编码器基础：结构与损失函数</h3>\n<p>自编码器是一种无监督神经网络架构，通过编码-解码过程学习数据的紧凑表示。其核心目标是在无需人工标注的情况下，从原始输入中提取有意义的特征，常用于降维、去噪等任务。</p>\n<p>自编码器由对称的编码器和解码器组成：<ul><li><strong>编码器 Encoder</strong>：将高维输入压缩为低维潜在表示（latent representation），如将784维图像向量映射到32维空间</li><li><strong>解码器 Decoder</strong>：从潜在表示重构原始输入维度，试图恢复原始数据特征</li><li><strong>重构损失 Reconstruction Loss</strong>：衡量输出与输入差异的损失函数，常用均方误差（MSE）或交叉熵</li></ul>理论推导表明，通过最小化重构损失，模型被迫学习数据中最具信息量的特征，丢弃冗余信息（来源：Deep Learning，2016）。</p>\n<p>以下以MNIST手写数字数据集为例展示基础实现：<pre><code>import tensorflow as tf\n# 数据加载与预处理\n(x_train, _), (x_test, _) = tf.keras.datasets.mnist.load_data()\nx_train = x_train.reshape(-1, 784).astype('float32') / 255.0\n# 模型构建\nautoencoder = tf.keras.Sequential([\n    tf.keras.layers.Dense(32, activation='relu', input_shape=(784,)),  # 编码层\n    tf.keras.layers.Dense(784, activation='sigmoid')  # 解码层\n])\nautoencoder.compile(optimizer='adam', loss='mse')\n# 训练与评估\nautoencoder.fit(x_train, x_train, epochs=10, batch_size=256)\nreconstructions = autoencoder.predict(x_test[:5])\nprint(f\"重构MSE: {tf.keras.losses.mse(x_test[:5], reconstructions).numpy().mean():.4f}\")</code></pre>该示例展示了从784维到32维的压缩过程，训练后重构误差显著降低，验证了自编码器在特征提取中的有效性。在实际应用中，这种紧凑表示可作为下游任务的输入特征，提升模型效率。接下来我们将探讨如何通过噪声注入增强表示鲁棒性。</p>\n\n<h3>去噪自动编码器：理论与实现</h3>\n<p>去噪自动编码器通过向输入数据注入噪声并学习重构原始干净数据，提升特征学习的鲁棒性。这种方法使模型能够忽略数据中的随机扰动，专注于学习数据的本质结构。</p>\n<p>关键理论包括：<ul><li><strong>噪声注入 Noise Injection</strong>：在训练时向输入添加随机噪声（如高斯噪声、椒盐噪声），但要求模型重构原始无噪声数据</li><li><strong>鲁棒表示 Robust Representation</strong>：通过去噪任务，模型学习对噪声不敏感的特征，提高泛化能力</li><li><strong>损失函数设计</strong>：仍使用重构损失，但比较对象是原始干净数据而非含噪输入</li></ul>研究表明，去噪自编码器能有效学习数据分布的稳健特征，避免过拟合到噪声模式（来源：Extracting and Composing Robust Features with Denoising Autoencoders，2008）。</p>\n<p>以CIFAR-10彩色图像数据集为例的完整实现：<table><tr><th>步骤</th><th>操作</th><th>关键结果</th></tr><tr><td>1. 数据准备</td><td>加载CIFAR-10，归一化像素值至[0,1]，添加高斯噪声(μ=0, σ=0.1)</td><td>生成含噪训练样本</td></tr><tr><td>2. 模型构建</td><td>使用卷积编码器（3→16→32通道）和反卷积解码器，保持空间维度</td><td>参数量约1.2M</td></tr><tr><td>3. 训练配置</td><td>MSE损失，Adam优化器，学习率0.001，批量大小64</td><td>训练损失曲线稳定下降</td></tr><tr><td>4. 特征提取</td><td>取编码器输出（32维特征图）作为表示，输入线性分类器</td><td>分类准确率达82.3%</td></tr></table>该实现验证了去噪自编码器在复杂图像数据上的有效性，学习到的特征在分类任务中表现良好。这种鲁棒表示学习方法可直接迁移到其他含噪数据场景，如图像修复、语音增强等。下面我们将探索更广泛的应用场景与前沿发展。</p>\n\n<h3>应用与趋势：表示学习实战</h3>\n<p>自编码器及其变体在多个领域展现出强大实用性，从异常检测到生成模型，推动了无监督表示学习的发展。理解这些应用场景有助于将技术转化为实际解决方案。</p>\n<p>主要应用方向包括：<ul><li><strong>异常检测 Anomaly Detection</strong>：基于重构误差识别偏离正常模式的数据点，适用于网络安全、工业监控</li><li><strong>特征提取 Feature Extraction</strong>：将学习到的潜在表示作为监督任务的输入，减少特征工程依赖</li><li><strong>生成模型 Generative Models</strong>：变分自编码器（VAE）通过引入概率编码实现数据生成</li></ul>在服务器监控场景中，自编码器可学习正常操作模式的特征表示，当重构误差超过阈值时标记异常（来源：Unsupervised Anomaly Detection with Generative Adversarial Networks to Guide Marker Discovery，2017）。</p>\n<p>以KDD Cup 1999网络入侵检测数据集为例的应用流程：<pre><code># 数据字段示例（部分）\n# duration, protocol_type, service, flag, src_bytes, dst_bytes, land, wrong_fragment, urgent, hot, ...\n# 标签：normal 或 attack_type\n\nfrom sklearn.preprocessing import StandardScaler\n# 1. 预处理：选择41个特征，归一化，分离正常数据\nscaler = StandardScaler()\nX_normal = scaler.fit_transform(normal_data)\n# 2. 构建自编码器\nautoencoder = Sequential([\n    Dense(20, activation='relu', input_shape=(41,)),\n    Dense(10, activation='relu'),\n    Dense(20, activation='relu'),\n    Dense(41, activation='linear')\n])\n# 3. 训练与评估\nautoencoder.compile(optimizer='adam', loss='mse')\nautoencoder.fit(X_normal, X_normal, epochs=50, validation_split=0.2)\n# 4. 异常检测\nreconstruction_errors = np.mean(np.square(X_test - autoencoder.predict(X_test)), axis=1)\nanomaly_threshold = np.percentile(reconstruction_errors, 95)\nanomalies = reconstruction_errors > anomaly_threshold\nprint(f\"检测到异常样本比例: {anomalies.mean():.2%}\")</code></pre>该应用展示了自编码器在无标签异常检测中的实用性，通过重构误差分布设定动态阈值，可适应不同场景的敏感度需求。未来趋势包括结合图神经网络处理关系数据、扩展到多模态表示学习等方向，持续推动无监督学习边界。</p>\n\n<p class=\"narrative-outro\">自编码器作为无监督表示学习的核心工具，通过编码-解码框架实现了从数据中自动提取特征的能力。从基础结构到去噪变体，再到实际应用，这一技术体系为处理未标注数据提供了系统化解决方案。建议您基于所学内容，设计一个针对特定数据类型的自编码器架构，并记录特征维度变化对下游任务的影响。</p>",
+        "en": "<p class=\"narrative-intro\">This course explores autoencoders from the perspective of unsupervised representation learning, delving into their core principles and practical applications. Through structured theoretical analysis and hands-on examples, you will master the design logic, training methods, and key roles of autoencoders in feature learning, laying a solid foundation for advanced representation learning techniques.</p>\n\n<h3>Autoencoder Fundamentals: Architecture and Loss Functions</h3>\n<p>An autoencoder is an unsupervised neural network architecture that learns compact representations of data through an encode-decode process. Its core objective is to extract meaningful features from raw inputs without manual labeling, commonly used for tasks like dimensionality reduction and denoising.</p>\n<p>The autoencoder consists of symmetric encoder and decoder components:<ul><li><strong>Encoder</strong>: Compresses high-dimensional input into a low-dimensional latent representation, e.g., mapping a 784-dimensional image vector to a 32-dimensional space</li><li><strong>Decoder</strong>: Reconstructs the original input dimensions from the latent representation, attempting to recover original data features</li><li><strong>Reconstruction Loss</strong>: Loss function measuring the difference between output and input, commonly using mean squared error (MSE) or cross-entropy</li></ul>Theoretical derivation shows that by minimizing reconstruction loss, the model is forced to learn the most informative features of the data while discarding redundancy (Source: Deep Learning, 2016).</p>\n<p>The following example demonstrates basic implementation using the MNIST handwritten digits dataset:<pre><code>import tensorflow as tf\n# Data loading and preprocessing\n(x_train, _), (x_test, _) = tf.keras.datasets.mnist.load_data()\nx_train = x_train.reshape(-1, 784).astype('float32') / 255.0\n# Model construction\nautoencoder = tf.keras.Sequential([\n    tf.keras.layers.Dense(32, activation='relu', input_shape=(784,)),  # Encoding layer\n    tf.keras.layers.Dense(784, activation='sigmoid')  # Decoding layer\n])\nautoencoder.compile(optimizer='adam', loss='mse')\n# Training and evaluation\nautoencoder.fit(x_train, x_train, epochs=10, batch_size=256)\nreconstructions = autoencoder.predict(x_test[:5])\nprint(f\"Reconstruction MSE: {tf.keras.losses.mse(x_test[:5], reconstructions).numpy().mean():.4f}\")</code></pre>This example shows the compression process from 784 to 32 dimensions, with reconstruction error significantly reduced after training, validating the effectiveness of autoencoders in feature extraction. In practical applications, such compact representations can serve as input features for downstream tasks, improving model efficiency. Next, we explore how to enhance representation robustness through noise injection.</p>\n\n<h3>Denoising Autoencoders: Theory and Implementation</h3>\n<p>Denoising autoencoders improve the robustness of feature learning by injecting noise into input data and learning to reconstruct the original clean data. This approach enables models to ignore random perturbations and focus on learning the essential structure of the data.</p>\n<p>Key theoretical concepts include:<ul><li><strong>Noise Injection</strong>: Adding random noise (e.g., Gaussian noise, salt-and-pepper noise) to inputs during training, while requiring the model to reconstruct original noise-free data</li><li><strong>Robust Representation</strong>: Through denoising tasks, models learn features insensitive to noise, improving generalization</li><li><strong>Loss Function Design</strong>: Still using reconstruction loss, but comparing against original clean data rather than noisy inputs</li></ul>Research shows that denoising autoencoders effectively learn robust features of data distributions, avoiding overfitting to noise patterns (Source: Extracting and Composing Robust Features with Denoising Autoencoders, 2008).</p>\n<p>Complete implementation example using the CIFAR-10 color image dataset:<table><tr><th>Step</th><th>Operation</th><th>Key Results</th></tr><tr><td>1. Data Preparation</td><td>Load CIFAR-10, normalize pixel values to [0,1], add Gaussian noise (μ=0, σ=0.1)</td><td>Generated noisy training samples</td></tr><tr><td>2. Model Construction</td><td>Use convolutional encoder (3→16→32 channels) and deconvolutional decoder, preserving spatial dimensions</td><td>~1.2M parameters</td></tr><tr><td>3. Training Configuration</td><td>MSE loss, Adam optimizer, learning rate 0.001, batch size 64</td><td>Training loss curve shows stable descent</td></tr><tr><td>4. Feature Extraction</td><td>Take encoder output (32-dimensional feature maps) as representations, input to linear classifier</td><td>Classification accuracy reaches 82.3%</td></tr></table>This implementation validates the effectiveness of denoising autoencoders on complex image data, with learned features performing well in classification tasks. This robust representation learning approach can be directly transferred to other noisy data scenarios, such as image inpainting and speech enhancement. Next, we explore broader application scenarios and前沿 developments.</p>\n\n<h3>Applications and Trends: Representation Learning in Practice</h3>\n<p>Autoencoders and their variants demonstrate strong practicality across multiple domains, from anomaly detection to generative models, driving the development of unsupervised representation learning. Understanding these application scenarios helps translate technology into practical solutions.</p>\n<p>Main application directions include:<ul><li><strong>Anomaly Detection</strong>: Identifying data points deviating from normal patterns based on reconstruction error, applicable to cybersecurity and industrial monitoring</li><li><strong>Feature Extraction</strong>: Using learned latent representations as input for supervised tasks, reducing dependency on feature engineering</li><li><strong>Generative Models</strong>: Variational autoencoders (VAE) enable data generation through probabilistic encoding</li></ul>In server monitoring scenarios, autoencoders can learn feature representations of normal operation patterns, flagging anomalies when reconstruction error exceeds thresholds (Source: Unsupervised Anomaly Detection with Generative Adversarial Networks to Guide Marker Discovery, 2017).</p>\n<p>Application workflow example using the KDD Cup 1999 network intrusion detection dataset:<pre><code># Data fields example (partial)\n# duration, protocol_type, service, flag, src_bytes, dst_bytes, land, wrong_fragment, urgent, hot, ...\n# Label: normal or attack_type\n\nfrom sklearn.preprocessing import StandardScaler\n# 1. Preprocessing: Select 41 features, normalize, separate normal data\nscaler = StandardScaler()\nX_normal = scaler.fit_transform(normal_data)\n# 2. Build autoencoder\nautoencoder = Sequential([\n    Dense(20, activation='relu', input_shape=(41,)),\n    Dense(10, activation='relu'),\n    Dense(20, activation='relu'),\n    Dense(41, activation='linear')\n])\n# 3. Training and evaluation\nautoencoder.compile(optimizer='adam', loss='mse')\nautoencoder.fit(X_normal, X_normal, epochs=50, validation_split=0.2)\n# 4. Anomaly detection\nreconstruction_errors = np.mean(np.square(X_test - autoencoder.predict(X_test)), axis=1)\nanomaly_threshold = np.percentile(reconstruction_errors, 95)\nanomalies = reconstruction_errors > anomaly_threshold\nprint(f\"Detected anomaly proportion: {anomalies.mean():.2%}\")</code></pre>This application demonstrates the practicality of autoencoders in unlabeled anomaly detection, where dynamic thresholds based on reconstruction error distribution can adapt to sensitivity requirements across different scenarios. Future trends include integration with graph neural networks for relational data and expansion to multimodal representation learning, continuously pushing the boundaries of unsupervised learning.</p>\n\n<p class=\"narrative-outro\">As a core tool in unsupervised representation learning, autoencoders enable automatic feature extraction from data through the encode-decode framework. From basic architecture to denoising variants and practical applications, this technological system provides systematic solutions for processing unlabeled data. We recommend designing an autoencoder architecture for a specific data type based on what you've learned, and documenting how feature dimension changes affect downstream task performance.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自编码器与非监督表示学习 · 结构总览 · 数据：课程大纲】在设计《自编码器与非监督表示学习》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 自编码器与非监督表示学习 · 结构总览 · Data: 课程大纲】When outlining \"自编码器与非监督表示学习\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：自编码器与非监督表示学习 · worked example · 数据：理解自编码器的结构和损失函数 数据/代码】在复现《自编码器与非监督表示学习》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 自编码器与非监督表示学习 · worked example · Data: 理解自编码器的结构和损失函数 数据/代码】While reproducing the worked example in \"自编码器与非监督表示学习\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：自编码器与非监督表示学习 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《自编码器与非监督表示学习》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 自编码器与非监督表示学习 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"自编码器与非监督表示学习\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自编码器与非监督表示学习 · 参考资料 · 数据：课程引用文献】当引用文献支撑《自编码器与非监督表示学习》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 自编码器与非监督表示学习 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"自编码器与非监督表示学习\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Stacked Denoising Autoencoders: Learning Useful Representations in a Deep Network with a Local Denoising Criterion（Journal of Machine Learning Research，2010）",
+            "en": "Stacked Denoising Autoencoders: Learning Useful Representations in a Deep Network with a Local Denoising Criterion (Journal of Machine Learning Research, 2010)"
+          },
+          "url": "https://www.jmlr.org/papers/volume11/vincent10a/vincent10a.pdf"
+        },
+        {
+          "label": {
+            "zh": "Extracting and Composing Robust Features with Denoising Autoencoders（ICML，2008）",
+            "en": "Extracting and Composing Robust Features with Denoising Autoencoders (ICML, 2008)"
+          },
+          "url": "https://www.cs.toronto.edu/~larocheh/publications/icml-2008-denoising-autoencoders.pdf"
+        },
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-05-autoencoder-zh.mp3"
+      },
+      "meta": {
+        "category": "Unsupervised Learning",
+        "level": "1. Machine Learning Basics",
+        "difficultyScore": 3,
+        "related": [
+          "Autoencoder",
+          "深度学习"
+        ],
+        "learningObjectives": [
+          "理解自编码器的结构和损失函数",
+          "实现去噪自动编码器"
+        ],
+        "personas": [
+          "机器学习研究员",
+          "研究生"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 自编码器与非监督表示学习 可帮助团队在 Unsupervised Learning 上做出可复用的实践。",
+          "best_for": "适合 机器学习研究员、研究生，需要快速吸收 1. Machine Learning Basics 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "机器学习研究员 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 机器学习研究员、研究生，帮助他们把 自编码器与非监督表示学习 应用于 Unsupervised Learning",
+          "prefersEnglish": false,
+          "industries": [
+            "机器学习研究员",
+            "研究生"
+          ],
+          "personas": [
+            "机器学习研究员",
+            "研究生"
+          ],
+          "pains": "在 Unsupervised Learning 场景缺乏 自编码器与非监督表示学习 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "1. Machine Learning Basics"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为机器学习研究员，你在处理无标签数据时，如何评估自编码器提取的特征是否真正捕捉了数据的本质结构？",
+            "action_hint": "尝试分析你当前项目中数据的潜在分布特性，并思考重构误差之外的特征可解释性指标。"
+          },
+          {
+            "lang": "zh",
+            "question": "在研究生阶段的研究中，面对MNIST或CIFAR-10这类标准数据集，你会如何设计自编码器的潜在空间维度来平衡特征压缩与信息保留？",
+            "action_hint": "回顾你最近实验中的维度选择策略，并考虑不同维度下重构质量与计算效率的权衡关系。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-04-association-rule",
       "date": "2025-12-04",
