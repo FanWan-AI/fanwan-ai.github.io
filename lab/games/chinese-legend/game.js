@@ -293,7 +293,7 @@ class Game {
 
         // Enemy Attack! Trigger Defense Question
         setTimeout(() => {
-            this.dom.qText.textContent = warningMsg || `⚠️ ${this.state.enemyName} is attacking! Answer to defend!`;
+            this.dom.qText.textContent = warningMsg || `⚠️ ${this.state.enemyName} 正在攻击！请答题防守！`;
             if (warningMsg) this.dom.qText.style.color = '#e74c3c';
             else this.dom.qText.style.color = '';
             
@@ -459,14 +459,18 @@ class Game {
         const isPinyin = /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(q.question);
         
         this.dom.qText.innerHTML = ''; // Clear text
-        const prefix = document.createElement('span');
-        prefix.textContent = isDefense ? "🛡️ DEFEND! " : "⚔️ ATTACK! ";
+        
+        // Create Tag (Attack/Defend)
+        const prefix = document.createElement('div');
+        prefix.className = 'question-tag ' + (isDefense ? 'tag-defend' : 'tag-attack');
+        prefix.innerHTML = isDefense ? "🛡️ 防守" : "⚔️ 攻击";
         this.dom.qText.appendChild(prefix);
 
-        const content = document.createElement('span');
+        const content = document.createElement('div'); // Wrap text in div for better control
+        content.className = 'q-content-text';
         content.textContent = q.question;
         if (isPinyin || q.subtype === 'pinyin') {
-            content.className = 'pinyin-text';
+            content.classList.add('pinyin-text');
         }
         this.dom.qText.appendChild(content);
 
