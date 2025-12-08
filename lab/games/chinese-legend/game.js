@@ -59,14 +59,15 @@ class Game {
                 selectedSkill: null,
                 currentQuestion: null,
                 questionStartTime: 0,
-                turnCount: 0
+                turnCount: 0,
+                usedQuestionIds: [] // Track used questions to avoid repeats
             },
             currentLevel: 0,
             currentLevelData: null,
             levels: [
-                { id: 1, name: "1-1 初入墨林", enemyName: "错别字小怪", hp: 60, atk: 15, boss: false },
-                { id: 2, name: "1-2 墨迹深处", enemyName: "偏旁部首怪", hp: 80, atk: 20, boss: false },
-                { id: 3, name: "1-3 墨魇领主", enemyName: "多音字魔王", hp: 150, atk: 25, boss: true, ability: 'rage' }
+                { id: 1, name: "1-1 初入墨林", enemyName: "错别字小怪", hp: 100, atk: 15, boss: false },
+                { id: 2, name: "1-2 墨迹深处", enemyName: "偏旁部首怪", hp: 140, atk: 20, boss: false },
+                { id: 3, name: "1-3 墨魇领主", enemyName: "多音字魔王", hp: 250, atk: 25, boss: true, ability: 'rage' }
             ],
             progress: {
                 unlockedLevels: [1],
@@ -237,6 +238,20 @@ class Game {
         this.state.enemy.hp = levelData.hp;
         this.state.enemy.stats.atk = levelData.atk || 15;
 
+        // Boss UI Handling
+        const bossHpContainer = document.getElementById('boss-hp-container');
+        const normalHpContainer = document.querySelector('.enemy-status .hp-bar-container');
+        
+        if (levelData.boss) {
+            this.dom.enemyChar.classList.add('boss');
+            bossHpContainer.style.display = 'block';
+            normalHpContainer.style.display = 'none';
+        } else {
+            this.dom.enemyChar.classList.remove('boss');
+            bossHpContainer.style.display = 'none';
+            normalHpContainer.style.display = 'flex';
+        }
+
         // Reset Player Combat State
         this.state.player.hp = this.state.player.maxHp; 
         this.state.player.ink = this.state.player.maxInk;
@@ -283,16 +298,55 @@ class Game {
             else this.dom.qText.style.color = '';
             
             this.showQuestion(true); // true = isDefense
+            
+            // Start Defense Timer
+            this.startDefenseTimer(10); // 10 seconds to answer
         }, attackDelay);
     }
 
+    startDefenseTimer(seconds) {
+        const timerEl = document.getElementById('defense-timer');
+        timerEl.style.display = 'block';
+        timerEl.textContent = seconds;
+        
+        if (this.defenseTimerInterval) clearInterval(this.defenseTimerInterval);
+        
+        this.defenseTimerInterval = setInterval(() => {
+            seconds--;
+            timerEl.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(this.defenseTimerInterval);
+                timerEl.style.display = 'none';
+                // Time out = Wrong Answer
+                this.handleAnswer(-1, null); // -1 indicates timeout
+            }
+        }, 1000);
+    }
+
+    stopDefenseTimer() {
+        if (this.defenseTimerInterval) clearInterval(this.defenseTimerInterval);
+        document.getElementById('defense-timer').style.display = 'none';
+    }
+
     async loadQuestions() {
+        const realmMap = {
+            1: "lianqi", 2: "zhuji", 3: "jiedan", 
+            4: "yuanying", 5: "huashen", 6: "dacheng"
+        };
+        const realm = realmMap[this.state.grade] || "lianqi";
+        const filename = `questions_grade_${this.state.grade}_${realm}.json`;
+
         try {
-            const response = await fetch('../../../assets/data/chinese-legend/questions_v3.json');
+            const response = await fetch(`../../../assets/data/chinese-legend/${filename}`);
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
-            this.state.questionBank = data.filter(q => Math.abs(q.grade - this.state.grade) <= 1);
-            if (this.state.questionBank.length === 0) this.state.questionBank = data; 
+            // Shuffle questions to ensure variety each session
+            for (let i = data.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [data[i], data[j]] = [data[j], data[i]];
+            }
+            this.state.questionBank = data;
+            console.log(`Loaded ${data.length} questions for Realm ${realm}`);
         } catch (error) {
             console.warn("Failed to load questions, using fallback data.", error);
             this.state.questionBank = [
@@ -324,6 +378,11 @@ class Game {
         
         this.dom.playerHp.style.width = `${Math.max(0, pPct)}%`;
         this.dom.enemyHp.style.width = `${Math.max(0, ePct)}%`;
+        
+        // Update Boss HP if active
+        const bossHp = document.getElementById('boss-hp');
+        if (bossHp) bossHp.style.width = `${Math.max(0, ePct)}%`;
+
         if (this.dom.playerInk) {
             this.dom.playerInk.style.width = `${Math.max(0, iPct)}%`;
         }
@@ -371,23 +430,54 @@ class Game {
         // Filter questions based on phase
         let availableQuestions = this.state.questionBank;
         if (isDefense) {
-            availableQuestions = this.state.questionBank.filter(q => q.subtype === 'defense');
-            if (availableQuestions.length === 0) availableQuestions = this.state.questionBank; // Fallback
+            // Allow ALL questions for defense to prevent repetition (User Feedback Fix)
+            // Previously restricted to subtype 'defense' which caused repetition
+            availableQuestions = this.state.questionBank;
         } else {
             availableQuestions = this.state.questionBank.filter(q => q.subtype !== 'defense');
         }
 
+        // Filter out used questions
+        let unusedQuestions = availableQuestions.filter(q => !this.state.combat.usedQuestionIds.includes(q.id));
+        
+        // If all questions used, reset the used list for this type
+        if (unusedQuestions.length === 0) {
+            // Only clear IDs that belong to the current pool to avoid clearing everything
+            const currentPoolIds = availableQuestions.map(q => q.id);
+            this.state.combat.usedQuestionIds = this.state.combat.usedQuestionIds.filter(id => !currentPoolIds.includes(id));
+            unusedQuestions = availableQuestions;
+        }
+
         // Pick random question
-        const q = availableQuestions[Math.floor(Math.random() * availableQuestions.length)];
+        const q = unusedQuestions[Math.floor(Math.random() * unusedQuestions.length)];
+        this.state.combat.usedQuestionIds.push(q.id);
+        
         this.state.combat.currentQuestion = q;
         this.state.combat.questionStartTime = Date.now();
 
-        this.dom.qText.textContent = isDefense ? `🛡️ DEFEND! ${q.question}` : `⚔️ ATTACK! ${q.question}`;
+        // Pinyin Fix: Check if question contains pinyin-like characters and wrap/style
+        const isPinyin = /[āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜ]/.test(q.question);
+        
+        this.dom.qText.innerHTML = ''; // Clear text
+        const prefix = document.createElement('span');
+        prefix.textContent = isDefense ? "🛡️ DEFEND! " : "⚔️ ATTACK! ";
+        this.dom.qText.appendChild(prefix);
+
+        const content = document.createElement('span');
+        content.textContent = q.question;
+        if (isPinyin || q.subtype === 'pinyin') {
+            content.className = 'pinyin-text';
+        }
+        this.dom.qText.appendChild(content);
+
         this.dom.qOptions.innerHTML = '';
 
         q.options.forEach((opt, idx) => {
             const btn = document.createElement('button');
             btn.className = 'option-btn';
+            if (isPinyin || q.subtype === 'pinyin') {
+                btn.classList.add('pinyin-text');
+            }
             btn.textContent = opt;
             btn.onclick = () => this.handleAnswer(idx, btn);
             this.dom.qOptions.appendChild(btn);
@@ -395,9 +485,19 @@ class Game {
     }
 
     handleAnswer(selectedIndex, btnElement) {
-        if (btnElement.disabled) return;
+        // Stop timer if running
+        this.stopDefenseTimer();
+
+        if (btnElement && btnElement.disabled) return;
         const allBtns = this.dom.qOptions.querySelectorAll('button');
         allBtns.forEach(b => b.disabled = true);
+
+        // Handle Timeout (-1)
+        if (selectedIndex === -1) {
+             this.sound.playWrong();
+             this.performDefense(false);
+             return;
+        }
 
         const isCorrect = selectedIndex === this.state.combat.currentQuestion.answer;
         const timeTaken = (Date.now() - this.state.combat.questionStartTime) / 1000;
@@ -425,6 +525,43 @@ class Game {
                 this.performDefense(false);
             }
         }
+    }
+
+    spawnParticles(x, y, color, count = 10) {
+        for (let i = 0; i < count; i++) {
+            const p = document.createElement('div');
+            p.className = 'particle';
+            p.style.backgroundColor = color;
+            p.style.left = x + 'px';
+            p.style.top = y + 'px';
+            
+            // Random velocity
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Math.random() * 50 + 20;
+            const tx = Math.cos(angle) * speed;
+            const ty = Math.sin(angle) * speed;
+            
+            p.style.setProperty('--tx', `${tx}px`);
+            p.style.setProperty('--ty', `${ty}px`);
+            
+            document.body.appendChild(p);
+            setTimeout(() => p.remove(), 800);
+        }
+    }
+
+    shakeScreen(intensity = 10) {
+        const container = document.getElementById('game-container');
+        container.animate([
+            { transform: `translate(0, 0)` },
+            { transform: `translate(-${intensity}px, ${intensity}px)` },
+            { transform: `translate(${intensity}px, -${intensity}px)` },
+            { transform: `translate(-${intensity}px, -${intensity}px)` },
+            { transform: `translate(${intensity}px, ${intensity}px)` },
+            { transform: `translate(0, 0)` }
+        ], {
+            duration: 300,
+            easing: 'ease-out'
+        });
     }
 
     spawnProjectile(from, to, type = 'ink') {
@@ -491,6 +628,12 @@ class Game {
             damage += 5;
         }
 
+        // Spirit Passive: Feng (Wind) - Chance to attack twice (Double Strike)
+        if (this.state.collection.spirits.includes('spirit_feng') && Math.random() < 0.15) {
+             damage *= 2;
+             this.showDamage("Wind Fury!", 'enemy');
+        }
+
         // Critical Hit (Perfect Answer)
         if (isPerfect && damage > 0) {
             damage *= 1.5;
@@ -509,6 +652,16 @@ class Game {
             
             const projType = isThunder ? 'thunder' : 'ink';
             await this.spawnProjectile('player', 'enemy', projType);
+
+            // Impact FX
+            const enemyRect = this.dom.enemyChar.getBoundingClientRect();
+            this.spawnParticles(
+                enemyRect.left + enemyRect.width/2, 
+                enemyRect.top + enemyRect.height/2, 
+                '#c0392b', 
+                15
+            );
+            this.shakeScreen(isPerfect ? 15 : 5);
 
             this.sound.playAttack();
             this.state.enemy.hp -= damage;
@@ -546,9 +699,24 @@ class Game {
         if (isSuccess) {
             damage *= 0.3; // Block 70% damage
             this.showDamage("BLOCKED!", 'player', true);
-            // Shield effect could go here
+            
+            // Shield Visual
+            const shield = document.getElementById('player-shield');
+            shield.classList.add('active');
+            setTimeout(() => shield.classList.remove('active'), 1000);
+
+            // Block Particles
+            const playerRect = this.dom.playerChar.getBoundingClientRect();
+            this.spawnParticles(
+                playerRect.left + playerRect.width/2, 
+                playerRect.top + playerRect.height/2, 
+                '#3498db', 
+                10
+            );
+
         } else {
             this.dom.playerChar.classList.add('shake');
+            this.shakeScreen(10); // Shake on hit
             setTimeout(() => this.dom.playerChar.classList.remove('shake'), 500);
         }
 

@@ -54,6 +54,7 @@ Special Instructions:
    - Focus on: Spotting typos (错别字), Tone errors (变调错误), Logic errors (语病).
    - Example: "下列哪个词语书写正确？"
 3. **Variety**: Generate questions for different grades (1-6).
+4. **Creativity**: Use interesting contexts. For idioms, use stories. For poetry, use famous lines but vary the missing part.
 """
 
 def load_existing_questions():
