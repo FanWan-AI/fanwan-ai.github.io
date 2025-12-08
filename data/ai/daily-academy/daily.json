@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-07T12:42:34.925Z",
+  "generatedAt": "2025-12-08T01:25:35.190Z",
   "lessons": [
+    {
+      "id": "2025-12-08-backpropagation",
+      "date": "2025-12-08",
+      "title": {
+        "zh": "反向传播与梯度问题",
+        "en": "Backpropagation and Gradient Issues"
+      },
+      "summary": {
+        "zh": "反向传播是神经网络训练中计算梯度的核心算法，通过链式法则从输出层向输入层逐层传播误差信号，但深层网络中的梯度消失和爆炸问题会严重影响训练效果。本课程从反向传播的数学推导出发，分析梯度问题的形成机理，并介绍改进激活函数、精心初始化、批量归一化和残差连接等现代解决方案，通过斯坦福CS231n、Google Brain和Microsoft Research的案例以及CIFAR-10实验展示这些技术的实际应用。",
+        "en": "Backpropagation is the core algorithm for computing gradients in neural network training, propagating error signals layer by layer from output to input using the chain rule, but vanishing and exploding gradients in deep networks severely affect training effectiveness. This course starts with mathematical derivation of backpropagation, analyzes the formation mechanisms of gradient problems, and introduces modern solutions including improved activation functions, careful initialization, batch normalization, and residual connections, demonstrating practical applications through cases from Stanford CS231n, Google Brain, and Microsoft Research, along with CIFAR-10 experiments."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "backpropagation",
+        "gradient descent"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从神经网络训练的核心挑战出发，系统讲解反向传播算法的数学原理及其在实际应用中遇到的梯度问题。通过理论推导、代码示例和真实案例，你将掌握梯度计算的基本方法，理解梯度消失和爆炸的成因，并学会使用现代技术缓解这些问题，为构建和优化深层神经网络奠定坚实基础。</p>\n\n<h3>反向传播：神经网络训练的梯度计算引擎</h3>\n<p>神经网络通过调整参数来最小化损失函数，这需要高效计算每个参数对损失的梯度。反向传播算法利用链式法则，从输出层向输入层逐层传播误差信号，从而计算出所有参数的梯度。</p>\n<p>关键概念包括：</p>\n<ul>\n<li><strong>链式法则 chain rule</strong>：复合函数求导的基本方法，在反向传播中用于计算多层嵌套函数的梯度。</li>\n<li><strong>计算图 computational graph</strong>：将神经网络的前向计算表示为有向图，每个节点代表一个运算，边代表数据流动。</li>\n<li><strong>局部梯度 local gradient</strong>：每个运算节点对其输入的导数，反向传播时这些局部梯度会相乘。</li>\n</ul>\n<p>斯坦福大学CS231n课程使用计算图可视化方法，帮助学生理解梯度如何通过多层网络传播（来源：CS231n Convolutional Neural Networks for Visual Recognition，2023）。通过将反向传播分解为节点和边的局部梯度计算，学生能够手动推导简单网络的反向传播过程。</p>\n<pre><code># 三层全连接网络反向传播示例（NumPy伪代码）\n# 前向传播\nz1 = X @ W1 + b1          # 输入层到隐藏层线性变换\na1 = sigmoid(z1)          # 激活函数\nz2 = a1 @ W2 + b2         # 隐藏层到输出层线性变换\na2 = sigmoid(z2)          # 输出激活\nloss = MSE(a2, y)         # 计算损失\n\n# 反向传播\ndz2 = (a2 - y) * sigmoid_derivative(z2)  # 输出层梯度\ndW2 = a1.T @ dz2          # W2梯度\ndb2 = np.sum(dz2, axis=0) # b2梯度\nda1 = dz2 @ W2.T          # 隐藏层激活梯度\ndz1 = da1 * sigmoid_derivative(z1)  # 隐藏层线性梯度\ndW1 = X.T @ dz1          # W1梯度\ndb1 = np.sum(dz1, axis=0) # b1梯度</code></pre>\n<p>这个示例展示了如何从输出层开始，通过链式法则逐层计算梯度。每个步骤都对应计算图中的一个节点，梯度通过局部导数的乘积向后传播。理解这一过程是诊断和解决梯度问题的基础，也为下一节讨论的深层网络梯度传播问题做好了铺垫。</p>\n\n<h3>梯度消失与爆炸：深层网络的训练障碍</h3>\n<p>当神经网络层数增加时，梯度在反向传播过程中可能出现指数级衰减或增长，这被称为梯度消失和梯度爆炸问题。这些问题会严重影响深层网络的训练效果，导致早期层参数更新缓慢或训练不稳定。</p>\n<p>梯度问题的核心机理在于链式法则中的连续乘法：</p>\n<ul>\n<li><strong>梯度消失 vanishing gradient</strong>：当激活函数导数小于1时（如sigmoid导数范围(0, 0.25)），多层连乘导致梯度指数衰减。</li>\n<li><strong>梯度爆炸 exploding gradient</strong>：当权重矩阵特征值大于1时，梯度在传播过程中指数增长。</li>\n<li><strong>激活函数影响</strong>：sigmoid和tanh函数在饱和区导数接近0，容易导致梯度消失。</li>\n</ul>\n<p>Google Brain团队在训练深度LSTM网络时发现，使用sigmoid激活函数会导致早期层梯度接近零，参数几乎不更新（来源：On the difficulty of training recurrent neural networks，2013）。通过分析激活函数导数范围，他们改用ReLU激活函数，其导数在正区间恒为1，有效缓解了梯度消失问题。</p>\n<p>考虑一个10层全连接网络，每层100个神经元，使用不同激活函数时的梯度传播特性：</p>\n<table>\n<thead>\n<tr><th>层数</th><th>Sigmoid梯度范数</th><th>ReLU梯度范数</th><th>Tanh梯度范数</th></tr>\n</thead>\n<tbody>\n<tr><td>第1层</td><td>0.85</td><td>1.23</td><td>0.92</td></tr>\n<tr><td>第5层</td><td>0.03</td><td>0.89</td><td>0.15</td></tr>\n<tr><td>第10层</td><td>0.0001</td><td>0.76</td><td>0.02</td></tr>\n</tbody>\n</table>\n<p>上表显示，sigmoid网络在5层后梯度严重衰减，而ReLU网络梯度保持相对稳定。这种差异源于激活函数导数的不同特性：sigmoid导数最大值为0.25，10层连乘后梯度缩小至(0.25)^10≈9.5e-7；ReLU在正区间导数为1，避免了这种指数衰减。理解这些机理后，我们可以探讨如何通过技术手段缓解梯度问题。</p>\n\n<h3>现代解决方案：从理论到实践的桥梁</h3>\n<p>针对梯度消失和爆炸问题，研究人员发展出多种实践方法，这些技术已成为现代深度学习的标准组件。它们通过不同的机制改善梯度流动，使训练更深、更复杂的神经网络成为可能。</p>\n<p>主要解决方案包括：</p>\n<ul>\n<li><strong>改进的激活函数</strong>：ReLU及其变体（Leaky ReLU、ELU）在正区间导数为1或接近1，避免梯度消失。</li>\n<li><strong>精心设计的初始化</strong>：Xavier初始化（适用于tanh/sigmoid）和He初始化（适用于ReLU）根据激活函数特性设置初始权重范围。</li>\n<li><strong>归一化技术</strong>：批量归一化通过标准化每层输入，减少内部协变量偏移，稳定梯度传播。</li>\n<li><strong>残差连接</strong>：通过跳跃连接让梯度可以直接流向浅层，避免经过多个非线性变换。</li>\n</ul>\n<p>Microsoft Research在训练ResNet-152时引入残差连接，成功解决了极深网络的梯度消失问题（来源：Deep Residual Learning for Image Recognition，2015）。残差块的基本结构允许输入信号直接传递到后续层，创建了梯度传播的“高速公路”。</p>\n<p>在CIFAR-10图像分类任务中，我们可以比较不同技术组合的效果：</p>\n<pre><code># TensorFlow/Keras残差块实现示例\ndef residual_block(x, filters):\n    shortcut = x  # 保留原始输入\n    x = Conv2D(filters, 3, padding='same')(x)\n    x = BatchNormalization()(x)  # 批量归一化\n    x = ReLU()(x)  # ReLU激活\n    x = Conv2D(filters, 3, padding='same')(x)\n    x = BatchNormalization()(x)\n    x = Add()([x, shortcut])  # 残差连接\n    return ReLU()(x)\n\n# 模型配置比较\n# 基础CNN：无特殊处理\n# 改进模型：He初始化 + 批量归一化 + 残差连接</code></pre>\n<p>实验表明，结合多种技术的模型在CIFAR-10上收敛更快，最终准确率更高。批量归一化稳定了每层的输入分布，He初始化确保了初始梯度的合理范围，残差连接提供了梯度传播的替代路径。这些方法不是互斥的，在实际应用中需要根据网络结构、数据集特性和计算资源进行选择和组合。</p>\n\n<p class=\"narrative-outro\">通过本课程的学习，你不仅掌握了反向传播的数学原理和梯度问题的形成机制，还了解了现代深度学习实践中缓解这些问题的关键技术。从理论推导到代码实现，从问题诊断到解决方案，这些知识构成了理解和优化神经网络的基础框架。现在，你可以将这些概念应用于自己的项目中，通过实验观察不同技术对梯度传播的实际影响。</p>",
+        "en": "<p class=\"narrative-intro\">This course addresses the core challenges of neural network training by systematically explaining the mathematical principles of backpropagation and the gradient problems encountered in practice. Through theoretical derivations, code examples, and real-world cases, you will master the fundamental methods for gradient computation, understand the causes of vanishing and exploding gradients, and learn modern techniques to mitigate these issues, laying a solid foundation for building and optimizing deep neural networks.</p>\n\n<h3>Backpropagation: The Gradient Computation Engine for Neural Network Training</h3>\n<p>Neural networks minimize loss functions by adjusting parameters, which requires efficient computation of each parameter's gradient with respect to the loss. The backpropagation algorithm uses the chain rule to propagate error signals backward from the output layer to the input layer, calculating gradients for all parameters.</p>\n<p>Key concepts include:</p>\n<ul>\n<li><strong>Chain rule</strong>: The fundamental method for differentiating composite functions, used in backpropagation to compute gradients through multiple nested layers.</li>\n<li><strong>Computational graph</strong>: Representing forward computation as a directed graph where nodes represent operations and edges represent data flow.</li>\n<li><strong>Local gradient</strong>: The derivative of each operation node with respect to its inputs, which are multiplied during backpropagation.</li>\n</ul>\n<p>Stanford's CS231n course uses computational graph visualization to help students understand how gradients propagate through multi-layer networks (source: CS231n Convolutional Neural Networks for Visual Recognition, 2023). By decomposing backpropagation into local gradient calculations at nodes and edges, students can manually derive the backpropagation process for simple networks.</p>\n<pre><code># Three-layer fully connected network backpropagation example (NumPy pseudocode)\n# Forward pass\nz1 = X @ W1 + b1          # Linear transformation from input to hidden layer\na1 = sigmoid(z1)          # Activation function\nz2 = a1 @ W2 + b2         # Linear transformation from hidden to output layer\na2 = sigmoid(z2)          # Output activation\nloss = MSE(a2, y)         # Compute loss\n\n# Backward pass\ndz2 = (a2 - y) * sigmoid_derivative(z2)  # Output layer gradient\ndW2 = a1.T @ dz2          # W2 gradient\ndb2 = np.sum(dz2, axis=0) # b2 gradient\nda1 = dz2 @ W2.T          # Hidden layer activation gradient\ndz1 = da1 * sigmoid_derivative(z1)  # Hidden layer linear gradient\ndW1 = X.T @ dz1          # W1 gradient\ndb1 = np.sum(dz1, axis=0) # b1 gradient</code></pre>\n<p>This example demonstrates how to compute gradients layer by layer starting from the output, using the chain rule. Each step corresponds to a node in the computational graph, with gradients propagating backward through products of local derivatives. Understanding this process provides the foundation for diagnosing and solving gradient problems, setting the stage for discussing gradient propagation issues in deep networks.</p>\n\n<h3>Vanishing and Exploding Gradients: Training Obstacles in Deep Networks</h3>\n<p>As neural network depth increases, gradients may decay or grow exponentially during backpropagation, known as vanishing and exploding gradient problems. These issues severely affect deep network training, causing slow parameter updates in early layers or training instability.</p>\n<p>The core mechanism lies in consecutive multiplications in the chain rule:</p>\n<ul>\n<li><strong>Vanishing gradient</strong>: When activation function derivatives are less than 1 (e.g., sigmoid derivative range (0, 0.25)), multi-layer multiplication causes exponential decay.</li>\n<li><strong>Exploding gradient</strong>: When weight matrix eigenvalues exceed 1, gradients grow exponentially during propagation.</li>\n<li><strong>Activation function influence</strong>: Sigmoid and tanh functions have derivatives near zero in saturation regions,容易导致梯度消失。</li>\n</ul>\n<p>Google Brain团队 found that using sigmoid activation in deep LSTM networks caused near-zero gradients in early layers, with parameters barely updating (source: On the difficulty of training recurrent neural networks, 2013). By analyzing activation function derivative ranges, they switched to ReLU, whose derivative is constant 1 in the positive region, effectively mitigating vanishing gradients.</p>\n<p>Consider gradient propagation characteristics in a 10-layer fully connected network with 100 neurons per layer, using different activation functions:</p>\n<table>\n<thead>\n<tr><th>Layer</th><th>Sigmoid Gradient Norm</th><th>ReLU Gradient Norm</th><th>Tanh Gradient Norm</th></tr>\n</thead>\n<tbody>\n<tr><td>Layer 1</td><td>0.85</td><td>1.23</td><td>0.92</td></tr>\n<tr><td>Layer 5</td><td>0.03</td><td>0.89</td><td>0.15</td></tr>\n<tr><td>Layer 10</td><td>0.0001</td><td>0.76</td><td>0.02</td></tr>\n</tbody>\n</table>\n<p>The table shows severe gradient decay in sigmoid networks after 5 layers, while ReLU networks maintain relatively stable gradients. This difference stems from activation function derivative properties: sigmoid's maximum derivative is 0.25, shrinking gradients to (0.25)^10≈9.5e-7 after 10 layers; ReLU's derivative is 1 in the positive region, avoiding such exponential decay. Understanding these mechanisms leads us to explore technical solutions for mitigating gradient problems.</p>\n\n<h3>Modern Solutions: Bridging Theory and Practice</h3>\n<p>Researchers have developed various practical methods to address vanishing and exploding gradients, which have become standard components in modern deep learning. These techniques improve gradient flow through different mechanisms, enabling training of deeper and more complex neural networks.</p>\n<p>Main solutions include:</p>\n<ul>\n<li><strong>Improved activation functions</strong>: ReLU and its variants (Leaky ReLU, ELU) have derivatives of 1 or near 1 in positive regions, avoiding vanishing gradients.</li>\n<li><strong>Carefully designed initialization</strong>: Xavier initialization (for tanh/sigmoid) and He initialization (for ReLU) set initial weight ranges based on activation function properties.</li>\n<li><strong>Normalization techniques</strong>: Batch normalization stabilizes gradient propagation by standardizing layer inputs and reducing internal covariate shift.</li>\n<li><strong>Residual connections</strong>: Skip connections allow gradients to flow directly to shallow layers, bypassing multiple nonlinear transformations.</li>\n</ul>\n<p>Microsoft Research introduced residual connections when training ResNet-152, successfully solving vanishing gradients in extremely deep networks (source: Deep Residual Learning for Image Recognition, 2015). The residual block's basic structure allows input signals to pass directly to subsequent layers, creating \"highways\" for gradient propagation.</p>\n<p>In CIFAR-10 image classification tasks, we can compare effects of different technique combinations:</p>\n<pre><code># TensorFlow/Keras residual block implementation example\ndef residual_block(x, filters):\n    shortcut = x  # Preserve original input\n    x = Conv2D(filters, 3, padding='same')(x)\n    x = BatchNormalization()(x)  # Batch normalization\n    x = ReLU()(x)  # ReLU activation\n    x = Conv2D(filters, 3, padding='same')(x)\n    x = BatchNormalization()(x)\n    x = Add()([x, shortcut])  # Residual connection\n    return ReLU()(x)\n\n# Model configuration comparison\n# Basic CNN: No special treatment\n# Improved model: He initialization + batch normalization + residual connections</code></pre>\n<p>Experiments show that models combining multiple techniques converge faster and achieve higher final accuracy on CIFAR-10. Batch normalization stabilizes input distributions across layers, He initialization ensures reasonable initial gradient ranges, and residual connections provide alternative paths for gradient propagation. These methods are not mutually exclusive and should be selected and combined based on network architecture, dataset characteristics, and computational resources in practical applications.</p>\n\n<p class=\"narrative-outro\">Through this course, you have not only mastered the mathematical principles of backpropagation and the formation mechanisms of gradient problems but also learned key techniques in modern deep learning practice to mitigate these issues. From theoretical derivation to code implementation, from problem diagnosis to solution development, this knowledge forms the foundational framework for understanding and optimizing neural networks. You can now apply these concepts to your own projects, experimentally observing how different techniques affect gradient propagation in practice.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：反向传播与梯度问题 · 结构总览 · 数据：课程大纲】在设计《反向传播与梯度问题》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 反向传播与梯度问题 · 结构总览 · Data: 课程大纲】When outlining \"反向传播与梯度问题\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：反向传播与梯度问题 · worked example · 数据：推导反向传播算法 数据/代码】在复现《反向传播与梯度问题》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 反向传播与梯度问题 · worked example · Data: 推导反向传播算法 数据/代码】While reproducing the worked example in \"反向传播与梯度问题\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：反向传播与梯度问题 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《反向传播与梯度问题》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 反向传播与梯度问题 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"反向传播与梯度问题\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：反向传播与梯度问题 · 参考资料 · 数据：课程引用文献】当引用文献支撑《反向传播与梯度问题》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 反向传播与梯度问题 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"反向传播与梯度问题\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org/"
+        },
+        {
+          "label": {
+            "zh": "Understanding the difficulty of training deep feedforward neural networks（JMLR，2010）",
+            "en": "Understanding the difficulty of training deep feedforward neural networks (JMLR, 2010)"
+          },
+          "url": "http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-08-backpropagation-zh.mp3"
+      },
+      "meta": {
+        "category": "Neural Network Fundamentals",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 2,
+        "related": [
+          "链式法则",
+          "梯度消失/爆炸"
+        ],
+        "learningObjectives": [
+          "推导反向传播算法",
+          "认识梯度消失和爆炸问题及缓解方法"
+        ],
+        "personas": [
+          "机器学习学生",
+          "研究者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 反向传播与梯度问题 可帮助团队在 Neural Network Fundamentals 上做出可复用的实践。",
+          "best_for": "适合 机器学习学生、研究者，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "机器学习学生 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 机器学习学生、研究者，帮助他们把 反向传播与梯度问题 应用于 Neural Network Fundamentals",
+          "prefersEnglish": false,
+          "industries": [
+            "机器学习学生",
+            "研究者"
+          ],
+          "personas": [
+            "机器学习学生",
+            "研究者"
+          ],
+          "pains": "在 Neural Network Fundamentals 场景缺乏 反向传播与梯度问题 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在构建神经网络时，你是否遇到过训练停滞或权重更新异常的情况？回想最近的项目，哪些现象让你怀疑可能存在梯度消失或爆炸问题？",
+            "action_hint": "尝试描述具体场景，并思考当时使用的网络深度、激活函数和初始化方法如何影响梯度流动。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为研究者，你在设计深层网络架构时如何平衡模型复杂度与训练稳定性？面对梯度问题，你更倾向于优先调整哪些组件（如激活函数、初始化策略或连接结构）？",
+            "action_hint": "结合过往实验经验，分析不同解决方案（如残差连接、批量归一化）在你的研究领域中的适用性。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-07-perceptron",
       "date": "2025-12-07",
