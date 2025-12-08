@@ -8,7 +8,7 @@ import random
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Load .env file manually
-env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), '.env')
 if os.path.exists(env_path):
     with open(env_path, 'r', encoding='utf-8') as f:
         for line in f:
@@ -20,12 +20,14 @@ if os.path.exists(env_path):
                 os.environ[key.strip()] = value.strip()
 
 try:
+    # Adjust path to find ai_llm in tools/
+    sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     from ai_llm import chat_once
 except ImportError:
-    print("Error: Could not import ai_llm. Make sure ai_llm.py is in the same directory.")
+    print("Error: Could not import ai_llm. Make sure ai_llm.py is in the tools directory.")
     sys.exit(1)
 
-QUESTIONS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'assets', 'data', 'chinese-legend', 'questions_v3.json')
+QUESTIONS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), 'data', 'ai', 'games', 'chinese-legend', 'questions_v3.json')
 
 SYSTEM_PROMPT = """
 You are an expert Chinese language teacher and game content creator. 

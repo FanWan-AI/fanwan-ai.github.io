@@ -337,7 +337,7 @@ class Game {
         const filename = `questions_grade_${this.state.grade}_${realm}.json`;
 
         try {
-            const response = await fetch(`../../../assets/data/chinese-legend/${filename}`);
+            const response = await fetch(`../../../data/ai/games/chinese-legend/${filename}`);
             if (!response.ok) throw new Error('Network response was not ok');
             const data = await response.json();
             // Shuffle questions to ensure variety each session
