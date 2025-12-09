@@ -7,6 +7,19 @@ const NOTE_STATUS_TIMEOUT = 2600;
 const PAGE_SIZE = 5;
 const XP_PER_LESSON = 15;
 const MIN_PASS_RATE = 0.6;
+const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
+const PYODIDE_INDEX_URL = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/";
+const UNSUPPORTED_MODULES = [/^torch$/i, /^tensorflow$/i, /^imblearn$/i, /^mlxtend$/i];
+const PYODIDE_PACKAGES = {
+  numpy: "numpy",
+  np: "numpy",
+  pandas: "pandas",
+  scipy: "scipy",
+  sklearn: "scikit-learn",
+  "scikit-learn": "scikit-learn",
+  matplotlib: "matplotlib",
+  "matplotlib.pyplot": "matplotlib",
+};
 
 const dailyRoot = document.querySelector('[data-role="daily-root"]');
 if (!dailyRoot) {
@@ -78,6 +91,8 @@ const modalState = {
 let progressState = loadProgress();
 let noteStatusTimer = null;
 let expandedLessonId = null;
+let pyodideReady = null;
+const loadedPackages = new Set();
 
 if (dailyRoot) {
   bootstrap();
@@ -550,6 +565,7 @@ function renderModal(entry, mode) {
     const html = pickLang(entry.content);
     if (html) {
       content.innerHTML = html;
+      enhanceCodeBlocks(content);
     } else {
       const fallback = document.createElement("p");
       fallback.textContent = t("academy_detail_placeholder", "Full lesson content is still being prepared.");
@@ -570,6 +586,230 @@ function renderModal(entry, mode) {
   }
 
   refreshMath(modalBody);
+}
+
+function enhanceCodeBlocks(container) {
+  const blocks = container.querySelectorAll("pre code");
+  if (!blocks.length) return;
+  blocks.forEach((codeEl) => {
+    const source = codeEl.textContent || "";
+    const pre = codeEl.parentElement;
+    if (!pre) return;
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "code-runner";
+
+    const toolbar = document.createElement("div");
+    toolbar.className = "code-runner__toolbar";
+    const runBtn = document.createElement("button");
+    runBtn.type = "button";
+    runBtn.className = "code-runner__btn";
+    runBtn.textContent = t("academy_runner_run", "运行代码");
+    const label = document.createElement("span");
+    label.textContent = t("academy_runner_label", "Python code");
+    const colabBtn = document.createElement("a");
+    colabBtn.className = "code-runner__btn code-runner__btn--ghost";
+    colabBtn.target = "_blank";
+    colabBtn.rel = "noreferrer";
+    colabBtn.textContent = t("academy_runner_colab", "在 Colab 打开");
+    colabBtn.href = buildColabLink(source);
+    const { blocked } = resolvePackages(source);
+    if (blocked) {
+      runBtn.disabled = true;
+      runBtn.title = t(
+        "academy_runner_blocked",
+        "当前浏览器运行时未包含 {module}，请改用简化示例或在本地/Colab 运行。",
+        { module: blocked }
+      );
+      toolbar.append(runBtn, colabBtn, label);
+    } else {
+      colabBtn.hidden = true;
+      toolbar.append(runBtn, label);
+    }
+
+    const codeBlock = document.createElement("pre");
+    const code = document.createElement("code");
+    code.textContent = source;
+    codeBlock.appendChild(code);
+
+    const output = document.createElement("pre");
+    output.className = "code-runner__output";
+    output.textContent = t("academy_runner_output_placeholder", "输出将在此显示");
+
+    wrapper.append(toolbar, codeBlock, output);
+    pre.replaceWith(wrapper);
+
+    runBtn.addEventListener("click", () => runPythonSnippet(source, output, runBtn));
+  });
+}
+
+async function ensurePyodide() {
+  if (pyodideReady) return pyodideReady;
+  pyodideReady = new Promise((resolve, reject) => {
+    if (window.loadPyodide) {
+      resolve();
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = PYODIDE_CDN;
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Pyodide script failed to load"));
+    document.head.appendChild(script);
+  }).then(() => window.loadPyodide({ indexURL: PYODIDE_INDEX_URL }));
+  return pyodideReady;
+}
+
+async function runPythonSnippet(code, outputEl, btn) {
+  if (!outputEl) return;
+  const safeBtn = btn || null;
+  if (safeBtn) safeBtn.disabled = true;
+  outputEl.dataset.state = "running";
+  outputEl.textContent = t("academy_runner_loading", "正在加载 Python 运行时...");
+  try {
+    const { blocked, toLoad } = resolvePackages(code);
+    if (blocked) {
+      outputEl.textContent = t(
+        "academy_runner_blocked",
+        "当前浏览器运行时未包含 {module}，请改用简化示例或在本地/Colab 运行。",
+        { module: blocked }
+      );
+      return;
+    }
+    const pyodide = await ensurePyodide();
+    if (toLoad.length) {
+      outputEl.textContent = t("academy_runner_loading_pkgs", "正在加载依赖包：{list}", { list: toLoad.join(", ") });
+      for (const pkg of toLoad) {
+        try {
+          await pyodide.loadPackage(pkg);
+          loadedPackages.add(pkg);
+        } catch (err) {
+          outputEl.textContent = `${t("academy_runner_pkg_failed", "加载依赖失败")}: ${pkg}`;
+          throw err;
+        }
+      }
+      outputEl.textContent = t("academy_runner_loaded", "依赖已加载，开始运行代码...");
+    }
+    const prelude = buildPrelude(code);
+    let stdout = "";
+    let stderr = "";
+    const appendOut = (chunk) => { stdout += chunk; };
+    const appendErr = (chunk) => { stderr += chunk; };
+    const prevStdout = pyodide.setStdout({ batched: appendOut });
+    const prevStderr = pyodide.setStderr({ batched: appendErr });
+    try {
+      await pyodide.runPythonAsync(prelude + code);
+    } finally {
+      pyodide.setStdout(prevStdout);
+      pyodide.setStderr(prevStderr);
+    }
+    const hasOut = stdout.trim().length > 0;
+    const hasErr = stderr.trim().length > 0;
+    if (hasOut && hasErr) {
+      outputEl.textContent = `stdout:\n${stdout}\n\nstderr:\n${stderr}`;
+    } else if (hasErr) {
+      outputEl.textContent = `stderr:\n${stderr}`;
+    } else if (hasOut) {
+      outputEl.textContent = stdout;
+    } else {
+      outputEl.textContent = t("academy_runner_no_output", "代码已运行，无输出");
+    }
+  } catch (error) {
+    const hint = deriveErrorHint(error);
+    outputEl.textContent = `${t("academy_runner_failed", "运行失败")}: ${error.message || error}${hint ? `\n${hint}` : ""}`;
+  } finally {
+    outputEl.dataset.state = "idle";
+    if (safeBtn) safeBtn.disabled = false;
+  }
+}
+
+function deriveErrorHint(error) {
+  if (!error) return "";
+  const msg = String(error.message || error || "");
+  if (/NameError: name '(.+)' is not defined/.test(msg)) {
+    return t(
+      "academy_runner_hint_data",
+      "提示：请在代码中提供示例数据，或将该示例改为使用内置随机/示例数据以便在浏览器运行。"
+    );
+  }
+  if (/ModuleNotFoundError: No module named '(.+)'/.test(msg)) {
+    return t(
+      "academy_runner_hint_pkg",
+      "提示：该依赖未包含在浏览器运行时，如需运行请改用简化示例或在本地/Colab。"
+    );
+  }
+  return "";
+}
+
+function findUnsupportedModule(code = "") {
+  const lines = String(code).split(/\n+/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("import") && !trimmed.startsWith("from")) continue;
+    const match = trimmed.match(/^(?:from|import)\s+([\w\.]+)/);
+    const mod = match && match[1] ? match[1].split(".")[0] : null;
+    if (!mod) continue;
+    if (UNSUPPORTED_MODULES.some((regex) => regex.test(mod))) {
+      return mod;
+    }
+  }
+  return null;
+}
+
+function resolvePackages(code = "") {
+  const toLoad = [];
+  const blocked = findUnsupportedModule(code);
+  if (blocked) return { blocked, toLoad };
+
+  const imports = extractImports(code);
+  imports.forEach((mod) => {
+    const base = mod.split(".")[0];
+    const mapped = PYODIDE_PACKAGES[mod] || PYODIDE_PACKAGES[base];
+    if (mapped && !loadedPackages.has(mapped)) {
+      toLoad.push(mapped);
+    }
+  });
+
+  return { blocked: null, toLoad: Array.from(new Set(toLoad)) };
+}
+
+function buildPrelude(code = "") {
+  const lines = [];
+  if (code.includes("normal_data") && !/normal_data\s*=/.test(code)) {
+    lines.push("import numpy as np");
+    lines.push("np.random.seed(0)");
+    lines.push("normal_data = np.random.rand(200, 41)");
+    lines.push("X_test = np.random.rand(30, 41)");
+  }
+  return lines.length ? lines.join("\n") + "\n" : "";
+}
+
+function buildColabLink(code = "") {
+  const blob = new Blob([code], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  // Colab cannot open blob URL directly; fallback to generic entry
+  // Encourage copy; this button is mainly a hint/CTA.
+  return "https://colab.research.google.com/";
+}
+
+function extractImports(code = "") {
+  const results = [];
+  const lines = String(code).split(/\n+/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith("import ")) {
+      // import a, b as c
+      const rest = line.replace(/^import\s+/, "");
+      rest.split(",").forEach((segment) => {
+        const name = segment.trim().split(/\s+as\s+/i)[0];
+        if (name) results.push(name);
+      });
+    } else if (line.startsWith("from ")) {
+      const match = line.match(/^from\s+([\w\.]+)/);
+      if (match && match[1]) results.push(match[1]);
+    }
+  }
+  return results;
 }
 
 function createMetric(label, value) {
