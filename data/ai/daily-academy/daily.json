@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-08T01:25:35.190Z",
+  "generatedAt": "2025-12-09T02:14:01.729Z",
   "lessons": [
+    {
+      "id": "2025-12-09-cnn",
+      "date": "2025-12-09",
+      "title": {
+        "zh": "卷积神经网络基础",
+        "en": "Fundamentals of Convolutional Neural Networks"
+      },
+      "summary": {
+        "zh": "卷积神经网络通过局部连接和权值共享机制，有效提取图像的空间特征，成为计算机视觉领域的基础架构，课程围绕 Neural Network Fundamentals 中的可执行路径展开。内容串联 从全连接到局部感知：卷积运算的本质、特征提取的层次结构：卷积层与池化层、从理论到实践：构建端到端图像分类器，梳理定义、推导与迁移步骤，以 MNIST手写数字 worked example 讲解数据与验证指标，提示如何跟踪 参数数量减少比例 等质量信号，补充 CNN Explainer 等工具使用策略。",
+        "en": "卷积神经网络基础 is positioned for Neural Network Fundamentals initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从全连接到局部感知：卷积运算的本质, 特征提取的层次结构：卷积层与池化层, 从理论到实践：构建端到端图像分类器 to translate theory into executable steps, uses the MNIST手写数字 worked example to show data prep and validation, calls out metrics such as 参数数量减少比例, references tooling like CNN Explainer."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "CNN",
+        "convolution"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从计算机视觉中图像处理的核心挑战出发，系统阐述卷积神经网络（CNN）的数学原理与架构设计。通过理解卷积运算的数学定义、特征提取的层次化机制以及端到端模型的构建方法，您将掌握CNN处理空间数据的基本范式，并能够运用标准框架实现简单的图像分类任务。</p>\n\n<h3>卷积运算的数学原理与参数优化</h3>\n<p>处理高分辨率图像时，传统全连接神经网络因参数数量与输入像素数成正比而面临计算瓶颈。卷积运算通过局部连接和权值共享，将参数数量与卷积核尺寸而非输入尺寸关联，从而显著提升模型效率。</p>\n<p>卷积的数学定义涉及以下核心公式与概念：</p>\n<ul>\n<li><strong>离散卷积公式</strong>：对于输入图像I和卷积核K，输出特征图O在位置(i,j)的值为 O(i,j) = Σ<sub>m</sub>Σ<sub>n</sub> I(i+m, j+n) · K(m, n)，其中求和范围覆盖卷积核尺寸。</li>\n<li><strong>步长（Stride）</strong>：卷积核在输入上滑动的像素间隔，步长s>1时输出尺寸减小。</li>\n<li><strong>填充（Padding）</strong>：在输入边界添加零值像素以控制输出尺寸，常用“same”填充保持尺寸不变。</li>\n</ul>\n<p>输出特征图尺寸的计算公式为：输出高度 = ⌊(输入高度 + 2×填充 - 卷积核高度) / 步长⌋ + 1，宽度同理。例如，28×28输入经3×3卷积核（步长1，填充0）处理，输出为26×26，参数数量仅取决于3×3核的9个权重，而非全连接所需的28×28连接。</p>\n<p>在ImageNet大规模视觉识别挑战赛中，AlexNet通过卷积层替代全连接层，有效管理了高分辨率图像的处理复杂度（来源：ImageNet Classification with Deep Convolutional Neural Networks，2012）。以下以MNIST手写数字数据集为例，演示卷积计算过程：</p>\n<pre><code>import numpy as np\n# 输入：28×28灰度图像，像素值0-1\nimage = np.random.rand(28, 28)\n# 定义3×3垂直边缘检测卷积核\nkernel = np.array([[1, 0, -1],\n                   [1, 0, -1],\n                   [1, 0, -1]])\n# 计算输出尺寸： (28 - 3 + 1) = 26\noutput = np.zeros((26, 26))\nfor i in range(26):\n    for j in range(26):\n        patch = image[i:i+3, j:j+3]  # 提取3×3局部区域\n        output[i, j] = np.sum(patch * kernel)  # 逐元素相乘后求和</code></pre>\n<p>该代码生成26×26特征图，其中高值区域对应图像中的垂直边缘。这种局部特征提取为后续构建深度特征层次奠定了基础，接下来将探讨如何通过堆叠卷积层来捕获更复杂的模式。</p>\n\n<h3>层次化特征提取：卷积层与池化操作</h3>\n<p>单层卷积主要捕获边缘、纹理等低级特征，而复杂视觉任务需要由简至繁的特征表示。通过堆叠多层卷积，网络可以构建层次化特征，其中底层输出作为高层输入，逐步组合出更抽象的语义信息。</p>\n<p>池化层在此过程中起到降维和增强特征不变性的作用，其数学定义如下：</p>\n<ul>\n<li><strong>最大池化（Max Pooling）</strong>：在池化窗口（如2×2）内取最大值，公式为 O(i,j) = max(I[2i:2i+2, 2j:2j+2])，突出最显著特征。</li>\n<li><strong>平均池化（Average Pooling）</strong>：取窗口内平均值，公式为 O(i,j) = mean(I[2i:2i+2, 2j:2j+2])，提供平滑特征表示。</li>\n</ul>\n<p>池化通常步长等于窗口尺寸，实现下采样。例如，30×30特征图经2×2最大池化（步长2）后变为15×15，空间尺寸减半但保留关键特征响应，有助于降低计算量并控制过拟合。</p>\n<p>Google的Inception模块采用多尺度卷积并行处理，结合池化操作平衡模型性能与效率（来源：Going Deeper with Convolutions，2014）。以下使用PyTorch构建一个包含卷积和池化层的简单网络处理CIFAR-10数据：</p>\n<pre><code>import torch.nn as nn\nimport torch\n# 假设输入为32×32×3的RGB图像\ninput_tensor = torch.randn(1, 3, 32, 32)  # 批大小1，通道3，高32，宽32\n# 定义网络层\nconv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=0)\npool = nn.MaxPool2d(kernel_size=2, stride=2)\nconv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0)\n# 前向传播\nx = conv1(input_tensor)  # 输出尺寸: (1, 32, 30, 30)\nx = torch.relu(x)        # ReLU激活\nx = pool(x)              # 输出尺寸: (1, 32, 15, 15)\nx = conv2(x)             # 输出尺寸: (1, 64, 13, 13)\nprint(f\"最终特征图形状: {x.shape}\")  # 输出: torch.Size([1, 64, 13, 13])</code></pre>\n<p>经过两层卷积和池化，原始图像转换为13×13×64的特征图，其中64个通道表示不同特征检测器的响应。这种层次结构使模型能够从边缘过渡到部件乃至物体级表示，为最终分类提供丰富特征。接下来，我们将探讨如何将这些特征映射到具体类别。</p>\n\n<h3>端到端模型构建与高级优化技术</h3>\n<p>卷积网络提取的特征需通过分类器转换为类别预测，构建端到端模型涉及特征整合、正则化等技术以确保泛化性能。全连接层常将空间特征展平为向量，再通过Softmax输出概率分布。</p>\n<p>训练深度CNN时，高级优化技术如残差连接和批量归一化有助于缓解梯度消失和加速收敛：</p>\n<ul>\n<li><strong>残差连接（Residual Connection）</strong>：定义为基础映射F(x)与恒等映射x的和，即输出 = F(x) + x，使网络能够学习残差而非完整映射，改善深层网络训练（来源：Deep Residual Learning for Image Recognition，2015）。</li>\n<li><strong>批量归一化（Batch Normalization）</strong>：对每批数据标准化，公式为 x̂ = (x - μ) / √(σ² + ε)，其中μ和σ为批内均值和方差，ε为小常数，有助于稳定梯度流。</li>\n</ul>\n<p>以下使用TensorFlow/Keras在Fashion-MNIST数据集上构建一个包含这些技术的分类器：</p>\n<pre><code>from tensorflow.keras import Sequential, layers\nimport tensorflow as tf\n# 加载Fashion-MNIST数据\n(x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()\nx_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.0\n# 定义模型\nmodel = Sequential([\n    layers.Conv2D(32, kernel_size=3, activation='relu', input_shape=(28, 28, 1)),\n    layers.MaxPooling2D(pool_size=2),\n    layers.BatchNormalization(),  # 批量归一化层\n    layers.Conv2D(64, kernel_size=3, activation='relu'),\n    layers.GlobalAveragePooling2D(),  # 全局平均池化替代展平\n    layers.Dense(10, activation='softmax')\n])\nmodel.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])\n# 训练模型\nhistory = model.fit(x_train[:10000], y_train[:10000], epochs=5, validation_split=0.2, verbose=0)\n# 评估\nloss, accuracy = model.evaluate(x_test, y_test, verbose=0)\nprint(f\"测试集准确率: {accuracy:.2%}\")</code></pre>\n<p>此模型演示了从卷积特征提取到分类输出的完整流程，其中批量归一化和全局平均池化有助于提升训练稳定性。通过调整网络深度和正则化参数，可以进一步优化模型在图像分类任务中的表现。</p>\n\n<p class=\"narrative-outro\">卷积神经网络通过其数学上严谨的局部操作和层次化架构，为图像处理提供了可扩展且高效的解决方案。从卷积的公式化定义到深度模型的实践构建，掌握这些基础使您能够理解现代计算机视觉系统的核心机制，并为探索更复杂的视觉任务奠定基础。</p>",
+        "en": "<p class=\"narrative-intro\">This course addresses core challenges in image processing for computer vision by systematically explaining the mathematical principles and architectural design of Convolutional Neural Networks (CNN). By understanding the mathematical definition of convolution operations, the hierarchical mechanisms of feature extraction, and methods for building end-to-end models, you will master the fundamental paradigm of CNN for processing spatial data and be able to implement simple image classification tasks using standard frameworks.</p>\n\n<h3>Mathematical Principles of Convolution and Parameter Optimization</h3>\n<p>When processing high-resolution images, traditional fully connected neural networks face computational bottlenecks because parameter count scales with input pixels. Convolution operations associate parameter count with kernel size rather than input size through local connectivity and weight sharing, significantly improving model efficiency.</p>\n<p>The mathematical definition of convolution involves these core formulas and concepts:</p>\n<ul>\n<li><strong>Discrete convolution formula</strong>: For input image I and kernel K, the output feature map O at position (i,j) is O(i,j) = Σ<sub>m</sub>Σ<sub>n</sub> I(i+m, j+n) · K(m, n), where summation covers the kernel dimensions.</li>\n<li><strong>Stride</strong>: The pixel interval by which the kernel slides over the input; stride s>1 reduces output dimensions.</li>\n<li><strong>Padding</strong>: Adding zero-value pixels to input borders to control output size, with \"same\" padding commonly used to preserve dimensions.</li>\n</ul>\n<p>The output feature map size is calculated as: output height = ⌊(input height + 2×padding - kernel height) / stride⌋ + 1, similarly for width. For example, a 28×28 input processed by a 3×3 kernel (stride 1, padding 0) yields 26×26 output, with parameters depending only on the 9 weights of the 3×3 kernel, not the 28×28 connections required by fully connected layers.</p>\n<p>In the ImageNet Large Scale Visual Recognition Challenge, AlexNet effectively managed the complexity of high-resolution images by replacing fully connected layers with convolutional layers (source: ImageNet Classification with Deep Convolutional Neural Networks, 2012). Below is a demonstration using the MNIST handwritten digits dataset:</p>\n<pre><code>import numpy as np\n# Input: 28×28 grayscale image with pixel values 0-1\nimage = np.random.rand(28, 28)\n# Define 3×3 vertical edge detection kernel\nkernel = np.array([[1, 0, -1],\n                   [1, 0, -1],\n                   [1, 0, -1]])\n# Compute output size: (28 - 3 + 1) = 26\noutput = np.zeros((26, 26))\nfor i in range(26):\n    for j in range(26):\n        patch = image[i:i+3, j:j+3]  # Extract 3×3 local region\n        output[i, j] = np.sum(patch * kernel)  # Element-wise multiplication and sum</code></pre>\n<p>This code generates a 26×26 feature map where high-value regions correspond to vertical edges in the image. This local feature extraction lays the groundwork for building deep feature hierarchies, which we will explore next by stacking convolutional layers to capture more complex patterns.</p>\n\n<h3>Hierarchical Feature Extraction: Convolutional and Pooling Layers</h3>\n<p>Single convolutional layers primarily capture low-level features like edges and textures, whereas complex visual tasks require feature representations from simple to abstract. By stacking multiple convolutional layers, networks can construct hierarchical features, where lower-layer outputs serve as inputs to higher layers, gradually combining into more semantic information.</p>\n<p>Pooling layers contribute to dimensionality reduction and feature invariance in this process, defined mathematically as:</p>\n<ul>\n<li><strong>Max Pooling</strong>: Takes the maximum value within a pooling window (e.g., 2×2), with formula O(i,j) = max(I[2i:2i+2, 2j:2j+2]), highlighting the most salient features.</li>\n<li><strong>Average Pooling</strong>: Takes the average within the window, with formula O(i,j) = mean(I[2i:2i+2, 2j:2j+2]), providing smoothed feature representations.</li>\n</ul>\n<p>Pooling typically uses a stride equal to the window size for downsampling. For instance, a 30×30 feature map after 2×2 max pooling (stride 2) becomes 15×15, halving spatial dimensions while retaining key feature responses, which helps reduce computation and control overfitting.</p>\n<p>Google's Inception module employs multi-scale convolution parallel processing combined with pooling operations to balance model performance and efficiency (source: Going Deeper with Convolutions, 2014). Below is a simple network built with PyTorch for processing CIFAR-10 data:</p>\n<pre><code>import torch.nn as nn\nimport torch\n# Assume input is a 32×32×3 RGB image\ninput_tensor = torch.randn(1, 3, 32, 32)  # Batch size 1, channels 3, height 32, width 32\n# Define network layers\nconv1 = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=1, padding=0)\npool = nn.MaxPool2d(kernel_size=2, stride=2)\nconv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=0)\n# Forward pass\nx = conv1(input_tensor)  # Output shape: (1, 32, 30, 30)\nx = torch.relu(x)        # ReLU activation\nx = pool(x)              # Output shape: (1, 32, 15, 15)\nx = conv2(x)             # Output shape: (1, 64, 13, 13)\nprint(f\"Final feature map shape: {x.shape}\")  # Output: torch.Size([1, 64, 13, 13])</code></pre>\n<p>After two convolutional and pooling layers, the original image is transformed into a 13×13×64 feature map, where 64 channels represent responses from different feature detectors. This hierarchical structure enables the model to transition from edges to parts and object-level representations, providing rich features for final classification. Next, we will discuss how to map these features to specific categories.</p>\n\n<h3>End-to-End Model Construction and Advanced Optimization Techniques</h3>\n<p>Features extracted by convolutional networks need to be converted into category predictions via classifiers; building end-to-end models involves techniques like feature integration and regularization to ensure generalization performance. Fully connected layers often flatten spatial features into vectors, then output probability distributions through Softmax.</p>\n<p>When training deep CNNs, advanced optimization techniques such as residual connections and batch normalization help mitigate gradient vanishing and accelerate convergence:</p>\n<ul>\n<li><strong>Residual Connection</strong>: Defined as the sum of a base mapping F(x) and an identity mapping x, i.e., output = F(x) + x, allowing the network to learn residuals rather than complete mappings, improving deep network training (source: Deep Residual Learning for Image Recognition, 2015).</li>\n<li><strong>Batch Normalization</strong>: Standardizes each batch of data, with formula x̂ = (x - μ) / √(σ² + ε), where μ and σ are batch mean and variance, and ε is a small constant, aiding in stabilizing gradient flow.</li>\n</ul>\n<p>Below is a classifier built with TensorFlow/Keras on the Fashion-MNIST dataset incorporating these techniques:</p>\n<pre><code>from tensorflow.keras import Sequential, layers\nimport tensorflow as tf\n# Load Fashion-MNIST data\n(x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()\nx_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.0\n# Define model\nmodel = Sequential([\n    layers.Conv2D(32, kernel_size=3, activation='relu', input_shape=(28, 28, 1)),\n    layers.MaxPooling2D(pool_size=2),\n    layers.BatchNormalization(),  # Batch normalization layer\n    layers.Conv2D(64, kernel_size=3, activation='relu'),\n    layers.GlobalAveragePooling2D(),  # Global average pooling instead of flattening"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：卷积神经网络基础 · 结构总览 · 数据：课程大纲】在设计《卷积神经网络基础》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 卷积神经网络基础 · 结构总览 · Data: 课程大纲】When outlining \"卷积神经网络基础\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：卷积神经网络基础 · worked example · 数据：理解卷积运算及其在图像中的应用 数据/代码】在复现《卷积神经网络基础》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 卷积神经网络基础 · worked example · Data: 理解卷积运算及其在图像中的应用 数据/代码】While reproducing the worked example in \"卷积神经网络基础\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：卷积神经网络基础 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《卷积神经网络基础》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 卷积神经网络基础 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"卷积神经网络基础\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：卷积神经网络基础 · 参考资料 · 数据：课程引用文献】当引用文献支撑《卷积神经网络基础》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 卷积神经网络基础 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"卷积神经网络基础\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org/"
+        },
+        {
+          "label": {
+            "zh": "A guide to convolution arithmetic for deep learning（Université de Montréal，2016）",
+            "en": "A guide to convolution arithmetic for deep learning (Université de Montréal, 2016)"
+          },
+          "url": "https://arxiv.org/abs/1603.07285"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-09-cnn-zh.mp3"
+      },
+      "meta": {
+        "category": "Neural Network Fundamentals",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 2,
+        "related": [
+          "卷积层",
+          "池化层"
+        ],
+        "learningObjectives": [
+          "理解卷积运算及其在图像中的应用",
+          "搭建简单卷积网络进行图像分类"
+        ],
+        "personas": [
+          "视觉初学者",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 卷积神经网络基础 可帮助团队在 Neural Network Fundamentals 上做出可复用的实践。",
+          "best_for": "适合 视觉初学者、工程师，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "视觉初学者 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 视觉初学者、工程师，帮助他们把 卷积神经网络基础 应用于 Neural Network Fundamentals",
+          "prefersEnglish": false,
+          "industries": [
+            "视觉初学者",
+            "工程师"
+          ],
+          "personas": [
+            "视觉初学者",
+            "工程师"
+          ],
+          "pains": "在 Neural Network Fundamentals 场景缺乏 卷积神经网络基础 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-11-30",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为视觉初学者，你在处理图像数据时是否曾困惑于如何有效提取特征？回想最近的项目，卷积神经网络的局部连接机制如何帮助你更精准地识别图像中的关键模式？",
+            "action_hint": "尝试用卷积运算的视角重新审视你的图像处理流程，思考哪些特征提取步骤可以通过卷积层优化。"
+          },
+          {
+            "lang": "zh",
+            "question": "工程师在构建视觉系统时，常面临参数爆炸的挑战。结合你的经验，卷积神经网络的权值共享机制如何平衡模型复杂度与计算效率？",
+            "action_hint": "对比全连接网络与卷积网络在相同任务中的参数数量，评估权值共享带来的实际效益。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-08-backpropagation",
       "date": "2025-12-08",
