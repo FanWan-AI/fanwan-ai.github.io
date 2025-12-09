@@ -9,7 +9,7 @@ const XP_PER_LESSON = 15;
 const MIN_PASS_RATE = 0.6;
 const PYODIDE_CDN = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js";
 const PYODIDE_INDEX_URL = "https://cdn.jsdelivr.net/pyodide/v0.24.1/full/";
-const UNSUPPORTED_MODULES = [/^torch$/i, /^tensorflow$/i, /^imblearn$/i, /^mlxtend$/i];
+const UNSUPPORTED_MODULES = [/^torch$/i, /^tensorflow$/i, /^keras$/i, /^imblearn$/i, /^mlxtend$/i];
 const PYODIDE_PACKAGES = {
   numpy: "numpy",
   np: "numpy",
