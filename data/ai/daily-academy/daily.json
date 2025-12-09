@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-09T08:53:00.989Z",
+  "generatedAt": "2025-12-09T09:38:03.628Z",
   "lessons": [
+    {
+      "id": "2025-12-09-tensorflow-keras",
+      "date": "2025-12-09",
+      "title": {
+        "zh": "TensorFlow 与 Keras 入门",
+        "en": "Getting Started with TensorFlow and Keras"
+      },
+      "summary": {
+        "zh": "TensorFlow与Keras作为深度学习框架的核心，通过简化模型构建与训练流程，降低了工程师和开发者实现神经网络应用的技术门槛，推动了人工智能技术的普及与落地，课程围绕 Deep Learning Frameworks 中的可执行路径展开。内容串联 TensorFlow架构与Eager Execution机制、Keras API与神经网络快速搭建、实战：图像分类任务全流程，梳理定义、推导与迁移步骤，以 MNIST手写数字数据集 worked example 讲解数据与验证指标，提示如何跟踪 计算延迟 等质量信号，补充 TensorFlow官方文档 等工具使用策略。",
+        "en": "TensorFlow 与 Keras 入门 is positioned for Deep Learning Frameworks initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads TensorFlow架构与Eager Execution机制, Keras API与神经网络快速搭建, 实战：图像分类任务全流程 to translate theory into executable steps, uses the MNIST手写数字数据集 worked example to show data prep and validation, calls out metrics such as 计算延迟, references tooling like TensorFlow官方文档."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "TensorFlow",
+        "Keras"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从深度学习框架的实际应用视角出发，系统介绍TensorFlow与Keras的核心机制。通过理解Eager Execution的即时计算特性、掌握Keras模块化构建方法，并完成端到端的图像分类项目，工程师和开发者能够快速将理论知识转化为可执行的神经网络实现方案，为复杂AI应用奠定基础。</p>\n\n<h3>TensorFlow架构与Eager Execution机制</h3>\n<p>在深度学习框架的发展历程中，执行模式的选择直接影响开发效率与调试体验。传统静态计算图要求预先定义完整计算流程，虽然利于优化但调试不够直观；Eager Execution作为TensorFlow 2.0的默认模式，允许操作立即返回结果，显著降低了原型开发门槛。</p>\n<p>关键概念解析：</p>\n<ul>\n<li><strong>静态计算图 Static Computation Graph</strong>：计算流程在运行前被编译为图结构，节点表示操作，边表示数据流，适合生产环境优化但调试困难。</li>\n<li><strong>Eager Execution（即时执行）</strong>：操作按Python顺序立即执行，返回具体数值，支持动态控制流和实时调试。</li>\n<li><strong>tf.GradientTape</strong>：自动微分工具，在Eager模式下记录计算过程并计算梯度，替代传统静态图的优化器接口。</li>\n</ul>\n<p>以MNIST手写数字数据集为例，演示Eager Execution的即时计算特性：</p>\n<pre><code>import tensorflow as tf\n# 启用Eager Execution（TensorFlow 2.x默认启用）\ntf.executing_eagerly()  # 返回True\n\n# 定义简单线性模型\nmodel = tf.keras.Sequential([tf.keras.layers.Dense(10, input_shape=(784,))])\n\n# 模拟输入数据（批量大小32，特征维度784）\nx = tf.random.normal([32, 784])\ny = tf.random.uniform([32], maxval=10, dtype=tf.int32)\n\n# 使用梯度带计算损失梯度\nwith tf.GradientTape() as tape:\n    predictions = model(x)\n    loss = tf.keras.losses.sparse_categorical_crossentropy(y, predictions)\n    loss = tf.reduce_mean(loss)\n\n# 获取梯度并手动更新权重\ngrads = tape.gradient(loss, model.trainable_variables)\nprint(\"梯度形状:\", [g.shape for g in grads])  # 输出梯度张量形状\n</code></pre>\n<p>该示例展示了Eager模式下模型前向传播、损失计算和梯度获取的完整流程，每一步都产生即时输出，便于调试。结合<code>tf.function</code>装饰器可将Python函数转换为静态图，兼顾开发便利与运行性能（来源：TensorFlow: A System for Large-Scale Machine Learning，2016）。这种混合执行策略已成为现代深度学习框架的标准实践，为下一节Keras的高级抽象提供了底层支持。</p>\n\n<h3>Keras API与神经网络快速搭建</h3>\n<p>在掌握底层执行机制后，如何高效构建神经网络成为工程实践的关键。Keras作为高级神经网络API，通过层（Layers）和模型（Models）的抽象，将复杂网络结构封装为可复用的模块，大幅简化了深度学习模型的开发流程。</p>\n<p>核心组件解析：</p>\n<ul>\n<li><strong>Sequential API（顺序API）</strong>：线性堆叠层结构，适合简单的链式网络，如全连接网络和基础CNN。</li>\n<li><strong>Functional API（函数式API）</strong>：支持多输入/输出、共享层和复杂拓扑结构，适用于高级网络设计。</li>\n<li><strong>tf.keras</strong>：TensorFlow集成的Keras实现，提供与TensorFlow生态系统的深度集成，包括分布式训练和模型部署工具。</li>\n</ul>\n<p>使用CIFAR-10图像分类数据集构建卷积神经网络：</p>\n<pre><code>import tensorflow as tf\n\n# 使用Sequential API构建CNN\nmodel = tf.keras.Sequential([\n    # 卷积层：32个3x3滤波器，ReLU激活，输入形状32x32 RGB图像\n    tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(32,32,3)),\n    # 最大池化层：2x2窗口降采样\n    tf.keras.layers.MaxPooling2D((2,2)),\n    # 展平层：将三维特征图转换为一维向量\n    tf.keras.layers.Flatten(),\n    # 全连接层：64个神经元\n    tf.keras.layers.Dense(64, activation='relu'),\n    # 输出层：10个类别对应CIFAR-10\n    tf.keras.layers.Dense(10, activation='softmax')\n])\n\n# 编译模型：指定优化器、损失函数和评估指标\nmodel.compile(optimizer='adam',\n              loss='sparse_categorical_crossentropy',\n              metrics=['accuracy'])\n\nprint(\"模型概要:\")\nmodel.summary()  # 输出层结构、参数数量\n</code></pre>\n<p>该模型在CIFAR-10测试集上可达到约70%的准确率，展示了Keras快速构建CNN的能力。模块化设计使得层替换和结构调整变得直观，例如将<code>Conv2D</code>滤波器数量从32改为64只需修改一个参数。Keras的这种设计哲学源于其创建者François Chollet对用户体验的重视，旨在降低深度学习应用开发复杂度（来源：Keras: The Python Deep Learning library，2015）。这种高层抽象为端到端项目实践铺平了道路。</p>\n\n<h3>实战：图像分类任务全流程</h3>\n<p>真实AI项目要求整合数据预处理、模型训练、评估与优化等多个环节。本节以Kaggle的Dogs vs Cats数据集为例，演示使用TensorFlow和Keras完成图像分类任务的完整流程，涵盖从数据加载到模型评估的全过程。</p>\n<p>完整流程示例：</p>\n<pre><code>import tensorflow as tf\nimport matplotlib.pyplot as plt\n\n# 1. 数据加载与预处理\n# 使用tf.keras.preprocessing.image_dataset_from_directory自动划分数据集\ntrain_dataset = tf.keras.preprocessing.image_dataset_from_directory(\n    'dogs_vs_cats/train',  # 假设数据已下载至本地目录\n    image_size=(160, 160),\n    batch_size=32,\n    label_mode='binary'  # 二分类标签\n)\n\n# 2. 数据增强：通过随机变换增加数据多样性\ndata_augmentation = tf.keras.Sequential([\n    tf.keras.layers.RandomFlip('horizontal'),\n    tf.keras.layers.RandomRotation(0.2),\n])\n\n# 3. 构建迁移学习模型\n# 使用预训练的MobileNetV2作为特征提取器\nbase_model = tf.keras.applications.MobileNetV2(\n    input_shape=(160, 160, 3),\n    include_top=False,  # 不包括顶部分类层\n    weights='imagenet'\n)\nbase_model.trainable = False  # 冻结基础模型权重\n\n# 添加自定义分类层\nmodel = tf.keras.Sequential([\n    data_augmentation,\n    base_model,\n    tf.keras.layers.GlobalAveragePooling2D(),  # 全局平均池化\n    tf.keras.layers.Dense(1, activation='sigmoid')  # 二分类输出\n])\n\n# 4. 编译与训练\nmodel.compile(optimizer='adam',\n              loss='binary_crossentropy',\n              metrics=['accuracy'])\n\nhistory = model.fit(train_dataset, epochs=10, validation_split=0.2)\n\n# 5. 评估与可视化\nprint(\"最终验证准确率:\", history.history['val_accuracy'][-1])\nplt.plot(history.history['accuracy'], label='Training Accuracy')\nplt.plot(history.history['val_accuracy'], label='Validation Accuracy')\nplt.legend()\nplt.show()\n</code></pre>\n<p>该流程在验证集上准确率通常超过90%，展示了端到端项目的高效性。关键中间结果包括数据增强后的图像样本、基础模型的特征图可视化以及训练过程中的准确率曲线。迁移学习策略显著减少了训练时间和数据需求，这是现代深度学习项目的常见模式（来源：TensorFlow Tutorials: Image Classification，2020）。通过此类实践，开发者能够将框架知识转化为解决实际问题的能力。</p>\n\n<p class=\"narrative-outro\">从TensorFlow的Eager Execution机制到Keras的模块化设计，再到完整的图像分类项目，本课程构建了深度学习框架应用的完整知识链。掌握这些核心概念后，工程师和开发者可以更自信地探索更复杂的网络架构和优化策略，将AI技术切实应用于各类业务场景中。</p>",
+        "en": "<p class=\"narrative-intro\">This course provides a practical perspective on deep learning frameworks, systematically introducing the core mechanisms of TensorFlow and Keras. By understanding the immediate computation characteristics of Eager Execution, mastering Keras' modular construction methods, and completing an end-to-end image classification project, engineers and developers can quickly transform theoretical knowledge into executable neural network implementations, laying the foundation for complex AI applications.</p>\n\n<h3>TensorFlow Architecture and Eager Execution Mechanism</h3>\n<p>In the evolution of deep learning frameworks, the choice of execution mode directly impacts development efficiency and debugging experience. Traditional static computation graphs require predefining complete computational flows, which are optimized for performance but less intuitive for debugging; Eager Execution, as the default mode in TensorFlow 2.0, allows operations to return results immediately, significantly lowering the barrier to prototype development.</p>\n<p>Key concepts explained:</p>\n<ul>\n<li><strong>Static Computation Graph</strong>: Computational flows are compiled into graph structures before execution, with nodes representing operations and edges representing data flow, suitable for production optimization but challenging to debug.</li>\n<li><strong>Eager Execution</strong>: Operations execute immediately in Python order, returning concrete values, supporting dynamic control flow and real-time debugging.</li>\n<li><strong>tf.GradientTape</strong>: Automatic differentiation tool that records computations in Eager mode and calculates gradients, replacing traditional static graph optimizer interfaces.</li>\n</ul>\n<p>Using the MNIST handwritten digits dataset to demonstrate Eager Execution's immediate computation characteristics:</p>\n<pre><code>import tensorflow as tf\n# Enable Eager Execution (default in TensorFlow 2.x)\ntf.executing_eagerly()  # Returns True\n\n# Define a simple linear model\nmodel = tf.keras.Sequential([tf.keras.layers.Dense(10, input_shape=(784,))])\n\n# Simulate input data (batch size 32, feature dimension 784)\nx = tf.random.normal([32, 784])\ny = tf.random.uniform([32], maxval=10, dtype=tf.int32)\n\n# Compute loss gradients using gradient tape\nwith tf.GradientTape() as tape:\n    predictions = model(x)\n    loss = tf.keras.losses.sparse_categorical_crossentropy(y, predictions)\n    loss = tf.reduce_mean(loss)\n\n# Get gradients and manually update weights\ngrads = tape.gradient(loss, model.trainable_variables)\nprint(\"Gradient shapes:\", [g.shape for g in grads])  # Output gradient tensor shapes\n</code></pre>\n<p>This example shows the complete flow of forward propagation, loss computation, and gradient acquisition in Eager mode, with each step producing immediate output for debugging. Combined with the <code>tf.function</code> decorator, Python functions can be converted to static graphs, balancing development convenience and runtime performance (source: TensorFlow: A System for Large-Scale Machine Learning, 2016). This hybrid execution strategy has become standard practice in modern deep learning frameworks, providing the underlying support for Keras' high-level abstractions in the next section.</p>\n\n<h3>Keras API and Rapid Neural Network Construction</h3>\n<p>After mastering the underlying execution mechanisms, efficiently constructing neural networks becomes key to engineering practice. Keras, as a high-level neural network API, abstracts complex network structures into reusable modules through layers and models, greatly simplifying deep learning model development.</p>\n<p>Core components explained:</p>\n<ul>\n<li><strong>Sequential API</strong>: Linear stacking of layers, suitable for simple chain networks like fully connected networks and basic CNNs.</li>\n<li><strong>Functional API</strong>: Supports multiple inputs/outputs, shared layers, and complex topologies, suitable for advanced network designs.</li>\n<li><strong>tf.keras</strong>: TensorFlow-integrated Keras implementation providing deep integration with the TensorFlow ecosystem, including distributed training and model deployment tools.</li>\n</ul>\n<p>Building a convolutional neural network using the CIFAR-10 image classification dataset:</p>\n<pre><code>import tensorflow as tf\n\n# Build CNN using Sequential API\nmodel = tf.keras.Sequential([\n    # Convolutional layer: 32 3x3 filters, ReLU activation, input shape 32x32 RGB\n    tf.keras.layers.Conv2D(32, (3,3), activation='relu', input_shape=(32,32,3)),\n    # Max pooling layer: 2x2 window downsampling\n    tf.keras.layers.MaxPooling2D((2,2)),\n    # Flatten layer: Convert 3D feature maps to 1D vectors\n    tf.keras.layers.Flatten(),\n    # Dense layer: 64 neurons\n    tf.keras.layers.Dense(64, activation='relu'),\n    # Output layer: 10 classes for CIFAR-10\n    tf.keras.layers.Dense(10, activation='softmax')\n])\n\n# Compile model: Specify optimizer, loss function, and evaluation metrics\nmodel.compile(optimizer='adam',\n              loss='sparse_categorical_crossentropy',\n              metrics=['accuracy'])\n\nprint(\"Model summary:\")\nmodel.summary()  # Output layer structure, parameter count\n</code></pre>\n<p>This model can achieve approximately 70% accuracy on the CIFAR-10 test set, demonstrating Keras' ability to quickly construct CNNs. The modular design makes layer replacement and structural adjustments intuitive, such as changing <code>Conv2D</code> filter count from 32 to 64 by modifying a single parameter. This design philosophy stems from Keras creator François Chollet's emphasis on user experience, aiming to reduce deep learning application development complexity (source: Keras: The Python Deep Learning library, 2015). This high-level abstraction paves the way for end-to-end project practice.</p>\n\n<h3>Practical Application: End-to-End Image Classification Pipeline</h3>\n<p>Real AI projects require integrating multiple stages including data preprocessing, model training, evaluation, and optimization. This section uses Kaggle's Dogs vs Cats dataset to demonstrate the complete pipeline of an image classification task using TensorFlow and Keras, covering the entire process from data loading to model evaluation.</p>\n<p>Complete pipeline example:</p>\n<pre><code>import tensorflow as tf\nimport matplotlib.pyplot as plt\n\n# 1. Data loading and preprocessing\n# Use tf.keras.preprocessing.image_dataset_from_directory for automatic dataset splitting\ntrain_dataset = tf.keras.preprocessing.image_dataset_from_directory(\n    'dogs_vs_cats/train',  # Assume data downloaded to local directory\n    image_size=(160, 160),\n    batch_size=32,\n    label_mode='binary'  # Binary classification labels\n)\n\n# 2. Data augmentation: Increase data diversity through random transformations\ndata_augmentation = tf.keras.Sequential([\n    tf.keras.layers.RandomFlip('horizontal'),\n    tf.keras.layers.RandomRotation(0.2),\n])\n\n# 3. Build transfer learning model\n# Use pre-trained MobileNetV2 as feature extractor\nbase_model = tf.keras.applications.MobileNetV2(\n    input_shape=(160, 160, 3),\n    include_top=False,  # Exclude top classification layers\n    weights='imagenet'\n)\nbase_model.trainable = False  # Freeze base model weights\n\n# Add custom classification layers\nmodel = tf.keras.Sequential([\n    data_augmentation,\n    base_model,\n    tf.keras.layers.GlobalAveragePooling2D(),  # Global average pooling\n    tf.keras.layers.Dense(1, activation='sigmoid')  # Binary classification output\n])\n\n# 4. Compile and train\nmodel.compile(optimizer='adam',\n              loss='binary_crossentropy',\n              metrics=['accuracy'])\n\nhistory = model.fit(train_dataset, epochs=10, validation_split=0.2)\n\n# 5. Evaluate and visualize\nprint(\"Final validation accuracy:\", history.history['val_accuracy'][-1])\nplt.plot(history.history['accuracy'], label='Training Accuracy')\nplt.plot(history.history['val_accuracy'], label='Validation Accuracy')\nplt.legend()\nplt.show()\n</code></pre>\n<p>This pipeline typically achieves over 90% accuracy on the validation set, demonstrating the efficiency of end-to-end projects. Key intermediate results include augmented image samples, feature map visualizations from the base model, and accuracy curves during training. The transfer learning strategy significantly reduces training time and data requirements, a common pattern in modern deep learning projects (source: TensorFlow Tutorials: Image Classification, 2020). Through such practices, developers can transform framework knowledge into problem-solving capabilities.</p>\n\n<p class=\"narrative-outro\">From TensorFlow's Eager Execution mechanism to Keras' modular design, and finally to complete image classification projects, this course builds a comprehensive knowledge chain for deep"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：TensorFlow 与 Keras 入门 · 结构总览 · 数据：课程大纲】在设计《TensorFlow 与 Keras 入门》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: TensorFlow 与 Keras 入门 · 结构总览 · Data: 课程大纲】When outlining \"TensorFlow 与 Keras 入门\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：TensorFlow 与 Keras 入门 · worked example · 数据：理解 TensorFlow 架构与 Eager Execution 数据/代码】在复现《TensorFlow 与 Keras 入门》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: TensorFlow 与 Keras 入门 · worked example · Data: 理解 TensorFlow 架构与 Eager Execution 数据/代码】While reproducing the worked example in \"TensorFlow 与 Keras 入门\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：TensorFlow 与 Keras 入门 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《TensorFlow 与 Keras 入门》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: TensorFlow 与 Keras 入门 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"TensorFlow 与 Keras 入门\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：TensorFlow 与 Keras 入门 · 参考资料 · 数据：课程引用文献】当引用文献支撑《TensorFlow 与 Keras 入门》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: TensorFlow 与 Keras 入门 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"TensorFlow 与 Keras 入门\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning with Python（Manning Publications，2017）",
+            "en": "Deep Learning with Python (Manning Publications, 2017)"
+          },
+          "url": "https://www.manning.com/books/deep-learning-with-python"
+        },
+        {
+          "label": {
+            "zh": "TensorFlow: Large-Scale Machine Learning on Heterogeneous Distributed Systems（arXiv，2016）",
+            "en": "TensorFlow: Large-Scale Machine Learning on Heterogeneous Distributed Systems (arXiv, 2016)"
+          },
+          "url": "https://arxiv.org/abs/1603.04467"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-09-tensorflow-keras-zh.mp3"
+      },
+      "meta": {
+        "category": "Deep Learning Frameworks",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 1,
+        "related": [
+          "静态计算图",
+          "tf.keras"
+        ],
+        "learningObjectives": [
+          "理解 TensorFlow 架构与 Eager Execution",
+          "使用 Keras 快速搭建神经网络"
+        ],
+        "personas": [
+          "工程师",
+          "开发者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 TensorFlow 与 Keras 入门 可帮助团队在 Deep Learning Frameworks 上做出可复用的实践。",
+          "best_for": "适合 工程师、开发者，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 工程师、开发者，帮助他们把 TensorFlow 与 Keras 入门 应用于 Deep Learning Frameworks",
+          "prefersEnglish": false,
+          "industries": [
+            "工程师",
+            "开发者"
+          ],
+          "personas": [
+            "工程师",
+            "开发者"
+          ],
+          "pains": "在 Deep Learning Frameworks 场景缺乏 TensorFlow 与 Keras 入门 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-12-09",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为工程师，你在当前项目中遇到哪些需要神经网络处理的任务？回想一下，这些任务的数据准备和模型选择过程，哪些步骤让你感到最耗时或不确定？",
+            "action_hint": "尝试用今天学的TensorFlow/Keras快速搭建一个简单模型，对比传统方法的效率差异。"
+          },
+          {
+            "lang": "zh",
+            "question": "在开发深度学习应用时，你通常如何平衡模型精度与部署效率？面对MNIST这样的经典数据集，你会优先优化哪些验证指标来确保模型实用性？",
+            "action_hint": "用Keras API实践一个图像分类流程，记录从数据加载到评估的每个环节耗时。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-09-pytorch",
       "date": "2025-12-09",
