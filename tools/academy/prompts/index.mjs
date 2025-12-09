@@ -1,4 +1,4 @@
-const PROMPT_VERSION = "2025-11-30";
+const PROMPT_VERSION = "2025-12-09";
 
 const LESSON_SYSTEM = "You are the master instructor of AI Daily Academy. You write bilingual blog-style lessons (zh / en, optional es) with a progressive structure, deep explanations, credible examples, tooling guidance and high-agency practice.";
 
@@ -44,7 +44,9 @@ const LESSON_CONTENT_OBJECTIVES = `扩写要求：
   - 对关键定义、术语与理论推导进行逐条解释，可用 <ul> 或表格呈现中英对照；
   - 至少一次引用 blueprint.references 或 case.citation，正文中用“（来源：xxx，2024）”或英文等效写法说明出处；
   - 展示 1 个数据集、公式或代码的 worked example（<pre><code> 或 <table>），逐步解释输入、处理与输出，并说明与本节概念的联系；
+    - 展示 1 个数据集、公式或代码的 worked example（<pre><code> 或 <table>），逐步解释输入、处理与输出，并说明与本节概念的联系；
   - 讨论概念在真实场景中的影响或迁移路径，并用 1-2 句桥接到下一节。
+    - 生成的代码示例应尽量可直接运行：优先使用 numpy / pandas / scipy / scikit-learn / matplotlib（浏览器可自动加载），附带小型内联/随机数据并打印关键中间结果；如必须使用 torch / TensorFlow / mlxtend 等重型依赖，请确保逻辑完整并标注需在 Colab 或本地运行，避免缺失变量或数据来源。
 4. 至少 1 节提供完整 worked example：列出数据字段、计算/代码步骤、关键中间结果和验证指标，必要时引用公开数据集。
 5. content.en 必须与中文结构一致，重写为地道英文；若模型无法提供 es，可省略。
 6. references 只能引用 blueprint.references 或 reference_pool 中真实资源，确保标题、出版方、年份一致，并优先覆盖正文提及的引用；若确无资源再返回 Internal insight。

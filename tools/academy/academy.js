@@ -607,12 +607,10 @@ function enhanceCodeBlocks(container) {
     runBtn.textContent = t("academy_runner_run", "运行代码");
     const label = document.createElement("span");
     label.textContent = t("academy_runner_label", "Python code");
-    const colabBtn = document.createElement("a");
+    const colabBtn = document.createElement("button");
+    colabBtn.type = "button";
     colabBtn.className = "code-runner__btn code-runner__btn--ghost";
-    colabBtn.target = "_blank";
-    colabBtn.rel = "noreferrer";
-    colabBtn.textContent = t("academy_runner_colab", "在 Colab 打开");
-    colabBtn.href = buildColabLink(source);
+    colabBtn.textContent = t("academy_runner_colab", "复制到Colab运行");
     const { blocked } = resolvePackages(source);
     if (blocked) {
       runBtn.disabled = true;
@@ -621,11 +619,8 @@ function enhanceCodeBlocks(container) {
         "当前浏览器运行时未包含 {module}，请改用简化示例或在本地/Colab 运行。",
         { module: blocked }
       );
-      toolbar.append(runBtn, colabBtn, label);
-    } else {
-      colabBtn.hidden = true;
-      toolbar.append(runBtn, label);
     }
+    toolbar.append(runBtn, colabBtn, label);
 
     const codeBlock = document.createElement("pre");
     const code = document.createElement("code");
@@ -640,6 +635,7 @@ function enhanceCodeBlocks(container) {
     pre.replaceWith(wrapper);
 
     runBtn.addEventListener("click", () => runPythonSnippet(source, output, runBtn));
+    colabBtn.addEventListener("click", () => copyAndOpenColab(source, colabBtn));
   });
 }
 
@@ -785,11 +781,45 @@ function buildPrelude(code = "") {
 }
 
 function buildColabLink(code = "") {
-  const blob = new Blob([code], { type: "text/plain" });
-  const url = URL.createObjectURL(blob);
-  // Colab cannot open blob URL directly; fallback to generic entry
-  // Encourage copy; this button is mainly a hint/CTA.
-  return "https://colab.research.google.com/";
+  return "https://colab.research.google.com/#create=true";
+}
+
+async function copyAndOpenColab(code = "", btn) {
+  const targetUrl = buildColabLink(code);
+  const labelIdle = t("academy_runner_colab", "复制到Colab运行");
+  const labelDone = t("academy_runner_copied", "已复制，正在打开 Colab...");
+  try {
+    if (btn) btn.disabled = true;
+    await copyToClipboard(code);
+    if (btn) btn.textContent = labelDone;
+  } catch (err) {
+    if (btn) btn.textContent = labelIdle;
+  } finally {
+    window.open(targetUrl, "_blank", "noreferrer");
+    if (btn) {
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = labelIdle;
+      }, 1200);
+    }
+  }
+}
+
+async function copyToClipboard(text = "") {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  document.execCommand("copy");
+  document.body.removeChild(textarea);
+  return true;
 }
 
 function extractImports(code = "") {
