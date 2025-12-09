@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-09T03:30:49.104Z",
+  "generatedAt": "2025-12-09T08:53:00.989Z",
   "lessons": [
+    {
+      "id": "2025-12-09-pytorch",
+      "date": "2025-12-09",
+      "title": {
+        "zh": "PyTorch 基础与模型构建",
+        "en": "PyTorch Fundamentals and Model Building"
+      },
+      "summary": {
+        "zh": "PyTorch作为动态计算图框架，通过张量运算和自动求导机制简化了深度学习模型的构建与训练过程，成为学术界和工业界广泛采用的工具，课程围绕 Deep Learning Frameworks 中的可执行路径展开。内容串联 PyTorch核心概念与张量基础、模型定义与前向传播实现、训练循环与优化器配置，梳理定义、推导与迁移步骤，以 自定义张量数据 worked example 讲解数据与验证指标，提示如何跟踪 张量维度 等质量信号，补充 PyTorch官方文档 等工具使用策略。",
+        "en": "PyTorch 基础与模型构建 is positioned for Deep Learning Frameworks initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads PyTorch核心概念与张量基础, 模型定义与前向传播实现, 训练循环与优化器配置 to translate theory into executable steps, uses the 自定义张量数据 worked example to show data prep and validation, calls out metrics such as 张量维度, references tooling like PyTorch官方文档."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "PyTorch",
+        "deep learning"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">本课程从动态计算图框架的视角出发，系统讲解PyTorch的核心组件与模型构建流程。你将理解张量作为数据载体的作用，掌握通过nn.Module定义网络结构的方法，并学会配置训练循环以优化模型参数。课程结合Facebook AI Research、OpenAI等机构的实践案例，展示PyTorch在研究和生产环境中的典型应用模式。</p>\n\n<h3>PyTorch张量运算与动态计算图</h3>\n<p>深度学习模型依赖于高效的多维数据表示和自动梯度计算机制。PyTorch通过张量（Tensor）这一核心数据结构，在支持GPU加速的同时，实现了基于动态计算图的即时执行模式。</p>\n<p>张量是PyTorch中的多维数组，与NumPy数组相似但具备自动微分能力。动态计算图在代码执行时实时构建，每个张量操作都会在计算图中添加节点，这种设计使得模型调试和修改更加直观。自动求导引擎（Autograd）会记录这些操作，并在反向传播时自动计算梯度。例如，在矩阵乘法运算中，PyTorch会跟踪参与计算的张量，为后续的梯度计算做好准备。</p>\n<p>以下示例展示了张量的创建、运算和统计计算：</p>\n<pre><code>import torch\n# 创建3x3随机张量\nx = torch.randn(3, 3)\nprint(\"输入张量形状:\", x.shape)\n# 执行矩阵乘法\ny = torch.matmul(x, x.t())\nprint(\"乘法结果形状:\", y.shape)\n# 计算均值\nmean_val = y.mean()\nprint(\"均值:\", mean_val.item())</code></pre>\n<p>这段代码首先生成一个3×3的随机张量，然后计算其与自身转置的矩阵乘积，最后输出结果张量的均值。整个过程在CPU或GPU上执行，PyTorch会自动构建计算图以支持后续的梯度计算。动态图机制使得研究人员能够快速实验不同的网络结构，正如Facebook AI Research在开发PyTorch框架时所强调的即时执行优势（来源：PyTorch: An Imperative Style, High-Performance Deep Learning Library，2019）。</p>\n<p>张量运算的高效性直接影响模型训练速度，合理的形状设计和内存管理可以降低计算开销。接下来，我们将探讨如何将这些基础运算组织成可学习的神经网络模块。</p>\n\n<h3>使用nn.Module定义神经网络结构</h3>\n<p>构建深度学习模型需要将多个计算层模块化地组织起来。PyTorch通过nn.Module类提供了标准的网络组件封装方式，使得层定义、参数管理和前向传播逻辑得以清晰分离。</p>\n<p>nn.Module是所有神经网络模块的基类，它封装了可学习参数（如权重和偏置）和前向传播（forward）方法。继承这个类时，需要在__init__方法中初始化网络层，在forward方法中定义数据流转路径。这种设计促进了代码的复用和测试，例如，可以将注意力机制封装为独立模块，在不同模型中重复使用。</p>\n<p>以下是一个用于MNIST手写数字分类的简单全连接网络实现：</p>\n<pre><code>import torch.nn as nn\n\nclass SimpleNN(nn.Module):\n    def __init__(self, input_size=784, hidden_size=128, num_classes=10):\n        super().__init__()\n        self.fc1 = nn.Linear(input_size, hidden_size)\n        self.relu = nn.ReLU()\n        self.fc2 = nn.Linear(hidden_size, num_classes)\n    \n    def forward(self, x):\n        # 将输入展平为向量\n        x = x.view(x.size(0), -1)\n        x = self.fc1(x)\n        x = self.relu(x)\n        x = self.fc2(x)\n        return x\n\n# 实例化模型\nmodel = SimpleNN()\nprint(\"模型参数量:\", sum(p.numel() for p in model.parameters()))</code></pre>\n<p>该网络包含两个线性层和一个ReLU激活函数，forward方法定义了从输入到输出的完整计算路径。通过继承nn.Module，模型自动管理了fc1和fc2中的可学习参数，并支持PyTorch的自动微分系统。OpenAI在实现Transformer模型时，同样采用模块化设计构建多头注意力层和前馈网络，提高了组件的可测试性（来源：Attention Is All You Need，2017）。</p>\n<p>模块化的网络结构便于调整层数和参数，从而适应不同的任务需求。定义好模型后，我们需要通过训练循环来优化这些参数，使其能够从数据中学习有效的表示。</p>\n\n<h3>配置训练循环与优化器</h3>\n<p>模型训练的本质是通过迭代优化最小化预测误差。PyTorch提供了损失函数和优化器来量化误差并更新参数，训练循环则将这些组件组织成可重复执行的流程。</p>\n<p>损失函数（如交叉熵损失）衡量模型输出与真实标签之间的差异，优化器（如随机梯度下降SGD）根据损失函数计算的梯度调整模型参数。训练循环通常包含以下步骤：前向传播计算预测值、计算损失、反向传播计算梯度、优化器更新参数。学习率调度器等工具可以动态调整优化步长，以改善收敛效果。</p>\n<p>以下示例展示了在CIFAR-10数据集上训练分类模型的基本循环：</p>\n<pre><code>import torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\n\n# 准备数据（简化示例，实际需下载数据集）\ntransform = transforms.Compose([transforms.ToTensor()])\ntrain_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)\n\n# 定义损失函数和优化器\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)\n\n# 训练循环\nfor epoch in range(5):\n    running_loss = 0.0\n    for images, labels in train_loader:\n        optimizer.zero_grad()          # 清零梯度\n        outputs = model(images)        # 前向传播\n        loss = criterion(outputs, labels)  # 计算损失\n        loss.backward()                # 反向传播\n        optimizer.step()               # 更新参数\n        running_loss += loss.item()\n    print(f'Epoch {epoch+1}, Loss: {running_loss/len(train_loader):.4f}')</code></pre>\n<p>代码中，每个epoch遍历整个训练集，对每个批次执行梯度计算和参数更新。损失值随训练轮数下降表明模型正在学习有效的特征表示。Fast.ai在教学实践中强调模块化训练循环的重要性，通过封装标准流程提高了代码的可读性（来源：Deep Learning for Coders with fastai and PyTorch，2020）。</p>\n<p>稳定的训练过程需要合理配置超参数，并监控验证集性能以防止过拟合。完成训练后，我们需要将模型整合到完整的应用流程中，包括保存、加载和部署等环节。</p>\n\n<h3>完整项目构建与模型部署</h3>\n<p>实际应用要求将数据预处理、模型训练、评估和部署整合为端到端的解决方案。PyTorch提供了模型序列化、数据加载和推理优化等工具，支持从实验到生产的全流程。</p>\n<p>模型保存通常使用torch.save存储状态字典（state_dict），加载时通过load_state_dict恢复参数。DataLoader类支持批量数据加载和预处理，而torch.jit等工具可以将模型转换为优化后的格式以提升推理速度。完整的项目还应包括版本控制、日志记录和性能监控等工程实践。</p>\n<p>以下是一个情感分析项目的简化流程，使用IMDB数据集训练文本分类模型：</p>\n<pre><code># 假设已定义文本分类模型TextClassifier\nmodel = TextClassifier(vocab_size=10000, embed_dim=128, num_classes=2)\n# 训练模型（代码略）\n# 保存模型权重\ntorch.save(model.state_dict(), 'sentiment_model.pth')\nprint(\"模型已保存，文件大小:\", os.path.getsize('sentiment_model.pth'))\n\n# 加载模型进行推理\nloaded_model = TextClassifier(vocab_size=10000, embed_dim=128, num_classes=2)\nloaded_model.load_state_dict(torch.load('sentiment_model.pth'))\nloaded_model.eval()  # 设置为评估模式\n\n# 示例推理\nwith torch.no_grad():\n    test_input = torch.randint(0, 10000, (1, 50))  # 模拟50个词的输入\n    output = loaded_model(test_input)\n    predicted_class = torch.argmax(output, dim=1).item()\n    print(f\"预测类别: {predicted_class}\")</code></pre>\n<p>该示例展示了模型权重的保存和加载过程，以及如何在评估模式下进行推理。Hugging Face通过标准化模型序列化格式，简化了预训练模型的部署流程（来源：Transformers: State-of-the-Art Natural Language Processing，2019）。完整的项目还应考虑数据管道、错误处理和性能基准测试，以确保模型在生产环境中的可靠性。</p>\n<p>通过整合这些组件，开发者可以构建从实验到部署的完整深度学习流水线，为实际应用提供可扩展的解决方案。</p>\n\n<p class=\"narrative-outro\">本课程系统阐述了PyTorch从张量运算到完整项目构建的核心概念。掌握这些基础组件后，你可以灵活定义网络结构，配置训练流程，并将模型部署到实际场景中。尝试从官方教程中选择一个示例项目，动手实现并记录每个步骤的关键决策。</p>",
+        "en": "<p class=\"narrative-intro\">This course explores PyTorch's core components and model-building workflow from the perspective of dynamic computational graphs. You will understand the role of tensors as data carriers, learn to define network architectures using nn.Module, and configure training loops to optimize model parameters. Through case studies from organizations like Facebook AI Research and OpenAI, the course demonstrates typical application patterns in both research and production environments.</p>\n\n<h3>Tensor Operations and Dynamic Computational Graphs</h3>\n<p>Deep learning models rely on efficient multidimensional data representation and automatic gradient computation. PyTorch implements an immediate execution mode based on dynamic computational graphs through its core data structure: the tensor.</p>\n<p>Tensors are multidimensional arrays in PyTorch, similar to NumPy arrays but with automatic differentiation capabilities. Dynamic computational graphs are built in real-time during code execution, where each tensor operation adds a node to the graph. This design makes model debugging and modification more intuitive. The autograd engine records these operations and automatically computes gradients during backpropagation. For instance, in matrix multiplication, PyTorch tracks participating tensors to prepare for subsequent gradient calculations.</p>\n<p>The following example demonstrates tensor creation, operations, and statistical computation:</p>\n<pre><code>import torch\n# Create a 3x3 random tensor\nx = torch.randn(3, 3)\nprint(\"Input tensor shape:\", x.shape)\n# Perform matrix multiplication\ny = torch.matmul(x, x.t())\nprint(\"Multiplication result shape:\", y.shape)\n# Compute mean\nmean_val = y.mean()\nprint(\"Mean value:\", mean_val.item())</code></pre>\n<p>This code first generates a 3×3 random tensor, computes its matrix product with its transpose, and outputs the mean of the resulting tensor. The entire process executes on CPU or GPU, with PyTorch automatically building the computational graph to support subsequent gradient computation. The dynamic graph mechanism enables researchers to rapidly experiment with different network architectures, as emphasized by Facebook AI Research in developing PyTorch's immediate execution advantages (source: PyTorch: An Imperative Style, High-Performance Deep Learning Library, 2019).</p>\n<p>The efficiency of tensor operations directly impacts model training speed, where proper shape design and memory management can reduce computational overhead. Next, we will explore how to organize these basic operations into learnable neural network modules.</p>\n\n<h3>Defining Neural Network Architectures with nn.Module</h3>\n<p>Building deep learning models requires modular organization of computational layers. PyTorch provides a standardized approach through the nn.Module class, which clearly separates layer definition, parameter management, and forward propagation logic.</p>\n<p>nn.Module serves as the base class for all neural network modules, encapsulating learnable parameters (such as weights and biases) and the forward method. When inheriting this class, network layers are initialized in the __init__ method, while data flow paths are defined in the forward method. This design promotes code reuse and testing—for example, attention mechanisms can be encapsulated as independent modules and reused across different models.</p>\n<p>Below is a simple fully connected network implementation for MNIST handwritten digit classification:</p>\n<pre><code>import torch.nn as nn\n\nclass SimpleNN(nn.Module):\n    def __init__(self, input_size=784, hidden_size=128, num_classes=10):\n        super().__init__()\n        self.fc1 = nn.Linear(input_size, hidden_size)\n        self.relu = nn.ReLU()\n        self.fc2 = nn.Linear(hidden_size, num_classes)\n    \n    def forward(self, x):\n        # Flatten input to vector\n        x = x.view(x.size(0), -1)\n        x = self.fc1(x)\n        x = self.relu(x)\n        x = self.fc2(x)\n        return x\n\n# Instantiate model\nmodel = SimpleNN()\nprint(\"Model parameter count:\", sum(p.numel() for p in model.parameters()))</code></pre>\n<p>This network contains two linear layers and a ReLU activation function, with the forward method defining the complete computation path from input to output. By inheriting nn.Module, the model automatically manages learnable parameters in fc1 and fc2 and supports PyTorch's automatic differentiation system. Similarly, OpenAI adopted modular design to build multi-head attention layers and feedforward networks when implementing the Transformer model, enhancing component testability (source: Attention Is All You Need, 2017).</p>\n<p>Modular network structures facilitate adjustments to layer counts and parameters, adapting to different task requirements. Once the model is defined, we need to optimize these parameters through training loops, enabling them to learn effective representations from data.</p>\n\n<h3>Configuring Training Loops and Optimizers</h3>\n<p>Model training本质上 involves iterative optimization to minimize prediction errors. PyTorch provides loss functions and optimizers to quantify errors and update parameters, while training loops organize these components into repeatable workflows.</p>\n<p>Loss functions (e.g., cross-entropy loss) measure the discrepancy between model outputs and true labels, while optimizers (e.g., stochastic gradient descent SGD) adjust model parameters based on gradients computed from the loss function. A typical training loop includes: forward propagation to compute predictions, loss calculation, backward propagation to compute gradients, and optimizer parameter updates. Tools like learning rate schedulers can dynamically adjust optimization step sizes to improve convergence.</p>\n<p>The following example demonstrates a basic training loop for a classification model on the CIFAR-10 dataset:</p>\n<pre><code>import torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\n\n# Prepare data (simplified example; actual dataset download required)\ntransform = transforms.Compose([transforms.ToTensor()])\ntrain_dataset = datasets.CIFAR10(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)\n\n# Define loss function and optimizer\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)\n\n# Training loop\nfor epoch in range(5):\n    running_loss = 0.0\n    for images, labels in train_loader:\n        optimizer.zero_grad()          # Clear gradients\n        outputs = model(images)        # Forward pass\n        loss = criterion(outputs, labels)  # Compute loss\n        loss.backward()                # Backward pass\n        optimizer.step()               # Update parameters\n        running_loss += loss.item()\n    print(f'Epoch {epoch+1}, Loss: {running_loss/len(train_loader):.4f}')</code></pre>\n<p>In this code, each epoch iterates through the entire training set, performing gradient computation and parameter updates for each batch. Decreasing loss values across epochs indicate the model is learning effective feature representations. Fast.ai emphasizes the importance of modular training loops in teaching practices, improving code readability through standardized workflow encapsulation (source: Deep Learning for Coders with fastai and PyTorch, 2020).</p>\n<p>Stable training requires proper hyperparameter configuration and validation set monitoring to prevent overfitting. After training, we need to integrate the model into a complete application pipeline, including saving, loading, and deployment steps.</p>\n\n<h3>Complete Project Construction and Model Deployment</h3>\n<p>Practical applications demand end-to-end solutions integrating data preprocessing, model training, evaluation, and deployment. PyTorch provides tools for model serialization, data loading, and inference optimization, supporting the full workflow from experimentation to production.</p>\n<p>Model saving typically uses torch.save to store state dictionaries (state_dict), with parameters restored via load_state_dict during loading. The DataLoader class supports batch data loading and preprocessing, while tools like torch.jit can convert models into optimized formats to enhance inference speed. Complete projects should also include engineering practices such as version control, logging, and performance monitoring.</p>\n<p>The following simplified workflow demonstrates a sentiment analysis project using the IMDB dataset to train a text classification model:</p>\n<pre><code># Assume TextClassifier model is defined\nmodel = TextClassifier(vocab_size=10000, embed_dim=128, num_classes=2)\n# Train model (code omitted)\n# Save model weights\ntorch.save(model.state_dict(), 'sentiment_model.pth')\nprint(\"Model saved, file size"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：PyTorch 基础与模型构建 · 结构总览 · 数据：课程大纲】在设计《PyTorch 基础与模型构建》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: PyTorch 基础与模型构建 · 结构总览 · Data: 课程大纲】When outlining \"PyTorch 基础与模型构建\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：PyTorch 基础与模型构建 · worked example · 数据：掌握 PyTorch 基本使用和模型定义 数据/代码】在复现《PyTorch 基础与模型构建》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: PyTorch 基础与模型构建 · worked example · Data: 掌握 PyTorch 基本使用和模型定义 数据/代码】While reproducing the worked example in \"PyTorch 基础与模型构建\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：PyTorch 基础与模型构建 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《PyTorch 基础与模型构建》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: PyTorch 基础与模型构建 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"PyTorch 基础与模型构建\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：PyTorch 基础与模型构建 · 参考资料 · 数据：课程引用文献】当引用文献支撑《PyTorch 基础与模型构建》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: PyTorch 基础与模型构建 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"PyTorch 基础与模型构建\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning with PyTorch（PyTorch官方，2020）",
+            "en": "Deep Learning with PyTorch (PyTorch官方, 2020)"
+          },
+          "url": "https://pytorch.org/assets/deep-learning/Deep-Learning-with-PyTorch.pdf"
+        },
+        {
+          "label": {
+            "zh": "PyTorch Tutorials（PyTorch，2023）",
+            "en": "PyTorch Tutorials (PyTorch, 2023)"
+          },
+          "url": "https://pytorch.org/tutorials/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-09-pytorch-zh.mp3"
+      },
+      "meta": {
+        "category": "Deep Learning Frameworks",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 1,
+        "related": [
+          "自动求导",
+          "张量运算"
+        ],
+        "learningObjectives": [
+          "掌握 PyTorch 基本使用和模型定义",
+          "实现前向传播与训练循环"
+        ],
+        "personas": [
+          "学生",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 PyTorch 基础与模型构建 可帮助团队在 Deep Learning Frameworks 上做出可复用的实践。",
+          "best_for": "适合 学生、工程师，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "学生 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 学生、工程师，帮助他们把 PyTorch 基础与模型构建 应用于 Deep Learning Frameworks",
+          "prefersEnglish": false,
+          "industries": [
+            "学生",
+            "工程师"
+          ],
+          "personas": [
+            "学生",
+            "工程师"
+          ],
+          "pains": "在 Deep Learning Frameworks 场景缺乏 PyTorch 基础与模型构建 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-12-09",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为学生或工程师，你在构建深度学习模型时，如何利用PyTorch的动态计算图特性来简化前向传播的实现过程？",
+            "action_hint": "思考你当前项目中模型定义的具体步骤，并尝试用PyTorch张量运算重写一个简单的前向传播函数。"
+          },
+          {
+            "lang": "zh",
+            "question": "在Deep Learning Frameworks的实际应用中，你通常如何配置PyTorch的训练循环和优化器来确保模型训练的可执行路径？",
+            "action_hint": "回顾你最近的项目，列出训练循环中的关键步骤，并检查优化器参数设置是否符合PyTorch最佳实践。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-09-recurrent-neural-network",
       "date": "2025-12-09",
