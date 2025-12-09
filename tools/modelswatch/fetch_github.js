@@ -100,13 +100,7 @@ async function fetchTargetRepo(slug) {
 
 export async function fetchGithubTop(options = {}){
   ensureDirs();
-  // Search top repos updated in last 365 days, with license, many stars
-  const since = (new Date(Date.now()-GH_SINCE_DAYS*86400000)).toISOString().slice(0,10);
-  // Build query based on strategy; keep it simple to avoid 422 errors
-  // For 'created' we bias toward newly created repos; for others, use pushed date
-  const dateField = GH_SORT === 'created' ? 'created' : 'pushed';
-  const q1 = encodeURIComponent(`stars:>${GH_MIN_STARS} ${dateField}:>=${since}`);
-  // Support requesting more than 100 items by paginating when MODELSWATCH_GH_PER_PAGE > 100
+  
   const baseLimit = GH_TOTAL_LIMIT;
   let desired = baseLimit;
   if (Number.isFinite(options.limit)) {
@@ -116,75 +110,66 @@ export async function fetchGithubTop(options = {}){
   }
   desired = Math.min(desired, options.maxLimit ? Math.max(1, Math.round(options.maxLimit)) : GH_MAX_ITEMS);
   desired = Math.max(baseLimit, desired);
-  const perPage = GH_PER_PAGE; // <= 100
-  const pages = Math.max(1, Math.ceil(desired / perPage));
-  // GitHub Search API only returns up to the first 1000 results (10 pages of 100)
-  const effectivePages = Math.min(pages, GH_MAX_PAGES);
-  const cacheFile = path.join(DATA_DIR, '.gh.search.etag');
+
+  // Define strategies to broaden discovery
+  const strategies = [
+    {
+      name: 'top_stars',
+      q: `stars:>${GH_MIN_STARS} pushed:>=${iso(Date.now() - 365*86400000).slice(0,10)}`,
+      sort: 'stars',
+      pages: 2 // Top 200
+    },
+    {
+      name: 'trending_new',
+      q: `stars:>50 created:>=${iso(Date.now() - 30*86400000).slice(0,10)}`,
+      sort: 'stars',
+      pages: 2 // Top 200 new
+    },
+    {
+      name: 'active_recent',
+      q: `stars:>200 pushed:>=${iso(Date.now() - 7*86400000).slice(0,10)}`,
+      sort: 'updated',
+      pages: 2 // Top 200 recently updated
+    },
+    {
+      name: 'high_forks',
+      q: `forks:>50 created:>=${iso(Date.now() - 90*86400000).slice(0,10)}`,
+      sort: 'forks',
+      pages: 1 // Top 100 high forks
+    }
+  ];
+
+  const allItemsMap = new Map();
   const lastOut = path.join(DATA_DIR, 'top_github.json');
-  let etag=null; try{ etag=fs.readFileSync(cacheFile,'utf8'); }catch{}
-  const pageEtagsPath = path.join(DATA_DIR, '.gh.page.etags.json');
-  let pageEtags = {}; try{ pageEtags = JSON.parse(fs.readFileSync(pageEtagsPath,'utf8')); }catch{}
-  let allItems = [];
-  let res;
-  for (let p = 1; p <= effectivePages; p++) {
-    const sortParam = (GH_SORT === 'updated' || GH_SORT === 'created') ? GH_SORT : 'stars';
-    const url = `https://api.github.com/search/repositories?q=${q1}&sort=${sortParam}&order=desc&per_page=${perPage}&page=${p}`;
-    try{
-      // Use per-page ETag when available
-      const useEtag = pageEtags[String(p)] || (p === 1 ? etag : null);
-      res = await gh(url, useEtag);
-    }catch(e){
-      // On failure, try a relaxed fallback for the whole fetch (single attempt)
-      if (p === 1) {
-        try{
-          const q2 = encodeURIComponent(`stars:>${Math.max(0, Math.floor(GH_MIN_STARS/2))} ${dateField}:>=${since}`);
-          const url2 = `https://api.github.com/search/repositories?q=${q2}&sort=${sortParam}&order=desc&per_page=${perPage}&page=${p}`;
-          res = await gh(url2, null);
-        }catch(e2){
-          throw e2;
-        }
-      } else {
-        // If a subsequent page fails, break and reuse what we have
-        break;
-      }
-    }
 
-    if (res && res.status === 304) {
-      debug(`GitHub search page ${p} not modified (304)`);
-      // Reuse prior items for this page from lastOut when possible; otherwise skip page
-      try{
-        const prev = readJSON(lastOut);
-        if(prev && Array.isArray(prev.items)){
-          const start = (p-1)*perPage;
-          const slice = prev.items.slice(start, start+perPage);
-          if (slice.length) {
-            allItems = allItems.concat(slice);
-            continue;
-          }
-        }
-      }catch{}
-      continue; // page unchanged but we couldn't restore; move on
+  // Execute strategies
+  for (const strat of strategies) {
+    info(`[fetch_github] running strategy: ${strat.name}`);
+    for (let p = 1; p <= strat.pages; p++) {
+       const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(strat.q)}&sort=${strat.sort}&order=desc&per_page=100&page=${p}`;
+       try {
+         const res = await gh(url); 
+         if (res && res.data && Array.isArray(res.data.items)) {
+           let newCount = 0;
+           for (const item of res.data.items) {
+             if (item && item.full_name) {
+               if (!allItemsMap.has(item.full_name)) {
+                 allItemsMap.set(item.full_name, item);
+                 newCount++;
+               }
+             }
+           }
+           info(`[fetch_github] strategy ${strat.name} page ${p} found ${res.data.items.length} items (${newCount} new unique)`);
+         }
+         await sleep(1000); // Be polite
+       } catch (err) {
+         warn(`[fetch_github] strategy ${strat.name} page ${p} failed: ${err.message}`);
+         break; 
+       }
     }
-
-    if (res && res.data && Array.isArray(res.data.items)) {
-      allItems = allItems.concat(res.data.items);
-    }
-
-    // Save etags
-    if (p === 1 && res && res.etag) fs.writeFileSync(cacheFile, res.etag, 'utf8');
-    if (res && res.etag) {
-      pageEtags[String(p)] = res.etag;
-      try{ fs.writeFileSync(pageEtagsPath, JSON.stringify(pageEtags, null, 2), 'utf8'); }catch{}
-    }
-
-    // Be polite to GitHub API between pages
-    if (p < pages) await sleep(500);
   }
 
-  const items = (allItems||[])
-    // .filter(r=>r.license && r.license.spdx_id && r.license.spdx_id!=='NOASSERTION')
-    .slice(0, desired)
+  let items = Array.from(allItemsMap.values())
     .map(mapGithubRepo)
     .filter(Boolean);
 
@@ -211,10 +196,15 @@ export async function fetchGithubTop(options = {}){
       pushed_at: it.updated_at
     });
   });
+  
+  // Sort by score descending
+  items.sort((a, b) => b.score - a.score);
 
-  // Persist normalized snapshot for later reuse and page-level restore
+  // Persist normalized snapshot for later reuse
   try { writeJSON(lastOut, { items }); } catch {}
-  return items;
+  
+  // Return top desired items
+  return items.slice(0, desired);
 }
 if (import.meta.url === `file://${process.argv[1]}`) {
   fetchGithubTop().then(items=>{
