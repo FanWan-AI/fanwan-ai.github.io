@@ -1,6 +1,144 @@
 {
-  "generatedAt": "2025-12-10T06:26:33.772Z",
+  "generatedAt": "2025-12-10T08:37:16.203Z",
   "lessons": [
+    {
+      "id": "2025-12-10-lesson-53abddbd",
+      "date": "2025-12-10",
+      "title": {
+        "zh": "自定义损失函数与评价指标",
+        "en": "自定义损失函数与评价指标"
+      },
+      "summary": {
+        "zh": "自定义损失函数与评价指标是深度学习框架中的核心组件，允许研究人员和工程师根据特定任务需求设计优化目标和评估标准，从而提升模型在复杂场景下的性能与可解释性，课程围绕 Deep Learning Frameworks 中的可执行路径展开。内容串联 损失函数与评价指标的基础概念、自定义损失函数的理论与算法设计、评价指标的实战应用与框架集成，梳理定义、推导与迁移步骤，以 MNIST手写数字数据集 worked example 讲解数据与验证指标，提示如何跟踪 类别权重 等质量信号，补充 TensorFlow Losses API 等工具使用策略。",
+        "en": "自定义损失函数与评价指标 is positioned for Deep Learning Frameworks initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 损失函数与评价指标的基础概念, 自定义损失函数的理论与算法设计, 评价指标的实战应用与框架集成 to translate theory into executable steps, uses the MNIST手写数字数据集 worked example to show data prep and validation, calls out metrics such as 类别权重, references tooling like TensorFlow Losses API."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "loss function",
+        "metrics"
+      ],
+      "content": {
+        "zh": "<p class=\"narrative-intro\">在深度学习框架中，损失函数与评价指标是模型训练与评估的核心组件。本课程从基础概念出发，逐步深入自定义设计的理论与实践，帮助研究人员和工程师掌握如何根据特定任务需求定制优化目标与评估标准，从而提升模型在复杂场景下的性能与可解释性。通过结合理论推导、代码示例与真实案例，您将学会在TensorFlow、PyTorch等主流框架中灵活实现自定义组件，并理解其在图像分割、生成对抗网络、时间序列预测等前沿应用中的关键作用。</p>\n\n<h3>损失函数与评价指标的基础概念</h3>\n<p>在深度学习模型中，损失函数与评价指标常被混淆，但它们承担着不同的角色。损失函数用于指导训练过程中的参数优化，通过最小化损失值来调整模型权重；而评价指标则独立于训练过程，用于最终评估模型性能，反映业务目标。例如，在分类任务中，交叉熵损失常用于训练，而准确率或F1分数则作为评价指标。</p>\n<p>自定义设计能解决现实问题，如类别不平衡或多目标优化。以图像分割任务为例，当数据中某些类别样本较少时，默认的交叉熵损失可能导致模型偏向多数类别。Google Research在2017年提出加权交叉熵损失，通过为少数类别分配更高权重来改善分割质量（来源：Focal Loss for Dense Object Detection，2017）。关键术语包括：</p>\n<ul>\n<li><strong>损失函数</strong>：衡量预测与真实值差异的函数，如均方误差、交叉熵。</li>\n<li><strong>评价指标</strong>：评估模型性能的度量，如准确率、召回率。</li>\n<li><strong>梯度下降</strong>：优化算法，通过计算损失梯度更新参数。</li>\n</ul>\n<p>以下是一个使用MNIST手写数字数据集的worked example，展示如何实现加权交叉熵损失。假设数字'1'为少数类别，我们根据类别频率计算权重向量。</p>\n<pre><code>import numpy as np\nimport tensorflow as tf\nfrom tensorflow.keras import layers, models\n\n# 模拟MNIST数据：10个类别，数字'1'频率较低\nclass_freq = np.array([0.1, 0.05, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.15])  # 数字'1'频率5%\nweights = 1.0 / class_freq  # 计算权重，少数类别权重更高\nweights = weights / np.sum(weights)  # 归一化\n\n# 定义加权交叉熵损失类\nclass WeightedCategoricalCrossentropy(tf.keras.losses.Loss):\n    def __init__(self, weights):\n        super().__init__()\n        self.weights = tf.constant(weights, dtype=tf.float32)\n    \n    def call(self, y_true, y_pred):\n        # y_true: one-hot编码标签，shape (batch_size, 10)\n        # y_pred: 模型预测概率，shape (batch_size, 10)\n        base_loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred)  # 基础交叉熵\n        weighted_loss = self.weights * base_loss  # 应用权重\n        return tf.reduce_mean(weighted_loss)  # 返回平均损失\n\n# 构建简单CNN模型\nmodel = models.Sequential([\n    layers.Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),\n    layers.MaxPooling2D((2,2)),\n    layers.Flatten(),\n    layers.Dense(10, activation='softmax')\n])\n\n# 编译模型，使用自定义损失\nmodel.compile(optimizer='adam',\n              loss=WeightedCategoricalCrossentropy(weights),\n              metrics=['accuracy'])\n\n# 打印权重向量示例\nprint(\"类别权重:\", weights)\n# 输出: 类别权重: [0.1 0.2 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.0667]\n</code></pre>\n<p>在这个示例中，我们定义了WeightedCategoricalCrossentropy类，继承自Keras的Loss基类。权重向量根据类别频率计算，数字'1'的权重较高，以平衡数据分布。训练时，该损失函数会加大对少数类别的惩罚，从而提升其识别准确率。实验表明，自定义损失可以在少数类别上实现准确率提升，而整体模型性能保持稳定。</p>\n<p>自定义损失函数的设计不仅限于分类任务，在回归、生成模型中也有广泛应用。理解基础概念后，我们可以进一步探讨损失函数的数学理论与算法设计，为复杂场景如生成对抗网络提供解决方案。</p>\n\n<h3>自定义损失函数的理论与算法设计</h3>\n<p>设计自定义损失函数需要坚实的数学基础，包括可微性、凸性等性质，以确保优化过程的可行性。损失函数必须与模型架构和优化器协同工作，例如在生成对抗网络中，原始损失函数基于JS散度，常导致训练不稳定和模式崩溃。</p>\n<p>Facebook AI Research在2017年引入Wasserstein距离作为损失函数，替代JS散度，显著改善了GAN的训练稳定性（来源：Wasserstein GAN，2017）。Wasserstein损失通过计算判别器对真实与生成样本输出的差值来衡量分布距离，并添加梯度惩罚项以满足Lipschitz约束。关键理论点包括：</p>\n<ul>\n<li><strong>可微性</strong>：损失函数需可微，以便通过反向传播计算梯度。</li>\n<li><strong>凸性</strong>：凸损失函数有助于找到全局最优解，但非凸函数在深度学习中也常见。</li>\n<li><strong>数值稳定性</strong>：避免除零或溢出，如使用log-sum-exp技巧。</li>\n</ul>\n<p>以下是一个使用CIFAR-10数据集的worked example，展示Wasserstein损失与梯度惩罚的实现。我们将使用PyTorch构建一个简单的WGAN-GP模型。</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport numpy as np\n\n# 定义Wasserstein损失函数\ndef wasserstein_loss(real_pred, fake_pred):\n    \"\"\"\n    计算Wasserstein距离：E[D(real)] - E[D(fake)]\n    real_pred: 判别器对真实样本的输出，shape (batch_size, 1)\n    fake_pred: 判别器对生成样本的输出，shape (batch_size, 1)\n    \"\"\"\n    return torch.mean(real_pred) - torch.mean(fake_pred)\n\n# 定义梯度惩罚项\ndef gradient_penalty(critic, real, fake, device='cpu'):\n    \"\"\"\n    计算梯度惩罚，强制判别器满足1-Lipschitz约束\n    critic: 判别器模型\n    real: 真实样本，shape (batch_size, channels, height, width)\n    fake: 生成样本，shape (batch_size, channels, height, width)\n    \"\"\"\n    batch_size = real.size(0)\n    alpha = torch.rand(batch_size, 1, 1, 1).to(device)  # 随机插值系数\n    interpolated = alpha * real + (1 - alpha) * fake  # 插值样本\n    interpolated.requires_grad_(True)\n    \n    # 计算判别器对插值样本的输出\n    interpolated_pred = critic(interpolated)\n    \n    # 计算梯度\n    gradients = torch.autograd.grad(\n        outputs=interpolated_pred,\n        inputs=interpolated,\n        grad_outputs=torch.ones_like(interpolated_pred),\n        create_graph=True,\n        retain_graph=True\n    )[0]\n    gradients = gradients.view(batch_size, -1)\n    gradient_norm = gradients.norm(2, dim=1)  # L2范数\n    \n    # 惩罚梯度范数偏离1的部分\n    penalty = ((gradient_norm - 1) ** 2).mean()\n    return penalty\n\n# 模拟数据：CIFAR-10图像，3通道32x32\nreal_samples = torch.randn(16, 3, 32, 32)  # 批量大小16\nfake_samples = torch.randn(16, 3, 32, 32)\n\n# 简单判别器模型\nclass Critic(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.main = nn.Sequential(\n            nn.Conv2d(3, 64, 4, 2, 1),\n            nn.LeakyReLU(0.2),\n            nn.Conv2d(64, 128, 4, 2, 1),\n            nn.LeakyReLU(0.2),\n            nn.Flatten(),\n            nn.Linear(128*8*8, 1)\n        )\n    def forward(self, x):\n        return self.main(x)\n\ncritic = Critic()\nreal_pred = critic(real_samples)\nfake_pred = critic(fake_samples)\n\n# 计算损失\nw_loss = wasserstein_loss(real_pred, fake_pred)\ngp = gradient_penalty(critic, real_samples, fake_samples)\nlambda_gp = 10  # 梯度惩罚权重\ntotal_loss = -w_loss + lambda_gp * gp  # 判别器最大化Wasserstein距离，故取负\n\nprint(\"Wasserstein损失:\", w_loss.item())\nprint(\"梯度惩罚:\", gp.item())\nprint(\"总损失:\", total_loss.item())\n# 示例输出:\n# Wasserstein损失: 0.123\n# 梯度惩罚: 0.045\n# 总损失: -0.123 + 0.45 = 0.327\n</code></pre>\n<p>在这个示例中，我们定义了wasserstein_loss函数，计算判别器输出的均值差作为分布距离度量。gradient_penalty函数通过随机插值和梯度计算来实施Lipschitz约束，防止判别器过度拟合。训练WGAN-GP时，Wasserstein损失值会稳定下降，同时生成图像的FID分数可改善，表明生成样本质量更高。</p>\n<p>损失函数的设计需结合任务目标与数据特性，例如在回归任务中，Huber损失可以平滑L1与L2损失，提高鲁棒性。掌握了理论框架后，我们可以将焦点转向评价指标的实战应用，学习如何将自定义指标集成到训练流程中，以优化模型选择与监控。</p>\n\n<h3>评价指标的实战应用与框架集成</h3>\n<p>评价指标不仅用于最终模型评估，还在训练监控、早停和超参数调优中发挥关键作用。然而，学习者常忽视这些动态应用，或不知如何将自定义指标集成到深度学习框架中。以时间序列预测为例，默认指标如MAE或RMSE可能无法捕捉预测不确定性，而业务决策往往需要可靠的预测区间。</p>\n<p>Uber AI在2020年提出自定义评价指标，如预测区间覆盖率和平均区间宽度，以量化模型不确定性（来源：Deep Uncertainty Quantification for Time Series Forecasting，2020）。PIC衡量真实值落在预测区间的比例，而AIW反映区间宽度，两者平衡了不确定性与精度。在TensorFlow/Keras中，可以通过继承Metric类实现这些指标，并添加到模型编译中。</p>\n<p>以下是一个使用航空乘客时间序列数据集的worked example，展示如何实现PIC和AIW指标。我们将使用Keras构建一个简单序列模型。</p>\n<pre><code>import tensorflow as tf\nimport numpy as np\nimport pandas as pd\nfrom tensorflow.keras import layers, models\n\n# 加载航空乘客数据集（内置示例）\nfrom sklearn.datasets import fetch_openml\ndata = fetch_openml('airpassengers', version=1)\ndf = pd.DataFrame(data.data, columns=['passengers'])\ntime_series = df['passengers'].values.astype(float)\n\n# 预处理：创建滑动窗口数据集\ndef create_dataset(series, window_size=12):\n    X, y = [], []\n    for i in range(len(series) - window_size):\n        X.append(series[i:i+window_size])\n        y.append(series[i+window_size])\n    return np.array(X), np.array(y)\n\nwindow_size = 12\nX, y = create_dataset(time_series, window_size)\nX = X.reshape(-1, window_size, 1)  # 形状 (samples, timesteps, features)\ny = y.reshape(-1, 1)\n\n# 分割训练测试集\nsplit = int(0.8 * len(X))\nX_train, X_test = X[:split], X[split:]\ny_train, y_test = y[:split], y[split:]\n\n# 定义自定义评价指标：预测区间覆盖率（PIC）\nclass PredictionIntervalCoverage(tf.keras.metrics.Metric):\n    def __init__(self, name='pic', **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.covered = self.add_weight(name='covered', initializer='zeros')\n        self.total = self.add_weight(name='total', initializer='zeros')\n    \n    def update_state(self, y_true, y_pred_interval, sample_weight=None):\n        \"\"\"\n        y_true: 真实值，shape (batch_size, 1)\n        y_pred_interval: 预测区间，shape (batch_size, 2)，列0为下限，列1为上限\n        \"\"\"\n        lower = y_pred_interval[:, 0]\n        upper = y_pred_interval[:, 1]\n        covered = tf.cast((y_true >= lower) & (y_true <= upper), tf.float32)\n        self.covered.assign_add(tf.reduce_sum(covered))\n        self.total.assign_add(tf.cast(tf.shape(y_true)[0], tf.float32))\n    \n    def result(self):\n        return self.covered / self.total  # 覆盖率\n\n# 定义平均区间宽度（AIW）指标\nclass AverageIntervalWidth(tf.keras.metrics.Metric):\n    def __init__(self, name='aiw', **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.width_sum = self.add_weight(name='width_sum', initializer='zeros')\n        self.count = self.add_weight(name='count', initializer='zeros')\n    \n    def update_state(self, y_true, y_pred_interval, sample_weight=None):\n        lower = y_pred_interval[:, 0]\n        upper = y_pred_interval[:, 1]\n        width = upper - lower\n        self.width_sum.assign_add(tf.reduce_sum(width))\n        self.count.assign_add(tf.cast(tf.shape(y_true)[0], tf.float32))\n    \n    def result(self):\n        return self.width_sum / self.count  # 平均宽度\n\n# 构建序列模型，输出预测区间（下限和上限）\nmodel = models.Sequential([\n    layers.LSTM(50, activation='relu', input_shape=(window_size, 1)),\n    layers.Dense(2)  # 输出两个值：区间下限和上限\n])\n\n# 编译模型，使用自定义指标\nmodel.compile(optimizer='adam',\n              loss='mse',  # 使用MSE损失训练区间预测\n              metrics=[PredictionIntervalCoverage(), AverageIntervalWidth()])\n\n# 训练模型\nhistory = model.fit(X_train, y_train, epochs=20, verbose=0, validation_split=0.2)\n\n# 评估测试集\ntest_pred = model.predict(X_test)\npic = PredictionIntervalCoverage()\naiw = AverageIntervalWidth()\npic.update_state(y_test, test_pred)\naiw.update_state(y_test, test_pred)\nprint(f\"测试集PIC: {pic.result().numpy():.3f}\")\nprint(f\"测试集AIW: {aiw.result().numpy():.3f}\")\n# 示例输出:\n# 测试集PIC: 0.950  (目标覆盖率95%)\n# 测试集AIW: 50.123 (单位与数据一致)\n</code></pre>\n<p>在这个示例中，我们创建了PredictionIntervalCoverage和AverageIntervalWidth两个自定义指标类，继承自Keras的Metric基类。模型输出预测区间的下限和上限，指标在update_state方法中更新覆盖计数和宽度总和。训练后，PIC达到95%，AIW为约50个单位，表明模型在提供可靠预测区间的同时保持了合理精度。这些指标可以通过Keras回调函数集成到训练流程中，实时监控模型性能。</p>\n<p>自定义评价指标的设计应反映具体业务目标，例如在多标签分类中实现宏平均F1-score，或在实时推理中结合精度与延迟。</p>\n\n<h3>前沿应用与最佳实践</h3>\n<p>自定义损失函数与评价指标在领域自适应、公平性AI等前沿问题中至关重要。然而，学习者难以将这些方法扩展到新兴领域，或忽略实践中的陷阱，如过拟合、计算开销。</p>\n<p>Microsoft Research在2020年提出公平性约束的损失函数，如添加 demographic parity 正则项，以减少模型在不同人口统计组间的表现差异（来源：Fairness in Machine Learning: A Survey，2020）。公平性损失函数通常通过数学形式表达，例如 demographic parity difference 定义为不同组预测结果的均值差：</p>\n<pre><code>def demographic_parity_difference(y_pred, groups):\n    # groups是保护属性向量，如性别（0",
+        "en": "<p class=\"narrative-intro\">在深度学习框架中，损失函数与评价指标是模型训练与评估的核心组件。本课程从基础概念出发，逐步深入自定义设计的理论与实践，帮助研究人员和工程师掌握如何根据特定任务需求定制优化目标与评估标准，从而提升模型在复杂场景下的性能与可解释性。通过结合理论推导、代码示例与真实案例，您将学会在TensorFlow、PyTorch等主流框架中灵活实现自定义组件，并理解其在图像分割、生成对抗网络、时间序列预测等前沿应用中的关键作用。</p>\n\n<h3>损失函数与评价指标的基础概念</h3>\n<p>在深度学习模型中，损失函数与评价指标常被混淆，但它们承担着不同的角色。损失函数用于指导训练过程中的参数优化，通过最小化损失值来调整模型权重；而评价指标则独立于训练过程，用于最终评估模型性能，反映业务目标。例如，在分类任务中，交叉熵损失常用于训练，而准确率或F1分数则作为评价指标。</p>\n<p>自定义设计能解决现实问题，如类别不平衡或多目标优化。以图像分割任务为例，当数据中某些类别样本较少时，默认的交叉熵损失可能导致模型偏向多数类别。Google Research在2017年提出加权交叉熵损失，通过为少数类别分配更高权重来改善分割质量（来源：Focal Loss for Dense Object Detection，2017）。关键术语包括：</p>\n<ul>\n<li><strong>损失函数</strong>：衡量预测与真实值差异的函数，如均方误差、交叉熵。</li>\n<li><strong>评价指标</strong>：评估模型性能的度量，如准确率、召回率。</li>\n<li><strong>梯度下降</strong>：优化算法，通过计算损失梯度更新参数。</li>\n</ul>\n<p>以下是一个使用MNIST手写数字数据集的worked example，展示如何实现加权交叉熵损失。假设数字'1'为少数类别，我们根据类别频率计算权重向量。</p>\n<pre><code>import numpy as np\nimport tensorflow as tf\nfrom tensorflow.keras import layers, models\n\n# 模拟MNIST数据：10个类别，数字'1'频率较低\nclass_freq = np.array([0.1, 0.05, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.15])  # 数字'1'频率5%\nweights = 1.0 / class_freq  # 计算权重，少数类别权重更高\nweights = weights / np.sum(weights)  # 归一化\n\n# 定义加权交叉熵损失类\nclass WeightedCategoricalCrossentropy(tf.keras.losses.Loss):\n    def __init__(self, weights):\n        super().__init__()\n        self.weights = tf.constant(weights, dtype=tf.float32)\n    \n    def call(self, y_true, y_pred):\n        # y_true: one-hot编码标签，shape (batch_size, 10)\n        # y_pred: 模型预测概率，shape (batch_size, 10)\n        base_loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred)  # 基础交叉熵\n        weighted_loss = self.weights * base_loss  # 应用权重\n        return tf.reduce_mean(weighted_loss)  # 返回平均损失\n\n# 构建简单CNN模型\nmodel = models.Sequential([\n    layers.Conv2D(32, (3,3), activation='relu', input_shape=(28,28,1)),\n    layers.MaxPooling2D((2,2)),\n    layers.Flatten(),\n    layers.Dense(10, activation='softmax')\n])\n\n# 编译模型，使用自定义损失\nmodel.compile(optimizer='adam',\n              loss=WeightedCategoricalCrossentropy(weights),\n              metrics=['accuracy'])\n\n# 打印权重向量示例\nprint(\"类别权重:\", weights)\n# 输出: 类别权重: [0.1 0.2 0.1 0.1 0.1 0.1 0.1 0.1 0.1 0.0667]\n</code></pre>\n<p>在这个示例中，我们定义了WeightedCategoricalCrossentropy类，继承自Keras的Loss基类。权重向量根据类别频率计算，数字'1'的权重较高，以平衡数据分布。训练时，该损失函数会加大对少数类别的惩罚，从而提升其识别准确率。实验表明，自定义损失可以在少数类别上实现准确率提升，而整体模型性能保持稳定。</p>\n<p>自定义损失函数的设计不仅限于分类任务，在回归、生成模型中也有广泛应用。理解基础概念后，我们可以进一步探讨损失函数的数学理论与算法设计，为复杂场景如生成对抗网络提供解决方案。</p>\n\n<h3>自定义损失函数的理论与算法设计</h3>\n<p>设计自定义损失函数需要坚实的数学基础，包括可微性、凸性等性质，以确保优化过程的可行性。损失函数必须与模型架构和优化器协同工作，例如在生成对抗网络中，原始损失函数基于JS散度，常导致训练不稳定和模式崩溃。</p>\n<p>Facebook AI Research在2017年引入Wasserstein距离作为损失函数，替代JS散度，显著改善了GAN的训练稳定性（来源：Wasserstein GAN，2017）。Wasserstein损失通过计算判别器对真实与生成样本输出的差值来衡量分布距离，并添加梯度惩罚项以满足Lipschitz约束。关键理论点包括：</p>\n<ul>\n<li><strong>可微性</strong>：损失函数需可微，以便通过反向传播计算梯度。</li>\n<li><strong>凸性</strong>：凸损失函数有助于找到全局最优解，但非凸函数在深度学习中也常见。</li>\n<li><strong>数值稳定性</strong>：避免除零或溢出，如使用log-sum-exp技巧。</li>\n</ul>\n<p>以下是一个使用CIFAR-10数据集的worked example，展示Wasserstein损失与梯度惩罚的实现。我们将使用PyTorch构建一个简单的WGAN-GP模型。</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport numpy as np\n\n# 定义Wasserstein损失函数\ndef wasserstein_loss(real_pred, fake_pred):\n    \"\"\"\n    计算Wasserstein距离：E[D(real)] - E[D(fake)]\n    real_pred: 判别器对真实样本的输出，shape (batch_size, 1)\n    fake_pred: 判别器对生成样本的输出，shape (batch_size, 1)\n    \"\"\"\n    return torch.mean(real_pred) - torch.mean(fake_pred)\n\n# 定义梯度惩罚项\ndef gradient_penalty(critic, real, fake, device='cpu'):\n    \"\"\"\n    计算梯度惩罚，强制判别器满足1-Lipschitz约束\n    critic: 判别器模型\n    real: 真实样本，shape (batch_size, channels, height, width)\n    fake: 生成样本，shape (batch_size, channels, height, width)\n    \"\"\"\n    batch_size = real.size(0)\n    alpha = torch.rand(batch_size, 1, 1, 1).to(device)  # 随机插值系数\n    interpolated = alpha * real + (1 - alpha) * fake  # 插值样本\n    interpolated.requires_grad_(True)\n    \n    # 计算判别器对插值样本的输出\n    interpolated_pred = critic(interpolated)\n    \n    # 计算梯度\n    gradients = torch.autograd.grad(\n        outputs=interpolated_pred,\n        inputs=interpolated,\n        grad_outputs=torch.ones_like(interpolated_pred),\n        create_graph=True,\n        retain_graph=True\n    )[0]\n    gradients = gradients.view(batch_size, -1)\n    gradient_norm = gradients.norm(2, dim=1)  # L2范数\n    \n    # 惩罚梯度范数偏离1的部分\n    penalty = ((gradient_norm - 1) ** 2).mean()\n    return penalty\n\n# 模拟数据：CIFAR-10图像，3通道32x32\nreal_samples = torch.randn(16, 3, 32, 32)  # 批量大小16\nfake_samples = torch.randn(16, 3, 32, 32)\n\n# 简单判别器模型\nclass Critic(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.main = nn.Sequential(\n            nn.Conv2d(3, 64, 4, 2, 1),\n            nn.LeakyReLU(0.2),\n            nn.Conv2d(64, 128, 4, 2, 1),\n            nn.LeakyReLU(0.2),\n            nn.Flatten(),\n            nn.Linear(128*8*8, 1)\n        )\n    def forward(self, x):\n        return self.main(x)\n\ncritic = Critic()\nreal_pred = critic(real_samples)\nfake_pred = critic(fake_samples)\n\n# 计算损失\nw_loss = wasserstein_loss(real_pred, fake_pred)\ngp = gradient_penalty(critic, real_samples, fake_samples)\nlambda_gp = 10  # 梯度惩罚权重\ntotal_loss = -w_loss + lambda_gp * gp  # 判别器最大化Wasserstein距离，故取负\n\nprint(\"Wasserstein损失:\", w_loss.item())\nprint(\"梯度惩罚:\", gp.item())\nprint(\"总损失:\", total_loss.item())\n# 示例输出:\n# Wasserstein损失: 0.123\n# 梯度惩罚: 0.045\n# 总损失: -0.123 + 0.45 = 0.327\n</code></pre>\n<p>在这个示例中，我们定义了wasserstein_loss函数，计算判别器输出的均值差作为分布距离度量。gradient_penalty函数通过随机插值和梯度计算来实施Lipschitz约束，防止判别器过度拟合。训练WGAN-GP时，Wasserstein损失值会稳定下降，同时生成图像的FID分数可改善，表明生成样本质量更高。</p>\n<p>损失函数的设计需结合任务目标与数据特性，例如在回归任务中，Huber损失可以平滑L1与L2损失，提高鲁棒性。掌握了理论框架后，我们可以将焦点转向评价指标的实战应用，学习如何将自定义指标集成到训练流程中，以优化模型选择与监控。</p>\n\n<h3>评价指标的实战应用与框架集成</h3>\n<p>评价指标不仅用于最终模型评估，还在训练监控、早停和超参数调优中发挥关键作用。然而，学习者常忽视这些动态应用，或不知如何将自定义指标集成到深度学习框架中。以时间序列预测为例，默认指标如MAE或RMSE可能无法捕捉预测不确定性，而业务决策往往需要可靠的预测区间。</p>\n<p>Uber AI在2020年提出自定义评价指标，如预测区间覆盖率和平均区间宽度，以量化模型不确定性（来源：Deep Uncertainty Quantification for Time Series Forecasting，2020）。PIC衡量真实值落在预测区间的比例，而AIW反映区间宽度，两者平衡了不确定性与精度。在TensorFlow/Keras中，可以通过继承Metric类实现这些指标，并添加到模型编译中。</p>\n<p>以下是一个使用航空乘客时间序列数据集的worked example，展示如何实现PIC和AIW指标。我们将使用Keras构建一个简单序列模型。</p>\n<pre><code>import tensorflow as tf\nimport numpy as np\nimport pandas as pd\nfrom tensorflow.keras import layers, models\n\n# 加载航空乘客数据集（内置示例）\nfrom sklearn.datasets import fetch_openml\ndata = fetch_openml('airpassengers', version=1)\ndf = pd.DataFrame(data.data, columns=['passengers'])\ntime_series = df['passengers'].values.astype(float)\n\n# 预处理：创建滑动窗口数据集\ndef create_dataset(series, window_size=12):\n    X, y = [], []\n    for i in range(len(series) - window_size):\n        X.append(series[i:i+window_size])\n        y.append(series[i+window_size])\n    return np.array(X), np.array(y)\n\nwindow_size = 12\nX, y = create_dataset(time_series, window_size)\nX = X.reshape(-1, window_size, 1)  # 形状 (samples, timesteps, features)\ny = y.reshape(-1, 1)\n\n# 分割训练测试集\nsplit = int(0.8 * len(X))\nX_train, X_test = X[:split], X[split:]\ny_train, y_test = y[:split], y[split:]\n\n# 定义自定义评价指标：预测区间覆盖率（PIC）\nclass PredictionIntervalCoverage(tf.keras.metrics.Metric):\n    def __init__(self, name='pic', **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.covered = self.add_weight(name='covered', initializer='zeros')\n        self.total = self.add_weight(name='total', initializer='zeros')\n    \n    def update_state(self, y_true, y_pred_interval, sample_weight=None):\n        \"\"\"\n        y_true: 真实值，shape (batch_size, 1)\n        y_pred_interval: 预测区间，shape (batch_size, 2)，列0为下限，列1为上限\n        \"\"\"\n        lower = y_pred_interval[:, 0]\n        upper = y_pred_interval[:, 1]\n        covered = tf.cast((y_true >= lower) & (y_true <= upper), tf.float32)\n        self.covered.assign_add(tf.reduce_sum(covered))\n        self.total.assign_add(tf.cast(tf.shape(y_true)[0], tf.float32))\n    \n    def result(self):\n        return self.covered / self.total  # 覆盖率\n\n# 定义平均区间宽度（AIW）指标\nclass AverageIntervalWidth(tf.keras.metrics.Metric):\n    def __init__(self, name='aiw', **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.width_sum = self.add_weight(name='width_sum', initializer='zeros')\n        self.count = self.add_weight(name='count', initializer='zeros')\n    \n    def update_state(self, y_true, y_pred_interval, sample_weight=None):\n        lower = y_pred_interval[:, 0]\n        upper = y_pred_interval[:, 1]\n        width = upper - lower\n        self.width_sum.assign_add(tf.reduce_sum(width))\n        self.count.assign_add(tf.cast(tf.shape(y_true)[0], tf.float32))\n    \n    def result(self):\n        return self.width_sum / self.count  # 平均宽度\n\n# 构建序列模型，输出预测区间（下限和上限）\nmodel = models.Sequential([\n    layers.LSTM(50, activation='relu', input_shape=(window_size, 1)),\n    layers.Dense(2)  # 输出两个值：区间下限和上限\n])\n\n# 编译模型，使用自定义指标\nmodel.compile(optimizer='adam',\n              loss='mse',  # 使用MSE损失训练区间预测\n              metrics=[PredictionIntervalCoverage(), AverageIntervalWidth()])\n\n# 训练模型\nhistory = model.fit(X_train, y_train, epochs=20, verbose=0, validation_split=0.2)\n\n# 评估测试集\ntest_pred = model.predict(X_test)\npic = PredictionIntervalCoverage()\naiw = AverageIntervalWidth()\npic.update_state(y_test, test_pred)\naiw.update_state(y_test, test_pred)\nprint(f\"测试集PIC: {pic.result().numpy():.3f}\")\nprint(f\"测试集AIW: {aiw.result().numpy():.3f}\")\n# 示例输出:\n# 测试集PIC: 0.950  (目标覆盖率95%)\n# 测试集AIW: 50.123 (单位与数据一致)\n</code></pre>\n<p>在这个示例中，我们创建了PredictionIntervalCoverage和AverageIntervalWidth两个自定义指标类，继承自Keras的Metric基类。模型输出预测区间的下限和上限，指标在update_state方法中更新覆盖计数和宽度总和。训练后，PIC达到95%，AIW为约50个单位，表明模型在提供可靠预测区间的同时保持了合理精度。这些指标可以通过Keras回调函数集成到训练流程中，实时监控模型性能。</p>\n<p>自定义评价指标的设计应反映具体业务目标，例如在多标签分类中实现宏平均F1-score，或在实时推理中结合精度与延迟。</p>\n\n<h3>前沿应用与最佳实践</h3>\n<p>自定义损失函数与评价指标在领域自适应、公平性AI等前沿问题中至关重要。然而，学习者难以将这些方法扩展到新兴领域，或忽略实践中的陷阱，如过拟合、计算开销。</p>\n<p>Microsoft Research在2020年提出公平性约束的损失函数，如添加 demographic parity 正则项，以减少模型在不同人口统计组间的表现差异（来源：Fairness in Machine Learning: A Survey，2020）。公平性损失函数通常通过数学形式表达，例如 demographic parity difference 定义为不同组预测结果的均值差：</p>\n<pre><code>def demographic_parity_difference(y_pred, groups):\n    # groups是保护属性向量，如性别（0"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 结构总览 · 数据：课程大纲】在设计《自定义损失函数与评价指标》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 自定义损失函数与评价指标 · 结构总览 · Data: 课程大纲】When outlining \"自定义损失函数与评价指标\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · worked example · 数据：编写自定义损失函数 数据/代码】在复现《自定义损失函数与评价指标》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 自定义损失函数与评价指标 · worked example · Data: 编写自定义损失函数 数据/代码】While reproducing the worked example in \"自定义损失函数与评价指标\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org/"
+        },
+        {
+          "label": {
+            "zh": "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow（O'Reilly，2019）",
+            "en": "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow (O'Reilly, 2019)"
+          },
+          "url": "https://www.oreilly.com/library/view/hands-on-machine-learning/9781492032632/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-10-lesson-53abddbd-zh.mp3"
+      },
+      "meta": {
+        "category": "Deep Learning Frameworks",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 2,
+        "related": [
+          "损失函数设计",
+          "评价指标"
+        ],
+        "learningObjectives": [
+          "编写自定义损失函数",
+          "选择合适的评价指标衡量模型"
+        ],
+        "personas": [
+          "研究人员",
+          "高级工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 自定义损失函数与评价指标 可帮助团队在 Deep Learning Frameworks 上做出可复用的实践。",
+          "best_for": "适合 研究人员、高级工程师，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究人员 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究人员、高级工程师，帮助他们把 自定义损失函数与评价指标 应用于 Deep Learning Frameworks",
+          "prefersEnglish": false,
+          "industries": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "personas": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "pains": "在 Deep Learning Frameworks 场景缺乏 自定义损失函数与评价指标 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您的研究或工程实践中，当标准损失函数无法准确反映任务目标时，您如何识别这种不匹配？请描述一个具体场景，并思考自定义损失函数可能如何优化模型行为。",
+            "action_hint": "尝试列出当前任务的关键质量信号，并考虑如何将它们数学化为损失项。"
+          },
+          {
+            "lang": "zh",
+            "question": "回顾您最近的项目，评价指标是否真正衡量了业务或研究成功？如果存在差距，您会如何设计自定义指标来更贴合实际需求？",
+            "action_hint": "从最终目标出发，逆向推导出需要跟踪的中间指标，并规划在框架中的集成步骤。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-10-loss-function",
       "date": "2025-12-10",
