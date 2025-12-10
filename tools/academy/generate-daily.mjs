@@ -306,7 +306,7 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
   const baseURL = process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || "gpt-4.1-mini";
 
-  const maxTokens = Number(
+  const rawMaxTokens = Number(
     process.env.LLM_MAX_TOKENS ||
       process.env.OPENAI_MAX_TOKENS ||
       process.env.DEEPSEEK_MAX_TOKENS ||
@@ -314,6 +314,10 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
       process.env.DEEPSEEK_MAX_INPUT ||
       0
   );
+  // DeepSeek range is [1, 8192]; clamp to avoid 400 errors when upstream vars are oversized.
+  const maxTokens = Number.isFinite(rawMaxTokens)
+    ? Math.max(0, Math.min(rawMaxTokens, 8192))
+    : 0;
 
   const request = async (format) => {
     const response = await fetch(`${baseURL}/chat/completions`, {
@@ -1608,7 +1612,13 @@ async function main() {
     return;
   }
   const lesson = await generateLesson(candidate, lessons);
-    const merged = uniqueBy([lesson, ...lessons], (entry) => entry?.id || `${entry?.date}-${entry?.title?.zh}`);
+    const merged = uniqueBy([lesson, ...lessons], (entry) => {
+      const titleText = extractText(entry?.title?.zh || entry?.title?.en || entry?.title || "");
+      const titleSlug = slugify(titleText).replace(/^-+|[^a-z0-9-]|-+$/g, "");
+      const fallbackSlug = (titleText || "").toLowerCase().replace(/\s+/g, "-") || "untitled";
+      const key = `${entry?.date || ""}-${titleSlug || fallbackSlug}`;
+      return key || entry?.id || `${entry?.date}-${entry?.title?.zh}`;
+    });
     const sorted = merged.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     const normalized = {
       generatedAt: new Date().toISOString(),
