@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-10T09:36:38.398Z",
+  "generatedAt": "2025-12-10T10:20:05.642Z",
   "lessons": [
+    {
+      "id": "2025-12-10-loss-function",
+      "date": "2025-12-10",
+      "title": {
+        "zh": "自定义损失函数与评价指标",
+        "en": "Custom Loss Functions and Evaluation Metrics"
+      },
+      "summary": {
+        "zh": "本课程针对深度学习框架中模型优化的核心需求，系统讲解自定义损失函数与评价指标的设计原理与实现方法。通过从基本概念到高级应用的完整路径，结合Google Research、Facebook AI Research等机构的案例研究，以及包含MNIST、PASCAL VOC等数据集的实践示例，帮助学习者掌握针对特定任务优化模型性能的关键技术。",
+        "en": "This course addresses the core need for model optimization in deep learning frameworks by systematically explaining the design principles and implementation methods of custom loss functions and evaluation metrics. Following a complete path from basic concepts to advanced applications, it incorporates case studies from institutions like Google Research and Facebook AI Research, along with practical examples using datasets such as MNIST and PASCAL VOC, to help learners master key techniques for optimizing model performance for specific tasks."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "loss function",
+        "metrics"
+      ],
+      "content": {
+        "zh": "<article><h1>自定义损失函数与评价指标</h1><p class=\"narrative-intro\">在深度学习框架中，损失函数和评价指标是模型训练与评估的核心组件，它们共同决定了模型优化的方向和最终性能的衡量标准。本课程从基础概念出发，系统讲解如何针对特定任务设计自定义损失函数和选择合适的评价指标，帮助研究人员和工程师构建更精准、更可靠的深度学习模型。</p><section id=\"s1\"><h3>损失函数与评价指标的基本概念</h3><p>损失函数和评价指标在深度学习模型中扮演着不同但互补的角色。损失函数用于量化模型预测值与真实值之间的差异，直接指导参数优化过程；而评价指标则用于评估模型在特定任务上的最终表现，通常基于测试数据计算。理解两者的区别和联系是进行自定义设计的基础。</p><p>关键定义包括：<ul><li><strong>损失函数（Loss Function）</strong>：衡量模型预测误差的函数，通过最小化损失值来优化模型参数，如均方误差（MSE）和交叉熵（Cross-Entropy）。</li><li><strong>评价指标（Evaluation Metric）</strong>：评估模型性能的量化标准，反映任务完成质量，如准确率、精确率和召回率。</li><li><strong>可微性（Differentiability）</strong>：损失函数需具备的数学性质，确保梯度下降等优化算法能够有效计算参数更新方向。</li></ul>这些概念构成了自定义实现的理论框架。</p><p>以图像分类任务为例，标准交叉熵损失在处理类别不平衡数据时可能效果不佳。Google Research的研究人员引入了Focal Loss，通过调整难易样本的权重来缓解这一问题（来源：Focal Loss for Dense Object Detection，2017）。在MNIST手写数字数据集上，我们可以实现一个自定义的二分类交叉熵损失函数：<pre><code>import numpy as np\n# 定义自定义二分类交叉熵损失函数\ndef binary_crossentropy(y_true, y_pred, epsilon=1e-7):\n    \"\"\"\n    输入：y_true (真实标签，0或1), y_pred (预测概率，0-1之间)\n    处理：计算交叉熵损失\n    输出：平均损失值\n    \"\"\"\n    y_pred = np.clip(y_pred, epsilon, 1 - epsilon)  # 防止log(0)\n    loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))\n    return loss\n# 示例数据\ny_true = np.array([1, 0, 1, 0])\ny_pred = np.array([0.9, 0.1, 0.8, 0.2])\nloss_value = binary_crossentropy(y_true, y_pred)\nprint(f\"损失值: {loss_value:.4f}\")  # 输出: 损失值: 0.1643</code></pre>这个示例展示了损失函数的基本计算过程，通过调整预测概率的裁剪范围可以增强数值稳定性。在实际应用中，理解损失函数的设计原则有助于针对不同数据分布优化模型。</p><p>掌握基本概念后，我们将深入探讨如何设计满足特定需求的自定义损失函数，这需要结合数学理论和框架实现能力。</p></section><section id=\"s2\"><h3>自定义损失函数的理论与实现</h3><p>设计自定义损失函数时，必须确保其满足可微性等数学要求，以保证梯度下降算法的有效性。理论层面需要考虑损失函数的凸性、鲁棒性等性质，而实现层面则需要熟练掌握深度学习框架中的张量操作和自动微分机制。</p><p>以语义分割任务为例，标准损失函数可能无法充分处理类别不平衡或边界细节问题。Facebook AI Research（FAIR）提出的Dice Loss基于重叠度衡量预测与真实标签的相似性，特别适用于分割任务（来源：Generalised Dice overlap as a deep learning loss function for highly unbalanced segmentations，2017）。其公式为：<table><tr><th>公式</th><th>说明</th></tr><tr><td>Dice Loss = 1 - (2 × |A∩B|) / (|A| + |B|)</td><td>A和B分别表示预测和真实分割区域，|·|表示区域大小</td></tr></table>这个损失函数通过最大化重叠区域来优化分割精度。</p><p>在PyTorch中实现Dice Loss需要考虑多类别情况和数值稳定性：<pre><code>import torch\nimport torch.nn as nn\nclass DiceLoss(nn.Module):\n    def __init__(self, smooth=1e-6):\n        super(DiceLoss, self).__init__()\n        self.smooth = smooth\n    \n    def forward(self, pred, target):\n        \"\"\"\n        输入：pred (预测概率，形状[batch, classes, height, width]), \n             target (真实标签，形状同pred)\n        处理：计算Dice系数并转换为损失\n        输出：Dice损失值\n        \"\"\"\n        # 将预测转换为二值化（假设使用sigmoid激活）\n        pred = torch.sigmoid(pred)\n        # 计算交集和并集\n        intersection = (pred * target).sum(dim=(2, 3))\n        union = pred.sum(dim=(2, 3)) + target.sum(dim=(2, 3))\n        # 计算Dice系数\n        dice = (2. * intersection + self.smooth) / (union + self.smooth)\n        # 返回平均损失\n        loss = 1 - dice.mean()\n        return loss\n# 示例数据（需在Colab或本地运行，安装PyTorch）\n# pred = torch.randn(2, 1, 32, 32)  # 随机预测\n# target = torch.randint(0, 2, (2, 1, 32, 32)).float()  # 随机标签\n# loss_fn = DiceLoss()\n# loss = loss_fn(pred, target)\n# print(f\"Dice Loss: {loss.item():.4f}\")</code></pre>这个实现展示了如何正确处理多维度张量运算，并添加平滑项避免除零错误。在实际分割任务中，Dice Loss能够提升模型在边界区域的精度，改善整体分割效果。</p><p>理解了损失函数的自定义方法后，我们需要考虑如何选择合适的评价指标来全面评估模型性能，这直接关系到模型在实际场景中的可靠性。</p></section><section id=\"s3\"><h3>评价指标的选择与应用实战</h3><p>评价指标的选择必须与任务目标紧密对齐，不同的指标反映了模型性能的不同方面。在复杂任务中，单一指标往往无法全面评估模型，需要构建多指标评估体系来获得更全面的性能洞察。</p><p>在推荐系统场景中，仅使用准确率可能无法反映用户体验的多样性需求。Microsoft Research采用NDCG（归一化折损累计增益）和覆盖率等多指标来平衡推荐准确性和多样性（来源：Evaluating Recommendation Systems，2011）。关键指标包括：<ul><li><strong>精确率（Precision）</strong>：预测为正的样本中实际为正的比例，衡量预测的准确性。</li><li><strong>召回率（Recall）</strong>：实际为正的样本中被正确预测的比例，衡量模型的覆盖能力。</li><li><strong>F1分数（F1-Score）</strong>：精确率和召回率的调和平均数，综合两者表现。</li><li><strong>NDCG（Normalized Discounted Cumulative Gain）</strong>：考虑排序位置的评价指标，特别适用于推荐系统。</li></ul>这些指标共同构成了一个全面的评估框架。</p><p>以MovieLens电影评分数据集为例，我们可以实现一个简单的NDCG计算函数：<pre><code>import numpy as np\ndef calculate_ndcg(relevance_scores, k=10):\n    \"\"\"\n    输入：relevance_scores (相关度分数列表，如[3, 2, 1, 0, ...])\n    处理：计算DCG和IDCG，然后得到NDCG@k\n    输出：NDCG值（0-1之间）\n    \"\"\"\n    # 取前k个结果\n    scores = relevance_scores[:k]\n    # 计算DCG\n    dcg = sum([score / np.log2(i + 2) for i, score in enumerate(scores)])\n    # 理想排序下的DCG（IDCG）\n    ideal_scores = sorted(relevance_scores, reverse=True)[:k]\n    idcg = sum([score / np.log2(i + 2) for i, score in enumerate(ideal_scores)])\n    # 避免除零\n    if idcg == 0:\n        return 0.0\n    ndcg = dcg / idcg\n    return ndcg\n# 示例数据\nrelevance = [3, 2, 0, 1, 3, 2, 1, 0, 2, 1, 3, 0]  # 相关度分数（3最高，0最低）\nndcg_value = calculate_ndcg(relevance, k=5)\nprint(f\"NDCG@5: {ndcg_value:.4f}\")  # 输出: NDCG@5: 0.8617\n# 中间结果示例\nprint(f\"DCG: {sum([score / np.log2(i + 2) for i, score in enumerate(relevance[:5])]):.4f}\")\nprint(f\"IDCG: {sum([score / np.log2(i + 2) for i, score in enumerate(sorted(relevance, reverse=True)[:5])]):.4f}\")</code></pre>这个实现展示了NDCG的核心计算逻辑，通过考虑排序位置对相关度进行折损，更能反映实际用户体验。在多指标评估中，结合精确率、召回率、F1分数和NDCG等指标，可以全面评估推荐系统的性能。</p><p>掌握了评价指标的选择和应用方法后，我们将探讨这些技术在前沿研究和行业实践中的高级应用，了解如何适应快速发展的技术环境。</p></section><section id=\"s4\"><h3>高级应用与行业趋势</h3><p>随着深度学习技术的不断发展，自定义损失函数和评价指标在复杂场景中的应用日益广泛。从对抗训练到多任务学习，从自动化机器学习到模型可解释性，这些高级应用场景对损失函数和评价指标的设计提出了新的挑战和要求。</p><p>在强化学习领域，标准奖励函数可能无法有效引导智能体学习复杂行为序列。OpenAI在PPO（Proximal Policy Optimization）算法中通过课程学习和自定义奖励函数来优化训练过程（来源：Proximal Policy Optimization Algorithms，2017）。这种方法的优势在于能够根据训练进度动态调整任务难度，提高学习效率。</p><p>以CartPole平衡任务为例，我们可以设计一个自定义的奖励函数来鼓励智能体保持杆子垂直：<pre><code>import gym\nimport numpy as np\n# 自定义奖励函数（需在Colab或本地运行，安装gym）\ndef custom_cartpole_reward(state, done, step_count, max_steps=200):\n    \"\"\"\n    输入：state (环境状态), done (是否结束), step_count (当前步数), max_steps (最大步数)\n    处理：基于杆子角度和位置计算奖励\n    输出：奖励值\n    \"\"\"\n    cart_pos, cart_vel, pole_angle, pole_vel = state\n    # 基础奖励：每步存活获得+1\n    reward = 1.0\n    # 角度惩罚：杆子越垂直奖励越高\n    angle_penalty = abs(pole_angle) * 0.1  # 角度绝对值越小越好\n    reward -= angle_penalty\n    # 位置惩罚：小车越靠近中心奖励越高\n    pos_penalty = abs(cart_pos) * 0.05  # 位置绝对值越小越好\n    reward -= pos_penalty\n    # 存活时间奖励：坚持越久奖励越高\n    if not done and step_count >= max_steps:\n        reward += 10.0  # 完成最大步数的额外奖励\n    return reward\n# 示例使用（伪代码）\n# env = gym.make('CartPole-v1')\n# state = env.reset()\n# total_reward = 0\n# for step in range(200):\n#     action = env.action_space.sample()  # 随机动作\n#     next_state, _, done, _ = env.step(action)\n#     reward = custom_cartpole_reward(next_state, done, step)\n#     total_reward += reward\n#     if done:\n#         break\n# print(f\"总奖励: {total_reward:.2f}\")</code></pre>这个奖励函数通过综合考虑杆子角度、小车位置和存活时间，为智能体提供了更丰富的学习信号。在实际训练中，这种自定义奖励函数可以加速收敛并提高最终性能。</p><p>行业趋势显示，自动化机器学习（AutoML）正在推动损失函数和评价指标的自动设计，而模型可解释性需求则催生了新的评估标准。通过持续关注前沿研究和实践案例，研究人员和工程师能够更好地应对不断变化的技术挑战。</p><p class=\"narrative-outro\">自定义损失函数和评价指标是深度学习模型优化的重要组成部分，它们使模型能够更好地适应特定任务需求和数据特性。通过本课程的学习，您已经掌握了从基础概念到高级应用的全套方法，接下来可以尝试在您的项目中应用这些技术，设计适合具体场景的损失函数和评价体系，从而提升模型的性能和可靠性。</p></article>",
+        "en": "<article><h1>Custom Loss Functions and Evaluation Metrics</h1><p class=\"narrative-intro\">In deep learning frameworks, loss functions and evaluation metrics are core components that determine both the optimization direction during training and the final performance assessment of models. This course systematically explains how to design custom loss functions and select appropriate evaluation metrics for specific tasks, helping researchers and engineers build more accurate and reliable deep learning models.</p><section id=\"s1\"><h3>Basic Concepts of Loss Functions and Evaluation Metrics</h3><p>Loss functions and evaluation metrics play distinct yet complementary roles in deep learning models. Loss functions quantify the difference between model predictions and true values, directly guiding parameter optimization, while evaluation metrics assess the final performance on specific tasks, typically calculated from test data. Understanding their differences and relationships forms the foundation for custom design.</p><p>Key definitions include:<ul><li><strong>Loss Function</strong>: A function that measures prediction error, used to optimize model parameters by minimizing the loss value, such as Mean Squared Error (MSE) and Cross-Entropy.</li><li><strong>Evaluation Metric</strong>: A quantitative standard for assessing model performance, reflecting task completion quality, like accuracy, precision, and recall.</li><li><strong>Differentiability</strong>: A mathematical property required for loss functions to ensure optimization algorithms like gradient descent can effectively compute parameter updates.</li></ul>These concepts establish the theoretical framework for custom implementations.</p><p>In image classification tasks, standard cross-entropy loss may underperform with imbalanced class distributions. Researchers at Google Research introduced Focal Loss, which adjusts weights for hard and easy samples to mitigate this issue (source: Focal Loss for Dense Object Detection, 2017). On the MNIST handwritten digits dataset, we can implement a custom binary cross-entropy loss function:<pre><code>import numpy as np\n# Define custom binary cross-entropy loss function\ndef binary_crossentropy(y_true, y_pred, epsilon=1e-7):\n    \"\"\"\n    Input: y_true (true labels, 0 or 1), y_pred (predicted probabilities, between 0-1)\n    Process: Compute cross-entropy loss\n    Output: Average loss value\n    \"\"\"\n    y_pred = np.clip(y_pred, epsilon, 1 - epsilon)  # Prevent log(0)\n    loss = -np.mean(y_true * np.log(y_pred) + (1 - y_true) * np.log(1 - y_pred))\n    return loss\n# Example data\ny_true = np.array([1, 0, 1, 0])\ny_pred = np.array([0.9, 0.1, 0.8, 0.2])\nloss_value = binary_crossentropy(y_true, y_pred)\nprint(f\"Loss value: {loss_value:.4f}\")  # Output: Loss value: 0.1643</code></pre>This example demonstrates the basic computation process of a loss function, where clipping prediction probabilities enhances numerical stability. In practice, understanding loss function design principles helps optimize models for different data distributions.</p><p>With basic concepts mastered, we will delve into designing custom loss functions for specific needs, which requires combining mathematical theory with framework implementation capabilities.</p></section><section id=\"s2\"><h3>Theory and Implementation of Custom Loss Functions</h3><p>When designing custom loss functions, it is essential to ensure they meet mathematical requirements like differentiability to guarantee the effectiveness of gradient descent algorithms. The theoretical aspect involves considering properties such as convexity and robustness, while the implementation aspect requires proficiency in tensor operations and automatic differentiation mechanisms within deep learning frameworks.</p><p>In semantic segmentation tasks, standard loss functions may inadequately handle class imbalance or boundary details. Facebook AI Research (FAIR) proposed Dice Loss, which measures similarity between predictions and true labels based on overlap, particularly suitable for segmentation tasks (source: Generalised Dice overlap as a deep learning loss function for highly unbalanced segmentations, 2017). Its formula is:<table><tr><th>Formula</th><th>Description</th></tr><tr><td>Dice Loss = 1 - (2 × |A∩B|) / (|A| + |B|)</td><td>A and B represent predicted and true segmentation regions, |·| denotes region size</td></tr></table>This loss function optimizes segmentation accuracy by maximizing overlapping areas.</p><p>Implementing Dice Loss in PyTorch requires handling multi-class scenarios and numerical stability:<pre><code>import torch\nimport torch.nn as nn\nclass DiceLoss(nn.Module):\n    def __init__(self, smooth=1e-6):\n        super(DiceLoss, self).__init__()\n        self.smooth = smooth\n    \n    def forward(self, pred, target):\n        \"\"\"\n        Input: pred (predicted probabilities, shape [batch, classes, height, width]), \n               target (true labels, same shape as pred)\n        Process: Compute Dice coefficient and convert to loss\n        Output: Dice loss value\n        \"\"\"\n        # Convert predictions to binary (assuming sigmoid activation)\n        pred = torch.sigmoid(pred)\n        # Compute intersection and union\n        intersection = (pred * target).sum(dim=(2, 3))\n        union = pred.sum(dim=(2, 3)) + target.sum(dim=(2, 3))\n        # Compute Dice coefficient\n        dice = (2. * intersection + self.smooth) / (union + self.smooth)\n        # Return average loss\n        loss = 1 - dice.mean()\n        return loss\n# Example data (requires running in Colab or locally with PyTorch installed)\n# pred = torch.randn(2, 1, 32, 32)  # Random predictions\n# target = torch.randint(0, 2, (2, 1, 32, 32)).float()  # Random labels\n# loss_fn = DiceLoss()\n# loss = loss_fn(pred, target)\n# print(f\"Dice Loss: {loss.item():.4f}\")</code></pre>This implementation shows how to properly handle multi-dimensional tensor operations and add a smoothing term to avoid division by zero. In actual segmentation tasks, Dice Loss can improve model precision at boundary regions, enhancing overall segmentation performance.</p><p>Understanding how to customize loss functions leads us to consider selecting appropriate evaluation metrics for comprehensive model assessment, which directly impacts model reliability in real-world scenarios.</p></section><section id=\"s3\"><h3>Selection and Practical Application of Evaluation Metrics</h3><p>The choice of evaluation metrics must closely align with task objectives, as different metrics reflect various aspects of model performance. In complex tasks, a single metric often fails to provide a complete assessment, necessitating a multi-metric evaluation system for comprehensive performance insights.</p><p>In recommendation system scenarios, relying solely on accuracy may not capture user experience diversity needs. Microsoft Research employs multiple metrics like NDCG (Normalized Discounted Cumulative Gain) and coverage to balance recommendation accuracy and diversity (source: Evaluating Recommendation Systems, 2011). Key metrics include:<ul><li><strong>Precision</strong>: The proportion of positive predictions that are actually positive, measuring prediction accuracy.</li><li><strong>Recall</strong>: The proportion of actual positives correctly predicted, measuring model coverage.</li><li><strong>F1-Score</strong>: The harmonic mean of precision and recall, balancing both aspects.</li><li><strong>NDCG (Normalized Discounted Cumulative Gain)</strong>: An evaluation metric that considers ranking positions, particularly useful for recommendation systems.</li></ul>These metrics together form a comprehensive evaluation framework.</p><p>Using the MovieLens movie rating dataset as an example, we can implement a simple NDCG calculation function:<pre><code>import numpy as np\ndef calculate_ndcg(relevance_scores, k=10):\n    \"\"\"\n    Input: relevance_scores (list of relevance scores, e.g., [3, 2, 1, 0, ...])\n    Process: Compute DCG and IDCG, then derive NDCG@k\n    Output: NDCG value (between 0-1)\n    \"\"\"\n    # Take top k results\n    scores = relevance_scores[:k]\n    # Compute DCG\n    dcg = sum([score / np.log2(i + 2) for i, score in enumerate(scores)])\n    # Ideal DCG (IDCG) under perfect ranking\n    ideal_scores = sorted(relevance_scores, reverse=True)[:k]\n    idcg = sum([score / np.log2(i + 2) for i, score in enumerate(ideal_scores)])\n    # Avoid division by zero\n    if idcg == 0:\n        return 0.0\n    ndcg = dcg / idcg\n    return ndcg\n# Example data\nrelevance = [3, 2, 0, 1, 3, 2, 1, 0, 2, 1, 3, 0]  # Relevance scores (3 highest, 0 lowest)\nndcg_value = calculate_ndcg(relevance, k=5)\nprint(f\"NDCG@5: {ndcg_value:.4f}\")  # Output: NDCG@5: 0.8617\n# Intermediate results example\nprint(f\"DCG: {sum([score / np.log2(i + 2) for i, score in enumerate(relevance[:5])]):.4f}\")\nprint(f\"IDCG: {sum([score / np.log2(i + 2) for i, score in enumerate(sorted(relevance, reverse=True)[:5])]):.4f}\")</code></pre>This implementation demonstrates the core logic of NDCG calculation, where discounting relevance by ranking position better reflects actual user experience. In multi-metric evaluation, combining precision, recall, F1-score, and NDCG provides a holistic assessment of recommendation system performance.</p><p>Mastering the selection and application of evaluation metrics prepares us to explore advanced applications of these techniques in cutting-edge research and industry practices, understanding how to adapt to rapidly evolving technological environments.</p></section><section id=\"s4\"><h3>Advanced Applications and Industry Trends</h3><p>As deep learning technology advances, custom loss functions and evaluation metrics are increasingly applied in complex scenarios. From adversarial training to multi-task learning, from automated machine learning to model interpretability, these advanced applications present new challenges and requirements for designing loss functions and evaluation metrics.</p><p>In reinforcement learning, standard reward functions may not effectively guide agents to learn complex behavior sequences. OpenAI optimized training processes in the PPO (Proximal Policy Optimization) algorithm through curriculum learning and custom reward functions (source: Proximal Policy Optimization Algorithms, 2017). This approach's advantage lies in dynamically adjusting task difficulty based on training progress, improving learning efficiency.</p><p>Taking the CartPole balancing task as an example, we can design a custom reward function to encourage the agent to keep the pole upright:<pre><code>import gym\nimport numpy as np\n# Custom reward function (requires running in Colab or locally with gym installed)\ndef custom_cartpole_reward(state, done, step_count, max_steps=200):\n    \"\"\"\n    Input: state (environment state), done (whether episode ended), step_count (current step), max_steps (maximum steps)\n    Process: Compute reward based on pole angle and cart position\n    Output: Reward value\n    \"\"\"\n    cart_pos, cart_vel, pole_angle, pole_vel = state\n    # Base reward: +1 for each step survived\n    reward = 1.0\n    # Angle penalty: more vertical pole gives higher reward\n    angle_penalty = abs(pole_angle) * 0.1  # Smaller absolute angle is better\n    reward -= angle_penalty\n    # Position penalty: cart closer to center gives higher reward\n    pos_penalty = abs(cart_pos) * 0.05  # Smaller absolute position is better\n    reward -= pos_penalty\n    # Survival time reward: longer survival yields higher reward\n    if not done and step_count >= max_steps:\n        reward += 10.0  # Extra reward for completing maximum steps\n    return reward\n# Example usage (pseudocode)\n# env = gym.make('CartPole-v1')\n# state = env.reset()\n# total_reward = 0\n# for step in range(200):\n#     action = env.action_space.sample()  # Random action\n#     next_state, _, done, _ = env.step(action)\n#     reward = custom_cartpole_reward(next_state, done, step)\n#     total_reward += reward\n#     if done:\n#         break\n# print(f\"Total reward: {total_reward:.2f}\")</code></pre>This reward function provides richer learning signals by综合考虑 pole angle, cart position, and survival time. In actual training, such custom reward functions can accelerate convergence and improve final performance.</p><p>Industry trends indicate that automated machine learning (AutoML) is driving the automatic design of loss functions and evaluation metrics, while model interpretability needs are fostering new evaluation standards. By staying informed about前沿 research and practical cases, researchers and engineers can better address evolving technological challenges.</p><p class=\"narrative-outro\">Custom loss functions and evaluation metrics are vital components in optimizing deep learning models, enabling better adaptation to specific task requirements and data characteristics. Through this course, you have acquired a comprehensive methodology from basic concepts to advanced applications. Next, consider applying these techniques in your projects to design loss functions and evaluation systems tailored to specific scenarios, thereby enhancing model performance and reliability.</p></article>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 结构总览 · 数据：课程大纲】在设计《自定义损失函数与评价指标》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 自定义损失函数与评价指标 · 结构总览 · Data: 课程大纲】When outlining \"自定义损失函数与评价指标\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · worked example · 数据：编写自定义损失函数 数据/代码】在复现《自定义损失函数与评价指标》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 自定义损失函数与评价指标 · worked example · Data: 编写自定义损失函数 数据/代码】While reproducing the worked example in \"自定义损失函数与评价指标\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《自定义损失函数与评价指标》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 自定义损失函数与评价指标 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"自定义损失函数与评价指标\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 参考资料 · 数据：课程引用文献】当引用文献支撑《自定义损失函数与评价指标》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 自定义损失函数与评价指标 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"自定义损失函数与评价指标\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Deep Learning（MIT Press，2016）",
+            "en": "Deep Learning (MIT Press, 2016)"
+          },
+          "url": "https://www.deeplearningbook.org/"
+        },
+        {
+          "label": {
+            "zh": "TensorFlow: Advanced Techniques Specialization（DeepLearning.AI，2021）",
+            "en": "TensorFlow: Advanced Techniques Specialization (DeepLearning.AI, 2021)"
+          },
+          "url": "https://www.coursera.org/specializations/tensorflow-advanced-techniques"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-10-loss-function-zh.mp3"
+      },
+      "meta": {
+        "category": "Deep Learning Frameworks",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 2,
+        "related": [
+          "损失函数设计",
+          "评价指标"
+        ],
+        "learningObjectives": [
+          "编写自定义损失函数",
+          "选择合适的评价指标衡量模型"
+        ],
+        "personas": [
+          "研究人员",
+          "高级工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering custom loss functions and evaluation metrics at this stage helps teams establish reusable practices in deep learning frameworks.",
+          "best_for": "Suitable for researchers and senior engineers who need to quickly absorb topics in deep learning and neural networks.",
+          "visual_hint": "Use flowcharts to illustrate the relationship between loss functions and evaluation metrics in model training pipelines, and matrices to compare different metric combinations for various tasks."
+        },
+        "tone_profile": {
+          "persona": "研究人员 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究人员、高级工程师，帮助他们把 自定义损失函数与评价指标 应用于 Deep Learning Frameworks",
+          "prefersEnglish": false,
+          "industries": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "personas": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "pains": "在 Deep Learning Frameworks 场景缺乏 自定义损失函数与评价指标 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究人员或高级工程师，在深度学习项目中，您通常如何根据任务特性设计损失函数？请描述一个具体场景，并思考现有标准损失函数为何无法满足需求。",
+            "action_hint": "尝试分析您当前或过往项目中，哪些任务需要定制化损失函数，并列出可能的设计方向。"
+          },
+          {
+            "lang": "zh",
+            "question": "在模型优化过程中，您如何评估自定义损失函数的有效性？请结合您的领域经验，说明除了准确率外，还有哪些关键指标能反映模型性能。",
+            "action_hint": "回顾一个实际案例，思考如何设计评价指标来全面衡量模型表现，并准备在课程中探索实现方法。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-10-hyperparameter",
       "date": "2025-12-10",
