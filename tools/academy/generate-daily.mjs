@@ -20,7 +20,7 @@ import {
 } from "./util.mjs";
 import {
   buildLessonBlueprintPrompt,
-  buildLessonDetailPrompt,
+  buildLessonContentPrompt,
   buildLessonCritiquePrompt,
   buildLessonRevisionPrompt,
   buildStarterPrompt,
@@ -29,7 +29,9 @@ import {
   BLUEPRINT_RESPONSE_FORMAT,
   LESSON_RESPONSE_FORMAT,
   CRITIQUE_RESPONSE_FORMAT,
-  PRACTICE_RESPONSE_FORMAT
+  PRACTICE_RESPONSE_FORMAT,
+  buildCodeAddendumPrompt,
+  CODE_RESPONSE_FORMAT
 } from "./prompts/index.mjs";
 
 const root = process.cwd();
@@ -304,6 +306,15 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
   const baseURL = process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.openai.com/v1";
   const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || "gpt-4.1-mini";
 
+  const maxTokens = Number(
+    process.env.LLM_MAX_TOKENS ||
+      process.env.OPENAI_MAX_TOKENS ||
+      process.env.DEEPSEEK_MAX_TOKENS ||
+      process.env.DEEPSEEK_MAX_OUTPUT ||
+      process.env.DEEPSEEK_MAX_INPUT ||
+      0
+  );
+
   const request = async (format) => {
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: "POST",
@@ -315,6 +326,7 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
         model,
         temperature,
         ...(format ? { response_format: format } : {}),
+        ...(maxTokens > 0 ? { max_tokens: maxTokens } : {}),
         messages
       })
     });
@@ -1141,6 +1153,45 @@ async function generatePracticeSuite({ candidate, learnerProfile, blueprint, les
   return normalizePractice([], candidate);
 }
 
+function appendCodeAddendum(html, blocks, langKey) {
+  if (typeof html !== "string" || !Array.isArray(blocks) || !blocks.length) return html;
+  const rendered = blocks
+    .map((block) => {
+      const content = block?.[langKey];
+      if (!content || typeof content !== "string") return null;
+      const title = typeof block?.title === "string" ? block.title : "代码与实操";
+      return `<section class="code-addendum"><h4>${title}</h4>${content.trim()}</section>`;
+    })
+    .filter(Boolean)
+    .join("\n");
+  if (!rendered) return html;
+  return `${html}\n${rendered}`;
+}
+
+async function generateCodeAddendum({ candidate, learnerProfile, blueprint, lesson }) {
+  const sanitizedLesson = sanitizeLessonEntry(lesson) || lesson;
+  const messages = buildCodeAddendumPrompt({
+    candidate,
+    learnerProfile,
+    blueprint,
+    lesson: sanitizedLesson
+  });
+  const responseFormats = [CODE_RESPONSE_FORMAT, { type: "json_object" }, null];
+  let lastError = null;
+  for (const format of responseFormats) {
+    try {
+      const raw = await callLLM({ messages, temperature: 0.3, responseFormat: format });
+      const parsed = parseJSON(raw);
+      const list = Array.isArray(parsed) ? parsed : parsed?.code_blocks || parsed?.items || [];
+      if (Array.isArray(list) && list.length) return list;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  console.warn("Code addendum generation failed", lastError?.message || "unknown error");
+  return [];
+}
+
 const TRANSLATION_SYSTEM = "You are a bilingual localization editor for AI Daily Academy. Translate Chinese source text into natural, domain-accurate English while preserving HTML tags, numbers, metrics, and proper nouns.";
 
 const TRANSLATION_RESPONSE_FORMAT = {
@@ -1463,16 +1514,16 @@ async function generateLesson(candidate, history) {
   let lastError = null;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     try {
-      const messages = buildLessonDetailPrompt({
+      const contentMessages = buildLessonContentPrompt({
         candidate: candidateProfile,
         learnerProfile,
         toneProfile,
         blueprint,
         recentLessons: history
       });
-      const raw = await callLLM({ messages, responseFormat: LESSON_RESPONSE_FORMAT });
-      const parsed = parseJSON(raw);
-      let lessonDraft = coerceLesson(candidateProfile, parsed, date, learnerProfile, toneProfile, blueprint);
+      const contentRaw = await callLLM({ messages: contentMessages, responseFormat: LESSON_RESPONSE_FORMAT });
+      const contentParsed = parseJSON(contentRaw);
+      let lessonDraft = coerceLesson(candidateProfile, contentParsed, date, learnerProfile, toneProfile, blueprint);
       const critique = await critiqueLessonDraft({
         candidate: candidateProfile,
         learnerProfile,
@@ -1493,6 +1544,21 @@ async function generateLesson(candidate, history) {
           lessonDraft = coerceLesson(candidateProfile, revision, date, learnerProfile, toneProfile, blueprint);
         } catch (revisionError) {
           console.warn("Using pre-critique lesson due to revision error", revisionError.message);
+        }
+      }
+
+      const codeBlocks = await generateCodeAddendum({
+        candidate: candidateProfile,
+        learnerProfile,
+        blueprint,
+        lesson: lessonDraft
+      });
+      if (lessonDraft?.content) {
+        if (lessonDraft.content.zh) {
+          lessonDraft.content.zh = appendCodeAddendum(lessonDraft.content.zh, codeBlocks, "zh");
+        }
+        if (lessonDraft.content.en) {
+          lessonDraft.content.en = appendCodeAddendum(lessonDraft.content.en, codeBlocks, "en");
         }
       }
       applyMetaDefaults(lessonDraft, candidateProfile, learnerProfile, toneProfile);

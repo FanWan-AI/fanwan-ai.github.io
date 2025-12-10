@@ -1,4 +1,4 @@
-const PROMPT_VERSION = "2025-12-09";
+const PROMPT_VERSION = "2025-02-19";
 
 const LESSON_SYSTEM = "You are the master instructor of AI Daily Academy. You write bilingual blog-style lessons (zh / en, optional es) with a progressive structure, deep explanations, credible examples, tooling guidance and high-agency practice.";
 
@@ -44,20 +44,44 @@ const LESSON_CONTENT_OBJECTIVES = `扩写要求：
   - 对关键定义、术语与理论推导进行逐条解释，可用 <ul> 或表格呈现中英对照；
   - 至少一次引用 blueprint.references 或 case.citation，正文中用“（来源：xxx，2024）”或英文等效写法说明出处；
   - 展示 1 个数据集、公式或代码的 worked example（<pre><code> 或 <table>），逐步解释输入、处理与输出，并说明与本节概念的联系；
-    - 展示 1 个数据集、公式或代码的 worked example（<pre><code> 或 <table>），逐步解释输入、处理与输出，并说明与本节概念的联系；
+    - 生成的代码示例应尽量可直接运行：优先使用 numpy / pandas / scipy / scikit-learn / matplotlib（浏览器可自动加载），附带小型内联/随机数据并打印关键中间结果；如必须使用 torch / TensorFlow / mlxtend 等重型依赖，请确保逻辑完整并标注需在 Colab 或本地运行，避免缺失变量、依赖或数据来源。
   - 讨论概念在真实场景中的影响或迁移路径，并用 1-2 句桥接到下一节。
-    - 生成的代码示例应尽量可直接运行：优先使用 numpy / pandas / scipy / scikit-learn / matplotlib（浏览器可自动加载），附带小型内联/随机数据并打印关键中间结果；如必须使用 torch / TensorFlow / mlxtend 等重型依赖，请确保逻辑完整并标注需在 Colab 或本地运行，避免缺失变量或数据来源。
 4. 至少 1 节提供完整 worked example：列出数据字段、计算/代码步骤、关键中间结果和验证指标，必要时引用公开数据集。
 5. content.en 必须与中文结构一致，重写为地道英文；若模型无法提供 es，可省略。
 6. references 只能引用 blueprint.references 或 reference_pool 中真实资源，确保标题、出版方、年份一致，并优先覆盖正文提及的引用；若确无资源再返回 Internal insight。
 7. 本阶段不要生成 practice 字段，请留空数组；练习将在后续步骤生成。
 8. meta.contextual_notes 继承 blueprint.contextual_hooks，并补充本次 worked example 的可视化方案，如流程图或矩阵。
 9. 不得编造百分比提升或私有数据；若只有定性结论，可写“有助于…/可以降低…风险”。
-10. 章节之间需使用桥接句或过渡段，保持整篇博客式叙事连贯，避免简单罗列。`;
+10. 章节之间需使用桥接句或过渡段，保持整篇博客式叙事连贯，避免简单罗列。
+11. 若输出接近长度限制，优先保证 summary 完整、各节都有收尾和过渡，必要时精简赘述但不得截断句子或缺失闭合标签；遇到空间不足也不要省略 worked example 或 references，可改用更小型示例。
+`;
+
+const LESSON_CONTENT_ONLY_OBJECTIVES = `阶段 1（正文先行，不含代码）：
+1. summary / narrative / content 必须完整闭合 HTML 标签，保持 3-4 节结构，每节至少 3 段，但禁止输出 <pre><code>、公式块或任何代码；worked example 只做文字层面的步骤描述，不写代码。
+2. 文字中需保留将来插入代码的位置，使用自然过渡句，例如“下方代码演示…”但暂不插入代码块。
+3. references 仍需返回，保持与正文一致；practice 字段留空数组。
+4. 遇到长度限制时，优先保证 summary、各节收尾与过渡完整，不得截断句子或丢失闭合标签。
+`;
 
 const CRITIC_SYSTEM = "You are the lead reviewer of AI Daily Academy. You audit lessons for rigor, actionable depth, and assessment quality.";
 
-const CRITIC_OBJECTIVES = `请审阅 lesson 与 blueprint/learner_profile 的匹配度，给出 JSON：\n{"revision_required": bool, "scorecard": {"structure":{"score":0-5,"notes":""},"accuracy":{"score":0-5,"notes":""},"depth":{"score":0-5,"notes":""},"practice":{"score":0-5,"notes":""},"references":{"score":0-5,"notes":""}}, "issues": [{"area":"content|practice|references|metrics|depth","severity":"high|medium|low","note":"问题描述","action":"建议"}], "strengths": ["亮点..."], "directives": ["按优先级列出需改进的明确 TODO"], "practice_expectations": {"min_questions":4,"required_types":["mcq","multi","input"],"require_data_driven":true}, "content_expectations": {"require_worked_example":true,"require_formula":true,"require_steps":true,"require_definitions":true,"require_applications":true,"min_sections":3}}。若任意节缺少定义、理论、示例或步骤，或 summary 出现“学习前/学习后”等营销式对比，必须将 revision_required 设为 true 并给出整改建议。若无问题，可设置 revision_required=false 且 issues 为空。`;
+const CRITIC_OBJECTIVES = `请审阅 lesson 与 blueprint/learner_profile 的匹配度，给出 JSON：\n{"revision_required": bool, "scorecard": {"structure":{"score":0-5,"notes":""},"accuracy":{"score":0-5,"notes":""},"depth":{"score":0-5,"notes":""},"practice":{"score":0-5,"notes":""},"references":{"score":0-5,"notes":""}}, "issues": [{"area":"content|practice|references|metrics|depth|truncation|code_runnability","severity":"high|medium|low","note":"问题描述","action":"建议"}], "strengths": ["亮点..."], "directives": ["按优先级列出需改进的明确 TODO"], "practice_expectations": {"min_questions":4,"required_types":["mcq","multi","input"],"require_data_driven":true}, "content_expectations": {"require_worked_example":true,"require_formula":true,"require_steps":true,"require_definitions":true,"require_applications":true,"min_sections":3}}。
+若发现以下任一情况，必须将 revision_required 设为 true：
+- 任意节缺少定义、理论、示例或步骤，或 summary 出现“学习前/学习后”等营销式对比；
+- narrative / content 段落疑似被截断（未收尾、缺少闭合标签、最后一句不完整）或 sections 少于 3；
+- worked example 的代码/公式缺少依赖、变量、数据来源或无法推导输出（包括未导入库、缺失样例数据、未打印结果）。
+若无问题，可设置 revision_required=false 且 issues 为空。`;
+
+const CODE_SYSTEM = "You are the code & hands-on editor for AI Daily Academy. You add concise, runnable snippets that align with the already-written narrative.";
+
+const CODE_OBJECTIVES = `阶段 2（补充代码 / 实操）：
+1. 依据给定 blueprint.sections 与 lesson 摘要，为每个章节生成小型可运行的代码/计算示例，返回 JSON 数组：
+[{"section_id":"s1","title":"章节名","zh":"<h4>代码与实操</h4>...","en":"<h4>Code & Practice</h4>..."}]
+2. 代码必须自洽可运行：优先使用 numpy/pandas/scikit-learn/matplotlib；提供内联或随机数据，包含 import、数据定义、关键中间结果打印；避免依赖外部文件。
+3. 控制篇幅：每段代码不超过 120 行，解释用 2-3 句桥接正文；不得重复正文段落，只补充动作、参数与输出说明。
+4. 若章节适合公式或表格，可用 <table> 或列表描述计算步骤，并给出示例数字；若无合适代码，用伪代码展示流程即可。
+5. 中英双语并列，确保 HTML 标签闭合，禁止 Markdown 代码围栏。
+6. 若长度受限，优先保证每节至少 1 个可运行片段；可略缩注释，但不得去除 import/数据/输出。`;
 
 const REVISION_SYSTEM = "You are the master instructor revising the lesson after critique. You integrate all directives without losing prior strengths.";
 
@@ -140,6 +164,28 @@ const CRITIQUE_RESPONSE_FORMAT = {
         practice_expectations: { type: "object" }
       },
       additionalProperties: true
+    }
+  }
+};
+
+export const CODE_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "lessonCodeAddendum",
+    schema: {
+      type: "array",
+      minItems: 1,
+      items: {
+        type: "object",
+        required: ["section_id", "zh", "en"],
+        properties: {
+          section_id: { type: "string" },
+          title: { type: "string" },
+          zh: { type: "string" },
+          en: { type: "string" }
+        },
+        additionalProperties: true
+      }
     }
   }
 };
@@ -234,6 +280,43 @@ export function buildLessonDetailPrompt({ candidate, learnerProfile, toneProfile
   ];
 }
 
+export function buildLessonContentPrompt({ candidate, learnerProfile, toneProfile, blueprint, recentLessons }) {
+  const payload = {
+    topic: {
+      name: candidate.title,
+      category: candidate.category,
+      level: candidate.level,
+      tags: candidate.tags,
+      learning_objectives: candidate.learningObjectives
+    },
+    learner_profile: learnerProfile,
+    prerequisites: candidate.prerequisites || candidate.related || [],
+    related_topics: candidate.related || [],
+    difficulty: candidate.difficultyLabel,
+    references: candidate.referenceHints || [],
+    blueprint,
+    tone: toneProfile,
+    recent_lessons: formatRecentLessons(recentLessons),
+    meta: {
+      prompt_version: PROMPT_VERSION,
+      difficulty_score: candidate.difficulty,
+      category: candidate.category
+    }
+  };
+  const userContent = `任务：先生成“无代码版”课程正文，后续将补充代码与练习。
+
+输入载荷：
+${JSON.stringify(payload, null, 2)}
+
+${LESSON_CONTENT_ONLY_OBJECTIVES}
+
+在所有输出中，技术术语需使用中英双语（如“自注意力 self-attention”），禁止插入任何 <pre><code> 或 Markdown 围栏。返回严格 JSON，禁止额外文本。`;
+  return [
+    { role: "system", content: LESSON_SYSTEM },
+    { role: "user", content: `${LESSON_DEVELOPER}\n\n${userContent}` }
+  ];
+}
+
 export function buildStarterPrompt({ candidate, learnerProfile, lessonSummary }) {
   const payload = {
     topic: candidate.title,
@@ -267,6 +350,31 @@ export function buildLessonCritiquePrompt({ candidate, learnerProfile, blueprint
   const userContent = `请扮演 AI 学堂总编，对下列课程草稿做严格评审：\n${JSON.stringify(payload, null, 2)}\n\n${CRITIC_OBJECTIVES}`;
   return [
     { role: "system", content: CRITIC_SYSTEM },
+    { role: "user", content: userContent }
+  ];
+}
+
+export function buildCodeAddendumPrompt({ candidate, learnerProfile, blueprint, lesson }) {
+  const payload = {
+    topic: {
+      name: candidate.title,
+      category: candidate.category,
+      level: candidate.level,
+      difficulty: candidate.difficultyLabel
+    },
+    learner_profile: learnerProfile,
+    blueprint_sections: blueprint?.sections || [],
+    lesson_summary: lesson.summary,
+    lesson_outline: lesson.content,
+    preferred_metrics: learnerProfile.preferredMetrics,
+    prompt_version: PROMPT_VERSION
+  };
+  const userContent = `请在不改写正文的基础上，为每个章节补充可运行的代码/公式示例，使用 JSON 返回：
+${JSON.stringify(payload, null, 2)}
+
+${CODE_OBJECTIVES}`;
+  return [
+    { role: "system", content: CODE_SYSTEM },
     { role: "user", content: userContent }
   ];
 }
