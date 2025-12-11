@@ -227,6 +227,7 @@ style.textContent = `
 .wealth-references__label { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--wealth-card-text); }
 .wealth-links { display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.9rem; }
 .wealth-link__text { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--wealth-card-link-border); background: var(--wealth-card-link-bg); color: var(--wealth-card-link-text); text-decoration: none; }
+.wealth-prompt { margin: 16px 0; padding: 16px; background: var(--wealth-card-link-bg); border-left: 4px solid var(--wealth-card-strong); border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; white-space: pre-wrap; color: var(--wealth-card-text); font-size: 0.9rem; line-height: 1.6; }
 .wealth-list { display: grid; gap: 18px; margin-top: 18px; }
 .wealth-list-item { padding: 20px; border-radius: 16px; border: 1px solid var(--wealth-list-border); background: var(--wealth-list-bg); box-shadow: var(--wealth-list-shadow); display: grid; gap: 12px; color: var(--wealth-card-text); }
 .wealth-load-more { padding: 10px 18px; border-radius: 999px; border: 1px solid var(--wealth-load-border); background: var(--wealth-card-load-bg); color: var(--wealth-card-load-text); font-weight: 600; cursor: pointer; }
@@ -578,70 +579,9 @@ function parseMarkdown(text) {
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#039;");
 
-	// 3. Standard Markdown Parsing
+	// 3. Apply Markdown Syntax (Recursive)
+	safeText = applyMarkdownSyntax(safeText);
 
-	// Headers
-	safeText = safeText.replace(/^### (.*$)/gm, "<h3>$1</h3>");
-	safeText = safeText.replace(/^#### (.*$)/gm, "<h4>$1</h4>");
-	
-	// Bold
-	safeText = safeText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-
-	// Italics
-	safeText = safeText.replace(/([^\*]|^)\*([^\s\*](?:.*?[^\s\*])?)\*/g, "$1<em>$2</em>");
-
-	// Inline Code
-	safeText = safeText.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-	// Tables (Basic support)
-	// 1. Identify table blocks
-	safeText = safeText.replace(/((?:\|.*\|\r?\n)+)/g, (match) => {
-		const lines = match.trim().split(/\r?\n/);
-		if (lines.length < 2) return match; // Not a table
-
-		let html = '<div class="wealth-table-wrapper"><table>';
-		let isHeader = true;
-
-		lines.forEach((line, index) => {
-			if (line.trim().match(/^\|[\s:-]+\|/)) {
-				// Separator line, ignore but mark next as body
-				isHeader = false;
-				return;
-			}
-			
-			const cells = line.split("|").filter((c, i, arr) => i > 0 && i < arr.length - 1); // Remove first and last empty splits from |...|
-			if (cells.length === 0) return;
-
-			html += "<tr>";
-			cells.forEach(cell => {
-				const tag = (index === 0) ? "th" : "td"; // First line is header
-				html += `<${tag}>${cell.trim()}</${tag}>`;
-			});
-			html += "</tr>";
-		});
-
-		html += "</table></div>";
-		return html;
-	});
-
-	// Lists
-	// Unordered: * item or - item
-	safeText = safeText.replace(/^\s*[\-\*]\s+(.*)$/gm, "<div class='wealth-li'>• $1</div>");
-	
-	// Nested Unordered (simple heuristic for 2+ spaces indentation)
-	safeText = safeText.replace(/^\s{2,}[\-\*]\s+(.*)$/gm, "<div class='wealth-li wealth-li--nested'>• $1</div>");
-
-	// Newlines to <br> (but not inside tables or headers)
-	safeText = safeText.replace(/\n/g, "<br>");
-	
-	// Cleanup <br> around block elements
-	safeText = safeText.replace(/<\/h3><br>/g, "</h3>");
-	safeText = safeText.replace(/<\/h4><br>/g, "</h4>");
-	safeText = safeText.replace(/<\/table><\/div><br>/g, "</table></div>");
-	safeText = safeText.replace(/<\/div><br>/g, "</div>");
-	
-	// Ensure spacing between sections
-	safeText = safeText.replace(/<\/div><br><h3>/g, "</div><h3>");
 
 	// 4. Restore Math
 	mathPlaceholders.forEach(({ id, tex, displayMode }) => {
@@ -663,6 +603,99 @@ function parseMarkdown(text) {
 		safeText = safeText.replace(id, rendered);
 	});
 
+	return safeText;
+}
+
+function applyMarkdownSyntax(text) {
+	let safeText = text;
+
+	// Blockquotes (Recursive)
+	// Match lines starting with &gt; (and optional space)
+	safeText = safeText.replace(/(?:^&gt; ?.*(?:\r?\n|$))+/gm, (match) => {
+		// Remove &gt; and leading space from each line
+		const content = match.replace(/^&gt; ?/gm, "");
+		
+		// Check for "Prompt" style (heuristic: starts with "Prompt" or "**Prompt**")
+		const isPrompt = /^\s*(?:\*\*|<strong>)?Prompt(?:\*\*|:|<\/strong>)/i.test(content);
+		
+		const innerHtml = applyMarkdownSyntax(content);
+		
+		if (isPrompt) {
+			return `<div class="wealth-prompt">${innerHtml}</div>`;
+		}
+		return `<blockquote>${innerHtml}</blockquote>`;
+	});
+
+	// Tables (Basic support)
+	safeText = safeText.replace(/((?:\|.*\|(?:\r?\n|$))+)/g, (match) => {
+		const lines = match.trim().split(/\r?\n/);
+		if (lines.length < 2) return match; // Not a table
+
+		let html = '<div class="wealth-table-wrapper"><table>';
+		let isHeader = true;
+
+		lines.forEach((line, index) => {
+			if (line.trim().match(/^\|[\s:-]+\|/)) {
+				// Separator line
+				isHeader = false;
+				return;
+			}
+			
+			const cells = line.split("|").filter((c, i, arr) => i > 0 && i < arr.length - 1);
+			if (cells.length === 0) return;
+
+			html += "<tr>";
+			cells.forEach(cell => {
+				const tag = (index === 0) ? "th" : "td";
+				html += `<${tag}>${applyMarkdownInline(cell.trim())}</${tag}>`;
+			});
+			html += "</tr>";
+		});
+
+		html += "</table></div>";
+		return html;
+	});
+
+	// Lists
+	// Unordered: * item or - item
+	safeText = safeText.replace(/^\s*[\-\*]\s+(.*)$/gm, (match, item) => {
+		return `<div class='wealth-li'>• ${applyMarkdownInline(item)}</div>`;
+	});
+	
+	// Nested Unordered
+	safeText = safeText.replace(/^\s{2,}[\-\*]\s+(.*)$/gm, (match, item) => {
+		return `<div class='wealth-li wealth-li--nested'>• ${applyMarkdownInline(item)}</div>`;
+	});
+
+	// Headers
+	safeText = safeText.replace(/^### (.*$)/gm, "<h3>$1</h3>");
+	safeText = safeText.replace(/^#### (.*$)/gm, "<h4>$1</h4>");
+
+	// Inline Formatting (Bold, Italic, Code)
+	safeText = applyMarkdownInline(safeText);
+
+	// Newlines to <br> (but not inside tables or headers or blockquotes or prompts)
+	safeText = safeText.replace(/\n/g, "<br>");
+	
+	// Cleanup <br> around block elements
+	safeText = safeText.replace(/<\/h3><br>/g, "</h3>");
+	safeText = safeText.replace(/<\/h4><br>/g, "</h4>");
+	safeText = safeText.replace(/<\/table><\/div><br>/g, "</table></div>");
+	safeText = safeText.replace(/<\/div><br>/g, "</div>");
+	safeText = safeText.replace(/<\/blockquote><br>/g, "</blockquote>");
+	safeText = safeText.replace(/<\/div><br><h3>/g, "</div><h3>");
+
+	return safeText;
+}
+
+function applyMarkdownInline(text) {
+	let safeText = text;
+	// Bold
+	safeText = safeText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+	// Italics
+	safeText = safeText.replace(/([^\*]|^)\*([^\s\*](?:.*?[^\s\*])?)\*/g, "$1<em>$2</em>");
+	// Inline Code
+	safeText = safeText.replace(/`([^`]+)`/g, "<code>$1</code>");
 	return safeText;
 }
 
