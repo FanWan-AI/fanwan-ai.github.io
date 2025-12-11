@@ -627,7 +627,7 @@ function applyMarkdownSyntax(text) {
 	});
 
 	// Tables (Basic support)
-	safeText = safeText.replace(/((?:\|.*\|(?:\r?\n|$))+)/g, (match) => {
+	safeText = safeText.replace(/((?:^\s*\|.*(?:\r?\n|$))+)/gm, (match) => {
 		const lines = match.trim().split(/\r?\n/);
 		if (lines.length < 2) return match; // Not a table
 
@@ -635,13 +635,17 @@ function applyMarkdownSyntax(text) {
 		let isHeader = true;
 
 		lines.forEach((line, index) => {
-			if (line.trim().match(/^\|[\s:-]+\|/)) {
+			const trimmedLine = line.trim();
+			if (trimmedLine.match(/^\|[\s:-]+(?:\||$)/)) {
 				// Separator line
 				isHeader = false;
 				return;
 			}
 			
-			const cells = line.split("|").filter((c, i, arr) => i > 0 && i < arr.length - 1);
+			let cells = line.split("|");
+			if (trimmedLine.startsWith("|")) cells.shift();
+			if (trimmedLine.endsWith("|")) cells.pop();
+			
 			if (cells.length === 0) return;
 
 			html += "<tr>";
