@@ -1,4 +1,5 @@
 const DAILY_URL = "/data/ai/wealth/finance-daily.json";
+const TRADE_URL = "/data/ai/trade/trade-daily.json";
 const PULSE_URL = "/data/ai/wealth/pulse.json";
 const CACHE_TTL = 1000 * 60 * 60; // Cache time-to-live
 
@@ -19,6 +20,7 @@ const CJK_PATTERN = /[\u3400-\u4dbf\u4e00-\u9ffc]/;
 
 let __wealth_last_daily = null;
 let __wealth_last_pulse = null;
+let currentMode = "wealth";
 const dailyContainer = document.getElementById("daily");
 const pulseContainer = document.getElementById("pulse");
 const dailyTrackEl = dailyContainer?.querySelector('[data-role="daily-track"]');
@@ -554,6 +556,8 @@ function parseMarkdown(text) {
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#039;");
+	safeText = safeText.replace(/^### (.*$)/gm, "<h3>$1</h3>");
+	safeText = safeText.replace(/^#### (.*$)/gm, "<h4>$1</h4>");
 	safeText = safeText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
 	safeText = safeText.replace(/\n/g, "<br>");
 	return safeText;
@@ -983,6 +987,19 @@ function createDailyCard(entry) {
 	}
 
 	card.append(header);
+
+	const mdContent = pickLang(entry.markdown_content);
+	if (mdContent) {
+		const title = document.createElement("h3");
+		title.textContent = pickLang(entry.topic) || pickLang(entry.title) || t("wealth_topic_fallback", "今日主题");
+		card.append(title);
+		
+		const contentDiv = document.createElement("div");
+		contentDiv.className = "wealth-markdown-content";
+		contentDiv.innerHTML = parseMarkdown(mdContent);
+		card.append(contentDiv);
+		return card;
+	}
 
 	const tags = renderTags(entry.meta || {});
 	if (tags) card.append(tags);
@@ -1477,7 +1494,46 @@ if (pulseMoreBtn) {
 	});
 }
 
+async function switchMode(mode) {
+	if (mode === currentMode) return;
+	currentMode = mode;
+	
+	// Update UI
+	document.querySelectorAll('.wealth-mode-btn').forEach(btn => {
+		btn.classList.toggle('active', btn.dataset.mode === mode);
+	});
+
+	// Clear current view
+	if (dailyTrackEl) dailyTrackEl.innerHTML = '<div class="wealth-track-card wealth-track-card--skeleton"></div>';
+	
+	const url = mode === 'trade' ? TRADE_URL : DAILY_URL;
+	const cacheKey = mode === 'trade' ? 'trade' : 'daily';
+	
+	try {
+		const data = await fetchJSON(url, cacheKey);
+		renderDaily(data);
+	} catch (error) {
+		console.error(`Failed to load ${mode} data`, error);
+		if (dailyTrackEl) {
+			dailyTrackEl.innerHTML = "";
+			const message = document.createElement("p");
+			message.className = "wealth-empty";
+			message.textContent = t("wealth_daily_error", "未能加载课程数据，请稍后刷新。");
+			dailyTrackEl.append(message);
+		}
+	}
+}
+
 async function init() {
+	// Setup toggles
+	const toggles = document.querySelectorAll('.wealth-mode-btn');
+	toggles.forEach(btn => {
+		btn.addEventListener('click', () => {
+			const mode = btn.dataset.mode;
+			if (mode) switchMode(mode);
+		});
+	});
+
 	if (!dailyContainer && !pulseContainer) {
 		return;
 	}
