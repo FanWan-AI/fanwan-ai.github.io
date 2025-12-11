@@ -129,7 +129,9 @@ async function main() {
     const promptPath = path.resolve(root, "tools/trade/trade_lesson_prompt.txt");
     let promptTemplate = await fs.readFile(promptPath, "utf8");
     
-    const prompt = `
+    // Split generation into two parts to avoid truncation
+    console.log("  > Generating Part 1 (Modules 0-4)...");
+    const promptPart1 = `
 Current Topic: ${candidate.topic}
 Category: ${candidate.category}
 Difficulty: ${candidate.difficulty}
@@ -137,10 +139,33 @@ Related Topics: ${(candidate.related_topics || []).join(", ")}
 Keywords: ${(candidate.keywords || []).join(", ")}
 
 ${promptTemplate}
+
+【特别指令】
+本次只输出 **模块 0 到 模块 4** 的内容。
+请在 **模块 4** 结束后立即停止输出。
 `;
 
-    const text = await callLLM(prompt);
-    const lesson = parseLesson(text, candidate);
+    const textPart1 = await callLLM(promptPart1);
+    
+    console.log("  > Generating Part 2 (Modules 5-7)...");
+    const promptPart2 = `
+Current Topic: ${candidate.topic}
+Category: ${candidate.category}
+Difficulty: ${candidate.difficulty}
+
+${promptTemplate}
+
+【特别指令】
+你已经完成了模块 0-4 的撰写。
+现在请继续撰写 **模块 5 到 模块 7** 的内容。
+请直接从 **### 模块 5：实战演练场** 开始输出。
+不要重复前面的内容。
+`;
+
+    const textPart2 = await callLLM(promptPart2);
+    
+    const fullText = textPart1 + "\n\n" + textPart2;
+    const lesson = parseLesson(fullText, candidate);
 
     if (dryRun) {
         console.log(JSON.stringify(lesson, null, 2));

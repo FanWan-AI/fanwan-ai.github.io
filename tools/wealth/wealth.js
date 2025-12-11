@@ -550,16 +550,119 @@ function renderMetaLine(entry, { compact = false } = {}) {
 
 function parseMarkdown(text) {
 	if (!text) return "";
-	let safeText = String(text)
+
+	// 1. Extract Math (Block $$...$$ and Inline $...$) to placeholders
+	const mathPlaceholders = [];
+	let processedText = String(text);
+
+	// Block Math
+	processedText = processedText.replace(/\$\$([\s\S]*?)\$\$/g, (match, tex) => {
+		const id = `__MATH_BLOCK_${mathPlaceholders.length}__`;
+		mathPlaceholders.push({ id, tex, displayMode: true });
+		return id;
+	});
+
+	// Inline Math (avoid matching currency like $100)
+	// Heuristic: $ followed by non-space, ending with non-space $
+	processedText = processedText.replace(/(^|[^\\])\$([^\s\$].*?[^\s\$])\$/g, (match, prefix, tex) => {
+		const id = `__MATH_INLINE_${mathPlaceholders.length}__`;
+		mathPlaceholders.push({ id, tex, displayMode: false });
+		return prefix + id;
+	});
+
+	// 2. Escape HTML
+	let safeText = processedText
 		.replace(/&/g, "&amp;")
 		.replace(/</g, "&lt;")
 		.replace(/>/g, "&gt;")
 		.replace(/"/g, "&quot;")
 		.replace(/'/g, "&#039;");
+
+	// 3. Standard Markdown Parsing
+
+	// Headers
 	safeText = safeText.replace(/^### (.*$)/gm, "<h3>$1</h3>");
 	safeText = safeText.replace(/^#### (.*$)/gm, "<h4>$1</h4>");
+	
+	// Bold
 	safeText = safeText.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+
+	// Italics
+	safeText = safeText.replace(/([^\*]|^)\*([^\s\*](?:.*?[^\s\*])?)\*/g, "$1<em>$2</em>");
+
+	// Inline Code
+	safeText = safeText.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+	// Tables (Basic support)
+	// 1. Identify table blocks
+	safeText = safeText.replace(/((?:\|.*\|\r?\n)+)/g, (match) => {
+		const lines = match.trim().split(/\r?\n/);
+		if (lines.length < 2) return match; // Not a table
+
+		let html = '<div class="wealth-table-wrapper"><table>';
+		let isHeader = true;
+
+		lines.forEach((line, index) => {
+			if (line.trim().match(/^\|[\s:-]+\|/)) {
+				// Separator line, ignore but mark next as body
+				isHeader = false;
+				return;
+			}
+			
+			const cells = line.split("|").filter((c, i, arr) => i > 0 && i < arr.length - 1); // Remove first and last empty splits from |...|
+			if (cells.length === 0) return;
+
+			html += "<tr>";
+			cells.forEach(cell => {
+				const tag = (index === 0) ? "th" : "td"; // First line is header
+				html += `<${tag}>${cell.trim()}</${tag}>`;
+			});
+			html += "</tr>";
+		});
+
+		html += "</table></div>";
+		return html;
+	});
+
+	// Lists
+	// Unordered: * item or - item
+	safeText = safeText.replace(/^\s*[\-\*]\s+(.*)$/gm, "<div class='wealth-li'>• $1</div>");
+	
+	// Nested Unordered (simple heuristic for 2+ spaces indentation)
+	safeText = safeText.replace(/^\s{2,}[\-\*]\s+(.*)$/gm, "<div class='wealth-li wealth-li--nested'>• $1</div>");
+
+	// Newlines to <br> (but not inside tables or headers)
 	safeText = safeText.replace(/\n/g, "<br>");
+	
+	// Cleanup <br> around block elements
+	safeText = safeText.replace(/<\/h3><br>/g, "</h3>");
+	safeText = safeText.replace(/<\/h4><br>/g, "</h4>");
+	safeText = safeText.replace(/<\/table><\/div><br>/g, "</table></div>");
+	safeText = safeText.replace(/<\/div><br>/g, "</div>");
+	
+	// Ensure spacing between sections
+	safeText = safeText.replace(/<\/div><br><h3>/g, "</div><h3>");
+
+	// 4. Restore Math
+	mathPlaceholders.forEach(({ id, tex, displayMode }) => {
+		let rendered = tex;
+		if (window.katex) {
+			try {
+				rendered = window.katex.renderToString(tex, {
+					displayMode: displayMode,
+					throwOnError: false
+				});
+			} catch (e) {
+				console.warn("KaTeX error:", e);
+				rendered = `<span class="katex-error">${tex}</span>`;
+			}
+		} else {
+			// Fallback if KaTeX not loaded
+			rendered = displayMode ? `<div class="math-block">$$${tex}$$</div>` : `<span class="math-inline">$${tex}$</span>`;
+		}
+		safeText = safeText.replace(id, rendered);
+	});
+
 	return safeText;
 }
 
