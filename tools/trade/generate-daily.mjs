@@ -79,6 +79,12 @@ function parseLesson(text, candidate) {
         sections[match[1]] = match[3].trim();
     }
 
+    const sectionKeys = Object.keys(sections);
+    console.log(`Parsed sections: ${sectionKeys.join(", ")}`);
+    if (sectionKeys.length < 3) {
+        console.warn("Warning: Few sections parsed. LLM output might be malformed.");
+    }
+
     // Topic
     const meta = sections['0'] || "";
     const titleMatch = meta.match(/章节标题[：:]\s*(.*)/);
@@ -143,11 +149,14 @@ ${promptTemplate}
 
     const updated = [lesson, ...history].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     const trimmed = await rollWindowAndArchive(updated, 60, path.resolve(root, DAILY_ARCH));
-    await writeJSON(path.resolve(root, DAILY), trimmed);
-    console.log(`Generated: ${lesson.topic.zh}`);
+    
+    const destPath = path.resolve(root, DAILY);
+    console.log(`Writing ${trimmed.length} items to ${destPath}...`);
+    await writeJSON(destPath, trimmed);
+    console.log(`Successfully generated and saved lesson: ${lesson.topic.zh}`);
 }
 
 main().catch(e => {
-    console.error(e);
+    console.error("Fatal error in generate-daily:", e);
     process.exit(1);
 });

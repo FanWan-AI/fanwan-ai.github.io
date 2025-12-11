@@ -32,6 +32,7 @@ export async function writeJSON(filePath, data) {
   const dir = path.dirname(filePath);
   await ensureDir(dir);
   const tmp = `${filePath}.${process.pid}.tmp`;
+  // console.log(`[util] Writing to ${filePath}`);
   await fs.writeFile(tmp, `${JSON.stringify(data, null, 2)}\n`, "utf8");
   await fs.rename(tmp, filePath);
 }
