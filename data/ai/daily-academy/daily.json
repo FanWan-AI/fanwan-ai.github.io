@@ -1,6 +1,188 @@
 {
-  "generatedAt": "2025-12-12T14:06:50.845Z",
+  "generatedAt": "2025-12-13T02:37:01.878Z",
   "lessons": [
+    {
+      "id": "2025-12-13-self-supervised",
+      "date": "2025-12-13",
+      "title": {
+        "zh": "自监督学习简介",
+        "en": "Introduction to Self-Supervised Learning"
+      },
+      "summary": {
+        "zh": "自监督学习通过设计代理任务从无标签数据中学习表征，解决了深度学习对标注数据依赖的瓶颈问题，在计算机视觉和自然语言处理等高级架构中具有广泛应用。本课程从基本概念与旋转预测示例出发，系统讲解对比学习理论、BERT预训练方法以及多模态扩展，帮助研究人员掌握减少标注需求的关键技术路径。",
+        "en": "Self-supervised learning addresses the bottleneck of deep learning's reliance on labeled data by designing pretext tasks to learn representations from unlabeled data, with broad applications in advanced architectures like computer vision and natural language processing. This course systematically explains contrastive learning theory, BERT pre-training methods, and multimodal extensions, starting from fundamental concepts and rotation prediction examples, helping researchers master key techniques to reduce annotation needs."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "self-supervised",
+        "contrastive learning"
+      ],
+      "content": {
+        "zh": "<article>\n  <p class=\"narrative-intro\">本课程从深度学习对标注数据的依赖问题出发，系统介绍自监督学习如何通过设计代理任务从无标签数据中学习表征。您将掌握其核心概念、对比学习理论、在自然语言处理中的应用以及多模态扩展，为在计算机视觉、NLP等领域的研究提供方法论支持。</p>\n  \n  <section>\n    <h3>自监督学习的基本原理与代理任务设计</h3>\n    <p>深度学习模型通常需要大量标注数据才能达到理想性能，但人工标注成本高昂且难以规模化。自监督学习通过设计代理任务从无标签数据中自动生成监督信号，从而学习有意义的表征，为解决这一瓶颈提供了有效途径。</p>\n    <p>核心概念包括：</p>\n    <ul>\n      <li><strong>代理任务（Pretext Task）</strong>：为预训练模型设计的辅助任务，如旋转预测、颜色扰动等，其目标不是直接解决下游任务，而是迫使模型理解数据的内在结构。</li>\n      <li><strong>表征学习（Representation Learning）</strong>：通过代理任务学习到的特征应具有可迁移性，能够提升下游任务的性能。</li>\n      <li><strong>预训练-微调范式（Pre-train then Fine-tune）</strong>：先在无标签数据上进行自监督预训练，然后在少量标注数据上微调以适应特定任务。</li>\n    </ul>\n    <p>以图像旋转预测为例，Facebook AI Research在2018年提出通过预测图像旋转角度来学习视觉特征的方法（来源：Unsupervised Representation Learning by Predicting Image Rotations，2018）。该方法在CIFAR-10数据集上实现了以下流程：</p>\n    <pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.model_selection import train_test_split\n\n# 模拟CIFAR-10图像数据（简化示例）\nn_samples = 1000\nimg_height, img_width = 32, 32\n# 生成随机图像数据（实际应加载真实数据集）\nimages = np.random.rand(n_samples, img_height, img_width, 3)\nlabels = np.random.randint(0, 4, n_samples)  # 0:0°, 1:90°, 2:180°, 3:270°\n\n# 数据预处理：应用旋转变换\nrotated_images = []\nfor img in images:\n    angle = np.random.choice([0, 90, 180, 270])\n    # 简化旋转操作（实际需使用图像处理库）\n    if angle == 90:\n        rotated = np.rot90(img, k=1)\n    elif angle == 180:\n        rotated = np.rot90(img, k=2)\n    elif angle == 270:\n        rotated = np.rot90(img, k=3)\n    else:\n        rotated = img\n    rotated_images.append(rotated)\n\nrotated_images = np.array(rotated_images)\nprint(f\"原始图像形状: {images.shape}\")\nprint(f\"旋转后图像形状: {rotated_images.shape}\")\nprint(f\"旋转角度标签示例: {labels[:5]}\")</code></pre>\n    <p>上述代码展示了旋转预测任务的数据准备过程：输入为无标签图像，处理包括随机旋转和标签生成，输出为旋转后的图像及对应角度标签。训练时，卷积神经网络通过预测旋转角度来学习边缘、纹理等视觉特征，这些特征可迁移到图像分类等下游任务。这种方法在医疗影像分析中也有应用潜力，例如从无标注的X光片中学习病理特征。</p>\n    <p>通过代理任务设计，自监督学习减少了对标注数据的依赖，为后续更复杂的对比学习方法奠定了基础。</p>\n  </section>\n  \n  <section>\n    <h3>对比学习：理论框架与算法实现</h3>\n    <p>对比学习通过拉近相似样本、推远不相似样本来学习表征，成为自监督学习的重要分支。其核心在于设计有效的正负样本对和损失函数，以提升特征学习的效率和质量。</p>\n    <p>关键理论要素包括：</p>\n    <ul>\n      <li><strong>正负样本对（Positive/Negative Pairs）</strong>：正样本对通常来自同一数据的不同增强视图，负样本对来自不同数据。</li>\n      <li><strong>InfoNCE损失（InfoNCE Loss）</strong>：基于噪声对比估计的损失函数，数学表达式为：</li>\n    </ul>\n    <pre><code>L = -log( exp(sim(z_i, z_j)/τ) / Σ_{k=1}^{N} exp(sim(z_i, z_k)/τ) )</code></pre>\n    <p>其中，sim表示余弦相似度，τ是温度参数，N是负样本数量。该损失鼓励正样本对的相似度高于负样本对。</p>\n    <ul>\n      <li><strong>温度参数τ（Temperature Parameter）</strong>：控制相似度分布的尖锐程度，影响模型对困难负样本的关注度。</li>\n    </ul>\n    <p>Google Research提出的SimCLR框架简化了对比学习实现（来源：A Simple Framework for Contrastive Learning of Visual Representations，2020）。以下是在STL-10无标签数据集上的示例步骤：</p>\n    <pre><code>import numpy as np\n\n# 模拟STL-10数据特征（简化）\nn_features = 128\nbatch_size = 32\n# 生成随机特征向量\nfeatures = np.random.randn(batch_size, n_features)\n\n# 计算InfoNCE损失（简化版）\ndef info_nce_loss(features, temperature=0.5):\n    # 特征归一化\n    features = features / np.linalg.norm(features, axis=1, keepdims=True)\n    # 计算相似度矩阵\n    similarity = np.dot(features, features.T)\n    # 假设正样本对为相邻索引（实际应为增强视图）\n    pos_pairs = np.diag(similarity, k=1)\n    # 负样本为其他所有样本\n    mask = ~np.eye(batch_size, dtype=bool)\n    neg_similarities = similarity[mask].reshape(batch_size, -1)\n    # 计算损失\n    numerator = np.exp(pos_pairs / temperature)\n    denominator = np.exp(neg_similarities / temperature).sum(axis=1)\n    loss = -np.log(numerator / denominator).mean()\n    return loss\n\nloss_value = info_nce_loss(features)\nprint(f\"InfoNCE损失值: {loss_value:.4f}\")\nprint(f\"特征相似度矩阵形状: {np.dot(features, features.T).shape}\")</code></pre>\n    <p>代码展示了InfoNCE损失的计算过程：输入为特征向量，处理包括归一化和相似度计算，输出为损失值。SimCLR通过大数据批量和简单增强组合提升了学习效率，在ImageNet上达到76.5%的top-1准确率。与MoCo算法相比，SimCLR无需专门的内存库，但需要较大的批次大小来获取足够负样本。</p>\n    <p>对比学习的理论进展为自然语言处理中的自监督预训练提供了借鉴，特别是通过损失函数设计来优化表征学习。</p>\n  </section>\n  \n  <section>\n    <h3>自监督预训练在自然语言处理中的实践</h3>\n    <p>自然语言处理长期面临标注数据稀缺的挑战，自监督预训练通过掩码语言建模等任务从大规模文本中学习语言表征，显著提升了各种NLP任务的性能。</p>\n    <p>核心方法包括：</p>\n    <ul>\n      <li><strong>掩码语言建模（Masked Language Modeling, MLM）</strong>：随机掩码输入文本中的部分token，训练模型预测被掩码的内容，迫使模型理解上下文语义。</li>\n      <li><strong>下一句预测（Next Sentence Prediction, NSP）</strong>：判断两个句子是否连续，帮助模型学习句子间关系。</li>\n      <li><strong>Transformer架构</strong>：基于自注意力机制，适合处理序列数据并捕获长距离依赖。</li>\n    </ul>\n    <p>BERT模型是这一领域的里程碑工作（来源：BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding，2018）。以下使用Wikipedia文本的简化示例说明MLM任务：</p>\n    <pre><code>import random\n\n# 模拟文本数据\ntexts = [\n    \"自监督学习通过无标签数据学习表征\",\n    \"对比学习拉近正样本推远负样本\",\n    \"Transformer模型在NLP中广泛应用\"\n]\n\n# 掩码处理\ndef mask_text(text, mask_prob=0.15):\n    tokens = list(text)\n    masked_tokens = []\n    labels = []\n    for token in tokens:\n        if random.random() < mask_prob:\n            masked_tokens.append(\"[MASK]\")\n            labels.append(token)\n        else:\n            masked_tokens.append(token)\n            labels.append(\"\")\n    return \"\".join(masked_tokens), labels\n\nmasked_text, labels = mask_text(texts[0])\nprint(f\"原始文本: {texts[0]}\")\nprint(f\"掩码后文本: {masked_text}\")\nprint(f\"掩码标签: {labels}\")</code></pre>\n    <p>示例展示了MLM的数据准备：输入为原始文本，处理包括随机掩码和标签生成，输出为掩码文本及对应标签。预训练时，Transformer模型通过预测掩码token来学习词汇和语法知识，然后在GLUE等基准上微调，达到80.5的综合得分。这种方法在金融文本分析、法律文档处理等场景中可迁移使用，通过预训练模型减少领域特定标注需求。</p>\n    <p>自监督预训练的成功推动了多模态学习的发展，其中文本与图像的对齐成为新的研究焦点。</p>\n  </section>\n  \n  <section>\n    <h3>多模态自监督学习与前沿探索</h3>\n    <p>现实世界数据常包含多种模态，如图像-文本对，多模态自监督学习旨在从无标签多模态数据中学习跨模态对齐的表征，实现更通用的智能系统。</p>\n    <p>关键技术包括：</p>\n    <ul>\n      <li><strong>跨模态对比学习（Cross-modal Contrastive Learning）</strong>：通过对比损失对齐不同模态的特征，如图像和文本映射到共享空间。</li>\n      <li><strong>零样本学习（Zero-shot Learning）</strong>：利用对齐的表征直接处理未见过的任务，无需额外训练。</li>\n      <li><strong>大规模预训练数据</strong>：使用数亿级图像-文本对提升模型泛化能力。</li>\n    </ul>\n    <p>OpenAI的CLIP模型是代表性工作（来源：Learning Transferable Visual Models From Natural Language Supervision，2021）。以下基于MS-COCO数据集的简化示例说明特征对齐过程：</p>\n    <pre><code>import numpy as np\n\n# 模拟图像和文本特征\nn_samples = 10\nfeature_dim = 512\nimage_features = np.random.randn(n_samples, feature_dim)\ntext_features = np.random.randn(n_samples, feature_dim)\n\n# 特征归一化\nimage_features = image_features / np.linalg.norm(image_features, axis=1, keepdims=True)\ntext_features = text_features / np.linalg.norm(text_features, axis=1, keepdims=True)\n\n# 计算相似度矩阵\nsimilarity = np.dot(image_features, text_features.T)\nprint(f\"图像-文本相似度矩阵形状: {similarity.shape}\")\nprint(f\"相似度矩阵示例:\\n{similarity[:3, :3]}\")\n\n# 计算对比损失（对称版本）\ndef clip_loss(image_features, text_features, temperature=0.5):\n    logits = np.dot(image_features, text_features.T) / temperature\n    labels = np.arange(len(image_features))\n    # 图像到文本损失\n    loss_i = -np.log(np.exp(logits[labels, labels]) / np.exp(logits).sum(axis=1)).mean()\n    # 文本到图像损失\n    loss_t = -np.log(np.exp(logits[labels, labels]) / np.exp(logits).sum(axis=0)).mean()\n    return (loss_i + loss_t) / 2\n\nloss = clip_loss(image_features, text_features)\nprint(f\"CLIP对比损失值: {loss:.4f}\")</code></pre>\n    <p>代码展示了多模态对比学习的基本流程：输入为图像和文本特征，处理包括归一化和相似度计算，输出为损失值。CLIP使用4亿图像-文本对进行训练，在ImageNet零样本分类中达到76.2%准确率，展示了跨模态对齐的潜力。当前趋势包括扩展到3D点云、医疗影像等更多模态，以及开发更高效的算法以减少计算成本。</p>\n    <p>多模态自监督学习正推动人工智能向更通用、更少人工干预的方向发展，为研究人员提供了丰富的创新空间。</p>\n  </section>\n  \n  <p class=\"narrative-outro\">自监督学习通过代理任务设计、对比学习理论、NLP预训练和多模态扩展，为深度学习提供了减少标注依赖的有效路径。掌握这些方法后，您可以尝试在特定数据集上实现旋转预测或对比学习任务，探索如何将自监督学习迁移到您的研究场景中。</p>\n</article>",
+        "en": "<article>\n  <p class=\"narrative-intro\">This course addresses the dependency of deep learning on labeled data by systematically introducing how self-supervised learning learns representations from unlabeled data through pretext tasks. You will master its core concepts, contrastive learning theory, applications in natural language processing, and multimodal extensions, providing methodological support for research in fields like computer vision and NLP.</p>\n  \n  <section>\n    <h3>Fundamental Principles and Pretext Task Design in Self-Supervised Learning</h3>\n    <p>Deep learning models typically require large amounts of labeled data to achieve optimal performance, but manual annotation is costly and difficult to scale. Self-supervised learning addresses this bottleneck by designing pretext tasks that automatically generate supervision signals from unlabeled data, enabling the learning of meaningful representations.</p>\n    <p>Key concepts include:</p>\n    <ul>\n      <li><strong>Pretext Task</strong>: An auxiliary task designed for pre-training models, such as rotation prediction or color perturbation, whose goal is not to directly solve downstream tasks but to force the model to understand the intrinsic structure of data.</li>\n      <li><strong>Representation Learning</strong>: Features learned through pretext tasks should be transferable, improving performance on downstream tasks.</li>\n      <li><strong>Pre-train then Fine-tune Paradigm</strong>: First perform self-supervised pre-training on unlabeled data, then fine-tune on small amounts of labeled data to adapt to specific tasks.</li>\n    </ul>\n    <p>Taking image rotation prediction as an example, Facebook AI Research proposed in 2018 a method to learn visual features by predicting image rotation angles (source: Unsupervised Representation Learning by Predicting Image Rotations, 2018). This method implements the following process on the CIFAR-10 dataset:</p>\n    <pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.model_selection import train_test_split\n\n# Simulate CIFAR-10 image data (simplified example)\nn_samples = 1000\nimg_height, img_width = 32, 32\n# Generate random image data (real datasets should be loaded)\nimages = np.random.rand(n_samples, img_height, img_width, 3)\nlabels = np.random.randint(0, 4, n_samples)  # 0:0°, 1:90°, 2:180°, 3:270°\n\n# Data preprocessing: apply rotation transformations\nrotated_images = []\nfor img in images:\n    angle = np.random.choice([0, 90, 180, 270])\n    # Simplified rotation operation (actual implementation requires image processing libraries)\n    if angle == 90:\n        rotated = np.rot90(img, k=1)\n    elif angle == 180:\n        rotated = np.rot90(img, k=2)\n    elif angle == 270:\n        rotated = np.rot90(img, k=3)\n    else:\n        rotated = img\n    rotated_images.append(rotated)\n\nrotated_images = np.array(rotated_images)\nprint(f\"Original image shape: {images.shape}\")\nprint(f\"Rotated image shape: {rotated_images.shape}\")\nprint(f\"Rotation angle label examples: {labels[:5]}\")</code></pre>\n    <p>The code above demonstrates data preparation for the rotation prediction task: input is unlabeled images, processing includes random rotation and label generation, output is rotated images and corresponding angle labels. During training, convolutional neural networks learn visual features like edges and textures by predicting rotation angles, and these features can be transferred to downstream tasks such as image classification. This method also has potential applications in medical image analysis, for example, learning pathological features from unlabeled X-ray images.</p>\n    <p>Through pretext task design, self-supervised learning reduces reliance on labeled data, laying the foundation for more complex contrastive learning methods.</p>\n  </section>\n  \n  <section>\n    <h3>Contrastive Learning: Theoretical Framework and Algorithm Implementation</h3>\n    <p>Contrastive learning learns representations by pulling similar samples closer and pushing dissimilar samples apart, becoming a key branch of self-supervised learning. Its core lies in designing effective positive-negative sample pairs and loss functions to improve the efficiency and quality of feature learning.</p>\n    <p>Key theoretical elements include:</p>\n    <ul>\n      <li><strong>Positive/Negative Pairs</strong>: Positive pairs typically come from different augmented views of the same data, while negative pairs come from different data.</li>\n      <li><strong>InfoNCE Loss</strong>: A loss function based on noise contrastive estimation, mathematically expressed as:</li>\n    </ul>\n    <pre><code>L = -log( exp(sim(z_i, z_j)/τ) / Σ_{k=1}^{N} exp(sim(z_i, z_k)/τ) )</code></pre>\n    <p>where sim denotes cosine similarity, τ is the temperature parameter, and N is the number of negative samples. This loss encourages higher similarity for positive pairs than negative pairs.</p>\n    <ul>\n      <li><strong>Temperature Parameter τ</strong>: Controls the sharpness of similarity distribution, affecting the model's attention to hard negative samples.</li>\n    </ul>\n    <p>The SimCLR framework proposed by Google Research simplifies contrastive learning implementation (source: A Simple Framework for Contrastive Learning of Visual Representations, 2020). The following are example steps on the STL-10 unlabeled dataset:</p>\n    <pre><code>import numpy as np\n\n# Simulate STL-10 data features (simplified)\nn_features = 128\nbatch_size = 32\n# Generate random feature vectors\nfeatures = np.random.randn(batch_size, n_features)\n\n# Compute InfoNCE loss (simplified version)\ndef info_nce_loss(features, temperature=0.5):\n    # Feature normalization\n    features = features / np.linalg.norm(features, axis=1, keepdims=True)\n    # Compute similarity matrix\n    similarity = np.dot(features, features.T)\n    # Assume positive pairs are adjacent indices (actual should be augmented views)\n    pos_pairs = np.diag(similarity, k=1)\n    # Negative samples are all other samples\n    mask = ~np.eye(batch_size, dtype=bool)\n    neg_similarities = similarity[mask].reshape(batch_size, -1)\n    # Compute loss\n    numerator = np.exp(pos_pairs / temperature)\n    denominator = np.exp(neg_similarities / temperature).sum(axis=1)\n    loss = -np.log(numerator / denominator).mean()\n    return loss\n\nloss_value = info_nce_loss(features)\nprint(f\"InfoNCE loss value: {loss_value:.4f}\")\nprint(f\"Feature similarity matrix shape: {np.dot(features, features.T).shape}\")</code></pre>\n    <p>The code demonstrates the computation process of InfoNCE loss: input is feature vectors, processing includes normalization and similarity calculation, output is the loss value. SimCLR improves learning efficiency through large batch sizes and simple augmentation combinations, achieving 76.5% top-1 accuracy on ImageNet. Compared to the MoCo algorithm, SimCLR does not require a dedicated memory bank but needs larger batch sizes to obtain sufficient negative samples.</p>\n    <p>Theoretical advances in contrastive learning provide insights for self-supervised pre-training in natural language processing, particularly in optimizing representation learning through loss function design.</p>\n  </section>\n  \n  <section>\n    <h3>Self-Supervised Pre-training in Natural Language Processing: Practical Applications</h3>\n    <p>Natural language processing has long faced the challenge of scarce labeled data. Self-supervised pre-training learns language representations from large-scale text through tasks like masked language modeling, significantly improving performance across various NLP tasks.</p>\n    <p>Core methods include:</p>\n    <ul>\n      <li><strong>Masked Language Modeling (MLM)</strong>: Randomly masks part of the tokens in input text, training the model to predict masked content, forcing it to understand contextual semantics.</li>\n      <li><strong>Next Sentence Prediction (NSP)</strong>: Determines whether two sentences are consecutive, helping the model learn inter-sentence relationships.</li>\n      <li><strong>Transformer Architecture</strong>: Based on self-attention mechanisms, suitable for processing sequential data and capturing long-range dependencies.</li>\n    </ul>\n    <p>The BERT model is a milestone in this field (source: BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding, 2018). The following simplified example using Wikipedia text illustrates the MLM task:</p>\n    <pre><code>import random\n\n# Simulate text data\ntexts = [\n    \"Self-supervised learning learns representations from unlabeled data\",\n    \"Contrastive learning pulls positive samples closer and pushes negative samples apart\",\n    \"Transformer models are widely used in NLP\"\n]\n\n# Masking process\ndef mask_text(text, mask_prob=0.15):\n    tokens = list(text)\n    masked_tokens = []\n    labels = []\n    for token in tokens:\n        if random.random() < mask_prob:\n            masked_tokens.append(\"[MASK]\")\n            labels.append(token)\n        else:\n            masked_tokens.append(token)\n            labels.append(\"\")\n    return \"\".join(masked_tokens), labels\n\nmasked_text, labels = mask_text(texts[0])\nprint(f\"Original text: {texts[0]}\")\nprint(f\"Masked text: {masked_text}\")\nprint(f\"Mask labels: {labels}\")</code></pre>\n    <p>The example shows data preparation for MLM: input is original text, processing includes random masking and label generation, output is masked text and corresponding labels. During pre-training, Transformer models learn vocabulary and grammatical knowledge by predicting masked tokens, then fine-tune on benchmarks like GLUE, achieving a composite score of 80.5. This method can be transferred to scenarios such as financial text analysis or legal document processing, reducing domain-specific labeling needs through pre-trained models.</p>\n    <p>The success of self-supervised pre-training has driven the development of multimodal learning, where aligning text and images becomes a new research focus.</p>\n  </section>\n  \n  <section>\n    <h3>Multimodal Self-Supervised Learning and Emerging Explorations</h3>\n    <p>Real-world data often contains multiple modalities, such as image-text pairs. Multimodal self-supervised learning aims to learn cross-modally aligned representations from unlabeled multimodal data, enabling more general intelligent systems.</p>\n    <p>Key technologies include:</p>\n    <ul>\n      <li><strong>Cross-modal Contrastive Learning</strong>: Aligns features of different modalities through contrastive loss, such as mapping images and text to a shared space.</li>\n      <li><strong>Zero-shot Learning</strong>: Uses aligned representations to directly handle unseen tasks without additional training.</li>\n      <li><strong>Large-scale Pre-training Data</strong>: Employs hundreds of millions of image-text pairs to enhance model generalization.</li>\n    </ul>\n    <p>OpenAI's CLIP model is a representative work (source: Learning Transferable Visual Models From Natural Language Supervision, 2021). The following simplified example based on the MS-COCO dataset illustrates the feature alignment process:</p>\n    <pre><code>import numpy as np\n\n# Simulate image and text features\nn_samples = 10\nfeature_dim = 512\nimage_features = np.random.randn(n_samples, feature_dim)\ntext_features = np.random.randn(n_samples, feature_dim)\n\n# Feature normalization\nimage_features = image_features / np.linalg.norm(image_features, axis=1, keepdims=True)\ntext_features = text_features / np.linalg.norm(text_features, axis=1, keepdims=True)\n\n# Compute similarity matrix\nsimilarity = np.dot(image_features, text_features.T)\nprint(f\"Image-text similarity matrix shape: {similarity.shape}\")\nprint(f\"Similarity matrix example:\\n{similarity[:3, :3]}\")\n\n# Compute contrastive loss (symmetric version)\ndef clip_loss(image_features, text_features, temperature=0.5):\n    logits = np.dot(image_features, text_features.T) / temperature\n    labels = np.arange(len(image_features))\n    # Image-to-text loss\n    loss_i = -np.log(np.exp(logits[labels, labels]) / np.exp(logits).sum(axis=1)).mean()\n    # Text-to-image loss\n    loss_t = -np.log(np.exp(logits[labels, labels]) / np.exp(logits).sum(axis=0)).mean()\n    return (loss_i + loss_t) / 2\n\nloss = clip_loss(image_features, text_features)\nprint(f\"CLIP contrastive loss value: {loss:.4f}\")</code></pre>\n    <p>The code demonstrates the basic process of multimodal contrastive learning: input is image and text features, processing includes normalization and similarity calculation, output is the loss value. CLIP was trained on 400 million image-text pairs, achieving 76.2% accuracy in zero-shot classification on ImageNet, demonstrating the potential of cross-modal alignment. Current trends include extension to more modalities like 3D point clouds and medical images, and developing more efficient algorithms to reduce computational costs.</p>\n    <p>Multimodal self-supervised learning is advancing artificial intelligence toward more general and less human-intervened directions, offering researchers a rich space for innovation.</p>\n  </section>\n  \n  <p class=\"narrative-outro\">Self-supervised learning provides an effective path to reduce dependency on labeled data through pretext task design, contrastive learning theory, NLP pre-training, and multimodal extensions. After mastering these methods, you can try implementing rotation prediction or contrastive learning tasks on specific datasets, exploring how to transfer self-supervised learning to your research scenarios.</p>\n</article>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自监督学习简介 · 结构总览 · 数据：课程大纲】在设计《自监督学习简介》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 自监督学习简介 · 结构总览 · Data: 课程大纲】When outlining \"自监督学习简介\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：自监督学习简介 · worked example · 数据：了解自监督学习的核心思想 数据/代码】在复现《自监督学习简介》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 自监督学习简介 · worked example · Data: 了解自监督学习的核心思想 数据/代码】While reproducing the worked example in \"自监督学习简介\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：自监督学习简介 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《自监督学习简介》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 自监督学习简介 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"自监督学习简介\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自监督学习简介 · 参考资料 · 数据：课程引用文献】当引用文献支撑《自监督学习简介》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 自监督学习简介 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"自监督学习简介\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Unsupervised Representation Learning by Predicting Image Rotations（Facebook AI Research，2018）",
+            "en": "Unsupervised Representation Learning by Predicting Image Rotations (Facebook AI Research, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1803.07728"
+        },
+        {
+          "label": {
+            "zh": "A Simple Framework for Contrastive Learning of Visual Representations（Google Research，2020）",
+            "en": "A Simple Framework for Contrastive Learning of Visual Representations (Google Research, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2002.05709"
+        },
+        {
+          "label": {
+            "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（Google AI，2018）",
+            "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (Google AI, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1810.04805"
+        },
+        {
+          "label": {
+            "zh": "Learning Transferable Visual Models From Natural Language Supervision（OpenAI，2021）",
+            "en": "Learning Transferable Visual Models From Natural Language Supervision (OpenAI, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2103.00020"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-13-self-supervised-zh.mp3"
+      },
+      "meta": {
+        "category": "Advanced Architectures",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 3,
+        "related": [
+          "Contrastive Learning",
+          "预训练"
+        ],
+        "learningObjectives": [
+          "了解自监督学习的核心思想",
+          "探索对比学习与预训练方法"
+        ],
+        "personas": [
+          "研究人员",
+          "博士生"
+        ],
+        "contextual_notes": {
+          "why_now": "掌握自监督学习方法可帮助研究者在高级架构中减少对标注数据的依赖，提升模型泛化能力。",
+          "best_for": "适合研究人员和博士生，需要在深度学习与神经网络领域快速应用自监督学习技术。",
+          "visual_hint": "使用流程图展示自监督学习流程：无标签数据→代理任务设计→模型训练→特征提取→下游任务应用；对于对比学习，可添加特征空间示意图显示正负样本分布。"
+        },
+        "tone_profile": {
+          "persona": "研究人员 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究人员、博士生，帮助他们把 自监督学习简介 应用于 Advanced Architectures",
+          "prefersEnglish": false,
+          "industries": [
+            "研究人员",
+            "博士生"
+          ],
+          "personas": [
+            "研究人员",
+            "博士生"
+          ],
+          "pains": "在 Advanced Architectures 场景缺乏 自监督学习简介 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究人员，你在构建高级架构时是否常面临标注数据不足的挑战？请思考：自监督学习中的代理任务设计如何帮助你从现有无标签数据中提取有用表征，从而减少对人工标注的依赖？",
+            "action_hint": "尝试分析你当前项目中可用的无标签数据源，并构思一个简单的代理任务（如图像旋转预测）来验证自监督学习的初步效果。"
+          },
+          {
+            "lang": "zh",
+            "question": "在博士生阶段，你可能正在探索减少模型标注需求的方法。回顾你熟悉的计算机视觉或自然语言处理架构，自监督学习中的对比学习或BERT预训练技术，如何为这些高级架构提供更高效的表征学习路径？",
+            "action_hint": "选择一个你研究领域的具体架构案例，评估引入自监督学习组件后，在模型性能或数据效率上可能带来的改进空间。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-12-graph-neural-network",
       "date": "2025-12-12",
