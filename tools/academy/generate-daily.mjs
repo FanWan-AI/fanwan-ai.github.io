@@ -1551,6 +1551,9 @@ async function generateLesson(candidate, history) {
         }
       }
 
+      // V3 Prompt Update: Code is now generated within the content phase (max 2 blocks).
+      // We skip the separate code addendum phase to avoid exceeding the code budget.
+      /*
       const codeBlocks = await generateCodeAddendum({
         candidate: candidateProfile,
         learnerProfile,
@@ -1565,6 +1568,8 @@ async function generateLesson(candidate, history) {
           lessonDraft.content.en = appendCodeAddendum(lessonDraft.content.en, codeBlocks, "en");
         }
       }
+      */
+      
       applyMetaDefaults(lessonDraft, candidateProfile, learnerProfile, toneProfile);
       const starterQuestions = await generateStarterQuestions(lessonDraft, candidateProfile, learnerProfile);
       lessonDraft.meta.starter_questions = starterQuestions;

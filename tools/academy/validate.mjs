@@ -28,8 +28,9 @@ async function run() {
     }
 
     // Code Budget Validator: Ensure no lesson has > 2 code blocks per language
+    // Only enforce for lessons generated on or after 2025-12-16 (V3 prompt rollout)
     for (const lesson of lessons) {
-      if (lesson.content) {
+      if (lesson.date >= "2025-12-16" && lesson.content) {
         for (const lang of ["zh", "en"]) {
           if (typeof lesson.content[lang] === "string") {
             const codeBlocks = (lesson.content[lang].match(/<pre><code>/g) || []).length;
