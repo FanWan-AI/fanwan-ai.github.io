@@ -26,6 +26,24 @@ async function run() {
     if (lessons.length > LESSON_LIMIT) {
       errors.push({ name: "academy-daily", type: "limit", details: [`${lessons.length} lessons > limit ${LESSON_LIMIT}`] });
     }
+
+    // Code Budget Validator: Ensure no lesson has > 2 code blocks per language
+    for (const lesson of lessons) {
+      if (lesson.content) {
+        for (const lang of ["zh", "en"]) {
+          if (typeof lesson.content[lang] === "string") {
+            const codeBlocks = (lesson.content[lang].match(/<pre><code>/g) || []).length;
+            if (codeBlocks > 2) {
+              errors.push({
+                name: "academy-daily",
+                type: "code-budget",
+                details: [`Lesson ${lesson.id} (${lang}) has ${codeBlocks} code blocks (limit 2)`]
+              });
+            }
+          }
+        }
+      }
+    }
   }
 
   try {
