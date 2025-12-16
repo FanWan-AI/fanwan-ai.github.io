@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2025-12-16T16:14:35.971Z",
+  "generatedAt": "2025-12-16T16:47:08.237Z",
   "lessons": [
+    {
+      "id": "2025-12-16-loss-function",
+      "date": "2025-12-16",
+      "title": {
+        "zh": "自定义损失函数与评价指标",
+        "en": "Custom Loss Functions and Evaluation Metrics"
+      },
+      "summary": {
+        "zh": "自定义损失函数与评价指标是深度学习框架中实现特定任务优化的核心工具，通过调整模型训练目标和评估标准来提升模型性能。本课程从标准工具在非标准问题中的失效场景切入，逐步讲解设计原则、数学表达与框架实现机制，最终通过一个完整的鸢尾花分类示例，展示从数据准备、自定义函数实现到模型评估的全流程。读者将掌握如何为类别不平衡、多任务学习等场景设计并实现有效的自定义工具。",
+        "en": "Custom loss functions and evaluation metrics are essential tools in deep learning frameworks for optimizing specific tasks by adjusting training objectives and performance standards. This course begins with scenarios where standard tools fail, then covers design principles, mathematical formulation, and framework implementation mechanisms. A complete iris classification example demonstrates the full workflow from data preparation and custom function implementation to model evaluation. Readers will learn to design and implement effective custom tools for scenarios like class imbalance and multi-task learning."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "loss function",
+        "metrics"
+      ],
+      "content": {
+        "zh": "<h2>自定义损失函数与评价指标：当标准工具遇到非标准问题</h2>\n<p>想象一下，你正在处理一个医学图像分割任务：需要从CT扫描中识别出肿瘤区域。数据集中，肿瘤像素仅占1%，背景像素占99%。使用标准的交叉熵损失函数训练模型后，你发现模型总是预测“背景”——因为这样就能达到99%的“准确率”。但肿瘤检测率几乎为零。这个场景揭示了深度学习中的一个核心挑战：当标准损失函数和评价指标无法满足特定任务需求时，我们需要自定义工具来引导模型学习真正重要的模式。</p>\n<p>本文将带你从直觉到实践，完整掌握自定义损失函数和评价指标的设计与实现。你将学会：为什么在类别不平衡、多任务学习等场景中标准工具会失效；如何基于数学原理设计适合自己问题的函数；如何在TensorFlow/Keras和PyTorch中实现这些函数；以及如何通过一个完整的鸢尾花分类示例验证你的设计。无论你是研究人员需要为新颖任务设计优化目标，还是工程师需要提升现有模型在特定指标上的表现，这篇文章都将提供可执行的路径。</p>\n\n<h3>当标准工具遇到非标准问题</h3>\n<p>深度学习框架提供了丰富的内置损失函数和评价指标，如交叉熵、均方误差、准确率等。这些工具在标准任务中表现良好，但在面对现实世界的复杂问题时往往力不从心。以开头的医学图像分割为例，标准交叉熵损失假设所有类别同等重要，导致模型被多数类（背景）主导。这时，我们需要重新思考：损失函数和评价指标的本质区别是什么？</p>\n<p><strong>损失函数（Loss Function）</strong>是模型训练时优化的目标函数，它计算预测值与真实值之间的差异，并通过梯度下降指导参数更新方向。损失函数必须是可微的，以便进行反向传播。而<strong>评价指标（Evaluation Metric）</strong>是模型性能的衡量标准，用于评估和比较不同模型在特定任务上的表现。评价指标可以是非可微的，如F1-score或IoU（交并比）。</p>\n<blockquote>\n<p><strong>误区：</strong>损失函数和评价指标可以互换使用。</p>\n<p><strong>纠正：</strong>损失函数用于训练优化，评价指标用于性能评估。例如，在分类任务中，我们可能使用交叉熵损失进行训练（因为它可微且提供平滑梯度），但使用F1-score评估模型（因为它更好地处理类别不平衡）。两者目的不同，不能混淆。</p>\n</blockquote>\n<p>理解这一区别后，我们可以分析标准工具失效的原因。在类别不平衡问题中，准确率指标会掩盖少数类的性能；在多任务学习中，单一损失函数可能无法平衡不同目标。因此，自定义工具的核心是<strong>将任务先验知识编码到函数设计中</strong>。例如，为医学图像分割设计加权交叉熵损失，给肿瘤像素更高权重；或为多任务学习设计组合损失，平衡分类和回归目标。</p>\n<p>在本文的贯穿示例中，我们将使用鸢尾花数据集模拟类别不平衡场景。原始数据中三个类别基本平衡，但我们将人为调整分布，创建一个少数类（如“山鸢尾”）仅占10%的数据集。通过这个示例，你将看到标准交叉熵损失如何偏向多数类，以及自定义加权损失如何改善少数类的识别性能。</p>\n<p>小结：标准损失函数和评价指标基于通用假设，在非标准问题中可能失效。自定义工具允许我们将领域知识融入模型训练和评估过程。接下来，我们将探讨如何基于数学原理设计这些函数。</p>\n\n<h3>设计原则与数学表达</h3>\n<p>设计自定义损失函数和评价指标时，不能随意组合数学运算。必须考虑优化算法的要求，特别是梯度下降的有效性。两个关键设计原则是<strong>可微性（Differentiability）</strong>和<strong>凸性（Convexity）</strong>。</p>\n<p>可微性指函数在某点存在导数，这是梯度下降优化的必要条件。如果损失函数不可微（如包含argmax操作），梯度无法计算，训练将失败。凸性指函数图形呈碗状，保证梯度下降能找到全局最优解。非凸函数可能有多个局部极小值，导致优化困难。在实践中，我们通常优先保证可微性，而接受一定程度的非凸性（深度学习模型本身通常是非凸的）。</p>\n<p>让我们通过回归任务中两个常见损失函数的对比来理解设计选择。均方误差（MSE）计算预测值与真实值之差的平方：<code>MSE = (1/n) * Σ(y_pred - y_true)²</code>。它对大误差给予更高惩罚（因为平方放大），但可能对异常值敏感。平均绝对误差（MAE）计算绝对差：<code>MAE = (1/n) * Σ|y_pred - y_true|</code>。它对异常值更鲁棒，但在零点不可微（梯度不连续）。选择哪个取决于任务需求：如果希望模型避免大误差，用MSE；如果数据包含噪声，用MAE。</p>\n<blockquote>\n<p><strong>误区：</strong>自定义损失函数越复杂越好。</p>\n<p><strong>纠正：</strong>简单有效的函数往往更稳定。复杂函数可能引入不必要的非线性，导致梯度消失或爆炸，训练困难。例如，在多任务学习中，一个简单的加权组合损失<code>L = α*L_class + β*L_reg</code>通常比复杂的交互项更有效。</p>\n</blockquote>\n<p>设计过程可以概括为以下步骤：1) 分析任务特性（如类别不平衡、多目标）；2) 选择基础函数形式（如交叉熵、L1/L2范数）；3) 引入调整因子（如类别权重、聚焦参数）；4) 验证可微性和数值稳定性。以Focal Loss为例（来源：Focal Loss for Dense Object Detection），它在标准交叉熵基础上增加了一个调制因子<code>(1-p_t)^γ</code>，降低易分类样本的权重，使模型更关注难分类样本。数学表达为：<code>FL(p_t) = -α_t * (1-p_t)^γ * log(p_t)</code>，其中<code>p_t</code>是模型对真实类别的预测概率，<code>α_t</code>是类别权重，<code>γ</code>是聚焦参数。</p>\n<p>在鸢尾花示例中，我们将设计一个加权交叉熵损失，给少数类（山鸢尾）分配更高权重。权重可以根据类别频率的倒数计算：<code>weight = total_samples / (num_classes * class_samples)</code>。这样，模型在训练时会更加关注少数类，改善其识别性能。</p>\n<p>小结：自定义函数设计需平衡任务需求与优化约束，优先保证可微性，避免不必要的复杂性。掌握了设计原则后，我们将这些理论应用到实际框架中，看看如何在TensorFlow/Keras和PyTorch中实现自定义函数。</p>\n\n<h3>框架实现与调试技巧</h3>\n<p>在TensorFlow/Keras和PyTorch中实现自定义函数，本质上是利用框架的<strong>自动微分（Automatic Differentiation）</strong>机制。框架通过<strong>计算图（Computational Graph）</strong>记录所有操作，并在反向传播时自动计算梯度。因此，实现的关键是确保自定义函数由框架支持的基本操作构成。</p>\n<p>自动微分的工作原理是：框架将计算过程分解为一系列基本操作（如加法、乘法、激活函数），构建一个有向图。在前向传播时，它记录每个操作的输入和输出；在反向传播时，它使用链式法则从输出层向输入层逐层计算梯度。这意味着，如果自定义函数包含不可微操作（如四舍五入、索引选择），梯度链将断裂，导致训练失败。例如，在实现IoU指标时，如果直接对分割掩码进行阈值化（二值化），会导致梯度无法传播。解决方案是使用可微近似，如sigmoid激活加连续松弛。</p>\n<p>TensorFlow/Keras提供了两种主要方式：1) 使用<code>tf.GradientTape</code>上下文手动记录操作，适用于需要精细控制的情况；2) 继承<code>tf.keras.losses.Loss</code>类或<code>tf.keras.metrics.Metric</code>类，重写<code>call</code>方法，这是更标准的方式。PyTorch中，自定义损失函数通常实现为一个普通的Python函数，它接受预测值和真实值，返回标量损失；或者继承<code>torch.nn.Module</code>。评价指标可以类似实现，但注意指标计算通常不需要梯度。</p>\n<blockquote>\n<p><strong>误区：</strong>所有自定义函数都能直接用于训练。</p>\n<p><strong>纠正：</strong>需要确保函数符合框架的自动微分要求。避免使用NumPy操作（除非在<code>@tf.function</code>外），因为NumPy数组不记录梯度。在TensorFlow中，使用<code>tf.math</code>替代<code>math</code>；在PyTorch中，使用<code>torch</code>函数替代NumPy。</p>\n</blockquote>\n<p>调试自定义函数时，建议：1) 用小批量数据测试前向传播，确保输出形状和数值范围合理；2) 使用<code>tf.GradientTape.gradient</code>或<code>torch.autograd.grad</code>检查梯度是否存在且非零；3) 监控训练过程中的损失曲线，如果出现NaN或爆炸，检查数值稳定性（如添加小epsilon防止除零）。</p>\n<p>在鸢尾花示例中，我们将在Keras中实现加权交叉熵损失。具体步骤是：定义权重数组，在损失函数中应用<code>tf.nn.weighted_cross_entropy_with_logits</code>或手动计算加权交叉熵。同时，我们将实现宏平均F1-score作为自定义指标，这需要跟踪每个类别的真阳性、假阳性等统计量，并在每个epoch结束时计算。</p>\n<p>小结：框架实现要求函数由可微操作构成，并遵循API规范。调试时需验证梯度计算和数值稳定性。现在，让我们通过完整示例将理论付诸实践。</p>\n\n<h2>完整示例：鸢尾花分类中的自定义损失与指标</h2>\n<p>以下代码块展示了从数据准备到模型评估的完整流程。我们使用sklearn的鸢尾花数据集，人为创建类别不平衡（山鸢尾占10%），并实现加权交叉熵损失和宏平均F1-score指标。代码设计为自包含，可直接运行。</p>\n<pre><code>import numpy as np\nimport tensorflow as tf\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler, LabelBinarizer\nimport matplotlib.pyplot as plt\n\n# 步骤1：加载数据并创建类别不平衡\niris = load_iris()\nX, y = iris.data, iris.target\n# 人为减少类别0（山鸢尾）的样本\nmask = (y == 0)\nindices = np.where(mask)[0]\nreduce_indices = indices[:int(len(indices) * 0.9)]  # 保留10%\nX = np.delete(X, reduce_indices, axis=0)\ny = np.delete(y, reduce_indices, axis=0)\nprint(\"类别分布:\", np.bincount(y))\n\n# 步骤2：预处理\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\nlb = LabelBinarizer()\ny_onehot = lb.fit_transform(y)  # 独热编码\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y_onehot, test_size=0.2, random_state=42, stratify=y)\n\n# 步骤3：定义自定义损失和指标\nclass WeightedCategoricalCrossentropy(tf.keras.losses.Loss):\n    def __init__(self, weights, name=\"weighted_categorical_crossentropy\"):\n        super().__init__(name=name)\n        self.weights = tf.constant(weights, dtype=tf.float32)\n    \n    def call(self, y_true, y_pred):\n        # 计算标准分类交叉熵\n        loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=False)\n        # 应用类别权重\n        class_weights = tf.reduce_sum(y_true * self.weights, axis=-1)\n        weighted_loss = loss * class_weights\n        return tf.reduce_mean(weighted_loss)\n\nclass MacroF1Score(tf.keras.metrics.Metric):\n    def __init__(self, num_classes, name=\"macro_f1_score\", **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.num_classes = num_classes\n        self.true_positives = self.add_weight(name=\"tp\", shape=(num_classes,), initializer=\"zeros\")\n        self.false_positives = self.add_weight(name=\"fp\", shape=(num_classes,), initializer=\"zeros\")\n        self.false_negatives = self.add_weight(name=\"fn\", shape=(num_classes,), initializer=\"zeros\")\n    \n    def update_state(self, y_true, y_pred, sample_weight=None):\n        y_pred_class = tf.argmax(y_pred, axis=-1)\n        y_true_class = tf.argmax(y_true, axis=-1)\n        for c in range(self.num_classes):\n            tp = tf.reduce_sum(tf.cast((y_pred_class == c) & (y_true_class == c), tf.float32))\n            fp = tf.reduce_sum(tf.cast((y_pred_class == c) & (y_true_class != c), tf.float32))\n            fn = tf.reduce_sum(tf.cast((y_pred_class != c) & (y_true_class == c), tf.float32))\n            self.true_positives[c].assign_add(tp)\n            self.false_positives[c].assign_add(fp)\n            self.false_negatives[c].assign_add(fn)\n    \n    def result(self):\n        precision = self.true_positives / (self.true_positives + self.false_positives + tf.keras.backend.epsilon())\n        recall = self.true_positives / (self.true_positives + self.false_negatives + tf.keras.backend.epsilon())\n        f1_per_class = 2 * precision * recall / (precision + recall + tf.keras.backend.epsilon())\n        return tf.reduce_mean(f1_per_class)\n    \n    def reset_states(self):\n        for var in self.variables:\n            var.assign(tf.zeros_like(var))\n\n# 计算类别权重（逆频率）\nclass_counts = np.bincount(np.argmax(y_train, axis=-1))\ntotal = np.sum(class_counts)\nweights = total / (len(class_counts) * class_counts)\nprint(\"类别权重:\", weights)\n\n# 步骤4：构建和训练模型\nmodel = tf.keras.Sequential([\n    tf.keras.layers.Dense(16, activation='relu', input_shape=(4,)),\n    tf.keras.layers.Dense(3, activation='softmax')\n])\n\nmodel.compile(\n    optimizer='adam',\n    loss=WeightedCategoricalCrossentropy(weights),\n    metrics=['accuracy', MacroF1Score(num_classes=3)]\n)\n\nhistory = model.fit(X_train, y_train, epochs=50, batch_size=16, validation_split=0.2, verbose=0)\n\n# 步骤5：评估和可视化\n# 损失曲线\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(history.history['loss'], label='训练损失')\nplt.plot(history.history['val_loss'], label='验证损失')\nplt.title('加权交叉熵损失变化')\nplt.xlabel('Epoch')\nplt.ylabel('损失')\nplt.legend()\n\n# 混淆矩阵\nfrom sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay\ny_pred = model.predict(X_test)\ny_pred_class = np.argmax(y_pred, axis=-1)\ny_true_class = np.argmax(y_test, axis=-1)\ncm = confusion_matrix(y_true_class, y_pred_class)\nplt.subplot(1, 2, 2)\ndisp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=iris.target_names)\ndisp.plot(cmap=plt.cm.Blues, ax=plt.gca())\nplt.title('混淆矩阵')\nplt.tight_layout()\nplt.show()\n\n# 输出关键指标\ntest_loss, test_acc, test_f1 = model.evaluate(X_test, y_test, verbose=0)\nprint(f\"测试集损失: {test_loss:.4f}\")\nprint(f\"测试集准确率: {test_acc:.4f}\")\nprint(f\"测试集宏平均F1-score: {test_f1:.4f}\")\nprint(f\"TensorFlow版本: {tf.__version__}\")</code></pre>\n\n<h2>方法论迁移：将自定义工具应用到你的项目</h2>\n<p>通过鸢尾花示例，你体验了从问题分析到实现验证的完整流程。要将这一方法论迁移到自己的项目中，可以遵循以下步骤：</p>\n<ol>\n<li><strong>诊断问题：</strong>首先评估标准工具是否满足需求。检查数据分布（如类别不平衡）、任务目标（如多任务）、评估标准（如业务指标）。如果标准工具导致次优结果，考虑自定义。</li>\n<li><strong>设计函数：</strong>基于问题特性选择基础函数（如交叉熵、L1损失），引入调整因子（如权重、聚焦参数）。确保函数可微，并测试数值稳定性。</li>\n<li><strong>框架实现：</strong>在TensorFlow/Keras或PyTorch中实现自定义损失和指标。遵循框架API规范，使用可微操作，避免梯度断裂。</li>\n<li><strong>实验验证：</strong>在小规模数据上测试函数行为，监控训练曲线和梯度。与基线模型比较，确保自定义工具带来改进。</li>\n<li><strong>迭代优化：</strong>根据实验结果调整函数设计，如调整权重、尝试不同组合。记录所有实验设置以保证可复现性（Reproducibility）。</li>\n</ol>\n<p>例如，如果你在处理一个目标检测任务，可以参考Focal Loss（来源：Focal Loss for Dense Object Detection）设计思路；如果你需要实现一个自定义评价指标如IoU，查阅框架文档（来源：TensorFlow Core API Documentation；来源：PyTorch Documentation: Custom Loss Functions）了解实现细节。记住，自定义工具不是目的，而是手段——最终目标是让模型更好地解决你的特定问题。</p>\n<p>现在，你已经掌握了自定义损失函数与评价指标的核心概念和实操技能。下一步，在你的项目中识别一个非标准问题，尝试设计并实现一个自定义函数，观察它如何改变模型行为。实践是巩固知识的最佳方式。</p>",
+        "en": "<h2>Custom Loss Functions and Evaluation Metrics: When Standard Tools Meet Non-Standard Problems</h2>\n<p>Imagine you are working on a medical image segmentation task: identifying tumor regions from CT scans. In your dataset, tumor pixels account for only 1%, while background pixels make up 99%. After training a model with standard cross-entropy loss, you find it always predicts \"background\"—achieving 99% \"accuracy.\" But tumor detection rate is nearly zero. This scenario reveals a core challenge in deep learning: when standard loss functions and evaluation metrics fail to meet specific task requirements, we need custom tools to guide the model to learn what truly matters.</p>\n<p>This article will take you from intuition to practice, fully mastering the design and implementation of custom loss functions and evaluation metrics. You will learn: why standard tools fail in scenarios like class imbalance or multi-task learning; how to design functions tailored to your problem based on mathematical principles; how to implement these functions in TensorFlow/Keras and PyTorch; and how to validate your design through a complete iris classification example. Whether you are a researcher needing to design optimization objectives for novel tasks or an engineer aiming to improve model performance on specific metrics, this article provides an actionable path.</p>\n\n<h3>When Standard Tools Meet Non-Standard Problems</h3>\n<p>Deep learning frameworks offer rich built-in loss functions and evaluation metrics, such as cross-entropy, mean squared error, and accuracy. These tools perform well on standard tasks but often fall short when facing real-world complex problems. Taking the medical image segmentation example, standard cross-entropy loss assumes all classes are equally important, causing the model to be dominated by the majority class (background). Here, we need to rethink: what is the fundamental difference between loss functions and evaluation metrics?</p>\n<p><strong>Loss Function</strong> is the objective function optimized during model training. It computes the difference between predicted and true values and guides parameter updates via gradient descent. A loss function must be differentiable to enable backpropagation. <strong>Evaluation Metric</strong> is a measure of model performance, used to assess and compare different models on specific tasks. Metrics can be non-differentiable, such as F1-score or IoU (Intersection over Union).</p>\n<blockquote>\n<p><strong>Myth:</strong> Loss functions and evaluation metrics are interchangeable.</p>\n<p><strong>Fix:</strong> Loss functions are for training optimization; evaluation metrics are for performance assessment. For example, in classification tasks, we might use cross-entropy loss for training (because it is differentiable and provides smooth gradients) but use F1-score for evaluation (because it better handles class imbalance). Their purposes differ and should not be confused.</p>\n</blockquote>\n<p>Understanding this distinction, we can analyze why standard tools fail. In class imbalance problems, accuracy metrics mask minority class performance; in multi-task learning, a single loss function may fail to balance different objectives. Thus, the core of custom tools is <strong>encoding task prior knowledge into function design</strong>. For instance, designing a weighted cross-entropy loss for medical image segmentation, giving higher weight to tumor pixels; or designing a combined loss for multi-task learning to balance classification and regression targets.</p>\n<p>In this article's running example, we will use the iris dataset to simulate a class imbalance scenario. The original data has three roughly balanced classes, but we will artificially adjust the distribution to create a dataset where a minority class (e.g., \"setosa\") accounts for only 10%. Through this example, you will see how standard cross-entropy loss biases toward majority classes and how custom weighted loss improves minority class recognition.</p>\n<p>Summary: Standard loss functions and evaluation metrics rely on general assumptions and may fail in non-standard problems. Custom tools allow us to incorporate domain knowledge into model training and evaluation. Next, we will explore how to design these functions based on mathematical principles.</p>\n\n<h3>Design Principles and Mathematical Formulation</h3>\n<p>When designing custom loss functions and evaluation metrics, you cannot arbitrarily combine mathematical operations. You must consider the requirements of optimization algorithms, especially the effectiveness of gradient descent. Two key design principles are <strong>Differentiability</strong> and <strong>Convexity</strong>.</p>\n<p>Differentiability means a function has a derivative at a point, which is necessary for gradient descent optimization. If a loss function is non-differentiable (e.g., contains argmax operations), gradients cannot be computed, and training fails. Convexity means the function graph is bowl-shaped, ensuring gradient descent finds a global optimum. Non-convex functions may have multiple local minima, making optimization difficult. In practice, we usually prioritize differentiability and accept some degree of non-convexity (deep learning models themselves are often non-convex).</p>\n<p>Let's understand design choices by comparing two common loss functions in regression tasks. Mean Squared Error (MSE) computes the square of differences between predicted and true values: <code>MSE = (1/n) * Σ(y_pred - y_true)²</code>. It penalizes large errors more heavily (due to squaring) but can be sensitive to outliers. Mean Absolute Error (MAE) computes absolute differences: <code>MAE = (1/n) * Σ|y_pred - y_true|</code>. It is more robust to outliers but non-differentiable at zero (gradient discontinuity). The choice depends on task needs: use MSE if you want the model to avoid large errors; use MAE if data contain noise.</p>\n<blockquote>\n<p><strong>Myth:</strong> The more complex a custom loss function, the better.</p>\n<p><strong>Fix:</strong> Simple, effective functions are often more stable. Complex functions may introduce unnecessary nonlinearities, causing vanishing or exploding gradients and training difficulties. For example, in multi-task learning, a simple weighted combination loss <code>L = α*L_class + β*L_reg</code> is usually more effective than complex interaction terms.</p>\n</blockquote>\n<p>The design process can be summarized as: 1) Analyze task characteristics (e.g., class imbalance, multiple objectives); 2) Choose a base function form (e.g., cross-entropy, L1/L2 norms); 3) Introduce adjustment factors (e.g., class weights, focusing parameters); 4) Verify differentiability and numerical stability. Take Focal Loss as an example (source: Focal Loss for Dense Object Detection). It adds a modulating factor <code>(1-p_t)^γ</code> to standard cross-entropy, reducing the weight of easy-to-classify samples and making the model focus on hard ones. Mathematically: <code>FL(p_t) = -α_t * (1-p_t)^γ * log(p_t)</code>, where <code>p_t</code> is the model's predicted probability for the true class, <code>α_t</code> is a class weight, and <code>γ</code> is a focusing parameter.</p>\n<p>In the iris example, we will design a weighted cross-entropy loss, assigning higher weight to the minority class (setosa). Weights can be computed as the inverse of class frequency: <code>weight = total_samples / (num_classes * class_samples)</code>. This way, the model pays more attention to the minority class during training, improving its recognition performance.</p>\n<p>Summary: Custom function design must balance task requirements with optimization constraints, prioritizing differentiability and avoiding unnecessary complexity. After mastering design principles, we will apply this theory to actual frameworks, exploring how to implement custom functions in TensorFlow/Keras and PyTorch.</p>\n\n<h3>Framework Implementation and Debugging Techniques</h3>\n<p>Implementing custom functions in TensorFlow/Keras and PyTorch essentially leverages the frameworks' <strong>Automatic Differentiation</strong> mechanisms. Frameworks record all operations via a <strong>Computational Graph</strong> and automatically compute gradients during backpropagation. Thus, the key to implementation is ensuring custom functions consist of basic operations supported by the framework.</p>\n<p>The working principle of automatic differentiation is: frameworks decompose computations into a series of basic operations (e.g., addition, multiplication, activation functions), constructing a directed graph. During forward propagation, they record inputs and outputs of each operation; during backpropagation, they use the chain rule to compute gradients layer by layer from output to input. This means if a custom function contains non-differentiable operations (e.g., rounding, index selection), the gradient chain breaks, causing training failure. For example, when implementing IoU metrics, directly thresholding segmentation masks (binarization) prevents gradient propagation. The solution is to use differentiable approximations, such as sigmoid activation with continuous relaxation.</p>\n<p>TensorFlow/Keras offers two main approaches: 1) Use the <code>tf.GradientTape</code> context to manually record operations, suitable for fine-grained control; 2) Subclass <code>tf.keras.losses.Loss</code> or <code>tf.keras.metrics.Metric</code> and override the <code>call</code> method, which is more standard. In PyTorch, custom loss functions are typically implemented as plain Python functions taking predictions and labels and returning a scalar loss; or by subclassing <code>torch.nn.Module</code>. Metrics can be implemented similarly, but note that metric computation usually does not require gradients.</p>\n<blockquote>\n<p><strong>Myth:</strong> All custom functions can be directly used for training.</p>\n<p><strong>Fix:</strong> Ensure functions meet the framework's automatic differentiation requirements. Avoid NumPy operations (unless outside <code>@tf.function</code>) because NumPy arrays do not track gradients. In TensorFlow, use <code>tf.math</code> instead of <code>math</code>; in PyTorch, use <code>torch</code> functions instead of NumPy.</p>\n</blockquote>\n<p>When debugging custom functions, it is advisable to: 1) Test forward propagation with small batch data to ensure output shapes and value ranges are reasonable; 2) Use <code>tf.GradientTape.gradient</code> or <code>torch.autograd.grad</code> to check if gradients exist and are non-zero; 3) Monitor loss curves during training—if NaN or explosion occurs, check numerical stability (e.g., add small epsilon to prevent division by zero).</p>\n<p>In the iris example, we will implement weighted cross-entropy loss in Keras. Specific steps include: defining a weight array, applying <code>tf.nn.weighted_cross_entropy_with_logits</code> or manually computing weighted cross-entropy in the loss function. We will also implement macro-averaged F1-score as a custom metric, which requires tracking statistics like true positives and false positives per class and computing at the end of each epoch.</p>\n<p>Summary: Framework implementation requires functions to consist of differentiable operations and follow API conventions. Debugging involves verifying gradient computation and numerical stability. Now, let's put theory into practice through a complete example.</p>\n\n<h2>Complete Example: Custom Loss and Metrics in Iris Classification</h2>\n<p>The following code block shows the complete workflow from data preparation to model evaluation. We use sklearn's iris dataset, artificially create class imbalance (setosa accounts for 10%), and implement weighted cross-entropy loss and macro-averaged F1-score metrics. The code is self-contained and directly runnable.</p>\n<pre><code>import numpy as np\nimport tensorflow as tf\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler, LabelBinarizer\nimport matplotlib.pyplot as plt\n\n# Step 1: Load data and create class imbalance\niris = load_iris()\nX, y = iris.data, iris.target\n# Artificially reduce samples of class 0 (setosa)\nmask = (y == 0)\nindices = np.where(mask)[0]\nreduce_indices = indices[:int(len(indices) * 0.9)]  # Keep 10%\nX = np.delete(X, reduce_indices, axis=0)\ny = np.delete(y, reduce_indices, axis=0)\nprint(\"Class distribution:\", np.bincount(y))\n\n# Step 2: Preprocessing\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\nlb = LabelBinarizer()\ny_onehot = lb.fit_transform(y)  # One-hot encoding\nX_train, X_test, y_train, y_test = train_test_split(X_scaled, y_onehot, test_size=0.2, random_state=42, stratify=y)\n\n# Step 3: Define custom loss and metrics\nclass WeightedCategoricalCrossentropy(tf.keras.losses.Loss):\n    def __init__(self, weights, name=\"weighted_categorical_crossentropy\"):\n        super().__init__(name=name)\n        self.weights = tf.constant(weights, dtype=tf.float32)\n    \n    def call(self, y_true, y_pred):\n        # Compute standard categorical cross-entropy\n        loss = tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=False)\n        # Apply class weights\n        class_weights = tf.reduce_sum(y_true * self.weights, axis=-1)\n        weighted_loss = loss * class_weights\n        return tf.reduce_mean(weighted_loss)\n\nclass MacroF1Score(tf.keras.metrics.Metric):\n    def __init__(self, num_classes, name=\"macro_f1_score\", **kwargs):\n        super().__init__(name=name, **kwargs)\n        self.num_classes = num_classes\n        self.true_positives = self.add_weight(name=\"tp\", shape=(num_classes,), initializer=\"zeros\")\n        self.false_positives = self.add_weight(name=\"fp\", shape=(num_classes,), initializer=\"zeros\")\n        self.false_negatives = self.add_weight(name=\"fn\", shape=(num_classes,), initializer=\"zeros\")\n    \n    def update_state(self, y_true, y_pred, sample_weight=None):\n        y_pred_class = tf.argmax(y_pred, axis=-1)\n        y_true_class = tf.argmax(y_true, axis=-1)\n        for c in range(self.num_classes):\n            tp = tf.reduce_sum(tf.cast((y_pred_class == c) & (y_true_class == c), tf.float32))\n            fp = tf.reduce_sum(tf.cast((y_pred_class == c) & (y_true_class != c), tf.float32))\n            fn = tf.reduce_sum(tf.cast((y_pred_class != c) & (y_true_class == c), tf.float32))\n            self.true_positives[c].assign_add(tp)\n            self.false_positives[c].assign_add(fp)\n            self.false_negatives[c].assign_add(fn)\n    \n    def result(self):\n        precision = self.true_positives / (self.true_positives + self.false_positives + tf.keras.backend.epsilon())\n        recall = self.true_positives / (self.true_positives + self.false_negatives + tf.keras.backend.epsilon())\n        f1_per_class = 2 * precision * recall / (precision + recall + tf.keras.backend.epsilon())\n        return tf.reduce_mean(f1_per_class)\n    \n    def reset_states(self):\n        for var in self.variables:\n            var.assign(tf.zeros_like(var))\n\n# Compute class weights (inverse frequency)\nclass_counts = np.bincount(np.argmax(y_train, axis=-1))\ntotal = np.sum(class_counts)\nweights = total / (len(class_counts) * class_counts)\nprint(\"Class weights:\", weights)\n\n# Step 4: Build and train model\nmodel = tf.keras.Sequential([\n    tf.keras.layers.Dense(16, activation='relu', input_shape=(4,)),\n    tf.keras.layers.Dense(3, activation='softmax')\n])\n\nmodel.compile(\n    optimizer='adam',\n    loss=WeightedCategoricalCrossentropy(weights),\n    metrics=['accuracy', MacroF1Score(num_classes=3)]\n)\n\nhistory = model.fit(X_train, y_train, epochs=50, batch_size=16, validation_split=0.2, verbose=0)\n\n# Step 5: Evaluation and visualization\n# Loss curves\nplt.figure(figsize=(12, 4))\nplt.subplot(1"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 结构总览 · 数据：课程大纲】在设计《自定义损失函数与评价指标》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 自定义损失函数与评价指标 · 结构总览 · Data: 课程大纲】When outlining \"自定义损失函数与评价指标\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · worked example · 数据：编写自定义损失函数 数据/代码】在复现《自定义损失函数与评价指标》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 自定义损失函数与评价指标 · worked example · Data: 编写自定义损失函数 数据/代码】While reproducing the worked example in \"自定义损失函数与评价指标\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《自定义损失函数与评价指标》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 自定义损失函数与评价指标 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"自定义损失函数与评价指标\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：自定义损失函数与评价指标 · 参考资料 · 数据：课程引用文献】当引用文献支撑《自定义损失函数与评价指标》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 自定义损失函数与评价指标 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"自定义损失函数与评价指标\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Focal Loss for Dense Object Detection（arXiv，2017）",
+            "en": "Focal Loss for Dense Object Detection (arXiv, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1708.02002"
+        },
+        {
+          "label": {
+            "zh": "TensorFlow Core API Documentation（TensorFlow，2023）",
+            "en": "TensorFlow Core API Documentation (TensorFlow, 2023)"
+          },
+          "url": "https://www.tensorflow.org/api_docs"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-16-loss-function-zh.mp3"
+      },
+      "meta": {
+        "category": "Deep Learning Frameworks",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 2,
+        "related": [
+          "损失函数设计",
+          "评价指标"
+        ],
+        "learningObjectives": [
+          "编写自定义损失函数",
+          "选择合适的评价指标衡量模型"
+        ],
+        "personas": [
+          "研究人员",
+          "高级工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 自定义损失函数与评价指标 可帮助团队在 Deep Learning Frameworks 上做出可复用的实践。",
+          "best_for": "适合 研究人员、高级工程师，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究人员 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究人员、高级工程师，帮助他们把 自定义损失函数与评价指标 应用于 Deep Learning Frameworks",
+          "prefersEnglish": false,
+          "industries": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "personas": [
+            "研究人员",
+            "高级工程师"
+          ],
+          "pains": "在 Deep Learning Frameworks 场景缺乏 自定义损失函数与评价指标 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您的研究或工程实践中，当标准损失函数无法准确反映业务目标时，您如何识别这种失效场景？请描述一个具体案例，并思考自定义损失函数能如何优化模型训练。",
+            "action_hint": "尝试分析您最近项目中模型表现与业务目标之间的差距，并构思一个简单的自定义损失函数雏形。"
+          },
+          {
+            "lang": "zh",
+            "question": "面对类别不平衡或多任务学习场景，您通常如何调整评价指标来更真实地评估模型性能？请结合您的领域经验，分享一个现有评价标准不足的实例。",
+            "action_hint": "回顾您遇到的数据分布问题，设计一个针对性的评价指标框架草图。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-16-hyperparameter",
       "date": "2025-12-16",
