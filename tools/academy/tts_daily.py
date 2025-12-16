@@ -166,13 +166,7 @@ def _collect_segments(lesson: Dict[str, Any], lang: str) -> List[str]:
     content = _strip_html(_pick_lang(lesson.get("content"), lang_key))
     if content:
         segments.append(content)
-    practice_entries = lesson.get("practice")
-    if isinstance(practice_entries, list):
-        for idx, entry in enumerate(practice_entries, start=1):
-            question = _pick_lang(entry.get("question") if isinstance(entry, dict) else entry, lang_key)
-            question = _strip_html(question)
-            if question:
-                segments.append(f"练习题 {idx}：{question}")
+    # Practice questions excluded from TTS as per user request
     return [seg for seg in segments if seg]
 
 
