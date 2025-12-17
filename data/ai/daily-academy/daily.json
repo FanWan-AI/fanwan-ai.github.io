@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2025-12-17T03:41:51.966Z",
+  "generatedAt": "2025-12-17T13:56:55.170Z",
   "lessons": [
+    {
+      "id": "2025-12-17-graph-neural-network",
+      "date": "2025-12-17",
+      "title": {
+        "zh": "图神经网络基础",
+        "en": "Fundamentals of Graph Neural Networks"
+      },
+      "summary": {
+        "zh": "图神经网络（Graph Neural Network, GNN）是专门处理图结构数据的深度学习架构，通过节点间的信息传递与聚合来学习图表示。本课程从社交网络等场景切入，解释传统神经网络处理图数据的局限性，建立GNN的直觉。随后深入图卷积（GCN）与图注意力（GAT）的核心机制，包括信息传递、聚合函数和注意力权重计算。最后，使用Cora引文网络数据集构建可复现的两层GCN管线，完成节点分类任务，输出准确率和混淆矩阵。课程贯穿从直觉到实践的完整学习路径，帮助读者掌握GNN的基础原理与工程实现。",
+        "en": "Graph Neural Networks (GNNs) are deep learning architectures designed for graph-structured data, learning graph representations through message passing and aggregation between nodes. This course begins with scenarios like social networks to explain the limitations of traditional neural networks on graph data, building intuition for GNNs. It then delves into the core mechanisms of Graph Convolutional Networks (GCN) and Graph Attention Networks (GAT), covering message passing, aggregation functions, and attention weight computation. Finally, it constructs a reproducible two-layer GCN pipeline using the Cora citation network dataset for node classification, outputting accuracy and confusion matrix. The course provides a complete learning path from intuition to practice, helping readers master the fundamentals and engineering implementation of GNNs."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "graph neural network",
+        "GNN"
+      ],
+      "content": {
+        "zh": "<h3>从社交网络到图神经网络：为什么图数据需要特殊架构？</h3><p>在社交网络好友推荐中，我们面临一个具体困惑：如何同时利用用户特征（如年龄、兴趣）和关系结构（如好友链接）？传统全连接网络会丢失拓扑信息，因为它将每个节点视为独立样本，忽略了节点间的连接关系。这导致模型无法捕捉“物以类聚，人以群分”的图结构特性，例如，用户的好友往往有相似兴趣。</p><p>图神经网络（Graph Neural Network, GNN）是一种基于图结构进行信息传递的深度学习模型。其输入为图G=(V,E)和节点特征X，其中V是节点集合，E是边集合，X是每个节点的特征向量。输出为节点或图的表示向量，可用于下游任务如节点分类或图分类。GNN的核心思想是通过多层堆叠，让每个节点聚合其邻居的信息，从而学习到包含局部和全局结构的表示。</p><p>一个常见误区是认为“GNN只是图嵌入的升级版”。实际上，图嵌入（如Node2Vec）是无监督、浅层模型，通常仅基于结构相似性生成节点表示。而GNN是有监督或无监督、可多层堆叠的深度架构，能融合节点特征和多跳邻域信息，实现更复杂的表示学习。例如，在社交网络中，GNN可以同时考虑用户属性和好友网络，而图嵌入可能只关注链接结构。</p><p>为了验证GNN的动机，我们将使用一个贯穿示例：社交网络图，节点为用户，边为好友关系，每个用户有特征向量[年龄, 兴趣得分]。GNN聚合每个用户及其好友的特征，输出每个用户的表示向量，用于预测其可能喜欢的新朋友。这个示例展示了GNN如何整合特征与结构，解决传统方法的局限性。</p><p>理解了GNN的动机后，我们需要严格定义其输入输出和计算框架，为后续机制分析奠定基础。接下来，我们将深入图卷积如何实现信息传递与聚合。</p><h3>图卷积与图注意力：GNN如何传递和聚合信息？</h3><p>在分子毒性预测中，一个具体困惑是：如何让原子节点从其化学键邻居获取信息？图卷积（Graph Convolutional Network, GCN）通过归一化邻接矩阵实现加权聚合。GCN使用对称归一化拉普拉斯矩阵对节点特征进行线性变换和邻域聚合，其核心公式为H^{(l+1)} = σ(D^{-1/2} A D^{-1/2} H^{(l)} W^{(l)})，其中A是邻接矩阵，D是度矩阵，H^{(l)}是第l层的节点特征，W^{(l)}是可学习权重，σ是激活函数。为什么使用对称归一化拉普拉斯矩阵而非普通邻接矩阵？普通邻接矩阵聚合时，高度数节点会主导聚合过程，导致特征尺度失衡。对称归一化通过度矩阵D^{-1/2}进行缩放，使每个节点的贡献更均衡，避免梯度爆炸或消失，这在图数据中尤为重要，因为节点度数差异可能很大。</p><p>图注意力（Graph Attention Network, GAT）引入注意力权重动态调整邻居重要性。在GAT中，每个节点计算其与邻居的注意力分数，公式为α_{ij} = softmax(LeakyReLU(a^T [W h_i || W h_j]))，其中a是可学习向量，W是权重矩阵，h_i和h_j是节点特征，||表示拼接。然后，节点特征更新为加权和：h_i' = σ(∑_{j∈N(i)} α_{ij} W h_j)。这允许模型关注更相关的邻居，例如在引文网络中，重要参考文献可能获得更高权重。为什么引入注意力机制？传统GCN对所有邻居赋予相同权重，但实际图中邻居重要性可能不同。注意力机制通过可学习参数动态分配权重，使模型能自适应地聚焦于关键信息，提升表示能力，尤其在异构图或复杂关系中。</p><p>一个常见误区是认为“GAT一定比GCN好”。实际上，GAT计算开销大，因为需要为每对邻居计算注意力分数，在小图上可能过拟合。而GCN更简单高效，适合结构均匀的图，如规则网格。选择GCN还是GAT取决于具体任务：对于需要动态权重的异构图，GAT可能更优；对于同构图且计算资源有限，GCN可能更合适。</p><p>另一个误区是“GNN层数越多效果越好”。过度堆叠层数会导致过度平滑（over-smoothing），即所有节点的表示向量趋于相同，失去判别能力。通常，GNN层数在2-5层之间，需要根据图直径和任务复杂度调整。</p><p>在我们的贯穿示例中，引文网络图（节点为论文，边为引用关系）使用GCN层聚合每篇论文及其引用论文的特征；GAT层计算论文间的注意力权重。输出每篇论文的表示向量，用于分类其研究领域。这演示了GNN机制在实际数据上的应用。</p><p>掌握了GNN的机制后，最后一步是工程实践：如何用公开数据构建一个完整的GNN应用。接下来，我们将使用Cora数据集实现可复现的管线。</p><h3>工程实践：用Cora数据集构建可复现的GNN管线</h3><p>在学术论文分类任务中，一个具体困惑是：如何确保GNN实验的可复现性？可复现性（reproducibility）要求通过固定随机种子、记录依赖版本等方式，确保实验结果可被他人重复验证。这包括数据预处理、模型定义、训练循环和评估指标的全流程标准化。</p><p>我们将使用Cora数据集，这是一个公开引文网络，包含2708篇论文节点和5429条引用边。每个节点有1433维词袋特征，标签为7个研究领域类别。任务是基于节点特征和图结构预测论文类别。可复现管线包括以下步骤：数据检查、可复现切分、模型训练、指标计算和记录环境。</p><p>一个常见误区是“GNN训练只需关注模型结构”。实际上，数据切分和预处理对性能影响显著。例如，图数据可能具有社区结构，需分层采样验证集以防止数据泄露。另一个误区是“公开数据集可直接使用无需检查”。必须检查数据分布、缺失值和标签平衡，避免偏差。在Cora数据集中，我们需要输出类别计数以确保均衡。</p><p>以下综合代码块展示了数据加载、模型定义、训练、评估和可视化的关键步骤，确保不超过2个代码块：</p><pre><code>import torch\nimport torch.nn.functional as F\nfrom torch_geometric.datasets import Planetoid\nfrom torch_geometric.nn import GCNConv\nimport numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay\n\n# 步骤1：数据检查与可复现设置\nseed = 42\ntorch.manual_seed(seed)\ndataset = Planetoid(root='/tmp/Cora', name='Cora')\ndata = dataset[0]\nprint(f\"Data shape: {data.num_nodes} nodes, {data.num_edges} edges, {data.num_features} features, {dataset.num_classes} classes\")\nclass_counts = torch.bincount(data.y)\nprint(f\"Class counts: {class_counts.tolist()}\")\n\n# 步骤2：使用预定义掩码进行可复现切分\ntrain_mask = data.train_mask\nval_mask = data.val_mask\ntest_mask = data.test_mask\nprint(f\"Train/Val/Test nodes: {train_mask.sum().item()}/{val_mask.sum().item()}/{test_mask.sum().item()}\")\n\n# 步骤3：模型定义\nclass GCN(torch.nn.Module):\n    def __init__(self, in_channels, hidden_channels, out_channels):\n        super().__init__()\n        self.conv1 = GCNConv(in_channels, hidden_channels)\n        self.conv2 = GCNConv(hidden_channels, out_channels)\n    def forward(self, x, edge_index):\n        x = self.conv1(x, edge_index)\n        x = F.relu(x)\n        x = F.dropout(x, training=self.training)\n        x = self.conv2(x, edge_index)\n        return F.log_softmax(x, dim=1)\n\nmodel = GCN(in_channels=data.num_features, hidden_channels=16, out_channels=dataset.num_classes)\noptimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)\n\n# 步骤4：训练循环\nmodel.train()\nfor epoch in range(50):\n    optimizer.zero_grad()\n    out = model(data.x, data.edge_index)\n    loss = F.nll_loss(out[train_mask], data.y[train_mask])\n    loss.backward()\n    optimizer.step()\n    if epoch % 10 == 0:\n        print(f\"Epoch {epoch}, Loss: {loss.item():.4f}\")\n\n# 步骤5：评估与可视化\nmodel.eval()\nwith torch.no_grad():\n    out = model(data.x, data.edge_index)\n    pred = out.argmax(dim=1)\n    test_correct = pred[test_mask] == data.y[test_mask]\n    test_acc = int(test_correct.sum()) / int(test_mask.sum())\n    print(f\"Test Accuracy: {test_acc:.4f}\")\n    cm = confusion_matrix(data.y[test_mask].cpu(), pred[test_mask].cpu())\n    print(\"Confusion matrix:\")\n    print(cm)\n    # 可视化混淆矩阵\n    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=range(dataset.num_classes))\n    disp.plot(cmap=plt.cm.Blues)\n    plt.title(\"Confusion Matrix for Cora Node Classification\")\n    plt.show()\n\n# 步骤6：记录环境\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"Torch version: {torch.__version__}\")\ntry:\n    import torch_geometric\n    print(f\"Torch Geometric version: {torch_geometric.__version__}\")\nexcept ImportError:\n    print(\"Torch Geometric not installed\")\nprint(f\"Random seed: {seed}\")</code></pre><p>代码输出预期为：Data shape: 2708 nodes, 5429 edges, 1433 features, 7 classes；Class counts: [...]；Test Accuracy: ~0.81；Confusion matrix: 7x7 array。这验证了GNN在节点分类任务上的有效性。</p><p>通过这个完整示例，读者应能自主扩展至其他图任务，如链接预测或图分类。关键是将可复现流程迁移到自己的项目中：从数据检查开始，确保预处理一致；定义适合的GNN架构；使用固定种子训练；并记录所有环境细节。</p><p>至此，我们完成了从直觉到实践的GNN学习旅程。接下来，引导读者制定个人可执行行动，例如在自己的数据集上复现此管线或调整超参数。</p>",
+        "en": "<h3>From Social Networks to Graph Neural Networks: Why Does Graph Data Require Special Architectures?</h3><p>In social network friend recommendations, a specific confusion arises: how to simultaneously utilize user features (e.g., age, interests) and relationship structures (e.g., friend links)? Traditional fully connected networks lose topological information because they treat each node as an independent sample, ignoring connections between nodes. This prevents the model from capturing graph structural properties like \"birds of a feather flock together,\" where users' friends often share similar interests.</p><p>A Graph Neural Network (GNN) is a deep learning model that performs message passing based on graph structure. Its input is a graph G=(V,E) and node features X, where V is the set of nodes, E is the set of edges, and X is the feature vector for each node. The output is a representation vector for nodes or the entire graph, usable for downstream tasks like node classification or graph classification. The core idea of GNNs is to let each node aggregate information from its neighbors through multiple layers, learning representations that incorporate local and global structure.</p><p>A common misconception is that \"GNNs are just an upgraded version of graph embedding.\" In reality, graph embedding (e.g., Node2Vec) is an unsupervised, shallow model that typically generates node representations based only on structural similarity. GNNs are supervised or unsupervised deep architectures that can be stacked in multiple layers, fusing node features and multi-hop neighborhood information for more complex representation learning. For example, in social networks, GNNs can consider both user attributes and friend networks, while graph embedding might focus only on link structure.</p><p>To validate the motivation for GNNs, we use a running example: a social network graph with nodes as users, edges as friend relationships, and each user having a feature vector [age, interest score]. The GNN aggregates features for each user and their friends, outputting a representation vector for each user to predict potential new friends. This example demonstrates how GNNs integrate features and structure, addressing limitations of traditional methods.</p><p>After understanding the motivation for GNNs, we need to strictly define their input-output and computational framework to lay the foundation for subsequent mechanism analysis. Next, we will delve into how graph convolution achieves message passing and aggregation.</p><h3>Graph Convolution and Graph Attention: How Do GNNs Pass and Aggregate Information?</h3><p>In molecular toxicity prediction, a specific confusion is: how can an atom node obtain information from its chemical bond neighbors? Graph Convolutional Networks (GCN) achieve weighted aggregation through a normalized adjacency matrix. GCN uses the symmetric normalized Laplacian matrix to linearly transform and aggregate neighborhood features, with the core formula H^{(l+1)} = σ(D^{-1/2} A D^{-1/2} H^{(l)} W^{(l)}), where A is the adjacency matrix, D is the degree matrix, H^{(l)} is the node features at layer l, W^{(l)} is a learnable weight, and σ is an activation function. Why use the symmetric normalized Laplacian instead of the ordinary adjacency matrix? Ordinary adjacency aggregation can let high-degree nodes dominate, causing feature scale imbalance. Symmetric normalization scales with D^{-1/2} to balance each node's contribution, preventing gradient explosion or vanishing, which is crucial in graph data where node degrees may vary widely.</p><p>Graph Attention Networks (GAT) introduce attention weights to dynamically adjust neighbor importance. In GAT, each node computes attention scores with its neighbors using the formula α_{ij} = softmax(LeakyReLU(a^T [W h_i || W h_j])), where a is a learnable vector, W is a weight matrix, h_i and h_j are node features, and || denotes concatenation. Then, node features are updated as a weighted sum: h_i' = σ(∑_{j∈N(i)} α_{ij} W h_j). This allows the model to focus on more relevant neighbors, such as important references in a citation network receiving higher weights. Why introduce attention mechanisms? Traditional GCN assigns equal weight to all neighbors, but in real graphs, neighbor importance may differ. Attention mechanisms use learnable parameters to dynamically allocate weights, enabling the model to adaptively focus on key information, enhancing representation power, especially in heterogeneous graphs or complex relationships.</p><p>A common misconception is that \"GAT is always better than GCN.\" In reality, GAT has higher computational overhead because it requires computing attention scores for each pair of neighbors, which may lead to overfitting on small graphs. GCN is simpler and more efficient, suitable for graphs with uniform structure like regular grids. The choice between GCN and GAT depends on the specific task: GAT may be better for heterogeneous graphs requiring dynamic weights, while GCN may be more appropriate for homogeneous graphs with limited computational resources.</p><p>Another misconception is that \"more GNN layers always improve performance.\" Excessive stacking of layers can cause over-smoothing, where all node representation vectors become similar, losing discriminative power. Typically, GNNs have 2-5 layers, adjusted based on graph diameter and task complexity.</p><p>In our running example, a citation network graph (nodes as papers, edges as citation relationships) uses GCN layers to aggregate features for each paper and its cited papers; GAT layers compute attention weights between papers. This outputs a representation vector for each paper to classify its research field, demonstrating the application of GNN mechanisms on real data.</p><p>After mastering the mechanisms of GNNs, the final step is engineering practice: how to build a complete GNN application with public data. Next, we will implement a reproducible pipeline using the Cora dataset.</p><h3>Engineering Practice: Building a Reproducible GNN Pipeline with the Cora Dataset</h3><p>In academic paper classification tasks, a specific confusion is: how to ensure the reproducibility of GNN experiments? Reproducibility requires standardizing the entire workflow—data preprocessing, model definition, training loop, and evaluation metrics—through methods like fixing random seeds and recording dependency versions, ensuring that experimental results can be repeated by others.</p><p>We will use the Cora dataset, a public citation network with 2708 paper nodes and 5429 citation edges. Each node has 1433-dimensional bag-of-words features, with labels for 7 research field categories. The task is to predict paper categories based on node features and graph structure. The reproducible pipeline includes the following steps: data inspection, reproducible splitting, model training, metric computation, and environment recording.</p><p>A common misconception is that \"GNN training only needs to focus on model architecture.\" In reality, data splitting and preprocessing significantly impact performance. For example, graph data may have community structures, requiring stratified sampling for validation sets to prevent data leakage. Another misconception is that \"public datasets can be used directly without inspection.\" It is essential to check data distribution, missing values, and label balance to avoid bias. For the Cora dataset, we need to output class counts to ensure balance.</p><p>The following comprehensive code block shows key steps for data loading, model definition, training, evaluation, and visualization, ensuring no more than 2 code blocks:</p><pre><code>import torch\nimport torch.nn.functional as F\nfrom torch_geometric.datasets import Planetoid\nfrom torch_geometric.nn import GCNConv\nimport numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay\n\n# Step 1: Data inspection and reproducible setup\nseed = 42\ntorch.manual_seed(seed)\ndataset = Planetoid(root='/tmp/Cora', name='Cora')\ndata = dataset[0]\nprint(f\"Data shape: {data.num_nodes} nodes, {data.num_edges} edges, {data.num_features} features, {dataset.num_classes} classes\")\nclass_counts = torch.bincount(data.y)\nprint(f\"Class counts: {class_counts.tolist()}\")\n\n# Step 2: Reproducible splitting using predefined masks\ntrain_mask = data.train_mask\nval_mask = data.val_mask\ntest_mask = data.test_mask\nprint(f\"Train/Val/Test nodes: {train_mask.sum().item()}/{val_mask.sum().item()}/{test_mask.sum().item()}\")\n\n# Step 3: Model definition\nclass GCN(torch.nn.Module):\n    def __init__(self, in_channels, hidden_channels, out_channels):\n        super().__init__()\n        self.conv1 = GCNConv(in_channels, hidden_channels)\n        self.conv2 = GCNConv(hidden_channels, out_channels)\n    def forward(self, x, edge_index):\n        x = self.conv1(x, edge_index)\n        x = F.relu(x)\n        x = F.dropout(x, training=self.training)\n        x = self.conv2(x, edge_index)\n        return F.log_softmax(x, dim=1)\n\nmodel = GCN(in_channels=data.num_features, hidden_channels=16, out_channels=dataset.num_classes)\noptimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)\n\n# Step 4: Training loop\nmodel.train()\nfor epoch in range(50):\n    optimizer.zero_grad()\n    out = model(data.x, data.edge_index)\n    loss = F.nll_loss(out[train_mask], data.y[train_mask])\n    loss.backward()\n    optimizer.step()\n    if epoch % 10 == 0:\n        print(f\"Epoch {epoch}, Loss: {loss.item():.4f}\")\n\n# Step 5: Evaluation and visualization\nmodel.eval()\nwith torch.no_grad():\n    out = model(data.x, data.edge_index)\n    pred = out.argmax(dim=1)\n    test_correct = pred[test_mask] == data.y[test_mask]\n    test_acc = int(test_correct.sum()) / int(test_mask.sum())\n    print(f\"Test Accuracy: {test_acc:.4f}\")\n    cm = confusion_matrix(data.y[test_mask].cpu(), pred[test_mask].cpu())\n    print(\"Confusion matrix:\")\n    print(cm)\n    # Visualize confusion matrix\n    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=range(dataset.num_classes))\n    disp.plot(cmap=plt.cm.Blues)\n    plt.title(\"Confusion Matrix for Cora Node Classification\")\n    plt.show()\n\n# Step 6: Environment recording\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"Torch version: {torch.__version__}\")\ntry:\n    import torch_geometric\n    print(f\"Torch Geometric version: {torch_geometric.__version__}\")\nexcept ImportError:\n    print(\"Torch Geometric not installed\")\nprint(f\"Random seed: {seed}\")</code></pre><p>The expected code output is: Data shape: 2708 nodes, 5429 edges, 1433 features, 7 classes; Class counts: [...]; Test Accuracy: ~0.81; Confusion matrix: 7x7 array. This validates the effectiveness of GNNs on node classification tasks.</p><p>Through this complete example, readers should be able to extend it to other graph tasks, such as link prediction or graph classification. The key is to migrate the reproducible workflow to their own projects: start with data inspection to ensure consistent preprocessing; define a suitable GNN architecture; train with fixed seeds; and record all environment details.</p><p>Thus, we have completed the GNN learning journey from intuition to practice. Next, guide readers to formulate actionable steps, such as reproducing this pipeline on their own dataset or tuning hyperparameters.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：图神经网络基础 · 结构总览 · 数据：课程大纲】在设计《图神经网络基础》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 图神经网络基础 · 结构总览 · Data: 课程大纲】When outlining \"图神经网络基础\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：图神经网络基础 · worked example · 数据：学习图卷积与图注意力 数据/代码】在复现《图神经网络基础》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 图神经网络基础 · worked example · Data: 学习图卷积与图注意力 数据/代码】While reproducing the worked example in \"图神经网络基础\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：图神经网络基础 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《图神经网络基础》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 图神经网络基础 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"图神经网络基础\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：图神经网络基础 · 参考资料 · 数据：课程引用文献】当引用文献支撑《图神经网络基础》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 图神经网络基础 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"图神经网络基础\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Semi-Supervised Classification with Graph Convolutional Networks（arXiv，2017）",
+            "en": "Semi-Supervised Classification with Graph Convolutional Networks (arXiv, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1609.02907"
+        },
+        {
+          "label": {
+            "zh": "Graph Attention Networks（arXiv，2018）",
+            "en": "Graph Attention Networks (arXiv, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1710.10903"
+        },
+        {
+          "label": {
+            "zh": "Cora Dataset（LINQS，2008）",
+            "en": "Cora Dataset (LINQS, 2008)"
+          },
+          "url": "https://linqs.soe.ucsc.edu/data"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-17-graph-neural-network-zh.mp3"
+      },
+      "meta": {
+        "category": "Advanced Architectures",
+        "level": "2. Deep Learning & Neural Networks",
+        "difficultyScore": 3,
+        "related": [
+          "GCN",
+          "Graph Attention"
+        ],
+        "learningObjectives": [
+          "学习图卷积与图注意力",
+          "应用 GNN 处理图结构数据"
+        ],
+        "personas": [
+          "研究生",
+          "数据科学家"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握图神经网络基础可帮助团队在Advanced Architectures上做出可复用的实践。",
+          "best_for": "适合研究生、数据科学家，需要快速吸收2. Deep Learning & Neural Networks主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究生 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究生、数据科学家，帮助他们把 图神经网络基础 应用于 Advanced Architectures",
+          "prefersEnglish": false,
+          "industries": [
+            "研究生",
+            "数据科学家"
+          ],
+          "personas": [
+            "研究生",
+            "数据科学家"
+          ],
+          "pains": "在 Advanced Architectures 场景缺乏 图神经网络基础 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Deep Learning & Neural Networks"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为研究生或数据科学家，你在处理社交网络或引文网络等图结构数据时，传统神经网络遇到了哪些具体局限？请描述一个你曾面临的场景，并思考GNN的信息传递机制如何能更自然地建模这种关系。",
+            "action_hint": "尝试将你熟悉的图数据场景（如用户交互、论文引用）与GNN的节点聚合过程联系起来，设想如何用GCN或GAT改进现有模型。"
+          },
+          {
+            "lang": "zh",
+            "question": "在Advanced Architectures项目中，你如何评估图神经网络（如GCN或GAT）对节点分类任务的有效性？结合Cora数据集示例，思考哪些图特性（如节点度、社区结构）会影响模型性能，并规划在你的领域中的可执行测试步骤。",
+            "action_hint": "从准确率和混淆矩阵出发，设计一个简单实验，比较传统方法与GNN在你专业数据上的表现，关注信息传递的优化点。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-17-transformer",
       "date": "2025-12-17",
