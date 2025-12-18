@@ -30,27 +30,43 @@ async function callLLM(prompt, systemPrompt) {
   const baseURL = process.env.LLM_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
   const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-chat";
 
+  const isReasoner = model.includes("reasoner");
+  
+  // DeepSeek V3/R1 recommends higher temperatures (1.0-1.5) compared to other models.
+  // 0.0 for Coding, 1.3 for General Conversation, 1.5 for Creative Writing.
+  // We use 1.3 to balance creative lesson writing with structured JSON output.
+  const bodyPayload = {
+    model,
+    temperature: 1.3,
+    messages: [
+      {
+        role: "system",
+        content: systemPrompt || "You are a helpful assistant that outputs JSON."
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  };
+
+  // Reasoner models (like DeepSeek R1) often output <think> blocks and don't support json_object enforcement well
+  // or need more token budget.
+  if (!isReasoner) {
+    bodyPayload.response_format = { type: "json_object" };
+  } else {
+    // Give it plenty of room for reasoning + JSON
+    // DeepSeek Reasoner supports up to 64K output tokens
+    bodyPayload.max_tokens = 60000; 
+  }
+
   const response = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`
     },
-    body: JSON.stringify({
-      model,
-      temperature: 0.3,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt || "You are a helpful assistant that outputs JSON."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ]
-    })
+    body: JSON.stringify(bodyPayload)
   });
 
   if (!response.ok) {
@@ -59,6 +75,11 @@ async function callLLM(prompt, systemPrompt) {
   }
 
   const body = await response.json();
+  
+  if (body.choices?.[0]?.finish_reason === "length") {
+    console.warn("Warning: LLM generation truncated (finish_reason='length'). Output may be incomplete.");
+  }
+
   const message = body.choices?.[0]?.message?.content;
   if (!message) {
     throw new Error("LLM response missing content");
@@ -69,6 +90,10 @@ async function callLLM(prompt, systemPrompt) {
 function parseJSON(raw) {
   if (!raw) throw new Error("Empty response");
   let content = raw.trim();
+
+  // Strip <think>...</think> blocks from reasoning models
+  content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+
   if (content.startsWith("```")) {
     const match = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (match) {

@@ -246,6 +246,10 @@ style.textContent = `
 .wealth-pulse-facts { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
 .wealth-pulse-impact { margin: 0; font-size: 0.95rem; line-height: 1.6; color: var(--wealth-card-text); }
 .wealth-legal-note { margin: 0; font-size: 0.82rem; color: var(--wealth-card-muted); }
+.wealth-markdown-content h2 { font-size: 1.1rem; font-weight: 600; margin: 1.2em 0 0.6em; color: var(--wealth-card-strong); }
+.wealth-markdown-content h3 { font-size: 1.05rem; font-weight: 600; margin: 1em 0 0.5em; color: var(--wealth-card-text); }
+.wealth-markdown-content h4 { font-size: 1rem; font-weight: 600; margin: 0.8em 0 0.4em; color: var(--wealth-card-text); }
+.wealth-markdown-content h5 { font-size: 0.95rem; font-weight: 600; margin: 0.6em 0 0.3em; color: var(--wealth-card-muted); }
 	`;
 	document.head.appendChild(style);
 
@@ -672,8 +676,10 @@ function applyMarkdownSyntax(text) {
 	});
 
 	// Headers
-	safeText = safeText.replace(/^### (.*$)/gm, "<h3>$1</h3>");
-	safeText = safeText.replace(/^#### (.*$)/gm, "<h4>$1</h4>");
+	safeText = safeText.replace(/^# (.*$)/gm, "<h2>$1</h2>");
+	safeText = safeText.replace(/^## (.*$)/gm, "<h3>$1</h3>");
+	safeText = safeText.replace(/^### (.*$)/gm, "<h4>$1</h4>");
+	safeText = safeText.replace(/^#### (.*$)/gm, "<h5>$1</h5>");
 
 	// Inline Formatting (Bold, Italic, Code)
 	safeText = applyMarkdownInline(safeText);
@@ -682,8 +688,10 @@ function applyMarkdownSyntax(text) {
 	safeText = safeText.replace(/\n/g, "<br>");
 	
 	// Cleanup <br> around block elements
+	safeText = safeText.replace(/<\/h2><br>/g, "</h2>");
 	safeText = safeText.replace(/<\/h3><br>/g, "</h3>");
 	safeText = safeText.replace(/<\/h4><br>/g, "</h4>");
+	safeText = safeText.replace(/<\/h5><br>/g, "</h5>");
 	safeText = safeText.replace(/<\/table><\/div><br>/g, "</table></div>");
 	safeText = safeText.replace(/<\/div><br>/g, "</div>");
 	safeText = safeText.replace(/<\/blockquote><br>/g, "</blockquote>");
