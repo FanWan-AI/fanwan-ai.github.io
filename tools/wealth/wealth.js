@@ -1128,19 +1128,6 @@ function createDailyCard(entry) {
 
 	card.append(header);
 
-	const mdContent = pickLang(entry.markdown_content);
-	if (mdContent) {
-		const title = document.createElement("h3");
-		title.textContent = pickLang(entry.topic) || pickLang(entry.title) || t("wealth_topic_fallback", "今日主题");
-		card.append(title);
-		
-		const contentDiv = document.createElement("div");
-		contentDiv.className = "wealth-markdown-content";
-		contentDiv.innerHTML = parseMarkdown(mdContent);
-		card.append(contentDiv);
-		return card;
-	}
-
 	const tags = renderTags(entry.meta || {});
 	if (tags) card.append(tags);
 
@@ -1162,25 +1149,33 @@ function createDailyCard(entry) {
 		card.append(audioSlot);
 	}
 
-	const summary = document.createElement("div");
-	const fullSummary = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
-	appendMultiline(summary, fullSummary);
-	card.append(summary);
+	const mdContent = pickLang(entry.markdown_content);
+	if (mdContent) {
+		const contentDiv = document.createElement("div");
+		contentDiv.className = "wealth-markdown-content";
+		contentDiv.innerHTML = parseMarkdown(mdContent);
+		card.append(contentDiv);
+	} else {
+		const summary = document.createElement("div");
+		const fullSummary = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
+		appendMultiline(summary, fullSummary);
+		card.append(summary);
+
+		const points = pickList(entry.key_points);
+		if (points.length) {
+			const list = document.createElement("ul");
+			list.className = "wealth-points";
+			points.slice(0, 5).forEach((point) => {
+				const li = document.createElement("li");
+				li.innerHTML = parseMarkdown(point);
+				list.append(li);
+			});
+			card.append(list);
+		}
+	}
 
 	if (audioSlot) {
 		attachAudioToCard(card, entry, dateStr, audioSlot);
-	}
-
-	const points = pickList(entry.key_points);
-	if (points.length) {
-		const list = document.createElement("ul");
-		list.className = "wealth-points";
-		points.slice(0, 5).forEach((point) => {
-			const li = document.createElement("li");
-			li.innerHTML = parseMarkdown(point);
-			list.append(li);
-		});
-		card.append(list);
 	}
 
 	const practice = renderPractice(entry);
