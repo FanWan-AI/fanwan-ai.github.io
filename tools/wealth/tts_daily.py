@@ -281,8 +281,37 @@ def _collect_segments(entry: dict, lang: str) -> List[str]:
     if title:
         segments.append(title)
 
+    # 1. Try markdown_content (Full Lesson) - Priority for new content
+    md_content = _pick_lang(entry.get("markdown_content"), order)
+    if md_content:
+        # Simple Markdown cleanup for TTS
+        # Remove headers like "### "
+        text = re.sub(r'#+\s+', '', md_content)
+        # Remove bold/italic markers (**text**, *text*)
+        text = re.sub(r'\*\*|__', '', text)
+        text = re.sub(r'\*|_', '', text)
+        # Remove links [text](url) -> text
+        text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+        
+        segments.append(text)
+
+        # Append risk notes if available (often separate in JSON)
+        risk_raw = entry.get("risk_notes")
+        risk_text = ""
+        if isinstance(risk_raw, dict):
+            risk_text = str(risk_raw.get(lang) or risk_raw.get("zh") or risk_raw.get("en") or "")
+        elif isinstance(risk_raw, str):
+            risk_text = risk_raw
+        if risk_text:
+            segments.append(f"风险提示：{risk_text}")
+
+        return [seg.strip() for seg in segments if seg and seg.strip()]
+
+    # 2. Fallback: Summary + Key Points + Practice (Old Format)
     summary = _pick_lang(entry.get("summary"), order)
     if summary:
+        # Clean summary markdown too just in case
+        summary = re.sub(r'\*\*|__', '', summary)
         segments.append(summary)
 
     points_block = entry.get("key_points")
@@ -296,6 +325,8 @@ def _collect_segments(entry: dict, lang: str) -> List[str]:
             if not text:
                 continue
             text = text.rstrip("。")
+            # Clean markdown in points
+            text = re.sub(r'\*\*|__', '', text)
             if idx == 1:
                 segments.append(f"重点洞察 1：{text}。")
             else:

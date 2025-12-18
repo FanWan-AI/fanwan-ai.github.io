@@ -175,7 +175,8 @@ Instructions:
     "en": "English translation of summary" 
   },
   "markdown_content": { 
-    "zh": "The FULL lesson content (Opening, Map, Core Concepts, etc.) in Markdown" 
+    "zh": "The FULL lesson content (Opening, Map, Core Concepts, etc.) in Markdown",
+    "en": "The FULL lesson content in English"
   },
   "key_points": { 
     "zh": ["Key Insight 1", "Key Insight 2", "Key Insight 3"], 
