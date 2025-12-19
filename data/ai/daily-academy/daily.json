@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2025-12-19T02:32:41.945Z",
+  "generatedAt": "2025-12-19T13:58:11.877Z",
   "lessons": [
+    {
+      "id": "2025-12-19-text-preprocessing",
+      "date": "2025-12-19",
+      "title": {
+        "zh": "文本预处理与表示",
+        "en": "Text Preprocessing and Representation"
+      },
+      "summary": {
+        "zh": "文本预处理与表示是自然语言处理的基础环节，通过将非结构化文本转换为结构化向量，为下游任务提供可计算的输入。本课程从为什么原始文本不能直接输入模型开始，逐步讲解分词、去停用词等预处理方法，深入解析词袋模型和TF-IDF的原理与实现。课程以20newsgroups数据集为贯穿示例，构建从原始文本到分类结果的完整流水线，涵盖数据加载、预处理、向量化、模型训练和评估的全过程。通过本课程，你将掌握构建可复现文本处理流程的核心技能，为实际NLP项目打下坚实基础。",
+        "en": "Text preprocessing and representation form the foundation of natural language processing, transforming unstructured text into structured vectors that provide computable inputs for downstream tasks. This course begins by explaining why raw text cannot be directly fed into machine learning models, then progressively covers preprocessing methods like tokenization and stop word removal, and delves into the principles and implementation of Bag of Words and TF-IDF. Using the 20newsgroups dataset as a running example, we build a complete pipeline from raw text to classification results, encompassing data loading, preprocessing, vectorization, model training, and evaluation. Through this course, you'll master the core skills for building reproducible text processing workflows, laying a solid foundation for practical NLP projects."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "text preprocessing",
+        "vector representation"
+      ],
+      "content": {
+        "zh": "<h3>从困惑开始：为什么我的模型看不懂中文？</h3><p>想象一下，你拿到一份中文新闻数据集，想训练一个分类模型来识别不同主题的文章。你直接将原始文本输入模型，却发现分类结果几乎是随机的。为什么会出现这种情况？机器学习模型本质上处理的是数值数据，而原始文本是由字符组成的序列，模型无法直接理解“自然语言处理”这样的概念。这种原始文本与机器学习模型之间的鸿沟，正是文本预处理与表示需要解决的问题。</p><p>文本预处理（text preprocessing）是将原始文本转换为规范化格式的过程，包括分词、清洗、标准化等操作。文本表示（text representation）则是将预处理后的文本转换为数值向量的方法，使机器学习模型能够处理。两者的边界在于：预处理关注文本的结构化整理，而表示关注如何将整理后的文本映射到数值空间。例如，对于句子“我爱自然语言处理！”，预处理可能将其分词为['我','爱','自然语言','处理']，而表示则可能将其转换为向量[1,1,1,1]。</p><p>一个常见的误区是认为预处理只是去除标点符号。实际上，预处理包括多个层次的处理：分词将文本分割成有意义的单元，去停用词移除高频低信息词汇，词干提取将词汇还原到基本形式，标准化统一大小写和格式。这些步骤共同为模型准备可理解的输入。如果只去除标点，模型仍然无法处理“自然语言处理”这样的复合词。</p><p>在贯穿示例中，我们将使用20newsgroups数据集，这是一个包含20个新闻组主题的文本集合。我们将展示如何从原始新闻文本开始，通过预处理将其转换为模型可处理的格式。例如，一条关于计算机图形的新闻，经过预处理后可能变成包含“图形”、“渲染”、“算法”等关键词的干净文本。</p><p>理解了为什么需要预处理，接下来我们看看具体要做什么。文本预处理的核心步骤包括分词、去停用词等，这些步骤将文本从连续的字符序列转换为离散的词汇单元，为后续的表示方法奠定基础。</p><h3>拆解文本：从字符到词袋</h3><p>现在我们知道文本需要预处理才能被模型理解，那么具体有哪些预处理步骤呢？首先面临的问题是：如何将连续的文本分割成有意义的单元？对于英文文本，我们通常按空格和标点进行分词，但对于中文，情况就复杂得多。中文没有明显的词边界，“自然语言处理”应该被分割为“自然语言”和“处理”，还是“自然”、“语言”、“处理”？这需要专门的分词工具来解决。</p><p>分词（tokenization）是将连续文本分割成离散的词汇单元（tokens）的过程。停用词（stop words）是在文本中出现频率很高但携带信息量很少的词语，如“的”、“是”、“the”、“is”。词袋模型（Bag of Words）是一种文本表示方法，将文本视为词汇的集合，忽略词序和语法。例如，对于句子“我喜欢机器学习，机器学习很有趣”，分词后得到['我','喜欢','机器学习','，','机器学习','很','有趣']，去停用词后得到['喜欢','机器学习','机器学习','有趣']，词袋表示则为[1,2,1]（假设词汇表为['喜欢','机器学习','有趣']）。</p><p>关于分词，一个常见的误区是认为所有语言的分词方法都一样。实际上，中文需要专门的分词工具（如jieba），而英文通常按空格和标点分词。关于停用词，另一个误区是认为停用词列表是固定的。实际上，停用词列表应根据具体任务和领域调整，某些“停用词”在特定场景可能很重要。例如，在情感分析中，“不”可能不是停用词，因为它会改变情感极性。</p><p>词袋模型简单但有效：它将文本视为词汇的集合，统计每个词汇出现的次数，忽略词汇的顺序和语法关系。这就像把一篇文章的所有单词扔进一个袋子里，然后统计每个单词的数量。这种表示方法虽然丢失了词序信息，但对于许多分类任务来说已经足够有效，因为它基于词独立性假设——即词汇的出现是相互独立的，这在文本分类的统计特性中往往成立（来源：Introduction to Information Retrieval, 2008）。</p><p>词袋模型简单直观，但它平等对待所有词汇，忽略了词汇的重要性差异。例如，在新闻分类中，“机器学习”可能比“喜欢”对区分计算机类文章更重要。这就需要我们引入更精细的表示方法。</p><h3>衡量重要性：TF-IDF的智慧</h3><p>词袋模型简单但有效，但它有个明显的问题：它平等对待所有词汇。在新闻分类任务中，“机器学习”可能比“喜欢”对区分计算机类文章更重要。如何量化这种重要性差异？这就需要引入TF-IDF（Term Frequency-Inverse Document Frequency）。</p><p>词频（Term Frequency）是某个词汇在单个文档中出现的频率。逆文档频率（Inverse Document Frequency）衡量词汇在整个文档集合中普遍程度的指标，常见词汇的IDF值较低。TF-IDF是词频与逆文档频率的乘积，用于评估词汇对文档的重要性。计算公式为：TF-IDF = TF × IDF，其中IDF通常计算为log(N/df)，N是文档总数，df是包含该词汇的文档数。使用对数形式是为了平滑处理，避免IDF值过大，并基于信息论原理——词汇的稀有性与其信息量呈对数关系（来源：A Comparative Study on Feature Selection in Text Categorization, 1997）。</p><p>关于TF-IDF，一个常见的误区是认为TF-IDF值越大越好。实际上，TF-IDF值反映词汇区分度，但需要结合具体任务判断，某些高频通用词可能IDF值低但有意义。另一个误区是认为TF-IDF可以完全替代词袋模型。实际上，TF-IDF是词袋模型的加权版本，仍然忽略词序和语义关系。</p><p>例如，在一个包含两个文档的集合中：['我爱机器学习','机器学习很有趣']，词汇“机器学习”在文档1中的TF=1，IDF=log(2/2)=0，因此TF-IDF=0。这说明“机器学习”在所有文档中都出现，区分度低。而词汇“爱”只在文档1中出现，IDF=log(2/1)≈0.69，TF-IDF值较高，区分度更好。</p><p>在贯穿示例中，我们将使用TF-IDF对20newsgroups数据集进行向量化。我们将展示如何计算每个词汇的TF-IDF值，并解释为什么某些词汇（如“graphics”、“windows”）在计算机图形类新闻中具有较高的TF-IDF值，而通用词汇（如“article”、“writes”）的TF-IDF值较低。</p><p>理解了单个技术，现在需要把它们组合成完整的处理流程。文本预处理和表示不是孤立的技术，而是需要串联起来的步骤，构建一个可复现的流水线。</p><h3>构建流水线：从原始文本到分类结果</h3><p>掌握了预处理和表示方法，现在让我们构建一个完整的文本分类流水线。在实际项目中，我们不仅需要实现单个技术，还需要确保整个流程的可复现性。如何确保每次运行的预处理结果一致？如何避免实验结果的随机波动？</p><p>流水线（pipeline）是将多个处理步骤串联起来的自动化流程，确保数据处理的一致性。可复现性（reproducibility）是在相同条件下重复实验能够得到相同结果的性质，对科学研究至关重要。例如，在机器学习实验中，我们需要设置随机种子（random seed）来确保数据划分、模型初始化的可复现性。可复现性不仅关乎科学严谨性，还能简化调试过程，避免随机性导致的评估偏差（来源：Scikit-learn: Machine Learning in Python, 2011）。</p><p>关于预处理步骤，一个常见的误区是认为顺序不重要。实际上，预处理步骤有固定顺序，如先分词再去停用词，顺序错误可能导致信息丢失。关于可复现性，另一个误区是认为小数据集不需要考虑可复现性。实际上，无论数据大小，可复现性都是良好实验实践的基础。</p><p>在贯穿示例中，我们将构建一个完整的文本分类流水线：原始文本数据集 → 分词 → 去停用词 → TF-IDF向量化 → 逻辑回归分类 → 输出分类准确率和混淆矩阵。我们将使用scikit-learn的Pipeline类来组合这些步骤，并设置random_state参数确保可复现性。</p><p>下面是一个综合代码块，展示了如何构建这个流水线。代码直接从sklearn加载20newsgroups数据集，进行预处理和TF-IDF向量化，然后训练逻辑回归分类器并评估性能。</p><pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport seaborn as sns\nimport matplotlib.pyplot as plt\n\n# Set random seed for reproducibility\nnp.random.seed(42)\n\n# Load 20newsgroups dataset\nprint(\"Loading dataset...\")\nnewsgroups = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nX = newsgroups.data\ny = newsgroups.target\nprint(f\"Data shape: {len(X)} texts\")\nprint(f\"Number of classes: {len(np.unique(y))}\")\nprint(f\"Class names: {newsgroups.target_names[:5]}...\")  # Show first 5 classes\n\n# Split into training and test sets (stratified sampling ensures consistent class distribution)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"Training set size: {len(X_train)}, Test set size: {len(X_test)}\")\n\n# Build pipeline: TF-IDF vectorization + logistic regression classification\npipeline = Pipeline([\n    ('tfidf', TfidfVectorizer(\n        max_features=10000,  # Limit number of features\n        stop_words='english',  # Remove English stop words\n        min_df=5,  # Words must appear in at least 5 documents\n        max_df=0.7  # Words can appear in at most 70% of documents\n    )),\n    ('clf', LogisticRegression(\n        max_iter=1000,\n        random_state=42\n    ))\n])\n\n# Train model\nprint(\"Training model...\")\npipeline.fit(X_train, y_train)\n\n# Predict and evaluate\nprint(\"Evaluating model...\")\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"Model accuracy: {accuracy:.4f}\")\n\n# Generate confusion matrix\ncm = confusion_matrix(y_test, y_pred)\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues')\nplt.title('Confusion Matrix')\nplt.ylabel('True Label')\nplt.xlabel('Predicted Label')\nplt.show()\n\n# Record experimental environment\nimport sklearn\nprint(f\"scikit-learn version: {sklearn.__version__}\")\nprint(f\"numpy version: {np.__version__}\")\nprint(\"Random seed: 42\")</code></pre><p>另一个综合代码块展示了如何分析流水线的中间结果和错误样本，帮助理解模型的行为。</p><pre><code># Analyze TF-IDF features and misclassified samples\nprint(\"\\nAnalyzing feature importance...\")\n# Get TF-IDF feature names\nfeature_names = pipeline.named_steps['tfidf'].get_feature_names_out()\n# Get logistic regression coefficients (each class corresponds to a coefficient vector)\ncoef = pipeline.named_steps['clf'].coef_\n\n# For the first class (alt.atheism), find the top 10 most important features\nclass_idx = 0\ntop_features_idx = np.argsort(coef[class_idx])[-10:]\ntop_features = feature_names[top_features_idx]\ntop_weights = coef[class_idx][top_features_idx]\nprint(f\"Top 10 features for class '{newsgroups.target_names[class_idx]}':\")\nfor feat, weight in zip(top_features, top_weights):\n    print(f\"  {feat}: {weight:.4f}\")\n\nprint(\"\\nAnalyzing misclassified samples...\")\n# Find misclassified samples\nerror_mask = y_pred != y_test\nerror_indices = np.where(error_mask)[0]\nif len(error_indices) > 0:\n    # Examine first 3 error samples\n    for i in error_indices[:3]:\n        true_label = newsgroups.target_names[y_test[i]]\n        pred_label = newsgroups.target_names[y_pred[i]]\n        print(f\"Sample {i}: True class='{true_label}', Predicted class='{pred_label}'\")\n        # Show text snippet (first 200 characters)\n        text_preview = X_test[i][:200] + \"...\" if len(X_test[i]) > 200 else X_test[i]\n        print(f\"Text preview: {text_preview}\")\n        print()\nelse:\n    print(\"No misclassified samples (100% accuracy)\")</code></pre><p>通过这个完整的流程，你已经将理论知识转化为可执行的工程实践。文本预处理与表示不再是抽象的概念，而是可以实际应用于新闻分类、情感分析、垃圾邮件检测等任务的具体技术。</p><p>总结一下今天的方法论：文本处理的核心是构建可复现的流水线。从原始文本开始，经过分词、清洗、向量化等步骤，最终得到模型可处理的数值表示。这个流程可以迁移到任何文本分析任务中。在你的项目中，可以从以下步骤开始：1）明确任务目标（分类、聚类、检索等）；2）收集和清洗文本数据；3）选择合适的预处理步骤（根据语言和领域调整）；4）实验不同的表示方法（词袋、TF-IDF、词向量等）；5）构建流水线并确保可复现性；6）评估结果并迭代优化。记住，良好的文本处理是NLP项目成功的一半。</p>",
+        "en": "<h3>Starting with Confusion: Why Can't My Model Understand Chinese?</h3><p>Imagine you have a dataset of Chinese news articles and want to train a classification model to identify different topics. You feed the raw text directly into the model, only to find the classification results are almost random. Why does this happen? Machine learning models fundamentally process numerical data, while raw text consists of character sequences that models cannot directly understand concepts like \"natural language processing.\" This gap between raw text and machine learning models is exactly what text preprocessing and representation aim to solve.</p><p>Text preprocessing is the process of converting raw text into a normalized format, including operations like tokenization, cleaning, and standardization. Text representation refers to methods for transforming preprocessed text into numerical vectors that machine learning models can process. The boundary between them lies in: preprocessing focuses on structuring and organizing text, while representation focuses on mapping the organized text into numerical space. For example, for the sentence \"I love natural language processing!\", preprocessing might tokenize it into ['I', 'love', 'natural language', 'processing'], while representation might convert it to vector [1,1,1,1].</p><p>A common misconception is that preprocessing merely involves removing punctuation. In reality, preprocessing includes multiple layers of processing: tokenization splits text into meaningful units, stop word removal eliminates high-frequency low-information words, stemming reduces words to their base forms, and standardization normalizes case and format. These steps collectively prepare understandable inputs for models. If only punctuation is removed, models still cannot handle compound terms like \"natural language processing.\"</p><p>In our running example, we'll use the 20newsgroups dataset, a collection of texts from 20 newsgroup topics. We'll demonstrate how to start from raw news text and transform it into a model-processable format through preprocessing. For instance, a news article about computer graphics, after preprocessing, might become clean text containing keywords like \"graphics,\" \"rendering,\" \"algorithm.\"</p><p>Now that we understand why preprocessing is needed, let's explore what specifically needs to be done. Core preprocessing steps include tokenization, stop word removal, etc., which transform text from continuous character sequences into discrete lexical units, laying the foundation for subsequent representation methods.</p><h3>Deconstructing Text: From Characters to Bag of Words</h3><p>Now that we know text needs preprocessing for models to understand it, what are the specific preprocessing steps? The first challenge is: how do we split continuous text into meaningful units? For English text, we typically tokenize by spaces and punctuation, but for Chinese, the situation is more complex. Chinese lacks clear word boundaries—should \"natural language processing\" be split into \"natural language\" and \"processing,\" or \"natural,\" \"language,\" \"processing\"? This requires specialized tokenization tools.</p><p>Tokenization is the process of splitting continuous text into discrete lexical units (tokens). Stop words are words that appear frequently in text but carry little information, such as \"the,\" \"is,\" \"a,\" \"an.\" Bag of Words is a text representation method that treats text as a collection of words, ignoring word order and grammar. For example, for the sentence \"I like machine learning, machine learning is interesting,\" tokenization yields ['I', 'like', 'machine learning', ',', 'machine learning', 'is', 'interesting'], stop word removal gives ['like', 'machine learning', 'machine learning', 'interesting'], and Bag of Words representation becomes [1,2,1] (assuming vocabulary ['like', 'machine learning', 'interesting']).</p><p>Regarding tokenization, a common misconception is that all languages use the same tokenization methods. Actually, Chinese requires specialized tokenization tools (like jieba), while English typically tokenizes by spaces and punctuation. Regarding stop words, another misconception is that stop word lists are fixed. In reality, stop word lists should be adjusted based on specific tasks and domains—some \"stop words\" might be important in certain contexts. For example, in sentiment analysis, \"not\" might not be a stop word as it changes sentiment polarity.</p><p>The Bag of Words model is simple yet effective: it treats text as a collection of words, counting the occurrence of each word while ignoring word order and grammatical relationships. It's like throwing all words of an article into a bag and counting each word's frequency. Although this representation loses word order information, it proves sufficiently effective for many classification tasks because it relies on the word independence assumption—that word occurrences are independent of each other, which often holds in the statistical properties of text classification (source: Introduction to Information Retrieval, 2008).</p><p>The Bag of Words model is straightforward, but it treats all words equally, ignoring differences in word importance. For example, in news classification, \"machine learning\" might be more important than \"like\" for distinguishing computer-related articles. This necessitates introducing more refined representation methods.</p><h3>Measuring Importance: The Wisdom of TF-IDF</h3><p>The Bag of Words model is simple but effective, yet it has an obvious issue: it treats all words equally. In news classification tasks, \"machine learning\" might be more important than \"like\" for distinguishing computer-related articles. How do we quantify this importance difference? This requires introducing TF-IDF (Term Frequency-Inverse Document Frequency).</p><p>Term Frequency is the frequency of a word within a single document. Inverse Document Frequency measures how common or rare a word is across the entire document collection, with common words having lower IDF values. TF-IDF is the product of Term Frequency and Inverse Document Frequency, used to evaluate a word's importance to a document. The formula is: TF-IDF = TF × IDF, where IDF is typically calculated as log(N/df), with N being the total number of documents and df the number of documents containing the word. The logarithmic form is used for smoothing to prevent excessively large IDF values and is based on information theory principles—the rarity of a word relates logarithmically to its information content (source: A Comparative Study on Feature Selection in Text Categorization, 1997).</p><p>Regarding TF-IDF, a common misconception is that higher TF-IDF values are always better. Actually, TF-IDF values reflect word discriminative power, but need to be judged in context—some high-frequency general words might have low IDF values yet be meaningful. Another misconception is that TF-IDF can completely replace Bag of Words. In fact, TF-IDF is a weighted version of Bag of Words, still ignoring word order and semantic relationships.</p><p>For example, in a collection of two documents: ['I love machine learning', 'Machine learning is interesting'], the word \"machine learning\" has TF=1 in document 1, IDF=log(2/2)=0, thus TF-IDF=0. This indicates \"machine learning\" appears in all documents, having low discriminative power. Meanwhile, the word \"love\" appears only in document 1, with IDF=log(2/1)≈0.69, yielding a higher TF-IDF value and better discriminative power.</p><p>In our running example, we'll use TF-IDF to vectorize the 20newsgroups dataset. We'll demonstrate how to calculate TF-IDF values for each word and explain why certain words (e.g., \"graphics,\" \"windows\") have higher TF-IDF values in computer graphics news, while general words (e.g., \"article,\" \"writes\") have lower TF-IDF values.</p><p>Understanding individual techniques, we now need to combine them into a complete processing workflow. Text preprocessing and representation are not isolated techniques but steps that need to be串联起来 into a reproducible pipeline.</p><h3>Building a Pipeline: From Raw Text to Classification Results</h3><p>Having mastered preprocessing and representation methods, let's now build a complete text classification pipeline. In practical projects, we need not only to implement individual techniques but also to ensure the reproducibility of the entire workflow. How do we ensure preprocessing results are consistent across runs? How do we avoid random fluctuations in experimental results?</p><p>A pipeline is an automated workflow that串联起来 multiple processing steps, ensuring consistency in data processing. Reproducibility is the property that repeating an experiment under identical conditions yields the same results, crucial for scientific research. For example, in machine learning experiments, we need to set random seeds to ensure reproducibility in data splitting and model initialization. Reproducibility is not only about scientific rigor but also simplifies debugging and avoids evaluation biases caused by randomness (source: Scikit-learn: Machine Learning in Python, 2011).</p><p>Regarding preprocessing steps, a common misconception is that order doesn't matter. Actually, preprocessing steps have a fixed order—e.g., tokenization before stop word removal—as incorrect order may lead to information loss. Regarding reproducibility, another misconception is that small datasets don't require reproducibility considerations. In reality, regardless of data size, reproducibility is fundamental to good experimental practice.</p><p>In our running example, we'll build a complete text classification pipeline: raw text dataset → tokenization → stop word removal → TF-IDF vectorization → logistic regression classification → output classification accuracy and confusion matrix. We'll use scikit-learn's Pipeline class to combine these steps and set random_state parameters to ensure reproducibility.</p><p>Below is a comprehensive code block demonstrating how to build this pipeline. The code directly loads the 20newsgroups dataset from sklearn, performs preprocessing and TF-IDF vectorization, then trains a logistic regression classifier and evaluates its performance.</p><pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport seaborn as sns\nimport matplotlib.pyplot as plt\n\n# Set random seed for reproducibility\nnp.random.seed(42)\n\n# Load 20newsgroups dataset\nprint(\"Loading dataset...\")\nnewsgroups = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nX = newsgroups.data\ny = newsgroups.target\nprint(f\"Data shape: {len(X)} texts\")\nprint(f\"Number of classes: {len(np.unique(y))}\")\nprint(f\"Class names: {newsgroups.target_names[:5]}...\")  # Show first 5 classes\n\n# Split into training and test sets (stratified sampling ensures consistent class distribution)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"Training set size: {len(X_train)}, Test set size: {len(X_test)}\")\n\n# Build pipeline: TF-IDF vectorization + logistic regression classification\npipeline = Pipeline([\n    ('tfidf', TfidfVectorizer(\n        max_features=10000,  # Limit number of features\n        stop_words='english',  # Remove English stop words\n        min_df=5,  # Words must appear in at least 5 documents\n        max_df=0.7  # Words can appear in at most 70% of documents\n    )),\n    ('clf', LogisticRegression(\n        max_iter=1000,\n        random_state=42\n    ))\n])\n\n# Train model\nprint(\"Training model...\")\npipeline.fit(X_train, y_train)\n\n# Predict and evaluate\nprint(\"Evaluating model...\")\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"Model accuracy: {accuracy:.4f}\")\n\n# Generate confusion matrix\ncm = confusion_matrix(y_test, y_pred)\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues')\nplt.title('Confusion Matrix')\nplt.ylabel('True Label')\nplt.xlabel('Predicted Label')\nplt.show()\n\n# Record experimental environment\nimport sklearn\nprint(f\"scikit-learn version: {sklearn.__version__}\")\nprint(f\"numpy version: {np.__version__}\")\nprint(\"Random seed: 42\")</code></pre><p>Another comprehensive code block demonstrates how to analyze intermediate pipeline results and misclassified samples to understand model behavior.</p><pre><code># Analyze TF-IDF features and misclassified samples\nprint(\"\\nAnalyzing feature importance...\")\n# Get TF-IDF feature names\nfeature_names = pipeline.named_steps['tfidf'].get_feature_names_out()\n# Get logistic regression coefficients (each class corresponds to a coefficient vector)\ncoef = pipeline.named_steps['clf'].coef_\n\n# For the first class (alt.atheism), find the top 10 most important features\nclass_idx = 0\ntop_features_idx = np.argsort(coef[class_idx])[-10:]\ntop_features = feature_names[top_features_idx]\ntop_weights = coef[class_idx][top_features_idx]\nprint(f\"Top 10 features for class '{newsgroups.target_names[class_idx]}':\")\nfor feat, weight in zip(top_features, top_weights):\n    print(f\"  {feat}: {weight:.4f}\")\n\nprint(\"\\nAnalyzing misclassified samples...\")\n# Find misclassified samples\nerror_mask = y_pred != y_test\nerror_indices = np.where(error_mask)[0]\nif len(error_indices) > 0:\n    # Examine first 3 error samples\n    for i in error_indices[:3]:\n        true_label = newsgroups.target_names[y_test[i]]\n        pred_label = newsgroups.target_names[y_pred[i]]\n        print(f\"Sample {i}: True class='{true_label}', Predicted class='{pred_label}'\")\n        # Show text snippet (first 200 characters)\n        text_preview = X_test[i][:200] + \"...\" if len(X_test[i]) > 200 else X_test[i]\n        print(f\"Text preview: {text_preview}\")\n        print()\nelse:\n    print(\"No misclassified samples (100% accuracy)\")</code></pre><p>Through this complete workflow, you've transformed theoretical knowledge into executable engineering practice. Text preprocessing and representation are no longer abstract concepts but concrete techniques applicable to tasks like news classification, sentiment analysis, spam detection, etc.</p><p>To summarize today's methodology: the core of text processing is building reproducible pipelines. Starting from raw text, through steps like tokenization, cleaning, and vectorization, we ultimately obtain numerical representations processable by models. This workflow can be migrated to any text analysis task. In your projects, you can start with: 1) Define task objectives (classification, clustering, retrieval, etc.); 2) Collect and clean text data; 3) Select appropriate preprocessing steps (adjusted for language and domain); 4) Experiment with different representation methods (Bag of Words, TF-IDF, word embeddings, etc.); 5) Build pipelines ensuring reproducibility; 6) Evaluate results and iterate for optimization. Remember, good text processing is half the success of an NLP project.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：文本预处理与表示 · 结构总览 · 数据：课程大纲】在设计《文本预处理与表示》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 文本预处理与表示 · 结构总览 · Data: 课程大纲】When outlining \"文本预处理与表示\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：文本预处理与表示 · worked example · 数据：掌握分词、去停用词等预处理方法 数据/代码】在复现《文本预处理与表示》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 文本预处理与表示 · worked example · Data: 掌握分词、去停用词等预处理方法 数据/代码】While reproducing the worked example in \"文本预处理与表示\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：文本预处理与表示 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《文本预处理与表示》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 文本预处理与表示 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"文本预处理与表示\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：文本预处理与表示 · 参考资料 · 数据：课程引用文献】当引用文献支撑《文本预处理与表示》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 文本预处理与表示 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"文本预处理与表示\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Journal of Machine Learning Research，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (Journal of Machine Learning Research, 2011)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        },
+        {
+          "label": {
+            "zh": "A Comparative Study on Feature Selection in Text Categorization（ICML，1997）",
+            "en": "A Comparative Study on Feature Selection in Text Categorization (ICML, 1997)"
+          },
+          "url": "https://dl.acm.org/doi/10.5555/645526.657311"
+        },
+        {
+          "label": {
+            "zh": "Introduction to Information Retrieval（Cambridge University Press，2008）",
+            "en": "Introduction to Information Retrieval (Cambridge University Press, 2008)"
+          },
+          "url": "https://nlp.stanford.edu/IR-book/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-19-text-preprocessing-zh.mp3"
+      },
+      "meta": {
+        "category": "NLP Fundamentals",
+        "level": "3. Natural Language Processing & Transformers",
+        "difficultyScore": 1,
+        "related": [
+          "文本清洗",
+          "TF-IDF"
+        ],
+        "learningObjectives": [
+          "掌握分词、去停用词等预处理方法",
+          "理解词袋模型与 TF-IDF"
+        ],
+        "personas": [
+          "初学者",
+          "数据分析师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握文本预处理与表示可帮助团队在NLP Fundamentals上做出可复用的实践。",
+          "best_for": "适合初学者、数据分析师，需要快速吸收3. Natural Language Processing & Transformers主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "初学者 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 初学者、数据分析师，帮助他们把 文本预处理与表示 应用于 NLP Fundamentals",
+          "prefersEnglish": false,
+          "industries": [
+            "初学者",
+            "数据分析师"
+          ],
+          "personas": [
+            "初学者",
+            "数据分析师"
+          ],
+          "pains": "在 NLP Fundamentals 场景缺乏 文本预处理与表示 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. Natural Language Processing & Transformers"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据分析师，你曾处理过哪些文本数据？回想最近的项目，原始文本中的哪些噪声（如特殊符号、停用词）可能影响了分析结果？",
+            "action_hint": "尝试列出你项目中常见的文本问题，并思考如何通过预处理步骤（如分词、清洗）来优化数据质量。"
+          },
+          {
+            "lang": "zh",
+            "question": "在构建文本分类模型时，你是否遇到过因文本表示不当（如忽略词频或上下文）导致模型性能下降的情况？具体是哪些挑战？",
+            "action_hint": "结合你的经验，描述一个案例，并探索如何应用词袋模型或TF-IDF来改进文本的向量化表示。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-19-hybrid-models",
       "date": "2025-12-19",
