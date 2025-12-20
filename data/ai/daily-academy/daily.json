@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2025-12-19T13:58:11.877Z",
+  "generatedAt": "2025-12-20T02:27:36.759Z",
   "lessons": [
+    {
+      "id": "2025-12-20-word-embedding",
+      "date": "2025-12-20",
+      "title": {
+        "zh": "词嵌入与分布式表示",
+        "en": "Word Embeddings and Distributed Representations"
+      },
+      "summary": {
+        "zh": "词嵌入是将词语映射到低维连续向量空间的技术，通过分布式表示捕捉语义关系。本课程从传统文本表示的局限性出发，逐步深入词嵌入的数学本质，对比Word2Vec和GloVe两种经典方法，最终通过电影评论情感分类的完整示例展示实践应用。你将掌握从原理理解到代码实现的全流程，学会使用预训练嵌入提升文本建模性能。",
+        "en": "Word embeddings map words into low-dimensional continuous vector spaces, capturing semantic relationships through distributed representations. This course starts from the limitations of traditional text representations, delves into the mathematical essence of embeddings, compares two classic methods—Word2Vec and GloVe—and concludes with a practical example of sentiment classification on movie reviews. You'll master the full workflow from theoretical understanding to code implementation, learning to enhance text modeling performance with pretrained embeddings."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "word embedding",
+        "distributed representation"
+      ],
+      "content": {
+        "zh": "<h2>词嵌入与分布式表示：从离散符号到连续语义空间</h2>\n\n<p>想象一下，你正在构建一个情感分析系统，需要理解“这部电影很棒”和“这部电影太糟糕了”之间的语义差异。传统方法将每个词视为孤立的符号，但“很棒”和“糟糕”在向量空间中应该相距多远？这正是词嵌入要解决的核心问题：如何让计算机理解词语之间的语义关系，而不仅仅是识别词汇本身。</p>\n\n<p>在这篇文章中，你将系统掌握词嵌入的原理与应用。我们将从为什么需要词嵌入开始，逐步深入其数学本质，对比Word2Vec和GloVe两种经典方法，最终通过一个完整的文本分类示例展示如何用预训练嵌入提升模型性能。贯穿全文的示例是：使用GloVe预训练词向量对电影评论进行情感分类（二分类任务），从数据加载到模型评估的全流程。</p>\n\n<h3>从离散符号到连续空间：为什么需要词嵌入？</h3>\n\n<p>在自然语言处理的早期，文本通常被表示为独热编码 one-hot encoding：每个词对应一个高维向量，其中只有一个位置为1，其余全为0。例如，在包含10000个词的词汇表中，“猫”可能表示为[0,0,...,1,...,0]。这种方法存在明显局限：向量维度随词汇表线性增长，且任意两个词之间的余弦相似度 cosine similarity 都为0，无法反映“猫”和“狗”的语义相近性。</p>\n\n<p>词嵌入 word embedding 的核心思想是将词语映射到低维连续向量空间（通常50-300维），使得语义相似的词在空间中距离相近。分布式表示 distributed representation 意味着语义信息分散在向量的多个维度中，而不是集中在单一维度。例如，经过训练后，“猫”和“狗”的向量可能在某些维度上共享“宠物”“哺乳动物”等特征，从而具有较高的相似度。</p>\n\n<blockquote><strong>误区纠正：</strong>一个常见误区是认为词嵌入向量的每个维度都有明确语义解释。实际上，词嵌入是整体表示，单个维度通常无直接语义，但向量的整体模式编码了丰富的语义关系。例如，在训练良好的嵌入空间中，我们可能观察到向量运算“国王 - 男人 + 女人 ≈ 女王”，这反映了性别和地位的语义组合性。</blockquote>\n\n<p>在我们的电影评论分类示例中，我们将看到词嵌入如何将文本转换为密集向量表示。传统方法如TF-IDF会产生高维稀疏向量，而词嵌入则生成低维稠密向量，更适合机器学习模型处理。通过预训练GloVe嵌入，我们可以将评论中的每个词映射到300维向量，然后聚合为文档表示，输入分类器。</p>\n\n<p>理解了从离散到连续的动机，接下来我们需要形式化定义词嵌入的数学本质。</p>\n\n<h3>词嵌入的数学本质：向量空间中的语义几何</h3>\n\n<p>词嵌入可以形式化为一个映射函数 f: V → R^d，其中V是词汇表，d是嵌入维度。这个函数的目标是使得语义相似的词在R^d空间中距离相近。衡量相似度的常用指标是余弦相似度：sim(u,v) = (u·v)/(||u||·||v||)，它关注向量的方向而非模长 magnitude。</p>\n\n<p>词嵌入的训练基于分布式假设 distributional hypothesis：出现在相似上下文中的词具有相似语义。具体来说，通过分析大规模文本语料中词的共现模式，我们可以学习到编码语义关系的向量表示。例如，“苹果”和“橘子”经常出现在“吃”“水果”“甜”等相似上下文中，因此它们的向量应该相近。</p>\n\n<blockquote><strong>误区纠正：</strong>另一个误区是认为词嵌入向量的模长包含重要语义信息。实际上，在大多数应用中，我们更关注向量的方向，相似度计算时通常会对向量进行归一化。模长可能受词频等因素影响，高频词往往有较大的模长，但这并不直接对应语义重要性。</blockquote>\n\n<p>在我们的示例中，我们将使用余弦相似度来分析词向量之间的关系。例如，计算“excellent”和“good”的相似度可能得到0.85，而“excellent”和“terrible”的相似度可能只有0.15。这种几何关系直接支持情感分类任务：正面词和负面词在向量空间中形成相对分离的簇。</p>\n\n<p>有了数学框架，接下来我们探索两种经典训练方法：Word2Vec和GloVe。</p>\n\n<h3>Word2Vec与GloVe：两种经典训练范式</h3>\n\n<p>Word2Vec（Efficient Estimation of Word Representations in Vector Space, 2013）基于局部上下文窗口，通过神经网络学习词向量。它有两种主要架构：Skip-gram（用中心词预测上下文词）和CBOW（用上下文词预测中心词）。Skip-gram在处理稀有词时表现更好，而CBOW训练速度更快。</p>\n\n<p>GloVe（GloVe: Global Vectors for Word Representation, 2014）则基于全局词共现统计。它首先构建一个共现矩阵 co-occurrence matrix，记录词对在固定窗口内共同出现的频率，然后通过矩阵分解学习词向量。GloVe的损失函数结合了共现概率的比率，能够捕捉更细致的语义关系。</p>\n\n<blockquote><strong>误区纠正：</strong>一个常见误解是认为Word2Vec只考虑局部上下文，因此不如GloVe。实际上，两者各有优劣：Word2Vec更适合大规模语料和在线学习，而GloVe在利用全局统计信息方面更有优势。选择哪种方法取决于具体任务和数据特征。</blockquote>\n\n<p>在我们的电影评论示例中，我们将使用预训练的GloVe嵌入（GloVe.6B.300d），它是在60亿词条上训练得到的300维向量。这些嵌入已经编码了丰富的语义关系，我们可以直接加载使用，无需从头训练。下表对比了两种方法的关键特性：</p>\n\n<table>\n<tr><th>特性</th><th>Word2Vec</th><th>GloVe</th></tr>\n<tr><td>训练目标</td><td>预测上下文词</td><td>拟合共现概率</td></tr>\n<tr><td>计算复杂度</td><td>O(|V|)</td><td>O(|V|^2)</td></tr>\n<tr><td>稀有词处理</td><td>较好</td><td>一般</td></tr>\n<tr><td>预训练可用性</td><td>广泛</td><td>广泛</td></tr>\n</table>\n\n<p>基于GloVe的全局统计特性，我们可以利用预训练嵌入快速构建文档表示，从而提升分类性能。现在让我们进入实践环节，将词嵌入应用到文本分类任务中。</p>\n\n<h3>实践：用预训练嵌入提升文本分类</h3>\n\n<p>预训练嵌入 pretrained embeddings 是在大规模语料上预先训练好的词向量，可以直接用于下游任务。使用预训练嵌入的主要优势是节省计算资源，并利用通用语义知识提升模型性能。常见的预训练嵌入包括GloVe、Word2Vec（Google News）和FastText。</p>\n\n<p>在我们的电影评论情感分类任务中，我们将遵循以下pipeline：1) 加载和预处理文本数据；2) 加载GloVe预训练向量；3) 将文档转换为词向量平均表示；4) 训练分类器并评估性能。关键步骤是文档表示构建：对于每个文档，我们将其所有词的向量取平均，得到一个固定维度的文档向量。这种方法基于分布假设，即文档的语义是其组成词语语义的平均，但需要注意其局限性：它忽略了词序，可能无法处理否定句等复杂结构。</p>\n\n<blockquote><strong>误区纠正：</strong>一个需要注意的误区是认为使用预训练嵌入后就不需要调整模型。实际上，嵌入层通常仍需微调或作为特征补充。预训练嵌入提供了良好的初始化，但在特定任务上可能需要进行微调以适应领域特性。</blockquote>\n\n<p>下面是一个完整的代码示例，展示了如何使用GloVe嵌入进行文本分类，并整合了可视化分析：</p>\n\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport matplotlib.pyplot as plt\nfrom sklearn.manifold import TSNE\n\n# 步骤1：加载数据集（模拟电影评论）\ncategories = ['rec.sport.baseball', 'sci.space']  # 二分类任务\ndataset = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = dataset.data\ntargets = dataset.target  # 0或1\n\nprint(f\"数据集大小: {len(texts)}\")\nprint(f\"类别分布: {np.bincount(targets)}\")\n\n# 步骤2：划分训练集和测试集\nX_train, X_test, y_train, y_test = train_test_split(\n    texts, targets, test_size=0.2, stratify=targets, random_state=42\n)\n\n# 步骤3：创建模拟GloVe嵌入矩阵（实际应用中从文件加载）\nvocab = {'good': 0, 'bad': 1, 'excellent': 2, 'poor': 3, 'movie': 4, 'film': 5}\nembedding_dim = 6\nembedding_matrix = np.array([\n    [0.8, 0.2, 0.1, 0.9, 0.3, 0.4],   # good\n    [-0.7, -0.3, -0.2, -0.8, 0.3, 0.4], # bad\n    [0.9, 0.3, 0.2, 0.8, 0.4, 0.5],   # excellent\n    [-0.8, -0.4, -0.3, -0.9, 0.4, 0.5], # poor\n    [0.1, 0.1, 0.9, 0.1, 0.1, 0.1],   # movie\n    [0.2, 0.2, 0.8, 0.2, 0.2, 0.2]    # film\n])\n\nprint(f\"嵌入矩阵形状: {embedding_matrix.shape}\")\nprint(f\"词汇表大小: {len(vocab)}\")\n\n# 步骤4：将文档转换为向量平均表示\ndef document_to_vector(doc, vocab, embedding_matrix):\n    words = doc.lower().split()\n    vectors = []\n    for word in words:\n        if word in vocab:\n            vectors.append(embedding_matrix[vocab[word]])\n    if len(vectors) == 0:\n        return np.zeros(embedding_dim)\n    return np.mean(vectors, axis=0)\n\nX_train_vec = np.array([document_to_vector(doc, vocab, embedding_matrix) for doc in X_train])\nX_test_vec = np.array([document_to_vector(doc, vocab, embedding_matrix) for doc in X_test])\n\nprint(f\"训练集向量形状: {X_train_vec.shape}\")\nprint(f\"测试集向量形状: {X_test_vec.shape}\")\n\n# 步骤5：训练逻辑回归模型并评估\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_vec, y_train)\ny_pred = model.predict(X_test_vec)\naccuracy = accuracy_score(y_test, y_pred)\nconf_matrix = confusion_matrix(y_test, y_pred)\n\nprint(f\"测试集准确率: {accuracy:.4f}\")\nprint(f\"混淆矩阵:\\n{conf_matrix}\")\n\n# 错误分析示例\nerror_indices = np.where(y_pred != y_test)[0]\nif len(error_indices) > 0:\n    print(\"\\n示例错误分析（第一个错误样本）:\")\n    print(f\"真实标签: {y_test[error_indices[0]]}\")\n    print(f\"预测标签: {y_pred[error_indices[0]]}\")\n    print(f\"文本片段: {X_test[error_indices[0]][:200]}...\")\n\n# 可视化词向量（使用t-SNE降维）\nwords_to_plot = ['good', 'bad', 'excellent', 'poor', 'movie', 'film']\nword_vectors = np.array([embedding_matrix[vocab[word]] for word in words_to_plot])\n\ntsne = TSNE(n_components=2, random_state=42, perplexity=2)\nvectors_2d = tsne.fit_transform(word_vectors)\n\nplt.figure(figsize=(8, 6))\nplt.scatter(vectors_2d[:, 0], vectors_2d[:, 1])\nfor i, word in enumerate(words_to_plot):\n    plt.annotate(word, (vectors_2d[i, 0], vectors_2d[i, 1]))\nplt.title('词向量可视化（t-SNE降维）')\nplt.xlabel('维度1')\nplt.ylabel('维度2')\nplt.grid(True, alpha=0.3)\nplt.show()\n\n# 计算词相似度矩阵\nsimilarity_matrix = np.zeros((len(words_to_plot), len(words_to_plot)))\nfor i in range(len(words_to_plot)):\n    for j in range(len(words_to_plot)):\n        u = word_vectors[i]\n        v = word_vectors[j]\n        similarity = np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v))\n        similarity_matrix[i, j] = similarity\n\nprint(\"\\n词相似度矩阵:\")\nprint(\"       \" + \" \".join(f\"{word:10}\" for word in words_to_plot))\nfor i, word in enumerate(words_to_plot):\n    print(f\"{word:10} \" + \" \".join(f\"{similarity_matrix[i, j]:.3f}      \" for j in range(len(words_to_plot))))\n</code></pre>\n\n<p>通过这个完整示例，你已经掌握了词嵌入从原理到实践的全流程。从离散符号到连续空间，从数学定义到实际应用，词嵌入已经成为自然语言处理的基石技术。</p>\n\n<h2>方法论迁移：将词嵌入应用到你的项目</h2>\n\n<p>回顾今天的学习路径，你可以将这套工作流迁移到自己的NLP项目中。首先，明确你的任务是否需要语义理解：如果涉及文本分类、情感分析、相似度计算等任务，词嵌入很可能带来性能提升。其次，根据数据规模和领域特性选择嵌入方法：通用领域可以使用预训练嵌入，专业领域可能需要领域自适应或从头训练。</p>\n\n<p>具体实施时，遵循以下步骤：1) 文本预处理（分词、清洗）；2) 选择嵌入模型（预训练或训练新模型）；3) 构建文档表示（平均、加权平均或更复杂的聚合方法）；4) 集成到机器学习管道中。记住，词嵌入不是银弹，需要与其他技术（如序列模型、注意力机制）结合使用，并在验证集上仔细评估效果。</p>\n\n<p>现在，你已经具备了将词嵌入应用于实际项目的能力。尝试在自己的数据集上复现今天的示例，然后逐步调整和优化，探索词嵌入在你特定任务中的潜力。</p>",
+        "en": "<h2>Word Embeddings and Distributed Representations: From Discrete Symbols to Continuous Semantic Spaces</h2>\n\n<p>Imagine you're building a sentiment analysis system that needs to understand the semantic difference between \"this movie is great\" and \"this movie is terrible.\" Traditional approaches treat each word as an isolated symbol, but how far apart should \"great\" and \"terrible\" be in vector space? This is the core problem word embeddings solve: how to enable computers to understand semantic relationships between words, not just recognize vocabulary.</p>\n\n<p>In this article, you'll systematically master the principles and applications of word embeddings. We'll start with why embeddings are needed, delve into their mathematical essence, compare two classic methods—Word2Vec and GloVe—and conclude with a complete text classification example demonstrating how pretrained embeddings can enhance model performance. The running example throughout is: using GloVe pretrained word vectors for sentiment classification of movie reviews (binary task), covering the full pipeline from data loading to model evaluation.</p>\n\n<h3>From Discrete Symbols to Continuous Space: Why Do We Need Word Embeddings?</h3>\n\n<p>In early natural language processing, text was often represented using one-hot encoding: each word corresponds to a high-dimensional vector with a single 1 and all other positions 0. For example, in a vocabulary of 10,000 words, \"cat\" might be represented as [0,0,...,1,...,0]. This approach has clear limitations: vector dimensionality grows linearly with vocabulary size, and the cosine similarity between any two words is 0, failing to reflect the semantic closeness of \"cat\" and \"dog.\"</p>\n\n<p>The core idea of word embedding is to map words into a low-dimensional continuous vector space (typically 50-300 dimensions), so that semantically similar words are close in space. Distributed representation means semantic information is dispersed across multiple dimensions of the vector, rather than concentrated in a single dimension. For instance, after training, the vectors for \"cat\" and \"dog\" might share features like \"pet\" or \"mammal\" in certain dimensions, resulting in high similarity.</p>\n\n<blockquote><strong>Misconception Correction:</strong> A common misconception is that each dimension of a word embedding vector has a clear semantic interpretation. In reality, embeddings are holistic representations; individual dimensions usually lack direct semantics, but the overall pattern of the vector encodes rich semantic relationships. For example, in a well-trained embedding space, we might observe the vector arithmetic \"king - man + woman ≈ queen,\" reflecting semantic compositionality of gender and status.</blockquote>\n\n<p>In our movie review classification example, we'll see how embeddings transform text into dense vector representations. Traditional methods like TF-IDF produce high-dimensional sparse vectors, while embeddings generate low-dimensional dense vectors, more suitable for machine learning models. Using pretrained GloVe embeddings, we can map each word in a review to a 300-dimensional vector, then aggregate into a document representation for the classifier.</p>\n\n<p>Understanding the motivation for moving from discrete to continuous, we now need to formalize the mathematical essence of word embeddings.</p>\n\n<h3>The Mathematical Essence of Word Embeddings: Semantic Geometry in Vector Space</h3>\n\n<p>Word embeddings can be formalized as a mapping function f: V → R^d, where V is the vocabulary and d is the embedding dimension. The goal of this function is to make semantically similar words close in R^d space. A common metric for measuring similarity is cosine similarity: sim(u,v) = (u·v)/(||u||·||v||), focusing on vector direction rather than magnitude.</p>\n\n<p>Embedding training is based on the distributional hypothesis: words that appear in similar contexts have similar meanings. Specifically, by analyzing co-occurrence patterns of words in large text corpora, we can learn vector representations that encode semantic relationships. For example, \"apple\" and \"orange\" frequently appear in similar contexts like \"eat,\" \"fruit,\" \"sweet,\" so their vectors should be close.</p>\n\n<blockquote><strong>Misconception Correction:</strong> Another misconception is that the magnitude of embedding vectors contains important semantic information. In most applications, we focus more on vector direction, often normalizing vectors for similarity calculations. Magnitude may be influenced by factors like word frequency—high-frequency words tend to have larger magnitudes—but this doesn't directly correspond to semantic importance.</blockquote>\n\n<p>In our example, we'll use cosine similarity to analyze relationships between word vectors. For instance, the similarity between \"excellent\" and \"good\" might be 0.85, while between \"excellent\" and \"terrible\" it might be only 0.15. This geometric relationship directly supports sentiment classification: positive and negative words form relatively separated clusters in vector space.</p>\n\n<p>With the mathematical framework established, let's explore two classic training methods: Word2Vec and GloVe.</p>\n\n<h3>Word2Vec and GloVe: Two Classic Training Paradigms</h3>\n\n<p>Word2Vec (Efficient Estimation of Word Representations in Vector Space, 2013) is based on local context windows, learning word vectors through neural networks. It has two main architectures: Skip-gram (predicting context words from a center word) and CBOW (predicting a center word from context words). Skip-gram performs better with rare words, while CBOW trains faster.</p>\n\n<p>GloVe (GloVe: Global Vectors for Word Representation, 2014) is based on global word co-occurrence statistics. It first constructs a co-occurrence matrix recording the frequency of word pairs appearing together within a fixed window, then learns word vectors through matrix factorization. GloVe's loss function incorporates ratios of co-occurrence probabilities, capturing finer semantic relationships.</p>\n\n<blockquote><strong>Misconception Correction:</strong> A common misunderstanding is that Word2Vec only considers local context and is therefore inferior to GloVe. In fact, both have strengths and weaknesses: Word2Vec is better suited for large corpora and online learning, while GloVe excels at leveraging global statistical information. The choice depends on the specific task and data characteristics.</blockquote>\n\n<p>In our movie review example, we'll use pretrained GloVe embeddings (GloVe.6B.300d), which are 300-dimensional vectors trained on 6 billion tokens. These embeddings already encode rich semantic relationships, and we can load and use them directly without training from scratch. The table below compares key characteristics of the two methods:</p>\n\n<table>\n<tr><th>Characteristic</th><th>Word2Vec</th><th>GloVe</th></tr>\n<tr><td>Training Objective</td><td>Predict context words</td><td>Fit co-occurrence probabilities</td></tr>\n<tr><td>Computational Complexity</td><td>O(|V|)</td><td>O(|V|^2)</td></tr>\n<tr><td>Rare Word Handling</td><td>Better</td><td>Moderate</td></tr>\n<tr><td>Pretrained Availability</td><td>Widespread</td><td>Widespread</td></tr>\n</table>\n\n<p>Leveraging GloVe's global statistical properties, we can use pretrained embeddings to quickly construct document representations, thereby improving classification performance. Now let's move to practical application, integrating embeddings into a text classification task.</p>\n\n<h3>Practice: Enhancing Text Classification with Pretrained Embeddings</h3>\n\n<p>Pretrained embeddings are word vectors trained on large corpora in advance, directly usable for downstream tasks. The main advantages are saving computational resources and leveraging general semantic knowledge to improve model performance. Common pretrained embeddings include GloVe, Word2Vec (Google News), and FastText.</p>\n\n<p>In our movie review sentiment classification task, we'll follow this pipeline: 1) Load and preprocess text data; 2) Load GloVe pretrained vectors; 3) Convert documents to averaged word vector representations; 4) Train a classifier and evaluate performance. A key step is document representation construction: for each document, we average the vectors of all its words to obtain a fixed-dimensional document vector. This method is based on the distributional hypothesis, assuming document semantics is the average of its constituent word semantics, but note its limitations: it ignores word order and may struggle with complex structures like negations.</p>\n\n<blockquote><strong>Misconception Correction:</strong> An important caveat is that using pretrained embeddings doesn't eliminate the need for model adjustment. Embedding layers often still require fine-tuning or serve as feature supplements. Pretrained embeddings provide good initialization but may need fine-tuning for domain-specific characteristics.</blockquote>\n\n<p>Below is a complete code example demonstrating how to use GloVe embeddings for text classification, integrating visualization analysis:</p>\n\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport matplotlib.pyplot as plt\nfrom sklearn.manifold import TSNE\n\n# Step 1: Load dataset (simulating movie reviews)\ncategories = ['rec.sport.baseball', 'sci.space']  # Binary classification task\ndataset = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = dataset.data\ntargets = dataset.target  # 0 or 1\n\nprint(f\"Dataset size: {len(texts)}\")\nprint(f\"Class distribution: {np.bincount(targets)}\")\n\n# Step 2: Split into training and test sets\nX_train, X_test, y_train, y_test = train_test_split(\n    texts, targets, test_size=0.2, stratify=targets, random_state=42\n)\n\n# Step 3: Create simulated GloVe embedding matrix (in practice, load from file)\nvocab = {'good': 0, 'bad': 1, 'excellent': 2, 'poor': 3, 'movie': 4, 'film': 5}\nembedding_dim = 6\nembedding_matrix = np.array([\n    [0.8, 0.2, 0.1, 0.9, 0.3, 0.4],   # good\n    [-0.7, -0.3, -0.2, -0.8, 0.3, 0.4], # bad\n    [0.9, 0.3, 0.2, 0.8, 0.4, 0.5],   # excellent\n    [-0.8, -0.4, -0.3, -0.9, 0.4, 0.5], # poor\n    [0.1, 0.1, 0.9, 0.1, 0.1, 0.1],   # movie\n    [0.2, 0.2, 0.8, 0.2, 0.2, 0.2]    # film\n])\n\nprint(f\"Embedding matrix shape: {embedding_matrix.shape}\")\nprint(f\"Vocabulary size: {len(vocab)}\")\n\n# Step 4: Convert documents to averaged vector representations\ndef document_to_vector(doc, vocab, embedding_matrix):\n    words = doc.lower().split()\n    vectors = []\n    for word in words:\n        if word in vocab:\n            vectors.append(embedding_matrix[vocab[word]])\n    if len(vectors) == 0:\n        return np.zeros(embedding_dim)\n    return np.mean(vectors, axis=0)\n\nX_train_vec = np.array([document_to_vector(doc, vocab, embedding_matrix) for doc in X_train])\nX_test_vec = np.array([document_to_vector(doc, vocab, embedding_matrix) for doc in X_test])\n\nprint(f\"Training vectors shape: {X_train_vec.shape}\")\nprint(f\"Test vectors shape: {X_test_vec.shape}\")\n\n# Step 5: Train logistic regression model and evaluate\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_vec, y_train)\ny_pred = model.predict(X_test_vec)\naccuracy = accuracy_score(y_test, y_pred)\nconf_matrix = confusion_matrix(y_test, y_pred)\n\nprint(f\"Test accuracy: {accuracy:.4f}\")\nprint(f\"Confusion matrix:\\n{conf_matrix}\")\n\n# Example error analysis\nerror_indices = np.where(y_pred != y_test)[0]\nif len(error_indices) > 0:\n    print(\"\\nExample error analysis (first error sample):\")\n    print(f\"True label: {y_test[error_indices[0]]}\")\n    print(f\"Predicted label: {y_pred[error_indices[0]]}\")\n    print(f\"Text snippet: {X_test[error_indices[0]][:200]}...\")\n\n# Visualize word vectors (using t-SNE for dimensionality reduction)\nwords_to_plot = ['good', 'bad', 'excellent', 'poor', 'movie', 'film']\nword_vectors = np.array([embedding_matrix[vocab[word]] for word in words_to_plot])\n\ntsne = TSNE(n_components=2, random_state=42, perplexity=2)\nvectors_2d = tsne.fit_transform(word_vectors)\n\nplt.figure(figsize=(8, 6))\nplt.scatter(vectors_2d[:, 0], vectors_2d[:, 1])\nfor i, word in enumerate(words_to_plot):\n    plt.annotate(word, (vectors_2d[i, 0], vectors_2d[i, 1]))\nplt.title('Word Vector Visualization (t-SNE Reduction)')\nplt.xlabel('Dimension 1')\nplt.ylabel('Dimension 2')\nplt.grid(True, alpha=0.3)\nplt.show()\n\n# Compute word similarity matrix\nsimilarity_matrix = np.zeros((len(words_to_plot), len(words_to_plot)))\nfor i in range(len(words_to_plot)):\n    for j in range(len(words_to_plot)):\n        u = word_vectors[i]\n        v = word_vectors[j]\n        similarity = np.dot(u, v) / (np.linalg.norm(u) * np.linalg.norm(v))\n        similarity_matrix[i, j] = similarity\n\nprint(\"\\nWord similarity matrix:\")\nprint(\"       \" + \" \".join(f\"{word:10}\" for word in words_to_plot))\nfor i, word in enumerate(words_to_plot):\n    print(f\"{word:10} \" + \" \".join(f\"{similarity_matrix[i, j]:.3f}      \" for j in range(len(words_to_plot))))\n</code></pre>\n\n<p>Through this complete example, you've mastered the full workflow of word embeddings from principles to practice. From discrete symbols to continuous space, from mathematical definitions to real applications, word embeddings have become a foundational technology in natural language processing.</p>\n\n<h2>Methodology Transfer: Applying Word Embeddings to Your Projects</h2>\n\n<p>Reviewing today's learning path, you can transfer this workflow to your own NLP projects. First, determine if your task requires semantic understanding: if it involves text classification, sentiment analysis, similarity computation, etc., embeddings will likely improve performance. Second, choose an embedding method based on data scale and domain characteristics: general domains can use pretrained embeddings, while specialized domains may require domain adaptation or training from scratch.</p>\n\n<p>For implementation, follow these steps: 1) Text preprocessing (tokenization, cleaning); 2) Select embedding model (pretrained or train new); 3) Construct document representations (averaging, weighted averaging, or more complex aggregation); 4) Integrate into machine learning pipelines. Remember, embeddings are not a silver bullet—they should be combined with other techniques (like sequence models, attention mechanisms) and carefully evaluated on validation sets.</p>\n\n<p>Now, you have the capability to apply word embeddings to practical projects. Try reproducing today's example on your own dataset, then gradually adjust and optimize to explore the potential of embeddings in your specific tasks.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：词嵌入与分布式表示 · 结构总览 · 数据：课程大纲】在设计《词嵌入与分布式表示》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 词嵌入与分布式表示 · 结构总览 · Data: 课程大纲】When outlining \"词嵌入与分布式表示\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：词嵌入与分布式表示 · worked example · 数据：学习 Word2Vec 和 GloVe 的原理 数据/代码】在复现《词嵌入与分布式表示》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 词嵌入与分布式表示 · worked example · Data: 学习 Word2Vec 和 GloVe 的原理 数据/代码】While reproducing the worked example in \"词嵌入与分布式表示\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：词嵌入与分布式表示 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《词嵌入与分布式表示》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 词嵌入与分布式表示 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"词嵌入与分布式表示\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：词嵌入与分布式表示 · 参考资料 · 数据：课程引用文献】当引用文献支撑《词嵌入与分布式表示》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 词嵌入与分布式表示 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"词嵌入与分布式表示\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Efficient Estimation of Word Representations in Vector Space（arXiv，2013）",
+            "en": "Efficient Estimation of Word Representations in Vector Space (arXiv, 2013)"
+          },
+          "url": "https://arxiv.org/abs/1301.3781"
+        },
+        {
+          "label": {
+            "zh": "GloVe: Global Vectors for Word Representation（Stanford University，2014）",
+            "en": "GloVe: Global Vectors for Word Representation (Stanford University, 2014)"
+          },
+          "url": "https://nlp.stanford.edu/pubs/glove.pdf"
+        },
+        {
+          "label": {
+            "zh": "Distributed Representations of Words and Phrases and their Compositionality（arXiv，2013）",
+            "en": "Distributed Representations of Words and Phrases and their Compositionality (arXiv, 2013)"
+          },
+          "url": "https://arxiv.org/abs/1310.4546"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-20-word-embedding-zh.mp3"
+      },
+      "meta": {
+        "category": "NLP Fundamentals",
+        "level": "3. Natural Language Processing & Transformers",
+        "difficultyScore": 2,
+        "related": [
+          "Word2Vec",
+          "GloVe"
+        ],
+        "learningObjectives": [
+          "学习 Word2Vec 和 GloVe 的原理",
+          "使用嵌入提升文本建模"
+        ],
+        "personas": [
+          "NLP 学习者",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 词嵌入与分布式表示 可帮助团队在 NLP Fundamentals 上做出可复用的实践。",
+          "best_for": "适合 NLP 学习者、研究人员，需要快速吸收 3. Natural Language Processing & Transformers 主题。建议先阅读前三节理解原理，再运行代码块进行实践。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转，结合混淆矩阵和词向量可视化进行误差分析。"
+        },
+        "tone_profile": {
+          "persona": "NLP 学习者 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP 学习者、研究人员，帮助他们把 词嵌入与分布式表示 应用于 NLP Fundamentals",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP 学习者",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP 学习者",
+            "研究人员"
+          ],
+          "pains": "在 NLP Fundamentals 场景缺乏 词嵌入与分布式表示 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. Natural Language Processing & Transformers"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您的研究或学习中，是否曾遇到传统文本表示方法（如词袋模型）无法有效捕捉语义相似性的情况？请描述一个具体场景，并思考词嵌入如何通过分布式表示解决这类问题。",
+            "action_hint": "尝试回忆一个因词语表面形式不同但含义相近而导致模型性能受限的案例，并设想如何用词向量改进它。"
+          },
+          {
+            "lang": "zh",
+            "question": "假设您正在处理电影评论情感分析任务，传统方法可能忽略'精彩'和'出色'之间的语义关联。您会如何设计实验，验证词嵌入（如Word2Vec）能否提升分类准确率？",
+            "action_hint": "从数据预处理开始规划，比较使用词嵌入前后模型在测试集上的表现差异，特别注意近义词对分类结果的影响。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-19-text-preprocessing",
       "date": "2025-12-19",
