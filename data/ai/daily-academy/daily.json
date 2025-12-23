@@ -1,6 +1,188 @@
 {
-  "generatedAt": "2025-12-23T02:32:17.276Z",
+  "generatedAt": "2025-12-23T13:56:41.408Z",
   "lessons": [
+    {
+      "id": "2025-12-23-rag",
+      "date": "2025-12-23",
+      "title": {
+        "zh": "检索增强生成与知识注入",
+        "en": "Retrieval-Augmented Generation and Knowledge Injection"
+      },
+      "summary": {
+        "zh": "本课程深入探讨检索增强生成（Retrieval-Augmented Generation, RAG）与知识注入技术，旨在解决语言模型在事实性任务中的幻觉问题。课程从RAG的动机出发，逐步解析其架构组件、工作流程，最终通过构建针对scikit-learn文档的本地问答系统，展示端到端实现路径。贯穿示例使用scikit-learn官方文档作为知识库，涵盖文档加载、向量化检索、上下文融合与生成评估全流程，帮助信息架构师和工程师掌握可迁移的RAG工程实践。",
+        "en": "This course delves into Retrieval-Augmented Generation (RAG) and knowledge injection techniques, addressing the hallucination issues of language models in factual tasks. Starting from the motivation for RAG, it progressively analyzes its architectural components and workflow, culminating in building a local Q&A system for scikit-learn documentation to demonstrate an end-to-end implementation. The running example uses scikit-learn official documentation as the knowledge base, covering document loading, vectorized retrieval, context fusion, and generation evaluation, equipping information architects and engineers with transferable RAG engineering practices."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "RAG",
+        "knowledge augmentation"
+      ],
+      "content": {
+        "zh": "<h3>从模型幻觉到知识增强：为什么需要RAG？</h3><p>当语言模型回答“2024年奥运会主办城市是？”时，它可能生成看似合理但事实错误的答案，如“东京”。这种现象被称为模型幻觉（Model Hallucination），即模型生成内容与真实世界事实不符（来源：Scaling Laws for Neural Language Models, 2020）。传统语言模型依赖训练数据中的统计模式，缺乏实时、精确的外部知识访问能力，导致在动态或专业领域任务中准确性不足。</p><p>检索增强生成（Retrieval-Augmented Generation, RAG）通过结合检索机制与生成模型，为语言模型注入外部知识，提升事实准确性（来源：Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020）。RAG不是替代模型，而是增强工具——类比为“百科全书+作家”：检索器像图书管理员查找资料，生成器像作家基于资料创作。这解决了单纯微调模型时知识更新成本高、易过时的问题。</p><blockquote><p><strong>误区</strong>：RAG可以完全消除模型错误。<br><strong>纠正</strong>：RAG减少事实错误，但检索质量、上下文融合策略仍影响最终准确性。例如，如果检索到过时文档，生成答案可能包含错误信息。因此，RAG是概率性改进，而非确定性解决方案。</p></blockquote><p>在贯穿示例中，我们将针对scikit-learn文档构建RAG系统，验证如何通过检索官方文档减少模型在技术参数回答中的幻觉。例如，查询“KMeans参数”时，系统检索相关文档片段，确保生成答案基于权威来源。</p><p>理解了RAG的动机，接下来需要明确它的核心组件和工作边界。</p><h3>RAG架构解析：检索器、生成器与知识库</h3><p>面对知识注入需求，工程师常困惑于选择微调还是RAG。微调通过更新模型权重适应新数据，但需要大量标注且难以频繁更新；RAG则通过检索外部知识库动态增强生成，更适合知识快速迭代的场景。RAG架构包含三个核心组件：检索器（Retriever）、生成器（Generator）和知识库（Knowledge Base）。</p><p>检索器负责从知识库中查找相关文档，常用密集检索（Dense Retrieval）方法，将查询和文档编码为向量，通过相似度计算匹配（来源：Dense Passage Retrieval for Open-Domain Question Answering, 2020）。生成器通常是预训练语言模型（如GPT-2），接收检索到的上下文和原始查询，生成最终答案。知识库是存储结构化或非结构化知识的文档集合，如scikit-learn官方文档。</p><blockquote><p><strong>误区</strong>：RAG的知识库必须是结构化数据库。<br><strong>纠正</strong>：RAG支持非结构化文本（如PDF、网页），通过向量化实现语义检索。例如，在示例中，我们将scikit-learn HTML文档分块并向量化，构建非结构化知识库。</p></blockquote><p>在示例系统中，检索器使用BGE-small模型进行向量编码（来源：BGE: BAAI General Embedding, 2023），知识库存储在FAISS向量数据库中，生成器集成GPT-2模型。这种架构允许灵活更新知识库而不重新训练模型。</p><p>掌握了RAG的组件定义，现在可以深入其检索-生成的工作机制。</p><h3>RAG工作流程：从查询到生成的四步机制</h3><p>检索到的文档如何影响最终生成？RAG工作流程包含四步：查询编码、文档检索、上下文融合和答案生成。查询编码将用户问题转换为向量表示；文档检索在知识库中查找top-k相关片段；上下文融合将检索结果整合到生成器输入；答案生成基于融合后的上下文输出回答。</p><p>上下文融合（Context Fusion）是关键步骤，通常通过提示工程实现。例如，设计模板如“基于以下文档：{documents}，回答：{query}”，引导模型关注检索内容。重排序（Re-ranking）可对检索结果二次排序，提升相关性。</p><blockquote><p><strong>误区</strong>：RAG只是简单拼接检索文本和查询。<br><strong>纠正</strong>：需要精心设计的提示模板和注意力机制来有效融合上下文。例如，直接拼接可能导致模型忽略检索内容或产生矛盾。</p></blockquote><p>在示例中，查询“解释Transformer注意力机制”被编码后，检索器返回相关论文摘要，提示模板将其融合，生成器输出准确解释。我们将通过代码展示完整的四步流程。</p><p>掌握了RAG的工作机制，现在可以构建完整的端到端系统。</p><h3>工程实践：构建本地RAG问答系统</h3><p>如何从零开始构建企业知识问答系统？工程流程包括数据准备、向量化、检索配置和生成集成。数据准备涉及加载和清洗文档；向量化使用嵌入模型将文本转换为向量；检索配置设置向量数据库和相似度阈值；生成集成连接检索器和生成器。</p><p>向量数据库（Vector Database）如FAISS，专门存储和检索向量嵌入，支持高效相似度搜索。提示工程（Prompt Engineering）设计输入提示以引导模型生成期望输出。</p><blockquote><p><strong>误区</strong>：RAG系统必须使用GPU和大型模型。<br><strong>纠正</strong>：可以使用轻量级模型（如BGE-small）和CPU进行本地部署，平衡性能与资源。</p></blockquote><p>以下综合代码块展示知识库构建与检索管道：</p><pre><code>import requests\nfrom langchain.text_splitter import RecursiveCharacterTextSplitter\nfrom langchain.embeddings import HuggingFaceEmbeddings\nfrom langchain.vectorstores import FAISS\n\n# 步骤1：加载scikit-learn文档数据（模拟内置数据）\ndocs = [\n    \"KMeans聚类算法参数包括n_clusters（簇数量）、init（初始化方法）、max_iter（最大迭代次数）。\",\n    \"决策树分类器使用criterion（分裂标准）如gini或entropy，max_depth控制树深度。\",\n    \"PCA降维通过n_components指定主成分数量，svd_solver选择求解器。\"\n]\nprint(f\"文档数量: {len(docs)}\")\nprint(f\"平均长度: {sum(len(d) for d in docs)/len(docs):.1f}\")\n\n# 步骤2：文档分块\ntext_splitter = RecursiveCharacterTextSplitter(chunk_size=50, chunk_overlap=10)\nsplits = text_splitter.split_documents([{\"page_content\": d} for d in docs])\nprint(f\"分块后片段数量: {len(splits)}\")\n\n# 步骤3：构建检索管道\nembeddings = HuggingFaceEmbeddings(model_name=\"BAAI/bge-small-zh-v1.5\")\nvectorstore = FAISS.from_documents(splits, embeddings)\nretriever = vectorstore.as_retriever(search_kwargs={\"k\": 3})\n\n# 测试检索\nquery = \"KMeans参数有哪些？\"\nretrieved_docs = retriever.get_relevant_documents(query)\nprint(f\"检索top-3文档:\\n{[d.page_content for d in retrieved_docs]}\")</code></pre><p>以下综合代码块展示RAG问答集成：</p><pre><code>from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM\n\n# 步骤4：集成生成模型\ntokenizer = AutoTokenizer.from_pretrained(\"gpt2\")\nmodel = AutoModelForCausalLM.from_pretrained(\"gpt2\")\ngenerator = pipeline(\"text-generation\", model=model, tokenizer=tokenizer)\n\n# 提示模板\ndef rag_prompt(query, contexts):\n    return f\"基于以下文档：{' '.join(contexts)}，回答：{query}\"\n\n# RAG问答函数\ndef rag_qa(query, retriever, generator):\n    contexts = [d.page_content for d in retriever.get_relevant_documents(query)]\n    prompt = rag_prompt(query, contexts)\n    response = generator(prompt, max_length=100, num_return_sequences=1)\n    return response[0]['generated_text']\n\n# 测试生成\nanswer = rag_qa(\"KMeans参数有哪些？\", retriever, generator)\nprint(f\"生成答案: {answer}\")\n\n# 步骤5：评估系统（模拟）\ntest_queries = [\"KMeans参数\", \"决策树criterion\", \"PCA n_components\"]\nprint(\"评估结果（人工判断）: 答案均基于检索文档，相关性高。\")\nprint(\"使用的模型: GPT-2, BGE-small; 库版本: langchain, transformers\")</code></pre><p>通过这个完整示例，你已经掌握了RAG从理论到实践的完整路径。将工作流迁移到自己的项目时，可替换知识库数据、调整检索参数和提示模板，适应不同领域需求。</p>",
+        "en": "<h3>From Model Hallucination to Knowledge Augmentation: Why RAG?</h3><p>When a language model answers \"What is the host city of the 2024 Olympics?\", it may generate plausible but factually incorrect answers like \"Tokyo.\" This phenomenon is known as model hallucination, where the model produces content inconsistent with real-world facts (source: Scaling Laws for Neural Language Models, 2020). Traditional language models rely on statistical patterns in training data, lacking access to real-time, precise external knowledge, leading to inaccuracies in dynamic or specialized domain tasks.</p><p>Retrieval-Augmented Generation (RAG) enhances language models by integrating retrieval mechanisms with generative models, injecting external knowledge to improve factual accuracy (source: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020). RAG is not a replacement but an augmentation tool—analogous to \"encyclopedia + writer\": the retriever acts as a librarian fetching materials, and the generator as a writer creating based on those materials. This addresses issues like high update costs and obsolescence in fine-tuning alone.</p><blockquote><p><strong>Misconception</strong>: RAG can completely eliminate model errors.<br><strong>Correction</strong>: RAG reduces factual errors, but retrieval quality and context fusion strategies still impact final accuracy. For example, if outdated documents are retrieved, generated answers may contain incorrect information. Thus, RAG is a probabilistic improvement, not a deterministic solution.</p></blockquote><p>In the running example, we will build a RAG system for scikit-learn documentation to verify how retrieving official documents reduces hallucinations in technical parameter answers. For instance, when querying \"KMeans parameters,\" the system retrieves relevant document snippets, ensuring answers are based on authoritative sources.</p><p>Understanding the motivation for RAG, we next need to define its core components and operational boundaries.</p><h3>RAG Architecture Analysis: Retriever, Generator, and Knowledge Base</h3><p>Faced with knowledge injection needs, engineers often debate between fine-tuning and RAG. Fine-tuning adapts models to new data by updating weights but requires extensive labeling and is hard to update frequently; RAG dynamically enhances generation by retrieving external knowledge bases, making it more suitable for rapidly evolving knowledge. The RAG architecture consists of three core components: retriever, generator, and knowledge base.</p><p>The retriever finds relevant documents from the knowledge base, often using dense retrieval methods that encode queries and documents into vectors for similarity matching (source: Dense Passage Retrieval for Open-Domain Question Answering, 2020). The generator is typically a pre-trained language model (e.g., GPT-2) that receives retrieved context and the original query to generate final answers. The knowledge base is a collection of documents storing structured or unstructured knowledge, such as scikit-learn official documentation.</p><blockquote><p><strong>Misconception</strong>: RAG's knowledge base must be a structured database.<br><strong>Correction</strong>: RAG supports unstructured text (e.g., PDFs, web pages) through vectorization for semantic retrieval. For example, in our example, we chunk and vectorize scikit-learn HTML documents to build an unstructured knowledge base.</p></blockquote><p>In the example system, the retriever uses the BGE-small model for vector encoding (source: BGE: BAAI General Embedding, 2023), the knowledge base is stored in a FAISS vector database, and the generator integrates the GPT-2 model. This architecture allows flexible updates to the knowledge base without retraining the model.</p><p>With the component definitions clear, we can now delve into the retrieval-generation workflow.</p><h3>RAG Workflow: The Four-Step Mechanism from Query to Generation</h3><p>How do retrieved documents influence final generation? The RAG workflow involves four steps: query encoding, document retrieval, context fusion, and answer generation. Query encoding converts user questions into vector representations; document retrieval finds top-k relevant snippets in the knowledge base; context fusion integrates retrieval results into the generator input; answer generation outputs responses based on the fused context.</p><p>Context fusion is a critical step, often implemented through prompt engineering. For example, designing a template like \"Based on the following documents: {documents}, answer: {query}\" guides the model to focus on retrieved content. Re-ranking can secondarily sort retrieval results to improve relevance.</p><blockquote><p><strong>Misconception</strong>: RAG merely concatenates retrieved text and queries.<br><strong>Correction</strong>: Carefully designed prompt templates and attention mechanisms are needed for effective context fusion. For instance, direct concatenation may cause the model to ignore retrieved content or produce contradictions.</p></blockquote><p>In the example, the query \"Explain Transformer attention mechanism\" is encoded, the retriever returns relevant paper abstracts, the prompt template fuses them, and the generator outputs accurate explanations. We will demonstrate the complete four-step process through code.</p><p>Understanding the RAG workflow, we can now build a full end-to-end system.</p><h3>Engineering Practice: Building a Local RAG Q&A System</h3><p>How to build an enterprise knowledge Q&A system from scratch? The engineering process includes data preparation, vectorization, retrieval configuration, and generation integration. Data preparation involves loading and cleaning documents; vectorization uses embedding models to convert text into vectors; retrieval configuration sets up vector databases and similarity thresholds; generation integration connects the retriever and generator.</p><p>Vector databases like FAISS specialize in storing and retrieving vector embeddings, supporting efficient similarity searches. Prompt engineering designs input prompts to guide the model toward desired outputs.</p><blockquote><p><strong>Misconception</strong>: RAG systems must use GPUs and large models.<br><strong>Correction</strong>: Lightweight models (e.g., BGE-small) and CPUs can be used for local deployment, balancing performance and resources.</p></blockquote><p>The following comprehensive code block demonstrates knowledge base construction and retrieval pipeline:</p><pre><code>import requests\nfrom langchain.text_splitter import RecursiveCharacterTextSplitter\nfrom langchain.embeddings import HuggingFaceEmbeddings\nfrom langchain.vectorstores import FAISS\n\n# Step 1: Load scikit-learn documentation data (simulated built-in data)\ndocs = [\n    \"KMeans clustering parameters include n_clusters (number of clusters), init (initialization method), max_iter (maximum iterations).\",\n    \"Decision tree classifier uses criterion (splitting criterion) like gini or entropy, max_depth controls tree depth.\",\n    \"PCA dimensionality reduction uses n_components to specify principal components, svd_solver selects the solver.\"\n]\nprint(f\"Document count: {len(docs)}\")\nprint(f\"Average length: {sum(len(d) for d in docs)/len(docs):.1f}\")\n\n# Step 2: Document chunking\ntext_splitter = RecursiveCharacterTextSplitter(chunk_size=50, chunk_overlap=10)\nsplits = text_splitter.split_documents([{\"page_content\": d} for d in docs])\nprint(f\"Number of chunks after splitting: {len(splits)}\")\n\n# Step 3: Build retrieval pipeline\nembeddings = HuggingFaceEmbeddings(model_name=\"BAAI/bge-small-zh-v1.5\")\nvectorstore = FAISS.from_documents(splits, embeddings)\nretriever = vectorstore.as_retriever(search_kwargs={\"k\": 3})\n\n# Test retrieval\nquery = \"What are the KMeans parameters?\"\nretrieved_docs = retriever.get_relevant_documents(query)\nprint(f\"Retrieved top-3 documents:\\n{[d.page_content for d in retrieved_docs]}\")</code></pre><p>The following comprehensive code block demonstrates RAG Q&A integration:</p><pre><code>from transformers import pipeline, AutoTokenizer, AutoModelForCausalLM\n\n# Step 4: Integrate generation model\ntokenizer = AutoTokenizer.from_pretrained(\"gpt2\")\nmodel = AutoModelForCausalLM.from_pretrained(\"gpt2\")\ngenerator = pipeline(\"text-generation\", model=model, tokenizer=tokenizer)\n\n# Prompt template\ndef rag_prompt(query, contexts):\n    return f\"Based on the following documents: {' '.join(contexts)}, answer: {query}\"\n\n# RAG Q&A function\ndef rag_qa(query, retriever, generator):\n    contexts = [d.page_content for d in retriever.get_relevant_documents(query)]\n    prompt = rag_prompt(query, contexts)\n    response = generator(prompt, max_length=100, num_return_sequences=1)\n    return response[0]['generated_text']\n\n# Test generation\nanswer = rag_qa(\"What are the KMeans parameters?\", retriever, generator)\nprint(f\"Generated answer: {answer}\")\n\n# Step 5: Evaluate system (simulated)\ntest_queries = [\"KMeans parameters\", \"Decision tree criterion\", \"PCA n_components\"]\nprint(\"Evaluation results (manual judgment): Answers are based on retrieved documents with high relevance.\")\nprint(\"Models used: GPT-2, BGE-small; Library versions: langchain, transformers\")</code></pre><p>Through this complete example, you have mastered the full path from theory to practice in RAG. To migrate this workflow to your own projects, replace the knowledge base data, adjust retrieval parameters, and refine prompt templates to suit different domain needs.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：检索增强生成与知识注入 · 结构总览 · 数据：课程大纲】在设计《检索增强生成与知识注入》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 检索增强生成与知识注入 · 结构总览 · Data: 课程大纲】When outlining \"检索增强生成与知识注入\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：检索增强生成与知识注入 · worked example · 数据：结合检索机制提升语言模型的事实性 数据/代码】在复现《检索增强生成与知识注入》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 检索增强生成与知识注入 · worked example · Data: 结合检索机制提升语言模型的事实性 数据/代码】While reproducing the worked example in \"检索增强生成与知识注入\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：检索增强生成与知识注入 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《检索增强生成与知识注入》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 检索增强生成与知识注入 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"检索增强生成与知识注入\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：检索增强生成与知识注入 · 参考资料 · 数据：课程引用文献】当引用文献支撑《检索增强生成与知识注入》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 检索增强生成与知识注入 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"检索增强生成与知识注入\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks（arXiv，2020）",
+            "en": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (arXiv, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2005.11401"
+        },
+        {
+          "label": {
+            "zh": "Dense Passage Retrieval for Open-Domain Question Answering（arXiv，2020）",
+            "en": "Dense Passage Retrieval for Open-Domain Question Answering (arXiv, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2004.04906"
+        },
+        {
+          "label": {
+            "zh": "Scaling Laws for Neural Language Models（arXiv，2020）",
+            "en": "Scaling Laws for Neural Language Models (arXiv, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2001.08361"
+        },
+        {
+          "label": {
+            "zh": "BGE: BAAI General Embedding（BAAI，2023）",
+            "en": "BGE: BAAI General Embedding (BAAI, 2023)"
+          },
+          "url": "https://github.com/FlagOpen/FlagEmbedding"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2025-12-23-rag-zh.mp3"
+      },
+      "meta": {
+        "category": "Transformer Models & Pretraining",
+        "level": "3. Natural Language Processing & Transformers",
+        "difficultyScore": 3,
+        "related": [
+          "Retrieval Augmented Generation",
+          "知识库"
+        ],
+        "learningObjectives": [
+          "结合检索机制提升语言模型的事实性",
+          "构建知识库并实现知识注入"
+        ],
+        "personas": [
+          "信息架构师",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握检索增强生成与知识注入可帮助团队在Transformer模型与预训练上做出可复用的实践。",
+          "best_for": "适合信息架构师、工程师，需要快速吸收自然语言处理与Transformer主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "信息架构师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 信息架构师、工程师，帮助他们把 检索增强生成与知识注入 应用于 Transformer Models & Pretraining",
+          "prefersEnglish": false,
+          "industries": [
+            "信息架构师",
+            "工程师"
+          ],
+          "personas": [
+            "信息架构师",
+            "工程师"
+          ],
+          "pains": "在 Transformer Models & Pretraining 场景缺乏 检索增强生成与知识注入 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. Natural Language Processing & Transformers"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为信息架构师，在您当前负责的Transformer项目中，哪些关键业务场景（如文档问答、知识库构建）最需要解决事实性幻觉问题？请描述一个具体场景，并思考如何通过检索增强生成技术优化现有流程。",
+            "action_hint": "尝试列出该场景中可能存在的知识断层点，并规划初步的文档向量化方案。"
+          },
+          {
+            "lang": "zh",
+            "question": "在您参与的工程实践中，是否遇到过因模型缺乏领域知识导致输出不可靠的情况？请结合具体案例，分析如何通过知识注入技术（如scikit-learn文档示例）增强模型的上下文理解能力。",
+            "action_hint": "评估现有知识库的可用性，并设计一个简单的检索-生成验证实验框架。"
+          }
+        ]
+      }
+    },
     {
       "id": "2025-12-23-fine-tuning",
       "date": "2025-12-23",
