@@ -1310,6 +1310,50 @@ async function writeJsonArtifact(schemaName, targetPath, payload, { dryRun, logL
   return true;
 }
 
+async function cleanupIntermediateFiles(keepDays = 3) {
+  const now = new Date();
+  let deletedCount = 0;
+
+  const tasks = [
+    { path: resolveDataPath('daily'), pattern: /^(\d{4}-\d{2}-\d{2})\.(github\.draft|hf\.draft|passonce_gh|passonce_hf)\.json$/, days: keepDays },
+    { path: resolveTempDataPath(), pattern: /^(\d{4}-\d{2}-\d{2})_(unqualified_gh|unqualified_hf|pending_summaries)\.json$/, days: keepDays },
+    { path: resolveAuditPath(), pattern: /^(\d{4}-\d{2}-\d{2})_(publish_audit|runlog)\.json$/, days: 30 },
+    { path: resolveDataPath('tri_cache.archive'), pattern: /^(\d{4}-\d{2}-\d{2})-.+\.json\.gz$/, days: 30 }
+  ];
+
+  for (const { path: dirPath, pattern, days } of tasks) {
+    let files;
+    try {
+      files = await fs.readdir(dirPath);
+    } catch (err) {
+      continue;
+    }
+
+    for (const file of files) {
+      const match = file.match(pattern);
+      if (!match) continue;
+
+      const dateStr = match[1];
+      const fileDate = new Date(dateStr);
+      const diffTime = now - fileDate;
+      const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+      if (diffDays > days) {
+        try {
+          await fs.unlink(path.join(dirPath, file));
+          deletedCount++;
+        } catch (e) {
+          warn(`[cleanup] failed to delete ${file}: ${e.message}`);
+        }
+      }
+    }
+  }
+
+  if (deletedCount > 0) {
+    info(`[cleanup] removed ${deletedCount} old files`);
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const dryRun = Boolean(args['dry-run'] || args.d);
@@ -1953,6 +1997,10 @@ async function main() {
         },
         artifacts
       });
+    }
+
+    if (!dryRun) {
+      await cleanupIntermediateFiles(3);
     }
 
     info('[qualify_publish] done');
