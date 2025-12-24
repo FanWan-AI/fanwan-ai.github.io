@@ -224,11 +224,21 @@ export async function fetchGithubTop(options = {}){
 
   // Fetch trending repos
   const trending = await fetchTrendingRepos();
+  const trendingSet = new Set(trending);
+
+  // Mark existing items as trending
+  for (const item of items) {
+      if (trendingSet.has(item.id)) {
+          item.is_trending = true;
+      }
+  }
+
   for (const slug of trending) {
       if (repoIdSet.has(slug)) continue;
       const repo = await fetchTargetRepo(slug);
       if (repo) {
           repoIdSet.add(repo.id);
+          repo.is_trending = true;
           items.push(repo);
           await sleep(200);
       }
@@ -255,6 +265,9 @@ export async function fetchGithubTop(options = {}){
       forks_count: it.stats.forks,
       pushed_at: it.updated_at
     });
+    if (it.is_trending) {
+        it.score += 1000000; // Boost trending items to ensure they are picked
+    }
   });
   
   // Sort by score descending
