@@ -118,12 +118,17 @@ async function fetchTrendingRepos() {
     
     for (const match of matches) {
         const content = match[1];
-        // Extract href="/owner/repo"
-        const hrefMatch = content.match(/href="\/(.+?)\/(.+?)"/);
-        if (hrefMatch) {
-            const owner = hrefMatch[1];
-            const repo = hrefMatch[2].split('"')[0].split('?')[0];
-            trendingRepos.push(`${owner}/${repo}`);
+        // Look for the specific h2 link which is the repo title
+        // <h2 class="h3 lh-condensed"> <a href="/owner/repo">
+        const titleMatch = content.match(/<h2[^>]*>\s*<a[^>]*href="\/([^"/]+)\/([^"/]+)"/);
+        
+        if (titleMatch) {
+            const owner = titleMatch[1];
+            const repo = titleMatch[2];
+            // Double check it's not a system link
+            if (owner !== 'login' && owner !== 'search' && owner !== 'sponsors' && owner !== 'features') {
+                trendingRepos.push(`${owner}/${repo}`);
+            }
         }
     }
     info(`[fetch_github] found ${trendingRepos.length} trending repos`);
