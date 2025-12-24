@@ -1222,6 +1222,40 @@ function collectTimelineTags(entry) {
 	return tags.slice(0, 2);
 }
 
+function extractOpeningScene(text) {
+	if (!text) return "";
+
+	// Remove bolding
+	let cleanText = text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/__(.*?)__/g, "$1");
+
+	const lines = cleanText.split(/\n+/).map((l) => l.trim()).filter((l) => l);
+	if (lines.length === 0) return "";
+
+	let firstLine = lines[0];
+
+	// Check if first line is a header for Opening Scene
+	const headerMatch = firstLine.match(/^#+\s*(?:开篇场景|Opening Scene)(?:[:：]\s*(.*))?$/i);
+
+	if (headerMatch) {
+		const contentInHeader = headerMatch[1];
+
+		// If we have a second paragraph
+		if (lines.length > 1) {
+			// If the header content is long, it might be the scene itself.
+			// If it's short, it's likely a title, so we take the next paragraph.
+			if (contentInHeader && contentInHeader.length > 50) {
+				return contentInHeader;
+			}
+			return lines[1];
+		}
+
+		// Only one line
+		return contentInHeader || "";
+	}
+
+	return normalizeSummary(firstLine);
+}
+
 function createTimelineCard(entry, index) {
 	const button = document.createElement("button");
 	button.type = "button";
@@ -1247,9 +1281,8 @@ function createTimelineCard(entry, index) {
 	const summary = document.createElement("p");
 	summary.className = "wealth-track-summary";
 	const preview = pickLang(entry.summary) || t("wealth_summary_placeholder", "暂无摘要，稍后再试。");
-	const summaryText = normalizeSummary(preview);
-	const firstParagraph = summaryText.split(/\n+/)[0];
-	summary.innerHTML = parseMarkdown(firstParagraph);
+	const summaryText = extractOpeningScene(preview);
+	summary.innerHTML = parseMarkdown(summaryText);
 	button.append(summary);
 
 	const tagsRow = document.createElement("div");
