@@ -98,6 +98,41 @@ async function fetchTargetRepo(slug) {
   }
 }
 
+async function fetchTrendingRepos() {
+  const trendingRepos = [];
+  try {
+    info('[fetch_github] scraping github trending...');
+    const res = await fetch('https://github.com/trending', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+    if (!res.ok) {
+      warn('[fetch_github] failed to fetch trending page: ' + res.status);
+      return [];
+    }
+    const html = await res.text();
+    // Look for <article class="Box-row"> which contains the repo info
+    const articleRegex = /<article class="Box-row">([\s\S]*?)<\/article>/g;
+    const matches = [...html.matchAll(articleRegex)];
+    
+    for (const match of matches) {
+        const content = match[1];
+        // Extract href="/owner/repo"
+        const hrefMatch = content.match(/href="\/(.+?)\/(.+?)"/);
+        if (hrefMatch) {
+            const owner = hrefMatch[1];
+            const repo = hrefMatch[2].split('"')[0].split('?')[0];
+            trendingRepos.push(`${owner}/${repo}`);
+        }
+    }
+    info(`[fetch_github] found ${trendingRepos.length} trending repos`);
+  } catch (err) {
+    warn('[fetch_github] failed to scrape trending: ' + err.message);
+  }
+  return trendingRepos;
+}
+
 export async function fetchGithubTop(options = {}){
   ensureDirs();
   
@@ -174,6 +209,26 @@ export async function fetchGithubTop(options = {}){
     .filter(Boolean);
 
   const repoIdSet = new Set(items.map((it) => it.id));
+  
+  // Add excluded IDs to the set to prevent fetching them
+  if (Array.isArray(options.excludeIds)) {
+    for (const id of options.excludeIds) {
+      if (id) repoIdSet.add(id);
+    }
+  }
+
+  // Fetch trending repos
+  const trending = await fetchTrendingRepos();
+  for (const slug of trending) {
+      if (repoIdSet.has(slug)) continue;
+      const repo = await fetchTargetRepo(slug);
+      if (repo) {
+          repoIdSet.add(repo.id);
+          items.push(repo);
+          await sleep(200);
+      }
+  }
+
   const targeted = Array.isArray(options.targetedRepos) ? options.targetedRepos : [];
   if (targeted.length) {
     const limitedTargets = targeted.slice(0, options.targetedLimit || 12);

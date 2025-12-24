@@ -424,13 +424,19 @@ async function main() {
   try {
     const fetchJobs = [];
     if (sources.includes('github')) {
+      // Prepare exclusion list from summary cache to avoid re-fetching trending items we already have
+      const existingGithubIds = Object.keys(summaryModels)
+        .filter(k => k.startsWith('github:'))
+        .map(k => k.slice('github:'.length));
+
       fetchJobs.push(
         fetchGithubTop({
           // Align GH fetch size to per-source TRI capacity with buffer
           limit: Math.max(1, Math.round(TRI_LIMIT_GH * FETCH_BUFFER)),
           // use the filtered list so we skip already-qualified repos
           targetedRepos: filteredGithubTargets,
-          targetedLimit: 12
+          targetedLimit: 12,
+          excludeIds: existingGithubIds
         }).then((items) => ({ source: 'github', items }))
       );
     }
