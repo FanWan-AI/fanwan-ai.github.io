@@ -19,6 +19,7 @@ import {
   writeJSON,
   uniqueBy
 } from "./util.mjs";
+import { validateLessonQualityV3 } from "./validate.mjs";
 import {
   buildLessonBlueprintPrompt,
   buildLessonContentPrompt,
@@ -1575,6 +1576,38 @@ async function generateLesson(candidate, history) {
           lessonDraft = coerceLesson(candidateProfile, revision, date, learnerProfile, toneProfile, blueprint);
         } catch (revisionError) {
           console.warn("Using pre-critique lesson due to revision error", revisionError.message);
+        }
+      }
+
+      // V3 Validation Loop
+      for (let v3Attempt = 0; v3Attempt < 2; v3Attempt++) {
+        const v3Result = validateLessonQualityV3(lessonDraft);
+        if (v3Result.valid) break;
+
+        console.warn(`V3 Validation failed (attempt ${v3Attempt + 1}):`, v3Result.errors);
+
+        const hardCritique = {
+          revision_required: true,
+          scorecard: {},
+          issues: v3Result.errors.map((e) => ({ severity: "high", area: "validation", note: e, action: "Fix violation" })),
+          directives: v3Result.errors,
+          practice_expectations: {}
+        };
+
+        try {
+          const revision = await reviseLessonDraft({
+            candidate: candidateProfile,
+            learnerProfile,
+            toneProfile,
+            blueprint,
+            lesson: sanitizeLessonEntry(lessonDraft),
+            critique: hardCritique,
+            recentLessons: history
+          });
+          lessonDraft = coerceLesson(candidateProfile, revision, date, learnerProfile, toneProfile, blueprint);
+        } catch (e) {
+          console.warn("V3 revision error", e);
+          break;
         }
       }
 

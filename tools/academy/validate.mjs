@@ -73,7 +73,92 @@ async function run() {
   console.log("✓ Academy data validated");
 }
 
-run().catch((error) => {
-  console.error("Unexpected academy validation failure", error);
-  process.exitCode = 1;
-});
+if (process.argv[1].endsWith("validate.mjs")) {
+  run().catch((error) => {
+    console.error("Unexpected academy validation failure", error);
+    process.exitCode = 1;
+  });
+}
+
+export function validateLessonQualityV3(lesson) {
+  const errors = [];
+
+  // 1. EN Pure (No Chinese characters in en fields)
+  const enStrings = [];
+  function collectEn(obj) {
+    if (!obj || typeof obj !== "object") return;
+    if (Array.isArray(obj)) {
+      obj.forEach(collectEn);
+      return;
+    }
+    for (const key in obj) {
+      if (key === "en" && typeof obj[key] === "string") {
+        enStrings.push({ path: key, value: obj[key] });
+      } else {
+        collectEn(obj[key]);
+      }
+    }
+  }
+  collectEn(lesson);
+
+  for (const item of enStrings) {
+    if (/[\u4e00-\u9fff]/.test(item.value)) {
+      errors.push(`Bilingual purity violation: Chinese characters found in EN field: "${item.value.slice(0, 20)}..."`);
+    }
+  }
+
+  // 2. Code Block Budget & 3. No External I/O
+  const zhContent = lesson.content?.zh || "";
+  const zhCodeBlocks = (zhContent.match(/<pre><code>[\s\S]*?<\/code><\/pre>/g) || []);
+  
+  if (zhCodeBlocks.length > 2) {
+    errors.push(`Code block budget exceeded: ${zhCodeBlocks.length} blocks found (max 2)`);
+  }
+  if (zhCodeBlocks.length < 1) {
+    errors.push(`Code block budget underflow: ${zhCodeBlocks.length} blocks found (min 1)`);
+  }
+
+  for (const block of zhCodeBlocks) {
+    const code = block.replace(/<\/?pre>|<\/?code>/g, "");
+    if (/read_csv|open\(|requests\.|wget|curl/.test(code)) {
+      errors.push(`Forbidden I/O detected in code block: read_csv/open/requests`);
+    }
+  }
+
+  // 4. Math Formulas
+  const mathCount = (zhContent.match(/\\\[|\\\(/g) || []).length;
+  if (mathCount < 3) {
+    errors.push(`Math density insufficient: ${mathCount} formulas found (min 3)`);
+  }
+
+  // 5. Citation Closure
+  const citations = [];
+  // Match （来源：Title） or (Source: Title)
+  for (const m of zhContent.matchAll(/（来源：(.*?)）/g)) {
+     const parts = m[1].split(/[，,]/);
+     citations.push(parts[0].trim());
+  }
+  for (const m of zhContent.matchAll(/\(Source: (.*?)\)/g)) {
+     const parts = m[1].split(/[,]/);
+     citations.push(parts[0].trim());
+  }
+
+  const refTitles = new Set();
+  if (Array.isArray(lesson.references)) {
+    lesson.references.forEach((ref) => {
+      if (ref.title) refTitles.add(normalizeTitle(ref.title));
+    });
+  }
+
+  for (const cited of citations) {
+    if (!refTitles.has(normalizeTitle(cited))) {
+      errors.push(`Citation not found in references: "${cited}"`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function normalizeTitle(t) {
+  return t.toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, "");
+}

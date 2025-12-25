@@ -79,38 +79,45 @@ const BLUEPRINT_OBJECTIVES = `你是 AI Daily Academy 的课程蓝图架构师�
 3) worked_example_plan 的代码块预算 max_blocks=2，后续正文必须严格遵守。
 4) references 必须真实存在且可访问；每条引用要能支撑正文关键结论。`;
 
-const LESSON_CONTENT_OBJECTIVES = `你是 AI Daily Academy 的主讲导师。请生成“博客式深度课程长文”（读者真的能学会），输出为 daily.schema.json 所需字段（summary/content/references/meta/practice=[]）。
+const LESSON_CONTENT_OBJECTIVES = `扩写为“专业课级别的博客式讲义”（不是科普软文），输出仍为 daily.schema.json 所需字段。
 
-全局风格：
-- 不是营销文案，是教学长文：解释充分、循序渐进、逻辑闭环。
-- 禁止“学习前/学习后”等噱头句式。
-- 中英双语必须纯净：en 不得包含任何中文字符；如果出现中文，视为失败需重写。
-- 术语首次出现需中英并列，如“可复现性 reproducibility”。
+全局硬约束（任何一条不满足都视为失败）：
+A) 深度：必须讲清楚“定义 → 机制/目标函数 → 推导或直觉解释 → 工程实现要点 → 边界条件/失败模式 → 小结过渡”。
+B) 数学：全文至少出现 3 处公式（至少 1 处是目标函数/概率分解，至少 1 处是评估指标公式）。用 \\\\( ... \\\\) 或 \\\\[ ... \\\\] 形式。
+C) 代码：整篇只允许 1–2 个 <pre><code> 综合代码块：
+   - 代码块#1：端到端最小可复现实验（必须能跑通），覆盖本课关键概念；
+   - 代码块#2（可选）：仅用于“诊断/消融/ sanity check”，不许重复#1。
+   - 禁止读取本地文件（read_csv('xxx.csv') 等）、禁止依赖私有路径；数据必须来自 sklearn 内置数据集或内联 DataFrame/字符串。
+D) 引用闭环：正文中出现一次“来源/Source”就必须在 references 数组中出现完全一致的 title + url（不允许正文出现 references 之外的来源名）。
+E) 双语纯净：所有 en 字段不得出现任何中文字符（/[\\u4e00-\\u9fff]/）。英文必须地道重写，不能逐句硬翻。
 
-结构与深度要求：
-1) summary：中文 140-220 字；英文 70-110 words。允许 3-5 句。
-   - 重点：给出主题定义 + 课程路线（由浅入深）+ 贯穿示例是什么（数据集/管线/评估）。
-2) narrative-intro：必须像博客开篇，回答“这篇文章要解决什么困惑、你将获得什么能力”，避免模板感。
-3) content：严格按 blueprint.sections 输出 3-4 个 <h3>。
-   - 每节必须至少 5 段：①动机/困惑 ②严谨定义与边界 ③机制/原理（讲透，含误区纠正）④与贯穿示例的连接（解释将如何用示例验证）⑤小结+过渡桥接
-   - 每节至少包含一个“误区→纠正”的小段落（可用 <blockquote> 或 <ul>），且与本节主题强相关。
-   - 理论深度：必须解释“为什么这样做”，不仅是“怎么做”。必要时用简单公式/表格说明概念（允许 <table> 或行内公式文本），但不要堆公式。
-4) narrative-outro：必须总结“方法论/迁移路径”：读者如何把今天的工作流迁移到自己的项目。
+长度与结构要求：
+1) summary：中文 140–220 字；英文 70–110 words。允许 2–4 句，学术语气，不要“学习前/学习后”。
+2) content：严格按 blueprint.sections 顺序输出 3–4 个 <h3>。
+   - 每节至少 5 段（每段 >= 120 中文字或 >=60 英文词），且必须包含：
+     (i) 概念背景与要解决的问题；
+     (ii) 精确定义（术语需中英同列，例如“检索增强生成 Retrieval-Augmented Generation”）；
+     (iii) 机制/数学：给出公式并逐步解释符号含义；
+     (iv) 工程实现要点（数据流、模块边界、复杂度/延迟敏感点）；
+     (v) 常见误区 + 失败模式 + 如何诊断；
+     (vi) 结尾 1 段桥接到下一节。
+3) narrative-intro / narrative-outro：保留，但写得像讲义开头/结尾（强调学习路径与可迁移方法），不要模板化口号。
 
-代码块预算（硬约束）：
-- 全文最多允许 2 个 <pre><code> 代码块，且必须是“综合代码块”，覆盖 worked_example_plan 的关键步骤。
-- 禁止每节都给碎代码；每节只做解释与铺垫，把动作集中在 1-2 个综合块中。
-- 代码必须可直接运行：不得读取本地文件（如 iris.csv）；必须内联/内置数据；必须包含 import、数据定义、打印关键输出。
-- 代码块之外可以给 1 个表格（如 pipeline 步骤表）辅助理解。
+Worked example（必须是“可复现 + 可计算指标”）：
+- 必须打印关键中间结果：数据规模/shape、样例 head、至少一个中间变量（如 top-k 检索结果/生成前后对比/打分表）。
+- 必须计算并打印一个指标，并给出指标公式：
+  - 可选：ROUGE-1（用 unigram overlap 自实现也行）、EM/F1（自实现）、Accuracy、MRR@k、Recall@k 等。
+- 如果涉及大模型下载（transformers），必须提供“轻量替代方案”说明（例如：先用 TF-IDF + 规则生成做 baseline，再替换成模型）。
 
-引用闭环（硬约束）：
-- 正文中出现的任何来源（例如“scikit-learn User Guide”）都必须出现在 references 数组中，并保持 title 完全一致。
-- references 至少 4 条，优先官方文档/教材/经典论文；不要虚构“2023 数据集报告”等不存在条目。
+References：
+- references 至少 4 条：至少包含 1 条论文（arXiv/ACL/NeurIPS 等）、1 条官方文档、1 条数据集/评估指标原始来源（如 ROUGE 论文或官方说明）。
+- 若不确定来源真实性，宁可不写该结论；可写 Internal insight，但不得伪造论文标题。
 
-输出字段要求：
-- practice：本阶段返回空数组 []。
-- meta.contextual_notes：写清适合人群、阅读方式（建议先读哪节再跑代码）、可视化建议（流程图/误差分析矩阵）。
-- 语言：zh/en 两套内容结构完全一致，但英文必须重新表达，不得直译。`;
+meta.contextual_notes：
+- 追加一个 meta.fact_checklist（数组），列出 6–10 条“自检项”，例如：
+  ["英文无中文字符","正文所有来源都在 references","仅 1–2 个代码块","至少 3 个公式","示例可运行且无外部文件","打印中间结果与指标"]。
+
+practice 字段本阶段留空数组 []（后续再生成）。`;
 
 const LESSON_CONTENT_ONLY_OBJECTIVES = `阶段 1（正文先行，不含代码）：
 1. summary / narrative / content 必须完整闭合 HTML 标签，保持 3-4 节结构，每节至少 3 段，但禁止输出 <pre><code>、公式块或任何代码；worked example 只做文字层面的步骤描述，不写代码。
@@ -121,22 +128,21 @@ const LESSON_CONTENT_ONLY_OBJECTIVES = `阶段 1（正文先行，不含代码�
 
 const CRITIC_SYSTEM = "You are the lead reviewer of AI Daily Academy. You audit lessons for rigor, actionable depth, and assessment quality.";
 
-const CRITIC_OBJECTIVES = `你是严苛总编，审计 lesson 是否达到“深度教学长文 + 少量综合代码块”。输出 JSON：
+const CRITIC_OBJECTIVES = `你是 AI 每日学堂“严苛课程评审 + 事实审计官”。请审阅 lesson，输出 JSON：
 {
   "revision_required": bool,
-  "issues":[{"severity":"high|medium|low","area":"bilingual|citations|runnability|depth|structure|code_budget","note":"...","action":"..."}],
-  "directives":["按优先级列 TODO"]
+  "issues": [{"severity":"high|medium|low","area":"bilingual|citations|math|runnability|structure|depth","note":"...","action":"..."}],
+  "directives": ["按优先级列 TODO（可直接交给作者改）"]
 }
 
-硬性失败（任一条则 revision_required=true）：
-1) en 字段出现任何中文字符（/[\u4e00-\u9fff]/）。
-2) 正文出现“来源：X / Source: X”，但 references 中没有完全一致 title+url。
-3) 任意代码块读取本地文件或未定义变量/缺 import，或不能独立运行。
-4) <pre><code> 代码块超过 2 个（违反 code budget）。
-5) 任一章节少于 5 段，或缺少“误区→纠正”，或缺少过渡桥接句（导致割裂）。
-6) 理论深度不足：如果章节只是在罗列步骤/工具，而没有解释“为什么”，必须判为失败并指出缺失点。
+硬性判失败（任一条触发 revision_required=true）：
+1) 双语：任一 en 字段出现中文字符（/[\\u4e00-\\u9fff]/）。
+2) 引用闭环：正文出现“来源：X / Source: X”，但 references 不存在完全一致 title。
+3) 代码块数量：<pre><code> 超过 2 个；或代码读取本地文件/路径（read_csv('*.csv')、open('...')）。
+4) 数学：全文公式少于 3 处；或缺少“目标函数/概率分解”类公式；或缺少“指标公式”。
+5) 深度：任一章节缺少“机制解释 + 失败模式诊断 + 过渡桥接”。
 
-若失败：必须给出可执行改法（例如：合并碎代码为一个 pipeline 综合块；增加机制解释段；补上误区纠正与反例；修复引用闭环等）。`;
+如果失败：issues 必须给出具体替换建议（例如：把外部数据改为 sklearn 内置；补上 p(y|x)=...；补上 ROUGE-1/F1 的计算公式与自实现；把引用标题改为可核验来源）。`;
 
 const CODE_SYSTEM = "You are the code & hands-on editor for AI Daily Academy. You add concise, runnable snippets that align with the already-written narrative.";
 
