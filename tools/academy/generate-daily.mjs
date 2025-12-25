@@ -1,5 +1,6 @@
 import path from "path";
 import process from "process";
+import { promises as fs } from "fs";
 import JSON5 from "json5";
 import { jsonrepair } from "jsonrepair";
 import {
@@ -104,6 +105,32 @@ const DEFAULT_REFERENCE_HINTS = {
     "https://arxiv.org/abs/2011.13456"
   ]
 };
+
+async function loadArchivedIds() {
+  const archiveDir = path.resolve(root, DAILY_ARCH);
+  try {
+    const files = await fs.readdir(archiveDir);
+    const ids = new Set();
+    for (const file of files) {
+      if (!file.endsWith(".json")) continue;
+      const filePath = path.join(archiveDir, file);
+      const content = await readJSON(filePath, []);
+      if (Array.isArray(content)) {
+        for (const lesson of content) {
+          if (lesson && lesson.id) {
+             const key = lesson.id.replace(/^\d{4}-\d{2}-\d{2}-/, "") || lesson.id;
+             ids.add(key);
+          }
+        }
+      }
+    }
+    return ids;
+  } catch (error) {
+    if (error.code === "ENOENT") return new Set();
+    console.warn("Failed to load archive:", error);
+    return new Set();
+  }
+}
 
 async function loadHistory() {
   const fallback = { generatedAt: new Date().toISOString(), lessons: [] };
@@ -275,13 +302,13 @@ function daysBetween(a, b) {
   return Math.floor((Date.parse(a) - Date.parse(b)) / (1000 * 60 * 60 * 24));
 }
 
-function pickCandidate(candidates, lessons) {
+function pickCandidate(candidates, lessons, archivedIds) {
   if (!candidates.length) return null;
   const summary = summarizeHistory(lessons);
   // Strictly follow the order in topics.json (candidates array)
   // Find the first candidate that has not been generated yet
   for (const candidate of candidates) {
-    if (!summary.has(candidate.id)) {
+    if (!summary.has(candidate.id) && (!archivedIds || !archivedIds.has(candidate.id))) {
       return candidate;
     }
   }
@@ -1602,16 +1629,17 @@ async function generateLesson(candidate, history) {
 }
 
 async function main() {
-  const [topicsRaw, historyDoc] = await Promise.all([
+  const [topicsRaw, historyDoc, archivedIds] = await Promise.all([
     readJSON(path.resolve(root, TOPICS), []),
-    loadHistory()
+    loadHistory(),
+    loadArchivedIds()
   ]);
   const lessons = sanitizeLessons(historyDoc.lessons || []);
   const topics = flattenTopics(topicsRaw);
   if (!topics.length) {
     throw new Error("No academy topics available");
   }
-  const candidate = pickCandidate(topics, lessons);
+  const candidate = pickCandidate(topics, lessons, archivedIds);
   if (!candidate) {
     console.log("No new topics available to generate.");
     return;
