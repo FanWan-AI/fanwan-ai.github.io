@@ -858,7 +858,7 @@ function renderRisk(entry) {
 	const label = document.createElement("strong");
 	label.textContent = t("wealth_risk_label", "风险提示");
 	const body = document.createElement("span");
-	body.textContent = text;
+	body.innerHTML = parseMarkdown(text);
 	box.append(label, body);
 	return box;
 }
