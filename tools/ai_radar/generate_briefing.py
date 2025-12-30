@@ -1353,6 +1353,21 @@ def _synthesize_audio(
     }
 
 
+def _backup_briefing(date_str: str) -> None:
+    """Backup the existing briefing file if it exists."""
+    source = BRIEFINGS_DIR / f"{date_str}.json"
+    if not source.exists():
+        return
+    # We backup to .morning.json if it doesn't exist, to preserve the FIRST run of the day
+    target = BRIEFINGS_DIR / f"{date_str}.morning.json"
+    if not target.exists():
+        try:
+            target.write_bytes(source.read_bytes())
+            print(f"[ai-radar] Backed up existing briefing to {target.name}")
+        except Exception as e:
+            print(f"[ai-radar] Failed to backup briefing: {e}")
+
+
 def main() -> None:
     if not LATEST_PATH.exists():
         raise SystemExit("latest.json not found; run aggregate_reports.py first")
@@ -1395,6 +1410,7 @@ def main() -> None:
 
     generated_dt = _parse_iso8601(latest.get("generated_at", ""))
     date_str = _bj_date(generated_dt)
+    _backup_briefing(date_str)
     existing_briefing: Optional[Dict[str, Any]] = None
     existing_audio_meta: Optional[Dict[str, Any]] = None
     existing_path = BRIEFINGS_DIR / f"{date_str}.json"
