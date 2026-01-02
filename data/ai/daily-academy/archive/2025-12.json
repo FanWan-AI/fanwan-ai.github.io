@@ -2709,5 +2709,173 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-04-association-rule",
+    "date": "2025-12-04",
+    "title": {
+      "zh": "关联规则与市场篮分析",
+      "en": "Association Rules and Market Basket Analysis"
+    },
+    "summary": {
+      "zh": "关联规则与市场篮分析是无监督学习中的经典方法，通过挖掘交易数据中商品之间的频繁共现模式，解决电商场景中隐藏关联难以发现和利用的问题。课程围绕基础概念、核心算法和实战应用展开，以Walmart、Amazon等案例和超市交易数据集为例，重点讲解支持度、置信度、提升度等关键指标及Apriori与FP-Growth算法的实现。",
+      "en": "Association rule and market basket analysis are classic methods in unsupervised learning, uncovering frequent co-occurrence patterns among products in transaction data to address the challenge of identifying and leveraging hidden"
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "association rule",
+      "frequent itemset"
+    ],
+    "content": {
+      "zh": "<p class=\"narrative-intro\">作为电商分析师或市场人员，面对海量交易数据时，如何系统性地挖掘商品间的隐藏关联模式，并将其转化为可执行的商业策略，是提升运营效率的关键。本课程将引导您掌握关联规则与市场篮分析的核心方法，从基础概念到算法实现，再到业务应用，构建完整的无监督学习实践路径。</p>\n\n<h3>关联规则基础：从购物篮到频繁项集</h3>\n<p>在电商交易场景中，顾客的购买行为往往呈现出特定的模式，理解这些模式有助于优化商品推荐、库存管理和促销策略。关联规则分析通过量化商品之间的共现关系，为数据驱动的决策提供支持。</p>\n<p>关联规则的核心在于三个基本指标，它们共同定义了规则的统计意义：</p>\n<ul>\n<li><strong>支持度（Support）</strong>：项集在数据集中出现的频率，衡量其普遍性。计算公式为：支持度(X) = 包含X的交易数 / 总交易数。</li>\n<li><strong>置信度（Confidence）</strong>：规则X→Y的置信度表示在包含X的交易中Y也出现的概率。计算公式为：置信度(X→Y) = 支持度(X∪Y) / 支持度(X)。</li>\n<li><strong>提升度（Lift）</strong>：规则置信度与Y独立出现概率的比值，用于衡量规则的有效性。提升度大于1表示X和Y正相关。计算公式为：提升度(X→Y) = 置信度(X→Y) / 支持度(Y)。</li>\n</ul>\n<p>以Walmart的实践为例，为提升跨品类销售，他们分析了数百万笔交易数据，识别出如“尿布与啤酒”的经典组合，并据此优化货架布局（来源：Data Mining: Concepts and Techniques，2011）。这体现了支持度和置信度在业务场景中的实际应用。</p>\n<p>下面通过一个具体示例展示如何计算这些指标。假设我们有一个超市交易数据集（如Groceries dataset），包含顾客购买的商品列表：</p>\n<pre><code># 使用Python的mlxtend库计算频繁项集\nfrom mlxtend.frequent_patterns import apriori\nimport pandas as pd\n\n# 示例数据集：每行代表一次交易，列表示商品是否购买（0/1）\ndata = {'牛奶': [1, 0, 1, 1, 0],\n        '面包': [1, 1, 1, 0, 1],\n        '鸡蛋': [0, 1, 1, 1, 0]}\ndf = pd.DataFrame(data)\n\n# 计算最小支持度为0.4的频繁项集\nfrequent_itemsets = apriori(df, min_support=0.4, use_colnames=True)\nprint(frequent_itemsets)</code></pre>\n<p>输出可能显示项集{牛奶, 面包}的支持度为0.4，表示40%的交易同时包含这两种商品。通过设定合理的阈值，我们可以筛选出有意义的频繁项集，为后续规则生成奠定基础。理解这些基础指标后，便能更准确地解读商品间的关联关系，为高效挖掘这些模式，我们需要了解核心算法。</p>\n\n<h3>核心算法：Apriori与FP-Growth的原理与对比</h3>\n<p>当数据量增大时，如何高效地挖掘频繁项集成为关键挑战。Apriori和FP-Growth是两种主流的算法，它们以不同的方式解决了这一问题，选择适合的算法可以平衡计算资源与结果精度。</p>\n<p><strong>Apriori算法</strong>采用逐层搜索的策略，其核心在于先验性质：如果一个项集是非频繁的，那么它的所有超集也一定是非频繁的。这允许在早期剪枝大量候选集，从而提升效率。算法步骤包括：生成候选k-项集，扫描数据库计算支持度，并剪枝低于阈值的项集。</p>\n<p>然而，Apriori需要多次扫描数据集，且候选集数量可能爆炸式增长。为此，<strong>FP-Growth算法</strong>应运而生，它通过构建频繁模式树（FP-tree）来压缩数据，只需扫描数据集两次，避免了显式候选集生成。在Amazon的案例中，处理海量电商交易数据时，他们对比了Apriori和FP-Growth的性能，发现FP-Growth在稀疏数据上能减少内存消耗并加速处理（来源：Mining Frequent Patterns without Candidate Generation，2000）。</p>\n<p>以下代码展示了FP-Growth的基本使用，使用合成交易数据集模拟高维稀疏场景：</p>\n<pre><code># 使用pyfpgrowth库实现FP-Growth\nimport pyfpgrowth\n\n# 示例交易数据：每个列表代表一次购买的商品\ntransactions = [\n    ['牛奶', '面包', '鸡蛋'],\n    ['面包', '黄油'],\n    ['牛奶', '面包', '黄油'],\n    ['牛奶', '鸡蛋'],\n    ['面包', '鸡蛋']\n]\n\n# 挖掘支持度阈值≥2的频繁模式\npatterns = pyfpgrowth.find_frequent_patterns(transactions, support_threshold=2)\nprint(\"频繁项集:\", patterns)\n\n# 生成关联规则\nrules = pyfpgrowth.generate_association_rules(patterns, confidence_threshold=0.5)\nprint(\"关联规则:\", rules)</code></pre>\n<p>输出可能显示项集{牛奶, 面包}出现了3次（支持度0.6），并生成规则{牛奶}→{面包}，置信度为0.75。通过树结构，FP-Growth在处理大规模数据时更具优势。掌握算法原理后，我们需要思考如何将这些技术发现转化为实际的商业价值。</p>\n\n<h3>实战应用：从规则挖掘到电商策略设计</h3>\n<p>关联规则的价值在于驱动业务决策，而非单纯的技术输出。然而，面对大量生成的规则，如何筛选和解读成为关键，这需要结合指标分析和业务知识。</p>\n<p>首先，通过<strong>提升度（Lift）</strong>过滤琐碎规则，提升度大于1的规则表示项之间正相关，具有实际意义。例如，规则{婴儿奶粉, 尿布}→{湿巾}的提升度为2.5，意味着购买奶粉和尿布的顾客购买湿巾的可能性是普通顾客的2.5倍。其次，结合业务知识进行筛选，考虑规则中商品的可操作性（如是否易于捆绑、库存是否充足）、利润率等因素。</p>\n<p>以Target的实践为例，他们通过分析历史购买记录，挖掘与怀孕相关的商品关联规则，并基于此设计个性化促销活动（来源：How Target Figured Out A Teen Girl Was Pregnant Before Her Father Did，2012）。这要求不仅看数据指标，还要理解商品间的逻辑关系和业务场景。</p>\n<p>以下示例展示了如何从规则挖掘到策略设计，使用零售交易数据集：</p>\n<pre><code># 使用mlxtend生成并筛选关联规则\nfrom mlxtend.frequent_patterns import association_rules\n\n# 假设已有频繁项集frequent_itemsets\nrules = association_rules(frequent_itemsets, metric=\"lift\", min_threshold=1.0)\n\n# 筛选高价值规则：提升度>1.5且支持度>0.05\nhigh_value_rules = rules[(rules['lift'] > 1.5) & (rules['support'] > 0.05)]\n\n# 输出前3条规则及其业务建议\nfor idx, row in high_value_rules.head(3).iterrows():\n    print(f\"规则: {set(row['antecedents'])} → {set(row['consequents'])}\")\n    print(f\"  支持度: {row['support']:.2f}, 置信度: {row['confidence']:.2f}, 提升度: {row['lift']:.2f}\")\n    print(f\"  建议: 考虑将{row['antecedents']}和{row['consequents']}捆绑促销，可设计A/B测试验证效果。\")</code></pre>\n<p>输出可能显示规则{咖啡, 糖}→{牛奶}具有较高提升度，建议在咖啡促销时推荐牛奶。通过A/B测试，可以验证这类策略的实际效果，例如测量转化率或交叉销售提升比例。关联规则分析至此完成了从数据到洞察再到行动的完整闭环。</p>\n\n<p class=\"narrative-outro\">通过本课程，您已经掌握了关联规则与市场篮分析的核心概念、算法原理及实战应用。从基础指标到算法选择，再到业务落地，每一步都旨在将无监督学习转化为可执行的商业策略。现在，您可以尝试将所学应用于自己的数据集，挖掘隐藏的关联，并设计出更精准的推荐与营销方案。</p>",
+      "en": "<p class=\"narrative-intro\">As an e-commerce analyst or marketer, systematically uncovering hidden association patterns in vast transaction data and translating them into actionable business strategies is key to enhancing operational efficiency. This course will guide you through the core methods of association rule and market basket analysis, from fundamental concepts to algorithmic implementation and business applications, building a complete unsupervised learning practice path.</p>\n\n<h3>Association Rule Fundamentals: From Shopping Baskets to Frequent Itemsets</h3>\n<p>In e-commerce transaction scenarios, customer purchase behavior often exhibits specific patterns, and understanding these patterns helps optimize product recommendations, inventory management, and promotional strategies. Association rule analysis quantifies co-occurrence relationships between products, providing support for data-driven decisions.</p>\n<p>The core of association rules lies in three basic metrics that collectively define the statistical significance of rules:</p>\n<ul>\n<li><strong>Support</strong>: The frequency of an itemset in the dataset, measuring its prevalence. Calculation formula: Support(X) = Number of transactions containing X / Total transactions.</li>\n<li><strong>Confidence</strong>: The confidence of a rule X→Y represents the probability that Y appears in transactions containing X. Calculation formula: Confidence(X→Y) = Support(X∪Y) / Support(X).</li>\n<li><strong>Lift</strong>: The ratio of rule confidence to the independent probability of Y, used to measure rule effectiveness. Lift greater than 1 indicates positive correlation between X and Y. Calculation formula: Lift(X→Y) = Confidence(X→Y) / Support(Y).</li>\n</ul>\n<p>Taking Walmart's practice as an example, to enhance cross-category sales, they analyzed millions of transaction records, identifying classic combinations like \"diapers and beer\" and optimizing shelf layouts accordingly (source: Data Mining: Concepts and Techniques, 2011). This demonstrates the practical application of support and confidence in business scenarios.</p>\n<p>The following example shows how to calculate these metrics. Assume we have a supermarket transaction dataset (e.g., Groceries dataset) containing customer purchase lists:</p>\n<pre><code># Using Python's mlxtend library to compute frequent itemsets\nfrom mlxtend.frequent_patterns import apriori\nimport pandas as pd\n\n# Sample dataset: each row represents a transaction, columns indicate product purchase (0/1)\ndata = {'milk': [1, 0, 1, 1, 0],\n        'bread': [1, 1, 1, 0, 1],\n        'eggs': [0, 1, 1, 1, 0]}\ndf = pd.DataFrame(data)\n\n# Compute frequent itemsets with minimum support of 0.4\nfrequent_itemsets = apriori(df, min_support=0.4, use_colnames=True)\nprint(frequent_itemsets)</code></pre>\n<p>The output might show itemset {milk, bread} has a support of 0.4, meaning 40% of transactions include both products. By setting appropriate thresholds, we can filter meaningful frequent itemsets, laying the groundwork for subsequent rule generation. Understanding these basic metrics enables more accurate interpretation of product associations, and to efficiently mine these patterns, we need to understand core algorithms.</p>\n\n<h3>Core Algorithms: Principles and Comparison of Apriori and FP-Growth</h3>\n<p>As data volume increases, efficiently mining frequent itemsets becomes a critical challenge. Apriori and FP-Growth are two mainstream algorithms that address this issue in different ways, and selecting the appropriate algorithm can balance computational resources with result accuracy.</p>\n<p><strong>Apriori algorithm</strong> employs a level-wise search strategy, with its core being the downward closure property: if an itemset is infrequent, all its supersets must also be infrequent. This allows early pruning of many candidates, improving efficiency. Algorithm steps include: generating candidate k-itemsets, scanning the database to compute support, and pruning itemsets below the threshold.</p>\n<p>However, Apriori requires multiple dataset scans, and candidate sets can grow exponentially. To address this, the <strong>FP-Growth algorithm</strong> was developed, compressing data by building a Frequent Pattern tree (FP-tree), requiring only two dataset scans and avoiding explicit candidate generation. In Amazon's case, when processing massive e-commerce transaction data, they compared Apriori and FP-Growth performance, finding FP-Growth reduced memory consumption and accelerated processing on sparse data (source: Mining Frequent Patterns without Candidate Generation, 2000).</p>\n<p>The following code demonstrates basic FP-Growth usage, using synthetic transaction data to simulate high-dimensional sparse scenarios:</p>\n<pre><code># Implementing FP-Growth using the pyfpgrowth library\nimport pyfpgrowth\n\n# Sample transaction data: each list represents purchased items in a transaction\ntransactions = [\n    ['milk', 'bread', 'eggs'],\n    ['bread', 'butter'],\n    ['milk', 'bread', 'butter'],\n    ['milk', 'eggs'],\n    ['bread', 'eggs']\n]\n\n# Mine frequent patterns with support threshold ≥ 2\npatterns = pyfpgrowth.find_frequent_patterns(transactions, support_threshold=2)\nprint(\"Frequent itemsets:\", patterns)\n\n# Generate association rules\nrules = pyfpgrowth.generate_association_rules(patterns, confidence_threshold=0.5)\nprint(\"Association rules:\", rules)</code></pre>\n<p>The output might show itemset {milk, bread} appears 3 times (support 0.6) and generate rule {milk}→{bread} with confidence 0.75. Through tree structure, FP-Growth offers advantages for large-scale data processing. Understanding algorithmic principles leads us to consider how to translate these technical discoveries into tangible business value.</p>\n\n<h3>Practical Application: From Rule Mining to E-commerce Strategy Design</h3>\n<p>The value of association rules lies in driving business decisions, not merely technical output. However, with numerous generated rules, filtering and interpretation become crucial, requiring a combination of metric analysis and business knowledge.</p>\n<p>First, filter trivial rules using <strong>lift</strong>; rules with lift greater than 1 indicate positive correlation and practical significance. For example, rule {baby formula, diapers}→{wipes} with lift 2.5 means customers buying formula and diapers are 2.5 times more likely to buy wipes than average customers. Second, incorporate business knowledge for filtering, considering factors like the operability of products in rules (e.g., ease of bundling, inventory availability) and profit margins.</p>\n<p>In Target's practice, they analyzed historical purchase records to mine product association rules related to pregnancy and designed personalized promotions based on these insights (source: How Target Figured Out A Teen Girl Was Pregnant Before Her Father Did, 2012). This requires understanding not just data metrics but also logical relationships between products and business contexts.</p>\n<p>The following example illustrates the process from rule mining to strategy design, using a retail transaction dataset:</p>\n<pre><code># Using mlxtend to generate and filter association rules\nfrom mlxtend.frequent_patterns import association_rules\n\n# Assume frequent_itemsets already exists\nrules = association_rules(frequent_itemsets, metric=\"lift\", min_threshold=1.0)\n\n# Filter high-value rules: lift > 1.5 and support > 0.05\nhigh_value_rules = rules[(rules['lift'] > 1.5) & (rules['support'] > 0.05)]\n\n# Output top 3 rules with business suggestions\nfor idx, row in high_value_rules.head(3).iterrows():\n    print(f\"Rule: {set(row['antecedents'])} → {set(row['consequents'])}\")\n    print(f\"  Support: {row['support']:.2f}, Confidence: {row['confidence']:.2f}, Lift: {row['lift']:.2f}\")\n    print(f\"  Suggestion: Consider bundling {row['antecedents']} and {row['consequents']} for promotions, with A/B testing to validate effectiveness.\")</code></pre>\n<p>The output might show rule {coffee, sugar}→{milk} has high lift, suggesting recommending milk during coffee promotions. Through A/B testing, the actual effects of such strategies can be verified, such as measuring conversion rates or cross-sales improvement. Association rule analysis thus completes the full cycle from data to insights to action.</p>\n\n<p class=\"narrative-outro\">Through this course, you have mastered the core concepts, algorithmic principles, and practical applications of association rule and market basket analysis. From basic metrics to algorithm selection to business implementation, each step aims to transform unsupervised learning into executable business strategies. Now, you can apply what you've learned to your own datasets, uncover hidden associations, and design more precise recommendation and marketing plans.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：关联规则与市场篮分析 · 结构总览 · 数据：课程大纲】在设计《关联规则与市场篮分析》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 关联规则与市场篮分析 · 结构总览 · Data: 课程大纲】When outlining \"关联规则与市场篮分析\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：关联规则与市场篮分析 · worked example · 数据：挖掘商品之间的关联关系 数据/代码】在复现《关联规则与市场篮分析》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 关联规则与市场篮分析 · worked example · Data: 挖掘商品之间的关联关系 数据/代码】While reproducing the worked example in \"关联规则与市场篮分析\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：关联规则与市场篮分析 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《关联规则与市场篮分析》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 关联规则与市场篮分析 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"关联规则与市场篮分析\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：关联规则与市场篮分析 · 参考资料 · 数据：课程引用文献】当引用文献支撑《关联规则与市场篮分析》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 关联规则与市场篮分析 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"关联规则与市场篮分析\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Data Mining: Concepts and Techniques（Morgan Kaufmann，2011）",
+          "en": "Data Mining: Concepts and Techniques (Morgan Kaufmann, 2011)"
+        },
+        "url": "https://www.sciencedirect.com/book/9780123814791/data-mining-concepts-and-techniques"
+      },
+      {
+        "label": {
+          "zh": "Mining Frequent Patterns without Candidate Generation（ACM SIGMOD，2000）",
+          "en": "Mining Frequent Patterns without Candidate Generation (ACM SIGMOD, 2000)"
+        },
+        "url": "https://www.cs.sfu.ca/~jpei/publications/sigmod00.pdf"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-04-association-rule-zh.mp3"
+    },
+    "meta": {
+      "category": "Unsupervised Learning",
+      "level": "1. Machine Learning Basics",
+      "difficultyScore": 1,
+      "related": [
+        "Apriori",
+        "FP-Growth"
+      ],
+      "learningObjectives": [
+        "挖掘商品之间的关联关系",
+        "设计推荐策略"
+      ],
+      "personas": [
+        "电商分析师",
+        "市场人员"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 关联规则与市场篮分析 可帮助团队在 Unsupervised Learning 上做出可复用的实践。",
+        "best_for": "适合 电商分析师、市场人员，需要快速吸收 1. Machine Learning Basics 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "电商分析师 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 电商分析师、市场人员，帮助他们把 关联规则与市场篮分析 应用于 Unsupervised Learning",
+        "prefersEnglish": false,
+        "industries": [
+          "电商分析师",
+          "市场人员"
+        ],
+        "personas": [
+          "电商分析师",
+          "市场人员"
+        ],
+        "pains": "在 Unsupervised Learning 场景缺乏 关联规则与市场篮分析 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "1. Machine Learning Basics"
+      },
+      "prompt_version": "2025-11-30",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为电商分析师，回顾你最近处理的交易数据，哪些商品组合的频繁共现让你感到意外？这些隐藏关联如何影响你的促销策略设计？",
+          "action_hint": "尝试用支持度、置信度指标量化这些组合，思考如何调整商品陈列或捆绑销售。"
+        },
+        {
+          "lang": "zh",
+          "question": "在市场篮分析中，你通常如何判断两个商品的关联是偶然还是真有价值？面对海量交易数据，你会优先从哪些维度挖掘有意义的关联规则？",
+          "action_hint": "结合提升度指标评估关联强度，并考虑从高销量商品或季节性品类入手分析。"
+        }
+      ]
+    }
   }
 ]
