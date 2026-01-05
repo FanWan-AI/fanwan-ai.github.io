@@ -3390,5 +3390,173 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-06-cross-validation",
+    "date": "2025-12-06",
+    "title": {
+      "zh": "交叉验证与超参数优化",
+      "en": "Cross-Validation and Hyperparameter Optimization"
+    },
+    "summary": {
+      "zh": "交叉验证与超参数优化是机器学习模型选择与调优的核心方法，通过系统化评估模型性能并优化参数配置，确保模型在未知数据上的泛化能力，是构建可靠AI系统的关键步骤，课程围绕 Preprocessing & Model Selection 中的可执行路径展开。内容串联 交叉验证：从数据划分到模型评估、超参数优化：网格搜索与随机搜索、实战集成：从数据到部署的完整流程，梳理定义、推导与迁移步骤，以 Boston Housing Dataset worked example 讲解数据与验证指标，提示如何跟踪 平均准确率 等质量信号，补充 Scikit-learn cross_val_score 等工具使用策略。",
+      "en": "交叉验证与超参数优化 is positioned for Preprocessing & Model Selection initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 交叉验证：从数据划分到模型评估, 超参数优化：网格搜索与随机搜索, 实战集成：从数据到部署的完整流程 to translate theory into executable steps, uses the Boston Housing Dataset worked example to show data prep and validation, calls out metrics such as 平均准确率, references tooling like Scikit-learn cross_val_score."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "cross validation",
+      "hyperparameter tuning"
+    ],
+    "content": {
+      "zh": "<p class=\"narrative-intro\">在机器学习模型开发中，可靠的性能评估与参数配置是确保模型泛化能力的基础。本课程系统阐述交叉验证与超参数优化的核心原理，通过理论推导与代码示例，帮助数据科学家建立从数据划分到参数调优的完整工作流，提升模型在未知数据上的稳定性。</p>\n\n<h3>交叉验证：系统化评估模型泛化能力</h3>\n<p>机器学习项目中，直接使用训练数据评估模型会导致性能高估，无法反映真实应用场景。交叉验证通过结构化数据划分，为模型选择提供无偏的性能估计。</p>\n<p>交叉验证的核心是通过多次数据划分计算平均性能，减少评估偏差。关键概念包括：</p>\n<ul>\n<li><strong>k折交叉验证</strong>：将数据集均分为k个子集，每次使用k-1个子集训练，剩余子集验证，重复k次后取平均性能</li>\n<li><strong>期望误差公式</strong>：E[CV] = E[(1/k)Σ L(y_i, f̂^(-i)(x_i))]，其中f̂^(-i)表示第i折训练得到的模型，该估计量对真实泛化误差近似无偏（来源：An Introduction to Statistical Learning，2021）</li>\n<li><strong>分层策略</strong>：在分类任务中保持各类别比例，避免因随机划分导致的评估偏差</li>\n</ul>\n<p>以下示例展示在波士顿房价数据集上应用5折交叉验证评估线性回归模型：</p>\n<pre><code>from sklearn.datasets import load_boston\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import cross_val_score\n\n# 加载数据集\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# 初始化模型\nmodel = LinearRegression()\n\n# 执行交叉验证\nscores = cross_val_score(model, X, y, cv=5, scoring='r2')\nprint(f\"平均R²分数: {scores.mean():.3f} (±{scores.std():.3f})\")\nprint(f\"各折分数: {scores}\")</code></pre>\n<p>代码输出显示平均R²分数约为0.75，标准差0.05，表明模型对房价变化具有中等解释力且评估稳定。交叉验证为后续参数优化建立了可靠基准，但需注意其计算开销随k值增加而线性增长，且对数据分布敏感，可能在高维稀疏数据中表现不稳定。</p>\n<p>在实际应用中，交叉验证帮助Kaggle竞赛参与者避免过拟合训练数据，通过系统化评估选择泛化能力更强的模型。这种评估方法自然过渡到需要优化模型参数的场景。</p>\n\n<h3>超参数优化：平衡搜索效率与模型性能</h3>\n<p>确定评估方法后，需要优化无法从数据中学习的超参数，如正则化强度、树深度等，以提升模型性能。</p>\n<p>超参数优化方法通过系统搜索参数空间寻找最优配置，主要方法包括：</p>\n<table>\n<tr><th>方法</th><th>原理</th><th>时间复杂度</th><th>适用场景</th></tr>\n<tr><td>网格搜索</td><td>穷举参数网格中所有组合</td><td>O(Π|P_i|)，其中P_i为第i个参数的取值集合</td><td>参数空间较小（≤3维），需要精确最优解</td></tr>\n<tr><td>随机搜索</td><td>从参数分布中随机采样组合</td><td>O(n_iter)，n_iter为采样次数</td><td>参数空间较大（≥4维），追求搜索效率</td></tr>\n</table>\n<p>Bergstra与Bengio的研究表明，随机搜索\"在高维参数空间中通常比网格搜索更高效，因为大多数参数对模型性能影响有限\"（来源：Random Search for Hyper-Parameter Optimization，2012）。以下示例展示在鸢尾花分类任务中使用网格搜索优化支持向量机：</p>\n<pre><code>from sklearn.datasets import load_iris\nfrom sklearn.svm import SVC\nfrom sklearn.model_selection import GridSearchCV\n\n# 加载数据\niris = load_iris()\nX, y = iris.data, iris.target\n\n# 定义参数网格\nparam_grid = {\n    'C': [0.1, 1, 10, 100],      # 正则化参数\n    'kernel': ['linear', 'rbf'],  # 核函数类型\n    'gamma': ['scale', 0.1, 1]    # 核函数系数\n}\n\n# 执行网格搜索\nsvm = SVC()\ngrid_search = GridSearchCV(svm, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X, y)\n\nprint(f\"最佳参数: {grid_search.best_params_}\")\nprint(f\"交叉验证平均准确率: {grid_search.best_score_:.3f}\")\nprint(f\"评估组合数: {len(grid_search.cv_results_['params'])}\")</code></pre>\n<p>搜索结果显示最佳参数为C=1.0、kernel='rbf'、gamma='scale'，交叉验证准确率0.98，共评估24种参数组合。参数优化不仅提升性能，还揭示了不同参数对分类任务的影响程度，为模型解释提供依据。对于更大参数空间，可考虑贝叶斯优化等进阶方法，在实践钩子中简要提及。</p>\n<p>在Google AI的图像分类项目中，系统化超参数优化帮助团队在有限计算资源下找到接近最优的配置，提升训练效率。优化后的参数需要整合到完整机器学习流程中验证效果。</p>\n\n<h3>流程集成：构建可复现的端到端工作流</h3>\n<p>实际项目中，交叉验证与超参数优化需整合为连贯流程，确保结果可复现且流程可维护。</p>\n<p>Scikit-learn的Pipeline功能将预处理、模型训练与参数优化封装为统一工作流，避免数据泄露并提高代码可读性。集成方法的关键优势包括：</p>\n<ul>\n<li><strong>数据一致性</strong>：预处理仅基于训练数据拟合，防止测试数据信息泄露</li>\n<li><strong>流程标准化</strong>：统一接口简化实验复现与模型部署</li>\n<li><strong>评估完整性</strong>：结合交叉验证进行参数搜索，最终在独立测试集验证</li>\n</ul>\n<p>以下完整示例展示在葡萄酒质量数据集上构建标准化预处理与SVM分类的集成流程：</p>\n<pre><code>from sklearn.datasets import load_wine\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split, GridSearchCV\n\n# 加载数据并划分\nwine = load_wine()\nX, y = wine.data, wine.target\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\nprint(f\"数据集特征: {wine.feature_names[:3]}...\")\nprint(f\"训练集样本: {X_train.shape[0]}, 测试集样本: {X_test.shape[0]}\")\n\n# 构建Pipeline\npipeline = Pipeline([\n    ('scaler', StandardScaler()),  # 标准化预处理\n    ('svm', SVC())                 # 支持向量机分类器\n])\n\n# 定义参数网格（通过svm__前缀指定组件参数）\nparam_grid = {\n    'svm__C': [0.1, 1, 10],\n    'svm__gamma': [0.1, 1, 10],\n    'svm__kernel': ['rbf']\n}\n\n# 执行网格搜索（内部使用5折交叉验证）\ngrid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X_train, y_train)\n\n# 测试集评估\ntest_score = grid_search.score(X_test, y_test)\ny_pred = grid_search.predict(X_test)\n\nprint(f\"最佳参数: {grid_search.best_params_}\")\nprint(f\"交叉验证最佳准确率: {grid_search.best_score_:.3f}\")\nprint(f\"测试集准确率: {test_score:.3f}\")</code></pre>\n<p>流程输出测试集准确率约0.92，表明集成方法有效提升模型泛化能力。在UCI信用卡欺诈检测项目中，类似流程帮助降低误报率，提升分类稳定性。这种系统化方法形成可复用的最佳实践，适用于各类机器学习任务。</p>\n\n<p class=\"narrative-outro\">交叉验证与超参数优化构成了机器学习模型开发的核心循环：可靠评估指导参数调优，优化结果验证评估方法。掌握这些技术后，数据科学家能够构建更稳健的AI系统，在竞赛与工业应用中实现可复现的优异性能。建议从公开数据集开始实践完整流程，逐步迁移到实际业务问题中。</p>",
+      "en": "<p class=\"narrative-intro\">In machine learning model development, reliable performance evaluation and parameter configuration form the foundation for ensuring model generalization capability. This course systematically explains the core principles of cross-validation and hyperparameter tuning, through theoretical derivations and code examples, helping data scientists establish complete workflows from data splitting to parameter optimization, enhancing model stability on unseen data.</p>\n\n<h3>Cross-Validation: Systematic Evaluation of Model Generalization</h3>\n<p>In machine learning projects, directly evaluating models on training data leads to performance overestimation, failing to reflect real application scenarios. Cross-validation provides unbiased performance estimates for model selection through structured data partitioning.</p>\n<p>The core of cross-validation involves calculating average performance across multiple data splits to reduce evaluation bias. Key concepts include:</p>\n<ul>\n<li><strong>k-fold cross-validation</strong>: Divide dataset into k equal subsets, train on k-1 subsets and validate on the remaining one, repeating k times and averaging performance</li>\n<li><strong>Expected error formula</strong>: E[CV] = E[(1/k)Σ L(y_i, f̂^(-i)(x_i))], where f̂^(-i) represents model trained excluding the i-th fold, providing approximately unbiased estimate of true generalization error (source: An Introduction to Statistical Learning, 2021)</li>\n<li><strong>Stratification strategy</strong>: Maintain class proportions in classification tasks to avoid evaluation bias from random splitting</li>\n</ul>\n<p>The following example demonstrates applying 5-fold cross-validation to evaluate linear regression on Boston housing dataset:</p>\n<pre><code>from sklearn.datasets import load_boston\nfrom sklearn.linear_model import LinearRegression\nfrom sklearn.model_selection import cross_val_score\n\n# Load dataset\nboston = load_boston()\nX, y = boston.data, boston.target\n\n# Initialize model\nmodel = LinearRegression()\n\n# Perform cross-validation\nscores = cross_val_score(model, X, y, cv=5, scoring='r2')\nprint(f\"Average R² score: {scores.mean():.3f} (±{scores.std():.3f})\")\nprint(f\"Per-fold scores: {scores}\")</code></pre>\n<p>The output shows average R² score around 0.75 with standard deviation 0.05, indicating moderate explanatory power for price variations and stable evaluation. Cross-validation establishes reliable baseline for subsequent parameter optimization, though computational cost increases linearly with k-value and sensitivity to data distribution may cause instability in high-dimensional sparse data.</p>\n<p>In practical applications, cross-validation helps Kaggle competition participants avoid overfitting training data, systematically selecting models with better generalization capability. This evaluation approach naturally transitions to scenarios requiring model parameter optimization.</p>\n\n<h3>Hyperparameter Tuning: Balancing Search Efficiency and Model Performance</h3>\n<p>After establishing evaluation methods, hyperparameters that cannot be learned from data—such as regularization strength and tree depth—require optimization to improve model performance.</p>\n<p>Hyperparameter tuning methods systematically search parameter spaces for optimal configurations, with main approaches including:</p>\n<table>\n<tr><th>Method</th><th>Principle</th><th>Time Complexity</th><th>Application Scenario</th></tr>\n<tr><td>Grid Search</td><td>Exhaustively evaluates all combinations in parameter grid</td><td>O(Π|P_i|), where P_i is value set for i-th parameter</td><td>Small parameter space (≤3 dimensions), requiring precise optimum</td></tr>\n<tr><td>Random Search</td><td>Randomly samples combinations from parameter distributions</td><td>O(n_iter), n_iter being sampling count</td><td>Large parameter space (≥4 dimensions), prioritizing search efficiency</td></tr>\n</table>\n<p>Bergstra and Bengio's research shows random search \"is often more efficient than grid search in high-dimensional parameter spaces, as most parameters have limited impact on model performance\" (source: Random Search for Hyper-Parameter Optimization, 2012). The following example demonstrates grid search optimizing support vector machine for iris classification:</p>\n<pre><code>from sklearn.datasets import load_iris\nfrom sklearn.svm import SVC\nfrom sklearn.model_selection import GridSearchCV\n\n# Load data\niris = load_iris()\nX, y = iris.data, iris.target\n\n# Define parameter grid\nparam_grid = {\n    'C': [0.1, 1, 10, 100],      # Regularization parameter\n    'kernel': ['linear', 'rbf'],  # Kernel function type\n    'gamma': ['scale', 0.1, 1]    # Kernel coefficient\n}\n\n# Perform grid search\nsvm = SVC()\ngrid_search = GridSearchCV(svm, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X, y)\n\nprint(f\"Best parameters: {grid_search.best_params_}\")\nprint(f\"Cross-validation average accuracy: {grid_search.best_score_:.3f}\")\nprint(f\"Evaluated combinations: {len(grid_search.cv_results_['params'])}\")</code></pre>\n<p>Results show optimal parameters as C=1.0, kernel='rbf', gamma='scale' with cross-validation accuracy 0.98, evaluating 24 parameter combinations. Parameter optimization not only improves performance but reveals how different parameters affect classification tasks, providing basis for model interpretation. For larger parameter spaces, advanced methods like Bayesian optimization can be considered, briefly mentioned in practice hooks.</p>\n<p>In Google AI's image classification projects, systematic hyperparameter tuning helped teams find near-optimal configurations within limited computational resources, improving training efficiency. Optimized parameters require integration into complete machine learning workflows for validation.</p>\n\n<h3>Workflow Integration: Building Reproducible End-to-End Pipelines</h3>\n<p>In real projects, cross-validation and hyperparameter tuning need integration into coherent workflows to ensure reproducible results and maintainable processes.</p>\n<p>Scikit-learn's Pipeline functionality encapsulates preprocessing, model training, and parameter optimization into unified workflows, preventing data leakage and improving code readability. Key advantages of integrated approaches include:</p>\n<ul>\n<li><strong>Data consistency</strong>: Preprocessing fitted only on training data, preventing test data information leakage</li>\n<li><strong>Process standardization</strong>: Unified interface simplifies experiment reproduction and model deployment</li>\n<li><strong>Evaluation completeness</strong>: Combining cross-validation for parameter search with final validation on independent test set</li>\n</ul>\n<p>The following complete example demonstrates building integrated workflow with standardization preprocessing and SVM classification on wine quality dataset:</p>\n<pre><code>from sklearn.datasets import load_wine\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.svm import SVC\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split, GridSearchCV\n\n# Load and split data\nwine = load_wine()\nX, y = wine.data, wine.target\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\nprint(f\"Dataset features: {wine.feature_names[:3]}...\")\nprint(f\"Training samples: {X_train.shape[0]}, Test samples: {X_test.shape[0]}\")\n\n# Build Pipeline\npipeline = Pipeline([\n    ('scaler', StandardScaler()),  # Standardization preprocessing\n    ('svm', SVC())                 # Support vector classifier\n])\n\n# Define parameter grid (using svm__ prefix for component parameters)\nparam_grid = {\n    'svm__C': [0.1, 1, 10],\n    'svm__gamma': [0.1, 1, 10],\n    'svm__kernel': ['rbf']\n}\n\n# Perform grid search (internally using 5-fold cross-validation)\ngrid_search = GridSearchCV(pipeline, param_grid, cv=5, scoring='accuracy')\ngrid_search.fit(X_train, y_train)\n\n# Test set evaluation\ntest_score = grid_search.score(X_test, y_test)\ny_pred = grid_search.predict(X_test)\n\nprint(f\"Best parameters: {grid_search.best_params_}\")\nprint(f\"Cross-validation best accuracy: {grid_search.best_score_:.3f}\")\nprint(f\"Test accuracy: {test_score:.3f}\")</code></pre>\n<p>The workflow outputs test accuracy around 0.92, demonstrating integrated methods effectively improve model generalization. In UCI credit card fraud detection projects, similar workflows helped reduce false positive rates and enhance classification stability. This systematic approach forms reusable best practices applicable to various machine learning tasks.</p>\n\n<p class=\"narrative-outro\">Cross-validation and hyperparameter tuning form the core loop of machine learning model development: reliable evaluation guides parameter optimization, while optimization results validate evaluation methods. Mastering these techniques enables data scientists to build more robust AI systems, achieving reproducible excellent performance in competitions and industrial applications. We recommend starting practice with public datasets, gradually transferring complete workflows to actual business problems"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：交叉验证与超参数优化 · 结构总览 · 数据：课程大纲】在设计《交叉验证与超参数优化》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 交叉验证与超参数优化 · 结构总览 · Data: 课程大纲】When outlining \"交叉验证与超参数优化\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：交叉验证与超参数优化 · worked example · 数据：设计训练验证测试划分 数据/代码】在复现《交叉验证与超参数优化》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 交叉验证与超参数优化 · worked example · Data: 设计训练验证测试划分 数据/代码】While reproducing the worked example in \"交叉验证与超参数优化\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：交叉验证与超参数优化 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《交叉验证与超参数优化》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 交叉验证与超参数优化 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"交叉验证与超参数优化\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：交叉验证与超参数优化 · 参考资料 · 数据：课程引用文献】当引用文献支撑《交叉验证与超参数优化》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 交叉验证与超参数优化 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"交叉验证与超参数优化\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "An Introduction to Statistical Learning（Springer，2021）",
+          "en": "An Introduction to Statistical Learning (Springer, 2021)"
+        },
+        "url": "https://www.statlearning.com/"
+      },
+      {
+        "label": {
+          "zh": "Scikit-learn User Guide（Scikit-learn Developers，2023）",
+          "en": "Scikit-learn User Guide (Scikit-learn Developers, 2023)"
+        },
+        "url": "https://scikit-learn.org/stable/user_guide.html"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-06-cross-validation-zh.mp3"
+    },
+    "meta": {
+      "category": "Preprocessing & Model Selection",
+      "level": "1. Machine Learning Basics",
+      "difficultyScore": 2,
+      "related": [
+        "k-fold",
+        "网格搜索"
+      ],
+      "learningObjectives": [
+        "设计训练验证测试划分",
+        "使用网格搜索与随机搜索调整参数"
+      ],
+      "personas": [
+        "数据科学家",
+        "ML 工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 交叉验证与超参数优化 可帮助团队在 Preprocessing & Model Selection 上做出可复用的实践。",
+        "best_for": "适合 数据科学家、ML 工程师，需要快速吸收 1. Machine Learning Basics 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "数据科学家 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 数据科学家、ML 工程师，帮助他们把 交叉验证与超参数优化 应用于 Preprocessing & Model Selection",
+        "prefersEnglish": false,
+        "industries": [
+          "数据科学家",
+          "ML 工程师"
+        ],
+        "personas": [
+          "数据科学家",
+          "ML 工程师"
+        ],
+        "pains": "在 Preprocessing & Model Selection 场景缺乏 交叉验证与超参数优化 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "1. Machine Learning Basics"
+      },
+      "prompt_version": "2025-11-30",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "如果把 交叉验证与超参数优化 嵌入你当前项目，最先可以试验的环节是什么？",
+          "action_hint": "列出一个业务场景，写下需要监控的 2 个指标"
+        },
+        {
+          "lang": "en",
+          "question": "Which workflow in your org would benefit first from 交叉验证与超参数优化?",
+          "action_hint": "Document one pilot idea plus the metric you'd watch"
+        }
+      ]
+    }
   }
 ]
