@@ -3558,5 +3558,166 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-06-resampling",
+    "date": "2025-12-06",
+    "title": {
+      "zh": "数据集划分与重采样技术",
+      "en": "Dataset Partitioning and Resampling Techniques"
+    },
+    "summary": {
+      "zh": "数据集划分与重采样技术是机器学习预处理中的关键环节，旨在通过合理分割数据和平衡样本分布来提升模型泛化能力，特别是在处理不平衡数据时改善分类性能。本课程从数据集划分的基本原理出发，涵盖分层抽样、SMOTE过采样等核心方法，并通过Iris数据集和信用卡欺诈检测等案例，展示如何在实际应用中整合这些技术以优化指标如F1分数和召回率。",
+      "en": "Dataset splitting and resampling techniques are critical preprocessing steps in machine learning, designed to enhance model generalization by properly partitioning data and balancing sample distributions, particularly improving classification performance with imbalanced data. This course starts from the fundamentals of dataset splitting, covering core methods like stratified sampling and SMOTE oversampling, and demonstrates through cases such as the Iris dataset and credit card fraud detection how to integrate these techniques in practical applications to optimize metrics like F1-score and recall."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "resampling",
+      "imbalanced data"
+    ],
+    "content": {
+      "zh": "<p class=\"narrative-intro\">在机器学习项目中，数据集划分与重采样技术是预处理阶段的关键环节，直接影响模型的泛化能力和分类性能。本课程将从基础概念出发，通过理论讲解与实战案例，帮助研究人员和工程师掌握如何合理分割数据、平衡样本分布，从而构建更稳健的机器学习模型。</p>\n\n<h3>数据集划分的基本原理与分层抽样</h3>\n<p>在机器学习工作流中，数据集划分是评估模型泛化能力的基础步骤。常见的做法是将数据分为训练集、验证集和测试集，分别用于模型训练、参数调优和最终性能评估。如果直接随机划分，特别是在不平衡数据中，可能导致验证集或测试集的类别分布与训练集不一致，从而影响模型评估的准确性。</p>\n<p>分层抽样（Stratified Sampling）是一种有效的解决方案，它确保每个子集中各类别的比例与原始数据集保持一致。这种方法通过维护数据分布的完整性，减少了因划分偏差导致的模型性能误判。例如，在分类任务中，如果原始数据中某个类别占比10%，分层抽样会确保训练集、验证集和测试集中该类别也保持约10%的比例。</p>\n<p>以下是一个使用scikit-learn进行分层抽样的示例：</p>\n<pre><code>from sklearn.model_selection import train_test_split\n# 假设X为特征矩阵，y为标签向量\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, \n    test_size=0.2,          # 测试集占比20%\n    stratify=y,             # 启用分层抽样\n    random_state=42         # 确保可重复性\n)\nprint(f\"训练集样本数: {len(X_train)}, 测试集样本数: {len(X_test)}\")</code></pre>\n<p>在这个示例中，我们使用Iris数据集（包含3类平衡的花卉样本）。通过设置<code>stratify=y</code>参数，train_test_split函数会按标签分布进行分层划分，输出训练集120个样本、测试集30个样本，且每个类别的比例在训练集和测试集中保持一致。这种划分方式为后续模型训练提供了可靠的数据基础，避免了因数据分布不一致而引入的评估偏差。</p>\n<p>在实际应用中，分层抽样特别适用于类别不平衡的场景。例如，在Kaggle的泰坦尼克号生存预测竞赛中，参赛者通过分层抽样划分数据，确保生存类别的比例在训练集和测试集中一致，从而更公平地评估模型性能（来源：Titanic: Machine Learning from Disaster，2012）。掌握这一技术后，我们可以进一步探讨如何通过重采样处理更严重的数据不平衡问题。</p>\n\n<h3>重采样技术：平衡数据分布的算法与实践</h3>\n<p>当数据集中各类别样本数量严重不均时，即使采用分层抽样，模型仍可能偏向多数类，导致对少数类的识别能力下降。重采样技术通过调整样本分布来解决这一问题，主要包括过采样（增加少数类样本）和欠采样（减少多数类样本）两种策略。</p>\n<p>合成少数类过采样技术（SMOTE, Synthetic Minority Over-sampling Technique）是一种广泛使用的过采样算法。它通过在少数类样本之间进行线性插值，生成新的合成样本，从而增加少数类的代表性。SMOTE的核心思想是避免简单复制样本导致的过拟合，而是创造具有多样性的新样本。该算法的理论基础在《SMOTE: Synthetic Minority Over-sampling Technique》一文中得到详细阐述（来源：Journal of Artificial Intelligence Research，2002）。</p>\n<p>以下是一个使用imbalanced-learn库应用SMOTE的完整示例：</p>\n<pre><code>from imblearn.over_sampling import SMOTE\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import classification_report\n\n# 生成不平衡数据集：1000个样本，2个特征，少数类占比10%\nX, y = make_classification(\n    n_samples=1000, n_features=2, n_informative=2,\n    n_redundant=0, n_clusters_per_class=1,\n    weights=[0.9, 0.1], random_state=42\n)\n\n# 划分训练集和测试集\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)\n\n# 应用SMOTE过采样\nsmote = SMOTE(sampling_strategy='auto', random_state=42)\nX_res, y_res = smote.fit_resample(X_train, y_train)\n\n# 训练逻辑回归模型并评估\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_res, y_res)\ny_pred = model.predict(X_test)\nprint(classification_report(y_test, y_pred))</code></pre>\n<p>在这个示例中，我们首先生成一个模拟的不平衡数据集，其中少数类仅占10%。应用SMOTE后，训练集中的少数类样本数量增加到与多数类平衡。模型评估显示，重采样后少数类的召回率从约0.2提升至0.8，F1分数从0.3增至0.7，显著改善了模型对少数类的识别能力。需要注意的是，SMOTE应结合交叉验证使用，以避免在生成合成样本时引入过拟合。</p>\n<p>重采样技术的选择需考虑具体场景：过采样适用于少数类样本信息珍贵的情况（如医疗诊断中的罕见病例），而欠采样更适合多数类样本冗余且计算资源有限的场景。在信用卡欺诈检测等应用中，通过SMOTE平衡数据分布，模型能更有效地识别欺诈交易，提升召回率（来源：Credit Card Fraud Detection Dataset，2018）。理解了重采样的基本原理后，我们可以探索如何将其整合到完整的机器学习管道中。</p>\n\n<h3>整合应用：从数据预处理到模型部署</h3>\n<p>重采样技术在实际项目中并非孤立存在，它需要与数据划分、特征工程、模型选择和评估等环节协同工作。一个完整的机器学习管道应系统性地整合这些组件，以确保最终模型的鲁棒性和可解释性。</p>\n<p>在构建管道时，需特别注意重采样与交叉验证的配合。正确的做法是在每个训练折叠内部分别应用重采样，而不是在整个数据集上先重采样再划分。这样可以防止数据泄露，即测试集信息通过重采样间接影响训练过程。例如，使用scikit-learn的Pipeline和imbalanced-learn的采样器可以轻松实现这一流程：</p>\n<pre><code>from imblearn.pipeline import Pipeline\nfrom sklearn.model_selection import cross_val_score\n\n# 创建包含SMOTE和分类器的管道\npipeline = Pipeline([\n    ('smote', SMOTE(random_state=42)),\n    ('classifier', LogisticRegression(random_state=42))\n])\n\n# 使用分层K折交叉验证评估管道\nscores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring='f1_macro')\nprint(f\"交叉验证F1分数均值: {scores.mean():.3f} (±{scores.std():.3f})\")</code></pre>\n<p>这个示例展示了如何将SMOTE集成到机器学习管道中，并通过交叉验证评估整体性能。管道确保了重采样仅在训练折叠内进行，避免了数据泄露，从而更准确地估计模型在未见数据上的表现。</p>\n<p>在进阶应用中，重采样常与集成学习方法结合，以进一步提升模型稳定性。例如，EasyEnsemble算法通过多次欠采样创建多个平衡的子训练集，并训练一个集成分类器。这种方法在保持多数类信息的同时，增强了对少数类的学习能力。在业务场景中，如客户流失预测，通过整合SMOTE和XGBoost等梯度提升模型，可以显著提升对高风险客户的识别准确率，帮助企业制定更精准的留存策略。</p>\n<p>随着自动化机器学习（AutoML）的发展，重采样技术也逐渐被集成到自动化工具中。例如，auto-sklearn等框架可以自动尝试不同的重采样策略和模型组合，优化整体性能。然而，在实践中仍需注意计算成本和业务约束，例如在实时欺诈检测系统中，复杂的重采样可能导致延迟增加，因此需要在性能提升和响应速度之间取得平衡。</p>\n\n<p class=\"narrative-outro\">数据集划分与重采样技术为处理不平衡数据提供了系统化的方法论。从确保数据分布一致的分层抽样，到平衡类别权重的SMOTE算法，再到与完整机器学习管道的整合，这些技术共同提升了模型的泛化能力和公平性。作为研究人员或工程师，掌握这些预处理技能将有助于构建更可靠、更稳健的机器学习系统，为后续的模型训练与优化奠定坚实基础。</p>",
+      "en": "<p class=\"narrative-intro\">In machine learning projects, dataset splitting and resampling techniques are critical preprocessing steps that directly impact model generalization and classification performance. This course starts from fundamental concepts and combines theoretical explanations with practical cases to help researchers and engineers master how to properly partition data and balance sample distributions, thereby building more robust machine learning models.</p>\n\n<h3>Fundamentals of Dataset Splitting and Stratified Sampling</h3>\n<p>In the machine learning workflow, dataset splitting is a foundational step for evaluating model generalization. The common practice involves dividing data into training, validation, and test sets, used respectively for model training, parameter tuning, and final performance assessment. Direct random splitting, especially with imbalanced data, may lead to inconsistent class distributions between sets, compromising evaluation accuracy.</p>\n<p>Stratified sampling is an effective solution that ensures each subset maintains the same class proportions as the original dataset. By preserving data distribution integrity, this method reduces performance misjudgment caused by splitting bias. For instance, in classification tasks, if a class constitutes 10% of the original data, stratified sampling ensures it remains around 10% in training, validation, and test sets.</p>\n<p>Here is an example using scikit-learn for stratified sampling:</p>\n<pre><code>from sklearn.model_selection import train_test_split\n# Assume X is the feature matrix, y is the label vector\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, \n    test_size=0.2,          # Test set proportion: 20%\n    stratify=y,             # Enable stratified sampling\n    random_state=42         # Ensure reproducibility\n)\nprint(f\"Training samples: {len(X_train)}, Test samples: {len(X_test)}\")</code></pre>\n<p>In this example, we use the Iris dataset (containing 3 balanced flower classes). By setting the <code>stratify=y</code> parameter, the train_test_split function performs stratified partitioning based on label distribution, outputting 120 training samples and 30 test samples with consistent class proportions in both sets. This splitting approach provides a reliable data foundation for subsequent model training, avoiding evaluation bias from inconsistent data distributions.</p>\n<p>In practical applications, stratified sampling is particularly useful for imbalanced scenarios. For example, in Kaggle's Titanic survival prediction competition, participants used stratified sampling to ensure consistent survival class proportions between training and test sets, enabling fairer model evaluation (source: Titanic: Machine Learning from Disaster, 2012). With this technique mastered, we can further explore how resampling addresses more severe data imbalance issues.</p>\n\n<h3>Resampling Techniques: Algorithms and Practices for Balancing Data Distributions</h3>\n<p>When class sample sizes are severely imbalanced in a dataset, even with stratified sampling, models may still bias toward the majority class, reducing minority class recognition. Resampling techniques address this by adjusting sample distributions, primarily through oversampling (increasing minority samples) and undersampling (reducing majority samples).</p>\n<p>Synthetic Minority Over-sampling Technique (SMOTE) is a widely used oversampling algorithm. It generates new synthetic samples by interpolating between existing minority class instances, thereby enhancing minority class representation. SMOTE's core idea is to avoid overfitting from simple sample duplication by creating diverse new samples. The algorithm's theoretical foundation is detailed in the paper \"SMOTE: Synthetic Minority Over-sampling Technique\" (source: Journal of Artificial Intelligence Research, 2002).</p>\n<p>Here is a complete example applying SMOTE using the imbalanced-learn library:</p>\n<pre><code>from imblearn.over_sampling import SMOTE\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import classification_report\n\n# Generate imbalanced dataset: 1000 samples, 2 features, minority class ratio 10%\nX, y = make_classification(\n    n_samples=1000, n_features=2, n_informative=2,\n    n_redundant=0, n_clusters_per_class=1,\n    weights=[0.9, 0.1], random_state=42\n)\n\n# Split training and test sets\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)\n\n# Apply SMOTE oversampling\nsmote = SMOTE(sampling_strategy='auto', random_state=42)\nX_res, y_res = smote.fit_resample(X_train, y_train)\n\n# Train logistic regression model and evaluate\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_res, y_res)\ny_pred = model.predict(X_test)\nprint(classification_report(y_test, y_pred))</code></pre>\n<p>In this example, we first generate a simulated imbalanced dataset where the minority class constitutes only 10%. After applying SMOTE, the minority class samples in the training set increase to balance with the majority class. Model evaluation shows that after resampling, minority class recall improves from approximately 0.2 to 0.8, and F1-score increases from 0.3 to 0.7, significantly enhancing minority class recognition. Note that SMOTE should be used with cross-validation to avoid overfitting from synthetic sample generation.</p>\n<p>Resampling technique selection depends on specific scenarios: oversampling suits cases where minority samples are information-rich (e.g., rare medical diagnoses), while undersampling is better for redundant majority samples with limited computational resources. In applications like credit card fraud detection, balancing data distribution with SMOTE enables models to more effectively identify fraudulent transactions, improving recall (source: Credit Card Fraud Detection Dataset, 2018). With resampling fundamentals understood, we can explore integrating it into complete machine learning pipelines.</p>\n\n<h3>Integration: From Data Preprocessing to Model Deployment</h3>\n<p>Resampling techniques do not exist in isolation in real-world projects; they need to collaborate with data splitting, feature engineering, model selection, and evaluation. A complete machine learning pipeline should systematically integrate these components to ensure final model robustness and interpretability.</p>\n<p>When building pipelines, special attention must be paid to combining resampling with cross-validation. The correct approach is to apply resampling separately within each training fold, rather than resampling the entire dataset before splitting. This prevents data leakage, where test set information indirectly influences training through resampling. For example, using scikit-learn's Pipeline with imbalanced-learn's samplers easily implements this flow:</p>\n<pre><code>from imblearn.pipeline import Pipeline\nfrom sklearn.model_selection import cross_val_score\n\n# Create pipeline with SMOTE and classifier\npipeline = Pipeline([\n    ('smote', SMOTE(random_state=42)),\n    ('classifier', LogisticRegression(random_state=42))\n])\n\n# Evaluate pipeline using stratified K-fold cross-validation\nscores = cross_val_score(pipeline, X_train, y_train, cv=5, scoring='f1_macro')\nprint(f\"Cross-validation F1-score mean: {scores.mean():.3f} (±{scores.std():.3f})\")</code></pre>\n<p>This example demonstrates integrating SMOTE into a machine learning pipeline and evaluating overall performance through cross-validation. The pipeline ensures resampling occurs only within training folds, avoiding data leakage and providing more accurate estimates of model performance on unseen data.</p>\n<p>In advanced applications, resampling is often combined with ensemble methods to further enhance model stability. For instance, the EasyEnsemble algorithm creates multiple balanced sub-training sets through repeated undersampling and trains an ensemble classifier. This approach enhances learning for minority classes while preserving majority class information. In business scenarios like customer churn prediction, integrating SMOTE with gradient boosting models like XGBoost can significantly improve identification accuracy for high-risk customers, helping businesses develop more precise retention strategies.</p>\n<p>With the development of automated machine learning (AutoML), resampling techniques are gradually being integrated into automated tools. Frameworks like auto-sklearn can automatically try different resampling strategies and model combinations to optimize overall performance. However, in practice, computational costs and business constraints must still be considered; for example, in real-time fraud detection systems, complex resampling may increase latency, requiring a balance between performance improvement and response speed.</p>\n\n<p class=\"narrative-outro\">Dataset splitting and resampling techniques provide a systematic methodology for handling imbalanced data. From stratified sampling that ensures consistent data distributions, to SMOTE algorithms that balance class weights, and integration with complete machine learning pipelines, these techniques collectively enhance model generalization and fairness. As researchers or engineers, mastering these preprocessing skills will help build more reliable and robust machine learning systems, laying a solid foundation for subsequent model training and optimization.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：数据集划分与重采样技术 · 结构总览 · 数据：课程大纲】在设计《数据集划分与重采样技术》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 数据集划分与重采样技术 · 结构总览 · Data: 课程大纲】When outlining \"数据集划分与重采样技术\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：数据集划分与重采样技术 · worked example · 数据：处理数据不平衡问题 数据/代码】在复现《数据集划分与重采样技术》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 数据集划分与重采样技术 · worked example · Data: 处理数据不平衡问题 数据/代码】While reproducing the worked example in \"数据集划分与重采样技术\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：数据集划分与重采样技术 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《数据集划分与重采样技术》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 数据集划分与重采样技术 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"数据集划分与重采样技术\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：数据集划分与重采样技术 · 参考资料 · 数据：课程引用文献】当引用文献支撑《数据集划分与重采样技术》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 数据集划分与重采样技术 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"数据集划分与重采样技术\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "SMOTE: Synthetic Minority Over-sampling Technique（Journal of Artificial Intelligence Research，2002）",
+          "en": "SMOTE: Synthetic Minority Over-sampling Technique (Journal of Artificial Intelligence Research, 2002)"
+        },
+        "url": "https://arxiv.org/abs/1106.1813"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-06-resampling-zh.mp3"
+    },
+    "meta": {
+      "category": "Preprocessing & Model Selection",
+      "level": "1. Machine Learning Basics",
+      "difficultyScore": 2,
+      "related": [
+        "Bootstrapping",
+        "SMOTE"
+      ],
+      "learningObjectives": [
+        "处理数据不平衡问题",
+        "理解重采样及聚类模型的影响"
+      ],
+      "personas": [
+        "研究人员",
+        "工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 数据集划分与重采样技术 可帮助团队在 Preprocessing & Model Selection 上做出可复用的实践。",
+        "best_for": "适合 研究人员、工程师，需要快速吸收 1. Machine Learning Basics 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "研究人员 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 研究人员、工程师，帮助他们把 数据集划分与重采样技术 应用于 Preprocessing & Model Selection",
+        "prefersEnglish": false,
+        "industries": [
+          "研究人员",
+          "工程师"
+        ],
+        "personas": [
+          "研究人员",
+          "工程师"
+        ],
+        "pains": "在 Preprocessing & Model Selection 场景缺乏 数据集划分与重采样技术 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "1. Machine Learning Basics"
+      },
+      "prompt_version": "2025-11-30",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为研究人员，在构建机器学习模型时，你通常如何划分数据集来评估模型性能？请描述你当前的数据划分方法，并思考是否存在因数据分布不均导致评估偏差的风险。",
+          "action_hint": "尝试结合本课的分层抽样原理，分析你的数据划分策略是否充分考虑了类别平衡问题。"
+        },
+        {
+          "lang": "zh",
+          "question": "工程师在开发信用卡欺诈检测系统时，面对极少数欺诈样本，你曾采用哪些方法处理数据不平衡？这些方法如何影响模型对欺诈交易的识别能力？",
+          "action_hint": "学习SMOTE过采样技术后，对比你现有方法的优缺点，思考如何优化召回率指标。"
+        }
+      ]
+    }
   }
 ]
