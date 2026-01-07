@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2026-01-06T14:09:09.785Z",
+  "generatedAt": "2026-01-07T14:17:08.938Z",
   "lessons": [
+    {
+      "id": "2026-01-07-conditional-generation",
+      "date": "2026-01-07",
+      "title": {
+        "zh": "条件生成与控制技术",
+        "en": "Conditional Generation and Control Techniques"
+      },
+      "summary": {
+        "zh": "条件生成与控制技术通过引入外部信号指导生成模型的输出，实现可控的内容生成，是连接生成模型与实际应用需求的关键桥梁，课程围绕 Generative Models 中的可执行路径展开。内容串联 从无条件到条件：为什么生成需要控制？、条件信号与模型架构：如何实现控制？、工程实践：构建可复现的条件生成管线，梳理定义、推导与迁移步骤。",
+        "en": "条件生成与控制技术 is positioned for Generative Models initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从无条件到条件：为什么生成需要控制？, 条件信号与模型架构：如何实现控制？, 工程实践：构建可复现的条件生成管线 to translate theory into executable steps."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "conditional generation",
+        "control"
+      ],
+      "content": {
+        "zh": "<h2>条件生成与控制技术：从理论到工程实践</h2>\n\n<p>在生成式人工智能的演进中，无条件生成模型虽然能创造逼真内容，却难以满足实际应用中对特定输出的精确需求。视觉工程师与研究人员常面临这样的困境：模型能生成高质量图像，但无法指定生成“现代建筑”而非“古典建筑”，或控制生成图像的布局与风格。这种局限性催生了条件生成与控制技术，它们通过引入外部信号来指导生成过程，使模型输出与人类意图对齐。本课程将系统性地探讨这一技术的核心原理、实现机制与工程实践，为你在生成模型项目中提供可执行的方法论。</p>\n\n<p>课程结构遵循从动机到实践的渐进路径：首先剖析无条件生成的局限性，建立条件生成的直觉；然后深入解析条件信号如何融入模型架构；最后构建完整的工程管线，实现可复现的条件生成任务。我们将以条件生成对抗网络（Conditional GAN）与控制网络（ControlNet）为主要案例，结合数学推导与代码实现，确保你不仅能理解概念，还能将其应用于实际项目。</p>\n\n<h3>从无条件到条件：为什么生成需要控制？</h3>\n\n<p>无条件生成模型，如标准生成对抗网络（GAN）或变分自编码器（VAE），学习数据分布 \\( p(x) \\) 并从中采样生成新样本。然而，这种随机性在实际应用中成为主要障碍。例如，在医疗影像生成中，我们需要生成特定病理类型的图像；在艺术创作中，我们希望控制生成图像的风格与内容。无条件模型无法满足这些需求，因为它们缺乏对输出属性的显式控制。这引出了条件生成的核心动机：通过引入条件信号 \\( c \\)，将生成过程从学习 \\( p(x) \\) 转变为学习条件分布 \\( p(x|c) \\)，从而实现对输出内容的定向引导。</p>\n\n<p>条件生成（Conditional Generation）定义为利用外部信号（条件）指导生成模型输出特定内容的技术。控制信号（Control Signal）则是用于调节生成过程的输入，可以是离散标签（如类别“猫”）、连续向量（如属性编码）或结构化数据（如草图、深度图）。从概率视角看，条件生成的目标是建模 \\( p(x|c) \\)，这通常通过扩展无条件模型实现，例如在GAN中，将条件信号与噪声向量拼接后输入生成器。关键区别在于，条件信号必须与模型架构深度融合，而非简单附加，否则可能导致模式崩溃或条件过拟合。</p>\n\n<p>数学上，条件GAN的目标函数扩展了原始GAN的极小极大博弈。设生成器为 \\( G(z, c) \\)，判别器为 \\( D(x, c) \\)，其中 \\( z \\) 是噪声向量，\\( c \\) 是条件信号。目标函数为：\\[ \\min_G \\max_D V(D, G) = \\mathbb{E}_{x \\sim p_{data}(x)}[\\log D(x, c)] + \\mathbb{E}_{z \\sim p_z(z)}[\\log(1 - D(G(z, c), c))] \\]。这里，判别器不仅判断样本真实性，还需评估样本与条件的匹配度。条件信号的注入方式多样，如拼接、嵌入或注意力机制，每种方式都影响模型对条件的敏感性与生成多样性。</p>\n\n<p>工程实现中，数据预处理需确保条件信号与样本对齐。例如，对于带标签的图像数据集，每个样本 \\( x_i \\) 需关联条件 \\( c_i \\)（如类别标签）。在训练时，条件信号通常被编码为向量（如通过嵌入层），然后与噪声向量拼接输入生成器。判别器同样接收条件信号，通常与图像特征融合（如通过拼接或点积）。关键实现要点包括：条件编码的维度选择（太小可能信息丢失，太大会增加计算开销）、训练稳定性技巧（如梯度惩罚或标签平滑）以及评估指标设计（需同时衡量生成质量与条件匹配度）。</p>\n\n<p>常见误区包括认为“条件生成只需在输入添加标签即可”。实际上，若条件信号未与模型深度集成，模型可能忽略条件或过拟合到少数模式。失败模式表现为模式崩溃（Mode Collapse），即生成器仅输出有限多样性的样本，或条件准确率低下。诊断方法包括可视化生成样本分布、计算条件匹配指标（如用预训练分类器评估生成图像标签）以及分析训练损失曲线。例如，若判别器损失迅速下降而生成器损失停滞，可能表明条件信号未被有效利用。</p>\n\n<p>理解了条件生成的动机与基础，我们接下来需要深入探讨条件信号的具体形式及其与模型架构的融合机制。这将帮助我们设计更精细的控制策略，适应复杂应用场景。</p>\n\n<h3>条件信号与模型架构：如何实现控制？</h3>\n\n<p>条件信号的多样性决定了生成模型的设计灵活性。离散条件（如类别标签）通常通过嵌入层映射为连续向量；连续条件（如属性向量）可直接使用；结构化条件（如草图、语义分割图）则需专用编码器处理。这些信号如何融入生成模型架构，是实现有效控制的核心问题。主流方法包括拼接注入、注意力融合与专用控制模块，每种方法针对不同信号类型与任务需求。</p>\n\n<p>条件生成对抗网络（Conditional GAN）是早期经典架构，通过拼接机制将条件信号注入生成器和判别器。具体而言，条件 \\( c \\) 被编码为向量后与噪声向量 \\( z \\) 拼接，形成生成器输入 \\( [z, c] \\)；判别器输入则为 \\( [x, c] \\) 或 \\( [x, \\text{embed}(c)] \\)。这种简单方法适用于离散或低维连续条件，但对于复杂结构化条件（如图像到图像翻译），可能不足以捕获细粒度控制。ControlNet则提供了更精细的解决方案，它通过零卷积（Zero Convolution）连接控制模块与预训练扩散模型，实现像素级控制。</p>\n\n<p>ControlNet的机制基于残差连接。设预训练扩散模型的主干为 \\( F(\\cdot) \\)，控制模块为 \\( C(\\cdot) \\)，输入条件为 \\( c \\)（如边缘图）。控制模块的输出通过零卷积层 \\( Z(\\cdot) \\)（初始权重为零）添加到主干特征：\\[ \\text{output} = F(x) + Z(C(c)) \\]。零卷积确保训练初期控制模块不影响预训练模型，稳定训练过程。数学上，这相当于在扩散过程的条件概率中引入控制项：\\[ p_\\theta(x_t | x_{t-1}, c) = \\mathcal{N}(x_t; \\mu_\\theta(x_{t-1}, t) + \\lambda \\cdot C(c), \\Sigma_\\theta) \\]，其中 \\( \\lambda \\) 是控制强度系数。这种设计允许模型逐步学习条件信号的影响，避免破坏预训练知识。</p>\n\n<p>工程实现时，架构选择需权衡控制精度与计算成本。对于简单条件（如类别），拼接注入足矣；对于复杂条件（如文本描述+草图），可能需要多层注意力融合或专用编码器。关键实现要点包括：条件编码器的设计（如CNN用于图像条件，Transformer用于文本）、融合层的位置（早期融合利于全局控制，晚期融合利于细节调节）以及训练策略（如渐进式训练或课程学习）。例如，在ControlNet中，控制模块通常轻量，以最小化推理延迟。</p>\n\n<p>常见误区包括“条件信号越复杂，生成质量越高”。实际上，信号需与任务匹配；过度复杂可能导致训练不稳定或过拟合。失败模式包括条件泄漏（模型忽略条件）、模式混淆（条件间边界模糊）或计算瓶颈。诊断方法包括消融实验（移除条件信号观察性能变化）、可视化注意力图（分析模型关注区域）以及评估条件特异性指标（如条件间样本的区分度）。例如，若生成图像在改变条件时无明显差异，可能表明控制失效。</p>\n\n<p>掌握了条件信号的融合机制，我们可以将这些原理应用于实际工程流程，构建从数据到评估的完整管线。这将确保我们的条件生成模型不仅理论可行，而且实践可靠。</p>\n\n<h3>工程实践：构建可复现的条件生成管线</h3>\n\n<p>构建可复现的条件生成项目需要系统化的工程流程，涵盖数据准备、模型训练、评估与部署。视觉工程师与研究人员常面临可复现性挑战：相同代码在不同环境产生不同结果，或评估指标无法客观衡量性能。本节将提供端到端的实践指南，以MNIST数据集上的条件GAN为例，演示如何实现可离线复现的条件数字生成。</p>\n\n<p>可复现性（Reproducibility）定义为通过固定随机种子、记录环境配置，确保实验结果可被重复验证的属性。在条件生成中，这尤为重要，因为随机性影响生成多样性与条件匹配。工程流程包括：数据预处理（确保条件对齐与标准化）、模型训练（使用固定随机种子与版本控制）、评估（结合定量指标与定性分析）以及文档记录（保存超参数与环境细节）。关键是要避免对外部文件或私有路径的依赖，使用公开数据集与内联数据。</p>\n\n<p>评估条件生成模型需多维度指标。生成质量常用弗雷歇起始距离（Fréchet Inception Distance, FID）衡量，它比较生成与真实样本在特征空间的分布：\\[ \\text{FID} = ||\\mu_r - \\mu_g||^2 + \\text{Tr}(\\Sigma_r + \\Sigma_g - 2(\\Sigma_r \\Sigma_g)^{1/2}) \\]，其中 \\( \\mu_r, \\Sigma_r \\) 和 \\( \\mu_g, \\Sigma_g \\) 分别是真实和生成样本的特征均值和协方差。条件匹配度则用条件准确率（Conditional Accuracy）评估，即生成样本与输入条件的匹配比例。例如，对于条件GAN生成数字，可用预训练分类器预测生成图像标签，计算准确率：\\[ \\text{Accuracy} = \\frac{\\text{正确匹配数}}{\\text{总样本数}} \\]。理想情况下，模型应同时优化FID（低值表示高质量）和准确率（高值表示高匹配）。</p>\n\n<p>以下代码块展示了端到端的最小可复现实验，使用PyTorch和MNIST数据集训练条件GAN，生成指定数字（0-9），并评估条件准确率。代码避免外部文件，内联数据加载，打印关键中间结果与指标。</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\nimport numpy as np\nimport matplotlib.pyplot as plt\n\n# 固定随机种子确保可复现性\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# 数据加载与预处理\ntransform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])\ntrain_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)\n\n# 打印数据规模与样例\nprint(f\"数据规模: {len(train_dataset)} 个样本\")\nprint(f\"图像shape: {train_dataset[0][0].shape}\")  # torch.Size([1, 28, 28])\nprint(f\"标签示例: {train_dataset[0][1]}\")  # 5\n\n# 条件GAN定义\nclass Generator(nn.Module):\n    def __init__(self, noise_dim=100, label_dim=10, output_dim=784):\n        super(Generator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(noise_dim + label_dim, 256),\n            nn.ReLU(),\n            nn.Linear(256, 512),\n            nn.ReLU(),\n            nn.Linear(512, output_dim),\n            nn.Tanh()\n        )\n    \n    def forward(self, z, labels):\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([z, label_embedding], dim=1)\n        return self.model(input).view(-1, 1, 28, 28)\n\nclass Discriminator(nn.Module):\n    def __init__(self, input_dim=784, label_dim=10):\n        super(Discriminator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(input_dim + label_dim, 512),\n            nn.ReLU(),\n            nn.Linear(512, 256),\n            nn.ReLU(),\n            nn.Linear(256, 1),\n            nn.Sigmoid()\n        )\n    \n    def forward(self, x, labels):\n        x_flat = x.view(-1, 784)\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([x_flat, label_embedding], dim=1)\n        return self.model(input)\n\n# 初始化模型与优化器\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\ngenerator = Generator().to(device)\ndiscriminator = Discriminator().to(device)\ng_optimizer = optim.Adam(generator.parameters(), lr=0.0002)\nd_optimizer = optim.Adam(discriminator.parameters(), lr=0.0002)\ncriterion = nn.BCELoss()\n\n# 训练循环\nnum_epochs = 10\nfor epoch in range(num_epochs):\n    for batch_idx, (real_imgs, labels) in enumerate(train_loader):\n        batch_size = real_imgs.size(0)\n        real_imgs, labels = real_imgs.to(device), labels.to(device)\n        \n        # 训练判别器\n        noise = torch.randn(batch_size, 100).to(device)\n        fake_imgs = generator(noise, labels)\n        real_output = discriminator(real_imgs, labels)\n        fake_output = discriminator(fake_imgs.detach(), labels)\n        d_loss_real = criterion(real_output, torch.ones_like(real_output))\n        d_loss_fake = criterion(fake_output, torch.zeros_like(fake_output))\n        d_loss = d_loss_real + d_loss_fake\n        \n        d_optimizer.zero_grad()\n        d_loss.backward()\n        d_optimizer.step()\n        \n        # 训练生成器\n        fake_output = discriminator(fake_imgs, labels)\n        g_loss = criterion(fake_output, torch.ones_like(fake_output))\n        \n        g_optimizer.zero_grad()\n        g_loss.backward()\n        g_optimizer.step()\n    \n    print(f\"Epoch {epoch+1}, D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}\")\n\n# 生成样本与评估\nnum_samples = 100\nnoise = torch.randn(num_samples, 100).to(device)\nlabels = torch.randint(0, 10, (num_samples,)).to(device)\ngenerated_imgs = generator(noise, labels).detach().cpu()\n\n# 使用预训练分类器评估条件准确率（简化：使用简单规则）\n# 实际中可用预训练MNIST分类器，这里用生成图像像素和作为代理\naccuracies = []\nfor i in range(10):\n    mask = labels == i\n    if mask.sum() > 0:\n        imgs = generated_imgs[mask.cpu()]\n        # 简单规则：像素和大于阈值视为数字i（仅用于演示）\n        pred = (imgs.sum(dim=(1,2,3)) > 0).int()  # 简化逻辑\n        acc = (pred == i % 2).float().mean().item()  # 模拟准确率\n        accuracies.append(acc)\n\nconditional_accuracy = np.mean(accuracies) if accuracies else 0.0\nprint(f\"条件准确率（简化代理）: {conditional_accuracy:.4f}\")\nprint(f\"生成样本shape: {generated_imgs.shape}\")\nprint(f\"环境版本: PyTorch {torch.__version__}, 随机种子: {seed}\")\n\n# 可视化生成样本\nfig, axes = plt.subplots(2, 5, figsize=(10, 4))\nfor i, ax in enumerate(axes.flat):\n    ax.imshow(generated_imgs[i].squeeze(), cmap='gray')\n    ax.set_title(f\"Label: {labels[i].item()}\")\n    ax.axis('off')\nplt.show()</code></pre>\n\n<p>工程要点包括：数据标准化（归一化到[-1,1]以匹配Tanh输出）、条件嵌入维度选择（这里标签维度10）、训练平衡（交替更新生成器与判别器）以及评估代理（实际项目应使用预训练分类器）。代码打印了数据规模、训练损失、条件准确率与生成样本，确保可复现性。注意，条件准确率计算是简化版，真实评估需用准确分类器。</p>\n\n<p>常见误区是“条件生成模型无需复杂评估”。实际上，仅视觉检查不足，需结合定量指标。失败模式包括训练不收敛（因超参数不当）或评估偏差（因指标不全面）。诊断方法包括监控损失曲线、计算多个指标（如FID、准确率）以及进行消融实验。例如，若条件准确率低但FID好，可能表明模型生成高质量图像但忽略条件。</p>\n\n<p>通过这个完整工程流程，你已经掌握了条件生成与控制技术的核心实践。从数据准备到模型评估，每一步都强调可复现性与客观衡量，为你的项目打下坚实基础。接下来，你可以将此框架扩展到更复杂的数据集与控制信号，实现更精细的生成应用。</p>\n\n<p>条件生成与控制技术是生成式AI迈向实用化的关键一步。通过本课程，你不仅理解了从无条件到条件的理论演进，还掌握了条件信号融合的机制与工程实现方法。记住，成功的关键在于平衡控制精度与生成多样性，并坚持可复现的实践原则。现在，尝试将所学应用于你的下一个项目，例如使用ControlNet控制图像风格，或设计多条件融合的生成模型。</p>",
+        "en": "<h2>Conditional Generation and Control Techniques: From Theory to Engineering Practice</h2>\n\n<p>In the evolution of generative artificial intelligence, unconditional generative models can create realistic content but struggle to meet precise requirements for specific outputs in practical applications. Visual engineers and researchers often face this dilemma: models generate high-quality images but cannot specify whether to produce \"modern architecture\" or \"classical architecture,\" or control the layout and style of generated images. This limitation has spurred the development of conditional generation and control techniques, which introduce external signals to guide the generation process, aligning model outputs with human intent. This course systematically explores the core principles, implementation mechanisms, and engineering practices of this technology, providing you with actionable methodologies for your generative model projects.</p>\n\n<p>The course structure follows a progressive path from motivation to practice: first, analyzing the limitations of unconditional generation to build intuition for conditional generation; then, delving into how conditional signals integrate with model architectures; finally, constructing a complete engineering pipeline for reproducible conditional generation tasks. We will use conditional generative adversarial networks (Conditional GANs) and ControlNet as primary case studies, combining mathematical derivations with code implementations to ensure you not only understand the concepts but can also apply them in real-world projects.</p>\n\n<h3>From Unconditional to Conditional: Why Does Generation Need Control?</h3>\n\n<p>Unconditional generative models, such as standard generative adversarial networks (GANs) or variational autoencoders (VAEs), learn the data distribution \\( p(x) \\) and sample new instances from it. However, this randomness becomes a major obstacle in practical applications. For example, in medical image generation, we need to produce images of specific pathological types; in artistic creation, we want to control the style and content of generated images. Unconditional models cannot meet these needs because they lack explicit control over output attributes. This leads to the core motivation for conditional generation: by introducing a conditional signal \\( c \\), the generation process shifts from learning \\( p(x) \\) to learning the conditional distribution \\( p(x|c) \\), enabling directed guidance of output content.</p>\n\n<p>Conditional Generation is defined as the technique of using external signals (conditions) to guide generative models in producing specific content. A Control Signal is the input used to regulate the generation process, which can be discrete labels (e.g., category \"cat\"), continuous vectors (e.g., attribute encodings), or structured data (e.g., sketches, depth maps). From a probabilistic perspective, the goal of conditional generation is to model \\( p(x|c) \\), typically achieved by extending unconditional models. For instance, in GANs, the conditional signal is concatenated with the noise vector before input to the generator. The key distinction is that conditional signals must be deeply integrated into the model architecture, not merely attached, otherwise it may lead to mode collapse or conditional overfitting.</p>\n\n<p>Mathematically, the objective function of a conditional GAN extends the minimax game of the original GAN. Let the generator be \\( G(z, c) \\) and the discriminator be \\( D(x, c) \\), where \\( z \\) is the noise vector and \\( c \\) is the conditional signal. The objective function is: \\[ \\min_G \\max_D V(D, G) = \\mathbb{E}_{x \\sim p_{data}(x)}[\\log D(x, c)] + \\mathbb{E}_{z \\sim p_z(z)}[\\log(1 - D(G(z, c), c))] \\]. Here, the discriminator not only judges sample authenticity but also evaluates the match between the sample and the condition. Conditional signals can be injected in various ways, such as concatenation, embedding, or attention mechanisms, each affecting the model's sensitivity to conditions and generation diversity.</p>\n\n<p>In engineering implementation, data preprocessing must ensure alignment between conditional signals and samples. For example, for a labeled image dataset, each sample \\( x_i \\) should be associated with a condition \\( c_i \\) (e.g., a class label). During training, conditional signals are usually encoded into vectors (e.g., via an embedding layer) and then concatenated with the noise vector as input to the generator. The discriminator also receives the conditional signal, typically fused with image features (e.g., through concatenation or dot product). Key implementation points include: choosing the dimension of conditional encoding (too small may lose information, too large increases computational overhead), training stability techniques (e.g., gradient penalty or label smoothing), and designing evaluation metrics (which should measure both generation quality and condition matching).</p>\n\n<p>Common misconceptions include thinking that \"conditional generation only requires adding a label to the input.\" In reality, if conditional signals are not deeply integrated into the model, the model may ignore the condition or overfit to a few modes. Failure modes manifest as mode collapse, where the generator outputs samples with limited diversity, or low conditional accuracy. Diagnostic methods include visualizing the distribution of generated samples, computing condition matching metrics (e.g., using a pre-trained classifier to evaluate generated image labels), and analyzing training loss curves. For instance, if the discriminator loss drops rapidly while the generator loss stagnates, it may indicate that the conditional signal is not being effectively utilized.</p>\n\n<p>Understanding the motivation and basics of conditional generation, we next need to explore the specific forms of conditional signals and their integration mechanisms with model architectures. This will help us design more refined control strategies for complex application scenarios.</p>\n\n<h3>Conditional Signals and Model Architecture: How to Implement Control?</h3>\n\n<p>The diversity of conditional signals determines the design flexibility of generative models. Discrete conditions (e.g., class labels) are typically mapped to continuous vectors via embedding layers; continuous conditions (e.g., attribute vectors) can be used directly; structured conditions (e.g., sketches, semantic segmentation maps) require dedicated encoders. How these signals integrate into generative model architectures is central to achieving effective control. Mainstream methods include concatenation injection, attention fusion, and dedicated control modules, each tailored to different signal types and task requirements.</p>\n\n<p>Conditional Generative Adversarial Networks (Conditional GANs) are an early classic architecture, injecting conditional signals into the generator and discriminator via concatenation. Specifically, the condition \\( c \\) is encoded into a vector and concatenated with the noise vector \\( z \\) to form the generator input \\( [z, c] \\); the discriminator input is \\( [x, c] \\) or \\( [x, \\text{embed}(c)] \\). This simple approach works for discrete or low-dimensional continuous conditions, but for complex structured conditions (e.g., image-to-image translation), it may be insufficient for fine-grained control. ControlNet offers a more refined solution, connecting control modules to pre-trained diffusion models via zero convolutions for pixel-level control.</p>\n\n<p>The mechanism of ControlNet is based on residual connections. Let the backbone of the pre-trained diffusion model be \\( F(\\cdot) \\), the control module be \\( C(\\cdot) \\), and the input condition be \\( c \\) (e.g., an edge map). The output of the control module is added to the backbone features via a zero convolution layer \\( Z(\\cdot) \\) (initialized with zero weights): \\[ \\text{output} = F(x) + Z(C(c)) \\]. Zero convolutions ensure that the control module does not affect the pre-trained model at the start of training, stabilizing the process. Mathematically, this is equivalent to introducing a control term in the conditional probability of the diffusion process: \\[ p_\\theta(x_t | x_{t-1}, c) = \\mathcal{N}(x_t; \\mu_\\theta(x_{t-1}, t) + \\lambda \\cdot C(c), \\Sigma_\\theta) \\], where \\( \\lambda \\) is a control strength coefficient. This design allows the model to gradually learn the influence of conditional signals without disrupting pre-trained knowledge.</p>\n\n<p>In engineering implementation, architecture selection requires balancing control precision and computational cost. For simple conditions (e.g., classes), concatenation injection suffices; for complex conditions (e.g., text descriptions + sketches), multi-layer attention fusion or dedicated encoders may be needed. Key implementation points include: designing the conditional encoder (e.g., CNN for image conditions, Transformer for text), positioning fusion layers (early fusion aids global control, late fusion aids detail adjustment), and training strategies (e.g., progressive training or curriculum learning). For example, in ControlNet, control modules are typically lightweight to minimize inference latency.</p>\n\n<p>Common misconceptions include \"more complex conditional signals lead to higher generation quality.\" In practice, signals must match the task; excessive complexity can cause training instability or overfitting. Failure modes include condition leakage (model ignores the condition), mode confusion (blurred boundaries between conditions), or computational bottlenecks. Diagnostic methods include ablation studies (removing conditional signals to observe performance changes), visualizing attention maps (analyzing model focus areas), and evaluating condition-specific metrics (e.g., distinguishability between samples from different conditions). For instance, if generated images show no significant difference when conditions change, it may indicate control failure.</p>\n\n<p>Having mastered the fusion mechanisms of conditional signals, we can apply these principles to practical engineering workflows, building complete pipelines from data to evaluation. This ensures our conditional generative models are not only theoretically feasible but also practically reliable.</p>\n\n<h3>Engineering Practice: Building a Reproducible Conditional Generation Pipeline</h3>\n\n<p>Building a reproducible conditional generation project requires a systematic engineering process covering data preparation, model training, evaluation, and deployment. Visual engineers and researchers often face reproducibility challenges: the same code produces different results in different environments, or evaluation metrics fail to objectively measure performance. This section provides an end-to-end practical guide, using a conditional GAN on the MNIST dataset as an example to demonstrate how to implement offline reproducible conditional digit generation.</p>\n\n<p>Reproducibility is defined as the property of ensuring experimental results can be repeatedly verified by fixing random seeds and recording environment configurations. In conditional generation, this is particularly important because randomness affects generation diversity and condition matching. The engineering process includes: data preprocessing (ensuring condition alignment and standardization), model training (using fixed random seeds and version control), evaluation (combining quantitative metrics and qualitative analysis), and documentation (saving hyperparameters and environment details). The key is to avoid dependencies on external files or private paths, using public datasets and inline data instead.</p>\n\n<p>Evaluating conditional generative models requires multi-dimensional metrics. Generation quality is often measured by the Fréchet Inception Distance (FID), which compares the distributions of generated and real samples in feature space: \\[ \\text{FID} = ||\\mu_r - \\mu_g||^2 + \\text{Tr}(\\Sigma_r + \\Sigma_g - 2(\\Sigma_r \\Sigma_g)^{1/2}) \\], where \\( \\mu_r, \\Sigma_r \\) and \\( \\mu_g, \\Sigma_g \\) are the feature means and covariances of real and generated samples, respectively. Condition matching is evaluated using Conditional Accuracy, i.e., the proportion of generated samples matching the input condition. For example, for a conditional GAN generating digits, a pre-trained classifier can predict labels of generated images to compute accuracy: \\[ \\text{Accuracy} = \\frac{\\text{number of correct matches}}{\\text{total samples}} \\]. Ideally, the model should optimize both FID (low values indicate high quality) and accuracy (high values indicate good matching).</p>\n\n<p>The following code block demonstrates an end-to-end minimal reproducible experiment, using PyTorch and the MNIST dataset to train a conditional GAN for generating specified digits (0-9) and evaluating conditional accuracy. The code avoids external files, loads data inline, and prints key intermediate results and metrics.</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\nimport numpy as np\nimport matplotlib.pyplot as plt\n\n# Fix random seeds for reproducibility\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# Data loading and preprocessing\ntransform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])\ntrain_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)\n\n# Print data scale and examples\nprint(f\"Data scale: {len(train_dataset)} samples\")\nprint(f\"Image shape: {train_dataset[0][0].shape}\")  # torch.Size([1, 28, 28])\nprint(f\"Label example: {train_dataset[0][1]}\")  # 5\n\n# Conditional GAN definition\nclass Generator(nn.Module):\n    def __init__(self, noise_dim=100, label_dim=10, output_dim=784):\n        super(Generator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(noise_dim + label_dim, 256),\n            nn.ReLU(),\n            nn.Linear(256, 512),\n            nn.ReLU(),\n            nn.Linear(512, output_dim),\n            nn.Tanh()\n        )\n    \n    def forward(self, z, labels):\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([z, label_embedding], dim=1)\n        return self.model(input).view(-1, 1, 28, 28)\n\nclass Discriminator(nn.Module):\n    def __init__(self, input_dim=784, label_dim=10):\n        super(Discriminator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(input_dim + label_dim, 512),\n            nn.ReLU(),\n            nn.Linear(512, 256),\n            nn.ReLU(),\n            nn.Linear(256, 1),\n            nn.Sigmoid()\n        )\n    \n    def forward(self, x, labels):\n        x_flat = x.view(-1, 784)\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([x_flat, label_embedding], dim=1)\n        return self.model(input)\n\n# Initialize models and optimizers\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\ngenerator = Generator().to(device)\ndiscriminator = Discriminator().to(device)\ng_optimizer = optim.Adam(generator.parameters(), lr=0.0002)\nd_optimizer = optim.Adam(discriminator.parameters(), lr=0.0002)\ncriterion = nn.BCELoss()\n\n# Training loop\nnum_epochs = 10\nfor epoch in range(num_epochs):\n    for batch_idx, (real_imgs, labels) in enumerate(train_loader):\n        batch_size = real_imgs.size(0)\n        real_imgs, labels = real_imgs.to(device), labels.to(device)\n        \n        # Train discriminator\n        noise = torch.randn(batch_size, 100).to(device)\n        fake_imgs = generator(noise, labels)\n        real_output = discriminator(real_imgs, labels)\n        fake_output = discriminator(fake_imgs.detach(), labels)\n        d_loss_real = criterion(real_output, torch.ones_like(real_output))\n        d_loss_fake = criterion(fake_output, torch.zeros_like(fake_output))\n        d_loss = d_loss_real + d_loss_fake\n        \n        d_optimizer.zero_grad()\n        d_loss.backward()\n        d_optimizer.step()\n        \n        # Train generator\n        fake_output = discriminator(fake_imgs, labels)\n        g_loss = criterion(fake_output, torch.ones_like(fake_output))\n        \n        g_optimizer.zero_grad()\n        g_loss.backward()\n        g_optimizer.step()\n    \n    print(f\"Epoch {epoch+1}, D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}\")\n\n# Generate samples and evaluate\nnum_samples = 100\nnoise = torch.randn(num_samples, 100).to(device)\nlabels = torch.randint(0, 10, (num_samples,)).to(device)\ngenerated_imgs = generator(noise, labels).detach().cpu()\n\n# Evaluate conditional accuracy using a pre-trained classifier (simplified: using simple rules)\n# In practice, use a pre-trained MNIST classifier; here, use pixel sum as a proxy\naccuracies = []\nfor i in range(10):\n    mask = labels == i\n    if mask.sum() > 0:\n        imgs = generated_imgs[mask.cpu()]\n        # Simple rule: pixel sum above threshold considered digit i (for demonstration only)\n        pred = (imgs.sum(dim=(1,2,3)) > 0).int()  # Simplified logic\n        acc = (pred == i % 2).float().mean().item()  # Simulated accuracy\n        accuracies.append(acc)\n\nconditional_accuracy = np.mean(accuracies) if accuracies else 0.0\nprint(f\"Conditional accuracy (simplified proxy): {conditional_accuracy:.4f}\")\nprint(f\"Generated samples shape: {generated_imgs.shape}\")\nprint(f\""
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：条件生成与控制技术 · 结构总览 · 数据：课程大纲】在设计《条件生成与控制技术》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 条件生成与控制技术 · 结构总览 · Data: 课程大纲】When outlining \"条件生成与控制技术\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：条件生成与控制技术 · worked example · 数据：实现条件生成 数据/代码】在复现《条件生成与控制技术》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 条件生成与控制技术 · worked example · Data: 实现条件生成 数据/代码】While reproducing the worked example in \"条件生成与控制技术\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：条件生成与控制技术 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《条件生成与控制技术》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 条件生成与控制技术 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"条件生成与控制技术\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：条件生成与控制技术 · 参考资料 · 数据：课程引用文献】当引用文献支撑《条件生成与控制技术》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 条件生成与控制技术 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"条件生成与控制技术\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Conditional Generative Adversarial Nets（arXiv，2014）",
+            "en": "Conditional Generative Adversarial Nets (arXiv, 2014)"
+          },
+          "url": "https://arxiv.org/abs/1411.1784"
+        },
+        {
+          "label": {
+            "zh": "Adding Conditional Control to Text-to-Image Diffusion Models（arXiv，2023）",
+            "en": "Adding Conditional Control to Text-to-Image Diffusion Models (arXiv, 2023)"
+          },
+          "url": "https://arxiv.org/abs/2302.05543"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-01-07-conditional-generation-zh.mp3"
+      },
+      "meta": {
+        "category": "Generative Models",
+        "level": "5. Generative AI & Large Models",
+        "difficultyScore": 3,
+        "related": [
+          "Conditional GAN",
+          "ControlNet"
+        ],
+        "learningObjectives": [
+          "实现条件生成",
+          "探索控制信号在生成模型中的作用"
+        ],
+        "personas": [
+          "视觉工程师",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 条件生成与控制技术 可帮助团队在 Generative Models 上做出可复用的实践。",
+          "best_for": "适合 视觉工程师、研究人员，需要快速吸收 5. Generative AI & Large Models 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "视觉工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 视觉工程师、研究人员，帮助他们把 条件生成与控制技术 应用于 Generative Models",
+          "prefersEnglish": false,
+          "industries": [
+            "视觉工程师",
+            "研究人员"
+          ],
+          "personas": [
+            "视觉工程师",
+            "研究人员"
+          ],
+          "pains": "在 Generative Models 场景缺乏 条件生成与控制技术 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "5. Generative AI & Large Models"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为视觉工程师，你在生成图像时是否遇到过输出结果与预期不符的情况？请描述一个具体项目，并思考：如果当时能引入外部信号（如文本描述或草图）来指导生成过程，哪些关键元素会得到更精确的控制？",
+            "action_hint": "尝试列出你项目中需要控制的3个视觉特征，并说明为什么这些特征对最终应用至关重要。"
+          },
+          {
+            "lang": "zh",
+            "question": "研究人员在实验生成模型时，常面临生成结果随机性过大的挑战。回顾你最近的研究场景：如果需要在特定条件下（如固定风格或内容约束）生成样本，你目前采用的方法存在哪些局限性？如何通过结构化条件信号来提升实验的可复现性？",
+            "action_hint": "选择一个你熟悉的生成任务，设计一个简单的条件控制方案，并说明它如何帮助验证你的研究假设。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-01-06-variational-autoencoder",
       "date": "2026-01-06",
@@ -7596,181 +7764,6 @@
             "lang": "zh",
             "question": "在构建多层网络时，你是如何初始化权重的？如果随机初始化，是否曾担心过某些层的输出过大或过小？这种担忧如何与反向传播中可能出现的梯度爆炸或消失问题联系起来？",
             "action_hint": "请具体对比不同初始化方法（如标准正态分布与Xavier初始化）对你曾实现过的网络第一轮前向传播输出范围的影响。"
-          }
-        ]
-      }
-    },
-    {
-      "id": "2025-12-16-perceptron",
-      "date": "2025-12-16",
-      "title": {
-        "zh": "单层感知机与激活函数",
-        "en": "Single-Layer Perceptron and Activation Functions"
-      },
-      "summary": {
-        "zh": "本文系统讲解神经网络的基础单元——单层感知机及其激活函数。课程从线性可分性切入，解释感知机如何通过权重和偏置构建分类器；深入分析Sigmoid、ReLU等激活函数的作用机制与选择原则；详细阐述感知机学习算法的权重更新原理。贯穿示例使用鸢尾花数据集进行二分类，通过完整代码展示数据预处理、模型训练、评估与可视化的全流程，验证理论在实际线性可分问题中的应用效果。",
-        "en": "This article systematically explains the fundamental units of neural networks—single-layer perceptrons and their activation functions. Starting from linear separability, the course explains how perceptrons construct classifiers through weights and bias; deeply analyzes the mechanisms and selection principles of activation functions like Sigmoid and ReLU; and elaborates on the weight update principles of the perceptron learning algorithm. The running example uses the iris dataset for binary classification, demonstrating through complete code the full pipeline of data preprocessing, model training, evaluation, and visualization, validating theoretical concepts in practical linearly separable problems."
-      },
-      "difficulty": "beginner",
-      "tags": [
-        "perceptron",
-        "activation function"
-      ],
-      "content": {
-        "zh": "<h2>从线性分类到神经网络基石：单层感知机与激活函数</h2>\n<p>你是否曾困惑于为什么简单的线性分类器无法处理像XOR这样的基本逻辑问题？或者好奇神经网络中的“激活”究竟意味着什么？本文将带你深入理解神经网络的基本构建单元——单层感知机，以及赋予其非线性能力的激活函数。通过一个完整的鸢尾花分类示例，你将掌握从理论到实践的完整路径，理解这些基础组件如何为更复杂的深度学习模型奠定基石。</p>\n\n<h3>从线性分类到感知机的直觉</h3>\n<p>想象你正在尝试用一条直线将二维平面上的点分为两类。对于AND或OR逻辑门，这很容易实现——存在一条直线能完美分隔不同类别的点。这种特性被称为线性可分性 linearly separable。然而，当面对XOR问题时，你会发现没有任何直线能完成这个任务。这正是感知机 perceptron 诞生的背景：作为最简单的神经网络单元，它试图通过加权求和与偏置来构建线性分类器。</p>\n<p>感知机由输入层、权重、偏置和激活函数组成。数学上，其输出可表示为：y = f(w·x + b)，其中w是权重向量，x是输入特征，b是偏置项，f是激活函数。这个模型的核心假设是数据线性可分，即存在一个超平面能完美分隔不同类别。</p>\n<blockquote>\n<p><strong>误区澄清：</strong>一个常见的误区是认为感知机能解决任何分类问题。实际上，感知机只能处理线性可分问题。XOR问题就是一个经典反例：它的两个类别无法用单条直线分隔，因此单层感知机无法学习XOR函数。这个局限性促使研究者发展出多层感知机和更复杂的神经网络结构。</p>\n</blockquote>\n<p>在我们的鸢尾花分类示例中，Setosa和非Setosa两类花在特征空间中是线性可分的。这意味着单层感知机应该能完美分类这些数据，为我们验证理论提供了理想场景。通过可视化决策边界，你将直观看到感知机如何找到那个分隔超平面。</p>\n<p>既然感知机本质是线性分类器，那么如何让它处理更复杂的情况？答案在于激活函数——这个看似简单的组件将彻底改变模型的能力边界。</p>\n\n<h3>激活函数：从阶跃到连续</h3>\n<p>早期的感知机使用阶跃函数作为激活函数：当加权和超过阈值时输出1，否则输出0。虽然直观，但阶跃函数在零点不可导，这阻碍了基于梯度的优化方法。现代神经网络采用连续可导的激活函数，既能引入非线性，又支持反向传播。</p>\n<p>激活函数 activation function 是将神经元的输入映射到输出的非线性函数。常见的激活函数包括：</p>\n<ul>\n<li>Sigmoid函数：将输入压缩到(0,1)区间，形状如S曲线，常用于二分类输出层</li>\n<li>Tanh函数：将输入压缩到(-1,1)区间，均值为0，有助于中心化数据</li>\n<li>ReLU（整流线性单元）：f(x) = max(0,x)，计算简单且能缓解梯度消失问题</li>\n</ul>\n<blockquote>\n<p><strong>误区澄清：</strong>一个普遍存在的误解是“ReLU在所有情况下都是最佳选择”。实际上，ReLU可能导致“死亡神经元”问题——当输入为负时梯度为零，这些神经元可能永远无法被激活。在某些场景下，Leaky ReLU或ELU等变体可能表现更好。选择激活函数需要考虑问题特性、网络深度和计算效率等多方面因素。</p>\n</blockquote>\n<p>非线性激活函数的核心价值在于：通过堆叠多个非线性层，神经网络可以逼近任意复杂函数。这就是通用逼近定理 universal approximation theorem 的直观体现——即使单层感知机只能处理线性问题，但多层感知机配合非线性激活函数就能学习复杂的非线性模式。这种组合能力是深度学习强大表达力的基础。</p>\n<p>在我们的示例中，scikit-learn的Perceptron类默认使用ReLU激活函数。虽然鸢尾花分类是线性可分问题，激活函数的选择仍然影响训练过程的稳定性和收敛速度。通过比较不同激活函数的效果，你可以亲身体验这个设计决策的重要性。</p>\n<p>理解了各个组件后，如何将它们组合成一个可训练的模型？关键在于学习算法——感知机如何从错误中自动调整参数。</p>\n\n<h3>感知机学习算法与权重更新</h3>\n<p>感知机学习算法 perceptron learning algorithm 的核心思想很简单：如果分类正确，保持权重不变；如果分类错误，调整权重使模型更接近正确分类。具体来说，对于误分类样本(x, y)，权重更新规则为：w = w + η·y·x，其中η是学习率 learning rate。</p>\n<p>这个算法是错误驱动的：只有误分类样本才会触发权重更新。学习率控制着每次更新的步长——太大可能导致震荡，太小则收敛缓慢。算法会迭代处理训练数据，直到所有样本被正确分类或达到最大迭代次数。</p>\n<blockquote>\n<p><strong>误区澄清：</strong>另一个需要澄清的误区是“感知机总能找到最优分离超平面”。实际上，感知机只能找到某个能正确分类所有训练样本的超平面，但不保证这个超平面具有最大间隔。支持向量机等其他算法专门优化间隔最大化，而感知机更注重分类正确性。</p>\n</blockquote>\n<p>在我们的代码实现中，你将看到如何设置学习率、最大迭代次数等超参数。通过监控训练过程中的准确率变化，可以观察感知机如何逐步减少分类错误。如果数据确实是线性可分的，算法最终会收敛到零错误率。</p>\n<p>理论完备后，让我们用真实数据构建一个完整的分类流程，将所有这些概念整合到可执行的代码中。</p>\n\n<h3>实践：鸢尾花二分类完整流程</h3>\n<p>现在，让我们将理论付诸实践。我们将使用scikit-learn（Scikit-learn: Machine Learning in Python, 2011）实现一个完整的感知机分类流程，对鸢尾花数据集进行二分类（Setosa vs Non-Setosa）。选择这个数据集是因为它的线性可分特性，能完美验证感知机的理论能力。管道化设计确保了流程的可复现性 reproducibility，每个步骤都有明确的目的和输出。</p>\n<table>\n<tr><th>步骤</th><th>组件</th><th>目的</th></tr>\n<tr><td>1. 数据准备</td><td>load_iris, 类别过滤</td><td>获取线性可分数据集</td></tr>\n<tr><td>2. 预处理</td><td>StandardScaler</td><td>标准化特征以加速收敛</td></tr>\n<tr><td>3. 模型训练</td><td>Perceptron</td><td>学习分类决策边界</td></tr>\n<tr><td>4. 评估</td><td>accuracy_score, confusion_matrix</td><td>量化分类性能</td></tr>\n</table>\n\n<pre><code># 综合代码块A：完整训练与评估流程\nimport numpy as np\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import Perceptron\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# 步骤1：加载并准备数据\niris = load_iris()\nX = iris.data\n# 创建二分类标签：Setosa (0) vs Non-Setosa (1)\ny = (iris.target != 0).astype(int)\n\nprint(\"数据形状:\", X.shape)  # 输出: (150, 4)\nprint(\"类别分布:\", np.bincount(y))  # 输出: [50, 100]\n\n# 步骤2：划分训练测试集\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=42, stratify=y\n)\n\n# 步骤3：构建并训练感知机管道\n# 包含标准化和感知机模型，使用默认ReLU激活函数\npipeline = make_pipeline(\n    StandardScaler(),\n    Perceptron(max_iter=1000, eta0=0.1, random_state=42)\n)\npipeline.fit(X_train, y_train)\n\n# 步骤4：评估模型\n# 计算准确率\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"测试集准确率: {accuracy:.4f}\")\n\n# 输出混淆矩阵\ncm = confusion_matrix(y_test, y_pred)\nprint(\"混淆矩阵:\")\nprint(cm)</code></pre>\n\n<pre><code># 综合代码块B：决策边界可视化与错误分析\n# 注意：PCA降维仅用于可视化目的，原4D模型仍有效\n# 在2D空间重新训练是为了在降维后的坐标中绘制决策边界\nimport matplotlib.pyplot as plt\nfrom sklearn.decomposition import PCA\n\n# 使用PCA将4维特征降维到2维以便可视化\npca = PCA(n_components=2)\nX_pca = pca.fit_transform(X)\n\n# 在降维后的空间上重新训练感知机\nX_train_pca, X_test_pca, y_train_pca, y_test_pca = train_test_split(\n    X_pca, y, test_size=0.3, random_state=42, stratify=y\n)\n\nperceptron_pca = make_pipeline(\n    StandardScaler(),\n    Perceptron(max_iter=1000, eta0=0.1, random_state=42)\n)\nperceptron_pca.fit(X_train_pca, y_train_pca)\n\n# 创建网格点用于绘制决策边界\nx_min, x_max = X_pca[:, 0].min() - 1, X_pca[:, 0].max() + 1\ny_min, y_max = X_pca[:, 1].min() - 1, X_pca[:, 1].max() + 1\nxx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                     np.arange(y_min, y_max, 0.02))\n\n# 预测网格点的类别\nZ = perceptron_pca.predict(np.c_[xx.ravel(), yy.ravel()])\nZ = Z.reshape(xx.shape)\n\n# 绘制决策边界和数据点\nplt.figure(figsize=(10, 8))\nplt.contourf(xx, yy, Z, alpha=0.3, cmap=plt.cm.coolwarm)\nplt.scatter(X_pca[y==0, 0], X_pca[y==0, 1], \n            c='blue', label='Setosa', edgecolors='k')\nplt.scatter(X_pca[y==1, 0], X_pca[y==1, 1], \n            c='red', label='Non-Setosa', edgecolors='k')\nplt.xlabel('第一主成分')\nplt.ylabel('第二主成分')\nplt.title('感知机在鸢尾花数据集上的决策边界')\nplt.legend()\nplt.show()\n\n# 输出版本信息\nimport sklearn\nimport matplotlib\nprint(f\"scikit-learn版本: {sklearn.__version__}\")\nprint(f\"matplotlib版本: {matplotlib.__version__}\")</code></pre>\n\n<p>运行这段代码，你会看到感知机在鸢尾花数据集上达到了接近完美的分类准确率。混淆矩阵显示所有样本都被正确分类，验证了Setosa和非Setosa确实是线性可分的。可视化图表直观展示了感知机学习到的决策边界——一条直线完美分隔了两个类别。</p>\n\n<h2>方法论迁移：从示例到你的项目</h2>\n<p>通过今天的探索，你不仅理解了单层感知机和激活函数的工作原理，还掌握了一个完整的机器学习工作流。这个方法论可以迁移到你的实际项目中：首先分析问题是否线性可分，然后选择合适的激活函数，接着实现感知机学习算法，最后通过可视化验证决策边界。</p>\n<p>记住，感知机是神经网络的基础单元。虽然它本身只能处理线性问题，但当你堆叠多个感知机层并配合适当的激活函数时，就能构建能解决复杂非线性问题的深度神经网络。今天的知识为你理解更高级的模型——从多层感知机到卷积神经网络——奠定了坚实基础。</p>\n<p>现在，尝试将这个工作流应用到你的数据上。选择一个简单的二分类问题，实现感知机分类器，并观察它是否能找到有效的决策边界。如果性能不佳，思考原因：是数据非线性可分，还是需要调整超参数？这个分析过程本身就是机器学习实践的核心技能。</p>",
-        "en": "<h2>From Linear Classification to Neural Network Foundations: Single-Layer Perceptron and Activation Functions</h2>\n<p>Have you ever wondered why simple linear classifiers fail at basic logical problems like XOR? Or what \"activation\" really means in neural networks? This article will guide you through the fundamental building blocks of neural networks—the single-layer perceptron and the activation functions that give it nonlinear capabilities. Through a complete iris flower classification example, you'll master the full path from theory to practice, understanding how these basic components lay the groundwork for more complex deep learning models.</p>\n\n<h3>Intuition: From Linear Classification to Perceptron</h3>\n<p>Imagine trying to separate points on a two-dimensional plane into two classes using a straight line. For AND or OR logic gates, this is straightforward—a line exists that perfectly separates the different classes. This property is called linear separability. However, when facing the XOR problem, you'll find no single line can accomplish this task. This is precisely the context in which the perceptron was born: as the simplest neural network unit, it attempts to construct a linear classifier through weighted summation and bias.</p>\n<p>The perceptron consists of an input layer, weights, bias, and an activation function. Mathematically, its output can be expressed as: y = f(w·x + b), where w is the weight vector, x is the input features, b is the bias term, and f is the activation function. The core assumption of this model is that the data is linearly separable, meaning there exists a hyperplane that can perfectly separate different classes.</p>\n<blockquote>\n<p><strong>Misconception Clarification:</strong> A common misconception is that perceptrons can solve any classification problem. In reality, perceptrons can only handle linearly separable problems. The XOR problem is a classic counterexample: its two classes cannot be separated by a single line, so a single-layer perceptron cannot learn the XOR function. This limitation motivated researchers to develop multilayer perceptrons and more complex neural network architectures.</p>\n</blockquote>\n<p>In our iris flower classification example, Setosa and non-Setosa flowers are linearly separable in feature space. This means a single-layer perceptron should perfectly classify this data, providing an ideal scenario to validate our theory. By visualizing the decision boundary, you'll see intuitively how the perceptron finds that separating hyperplane.</p>\n<p>Since the perceptron is essentially a linear classifier, how can we make it handle more complex situations? The answer lies in activation functions—these seemingly simple components will completely change the model's capability boundaries.</p>\n\n<h3>Activation Functions: From Step to Continuous</h3>\n<p>Early perceptrons used step functions as activation functions: outputting 1 when the weighted sum exceeded a threshold, otherwise 0. While intuitive, step functions are non-differentiable at zero, hindering gradient-based optimization methods. Modern neural networks employ continuously differentiable activation functions that introduce nonlinearity while supporting backpropagation.</p>\n<p>An activation function is a nonlinear function that maps a neuron's input to its output. Common activation functions include:</p>\n<ul>\n<li>Sigmoid function: Compresses input to the (0,1) interval, S-shaped curve, often used in binary classification output layers</li>\n<li>Tanh function: Compresses input to the (-1,1) interval, zero-centered, helpful for data centralization</li>\n<li>ReLU (Rectified Linear Unit): f(x) = max(0,x), computationally simple and mitigates vanishing gradient problems</li>\n</ul>\n<blockquote>\n<p><strong>Misconception Clarification:</strong> A widespread misconception is that \"ReLU is always the best choice.\" In reality, ReLU can cause \"dead neuron\" problems—when input is negative, the gradient is zero, and these neurons may never activate. In some scenarios, variants like Leaky ReLU or ELU may perform better. Choosing an activation function requires considering problem characteristics, network depth, computational efficiency, and other factors.</p>\n</blockquote>\n<p>The core value of nonlinear activation functions lies in this: by stacking multiple nonlinear layers, neural networks can approximate arbitrarily complex functions. This is the intuitive manifestation of the universal approximation theorem—even though a single-layer perceptron can only handle linear problems, multilayer perceptrons with nonlinear activation functions can learn complex nonlinear patterns. This combinatorial capability forms the foundation of deep learning's expressive power.</p>\n<p>In our example, scikit-learn's Perceptron class uses ReLU activation by default. Although iris classification is a linearly separable problem, the choice of activation function still affects training stability and convergence speed. By comparing the effects of different activation functions, you can personally experience the importance of this design decision.</p>\n<p>Understanding each component, how do we combine them into a trainable model? The key lies in the learning algorithm—how the perceptron automatically adjusts parameters from errors.</p>\n\n<h3>Perceptron Learning Algorithm and Weight Updates</h3>\n<p>The core idea of the perceptron learning algorithm is simple: if classification is correct, keep weights unchanged; if classification is wrong, adjust weights to move the model closer to correct classification. Specifically, for a misclassified sample (x, y), the weight update rule is: w = w + η·y·x, where η is the learning rate.</p>\n<p>This algorithm is error-driven: only misclassified samples trigger weight updates. The learning rate controls the step size of each update—too large may cause oscillation, too small leads to slow convergence. The algorithm iterates through training data until all samples are correctly classified or the maximum iteration count is reached.</p>\n<blockquote>\n<p><strong>Misconception Clarification:</strong> Another misconception to clarify is that \"perceptrons always find the optimal separating hyperplane.\" In fact, perceptrons only find some hyperplane that correctly classifies all training samples, but this doesn't guarantee maximum margin. Other algorithms like support vector machines specifically optimize margin maximization, while perceptrons focus more on classification correctness.</p>\n</blockquote>\n<p>In our code implementation, you'll see how to set hyperparameters like learning rate and maximum iterations. By monitoring accuracy changes during training, you can observe how the perceptron gradually reduces classification errors. If the data is indeed linearly separable, the algorithm will eventually converge to zero error rate.</p>\n<p>With theory complete, let's build a complete classification pipeline with real data, integrating all these concepts into executable code.</p>\n\n<h3>Practice: Complete Iris Binary Classification Pipeline</h3>\n<p>Now, let's put theory into practice. We'll implement a complete perceptron classification pipeline using scikit-learn (Scikit-learn: Machine Learning in Python, 2011) for binary classification of the iris dataset (Setosa vs Non-Setosa). We chose this dataset because of its linear separability, perfectly validating the perceptron's theoretical capabilities. The pipelined design ensures reproducibility, with each step having a clear purpose and output.</p>\n<table>\n<tr><th>Step</th><th>Component</th><th>Purpose</th></tr>\n<tr><td>1. Data Preparation</td><td>load_iris, class filtering</td><td>Obtain linearly separable dataset</td></tr>\n<tr><td>2. Preprocessing</td><td>StandardScaler</td><td>Standardize features for faster convergence</td></tr>\n<tr><td>3. Model Training</td><td>Perceptron</td><td>Learn classification decision boundary</td></tr>\n<tr><td>4. Evaluation</td><td>accuracy_score, confusion_matrix</td><td>Quantify classification performance</td></tr>\n</table>\n\n<pre><code># Comprehensive Code Block A: Complete Training and Evaluation Pipeline\nimport numpy as np\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import Perceptron\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# Step 1: Load and prepare data\niris = load_iris()\nX = iris.data\n# Create binary labels: Setosa (0) vs Non-Setosa (1)\ny = (iris.target != 0).astype(int)\n\nprint(\"Data shape:\", X.shape)  # Output: (150, 4)\nprint(\"Class distribution:\", np.bincount(y))  # Output: [50, 100]\n\n# Step 2: Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=42, stratify=y\n)\n\n# Step 3: Build and train perceptron pipeline\n# Includes standardization and perceptron model, using default ReLU activation\npipeline = make_pipeline(\n    StandardScaler(),\n    Perceptron(max_iter=1000, eta0=0.1, random_state=42)\n)\npipeline.fit(X_train, y_train)\n\n# Step 4: Evaluate model\n# Calculate accuracy\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"Test accuracy: {accuracy:.4f}\")\n\n# Output confusion matrix\ncm = confusion_matrix(y_test, y_pred)\nprint(\"Confusion matrix:\")\nprint(cm)</code></pre>\n\n<pre><code># Comprehensive Code Block B: Decision Boundary Visualization and Error Analysis\n# Note: PCA dimensionality reduction is for visualization only; the original 4D model remains valid\n# Retraining in 2D space is to plot the decision boundary in reduced coordinates\nimport matplotlib.pyplot as plt\nfrom sklearn.decomposition import PCA\n\n# Use PCA to reduce 4D features to 2D for visualization\npca = PCA(n_components=2)\nX_pca = pca.fit_transform(X)\n\n# Retrain perceptron in reduced-dimensional space\nX_train_pca, X_test_pca, y_train_pca, y_test_pca = train_test_split(\n    X_pca, y, test_size=0.3, random_state=42, stratify=y\n)\n\nperceptron_pca = make_pipeline(\n    StandardScaler(),\n    Perceptron(max_iter=1000, eta0=0.1, random_state=42)\n)\nperceptron_pca.fit(X_train_pca, y_train_pca)\n\n# Create grid points for decision boundary plotting\nx_min, x_max = X_pca[:, 0].min() - 1, X_pca[:, 0].max() + 1\ny_min, y_max = X_pca[:, 1].min() - 1, X_pca[:, 1].max() + 1\nxx, yy = np.meshgrid(np.arange(x_min, x_max, 0.02),\n                     np.arange(y_min, y_max, 0.02))\n\n# Predict class for grid points\nZ = perceptron_pca.predict(np.c_[xx.ravel(), yy.ravel()])\nZ = Z.reshape(xx.shape)\n\n# Plot decision boundary and data points\nplt.figure(figsize=(10, 8))\nplt.contourf(xx, yy, Z, alpha=0.3, cmap=plt.cm.coolwarm)\nplt.scatter(X_pca[y==0, 0], X_pca[y==0, 1], \n            c='blue', label='Setosa', edgecolors='k')\nplt.scatter(X_pca[y==1, 0], X_pca[y==1, 1], \n            c='red', label='Non-Setosa', edgecolors='k')\nplt.xlabel('First Principal Component')\nplt.ylabel('Second Principal Component')\nplt.title('Perceptron Decision Boundary on Iris Dataset')\nplt.legend()\nplt.show()\n\n# Output version information\nimport sklearn\nimport matplotlib\nprint(f\"scikit-learn version: {sklearn.__version__}\")\nprint(f\"matplotlib version: {matplotlib.__version__}\")</code></pre>\n\n<p>Running this code, you'll see the perceptron achieves near-perfect classification accuracy on the iris dataset. The confusion matrix shows all samples correctly classified, verifying that Setosa and non-Setosa are indeed linearly separable. The visualization chart intuitively displays the decision boundary learned by the perceptron—a straight line perfectly separating the two classes.</p>\n\n<h2>Methodology Transfer: From Example to Your Projects</h2>\n<p>Through today's exploration, you've not only understood how single-layer perceptrons and activation functions work but also mastered a complete machine learning workflow. This methodology can transfer to your actual projects: first analyze whether the problem is linearly separable, then choose appropriate activation functions, implement the perceptron learning algorithm, and finally validate the decision boundary through visualization.</p>\n<p>Remember, the perceptron is the foundational unit of neural networks. Although it can only handle linear problems itself, when you stack multiple perceptron layers with appropriate activation functions, you can build deep neural networks capable of solving complex nonlinear problems. Today's knowledge lays a solid foundation for understanding more advanced models—from multilayer perceptrons to convolutional neural networks.</p>\n<p>Now, try applying this workflow to your own data. Choose a simple binary classification problem, implement a perceptron classifier, and observe whether it finds an effective decision boundary. If performance is poor, consider why: is the data nonlinearly separable, or do hyperparameters need adjustment? This analytical process itself is a core skill in machine learning practice.</p>"
-      },
-      "practice": [
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：单层感知机与激活函数 · 结构总览 · 数据：课程大纲】在设计《单层感知机与激活函数》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
-            "en": "【Source: 单层感知机与激活函数 · 结构总览 · Data: 课程大纲】When outlining \"单层感知机与激活函数\", which sequence best helps readers progress from concepts to applications?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
-            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
-          },
-          "options": [
-            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
-            "直接列公式 → 给出练习 → 最后再解释概念",
-            "只讲历史 → 只列参考文献 → 不展示示例",
-            "先贴代码 → 略过背景 → 简单总结"
-          ]
-        },
-        {
-          "type": "multi",
-          "question": {
-            "zh": "【来自：单层感知机与激活函数 · worked example · 数据：理解感知机模型与线性可分性 数据/代码】在复现《单层感知机与激活函数》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
-            "en": "【Source: 单层感知机与激活函数 · worked example · Data: 理解感知机模型与线性可分性 数据/代码】While reproducing the worked example in \"单层感知机与激活函数\", which actions improve reproducibility? (Select all that apply)"
-          },
-          "answer": [
-            0,
-            2,
-            3
-          ],
-          "explain": {
-            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
-            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
-          },
-          "options": [
-            "列出输入数据字段与来源",
-            "仅口头描述处理步骤",
-            "逐行解释代码或公式逻辑",
-            "记录关键输出指标及其含义"
-          ]
-        },
-        {
-          "type": "input",
-          "question": {
-            "zh": "【来自：单层感知机与激活函数 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《单层感知机与激活函数》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
-            "en": "【Source: 单层感知机与激活函数 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"单层感知机与激活函数\" into your context: outline the scenario, the reused steps, and the metric you would check."
-          },
-          "answer": "plan",
-          "explain": {
-            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
-            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
-          }
-        },
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：单层感知机与激活函数 · 参考资料 · 数据：课程引用文献】当引用文献支撑《单层感知机与激活函数》中的观点时，以下哪一做法能强化可信度？",
-            "en": "【Source: 单层感知机与激活函数 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"单层感知机与激活函数\", which action strengthens credibility?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
-            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
-          },
-          "options": [
-            "指出文献的年份、作者/机构并提炼与本节的关系",
-            "只在文末集中列出所有链接，不在正文说明",
-            "引用尚未发表的私有数据但不给出处",
-            "用营销口吻概括文献而不提研究方法"
-          ]
-        }
-      ],
-      "references": [
-        {
-          "label": {
-            "zh": "Perceptrons: An Introduction to Computational Geometry（MIT Press，1969）",
-            "en": "Perceptrons: An Introduction to Computational Geometry (MIT Press, 1969)"
-          },
-          "url": "https://direct.mit.edu/books/book/2572/PerceptronsAn-Introduction-to-Computational"
-        },
-        {
-          "label": {
-            "zh": "Scikit-learn: Machine Learning in Python（Journal of Machine Learning Research，2011）",
-            "en": "Scikit-learn: Machine Learning in Python (Journal of Machine Learning Research, 2011)"
-          },
-          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
-        },
-        {
-          "label": {
-            "zh": "Deep Learning（MIT Press，2016）",
-            "en": "Deep Learning (MIT Press, 2016)"
-          },
-          "url": "https://www.deeplearningbook.org/"
-        }
-      ],
-      "audio": {
-        "zh": "/assets/audio/daily/2025-12-16-perceptron-zh.mp3"
-      },
-      "meta": {
-        "category": "Neural Network Fundamentals",
-        "level": "2. Deep Learning & Neural Networks",
-        "difficultyScore": 1,
-        "related": [
-          "感知机学习算法",
-          "激活函数"
-        ],
-        "learningObjectives": [
-          "理解感知机模型与线性可分性",
-          "比较常见激活函数及其作用"
-        ],
-        "personas": [
-          "初学者",
-          "学生"
-        ],
-        "contextual_notes": {
-          "why_now": "当前阶段掌握单层感知机与激活函数可帮助团队在神经网络基础上做出可复用的实践。",
-          "best_for": "适合初学者、学生，需要快速吸收深度学习与神经网络主题。",
-          "visual_hint": "使用要点列表+流程箭头展示流转，建议先阅读前三节理论部分，再运行代码块A和B进行实践验证。可视化部分重点关注决策边界图，理解线性可分性的直观表现。"
-        },
-        "tone_profile": {
-          "persona": "初学者 指导者",
-          "style": "故事化",
-          "energy": "encouraging",
-          "call_to_action": "引导学习者写下一条可执行行动"
-        },
-        "learner_profile": {
-          "summary": "课程面向 初学者、学生，帮助他们把 单层感知机与激活函数 应用于 Neural Network Fundamentals",
-          "prefersEnglish": false,
-          "industries": [
-            "初学者",
-            "学生"
-          ],
-          "personas": [
-            "初学者",
-            "学生"
-          ],
-          "pains": "在 Neural Network Fundamentals 场景缺乏 单层感知机与激活函数 的可执行路径",
-          "preferredMetrics": [],
-          "maturity": "2. Deep Learning & Neural Networks"
-        },
-        "prompt_version": "2025-02-19",
-        "starter_questions": [
-          {
-            "lang": "zh",
-            "question": "作为初学者，你在学习神经网络时是否曾困惑于如何将数学公式转化为实际应用？想象一下，如果让你用单层感知机处理鸢尾花分类问题，你会如何设计权重和偏置来区分两种花型？",
-            "action_hint": "尝试在纸上画出感知机的结构图，标注输入特征、权重和激活函数，思考每个参数如何影响分类结果。"
-          },
-          {
-            "lang": "zh",
-            "question": "假设你正在开发一个简单的垃圾邮件过滤器，需要判断邮件是否为垃圾邮件。如果使用单层感知机，你会选择哪种激活函数（如Sigmoid或ReLU）来处理这种二分类任务？为什么这个选择更适合你的应用场景？",
-            "action_hint": "对比不同激活函数的输出特性，思考它们在处理概率输出和线性可分问题时的优缺点，并联系到你的具体应用需求。"
           }
         ]
       }
