@@ -4062,5 +4062,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-16-cnn",
+    "date": "2025-12-16",
+    "title": {
+      "zh": "卷积神经网络基础",
+      "en": "Fundamentals of Convolutional Neural Networks"
+    },
+    "summary": {
+      "zh": "卷积神经网络（CNN）是处理网格状数据（如图像）的核心深度学习架构。本课程从全连接网络的局限性出发，逐步讲解卷积运算、滤波器、特征图等基础概念，深入剖析卷积层与池化层的工作原理。通过PyTorch实现一个完整的MNIST手写数字分类CNN，涵盖数据加载、模型定义、训练评估全流程，帮助读者建立从理论到实践的完整知识体系。课程包含多个常见误区澄清和可视化建议，确保学习者能够真正掌握CNN的核心思想并迁移到实际项目中。",
+      "en": "Convolutional Neural Networks (CNNs) are fundamental deep learning architectures designed for grid-like data such as images. This course begins with the limitations of fully connected networks, systematically explains core concepts like convolution operations, filters, and feature maps, and delves into the working mechanisms of convolutional and pooling layers. Through a complete PyTorch implementation for MNIST handwritten digit classification—covering data loading, model definition, training, and evaluation—readers will build a comprehensive understanding from theory to practice. The course includes clarifications of common misconceptions and visualization recommendations, ensuring learners can grasp CNN's core principles and apply them to real-world projects."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "CNN",
+      "convolution"
+    ],
+    "content": {
+      "zh": "<h3>从全连接网络到卷积：图像处理的直觉突破</h3><p>想象一下，如果你要用全连接网络处理一张28×28像素的灰度图像，输入层就需要784个神经元。假设第一个隐藏层有128个神经元，仅这一层就会产生784×128≈100,000个权重参数。这还只是单层网络，随着层数增加，参数量会爆炸式增长，导致训练效率极低且容易过拟合。更关键的是，全连接网络将图像视为一维向量，完全破坏了图像固有的空间结构信息——相邻像素之间的关联性被忽略，就像把一幅拼图打散后随机排列。</p><p>卷积神经网络通过两个核心思想解决了这个问题：<strong>局部连接（Local Connectivity）</strong>和<strong>权值共享（Weight Sharing）</strong>。局部连接意味着每个神经元只与输入数据的局部区域相连，而不是全部输入。例如，一个3×3的滤波器只关注图像中3×3的小块区域。权值共享则是指同一个滤波器在整个输入图像上滑动时使用相同的参数集，这大幅减少了需要学习的参数数量。这两个特性使得CNN能够高效提取图像的局部特征，同时保持平移不变性——无论特征出现在图像的哪个位置，都能被相同的滤波器检测到。</p><p>让我们通过一个具体例子理解卷积运算：假设我们有一个5×5的灰度图像，滤波器是一个3×3的矩阵[[1,0,-1],[1,0,-1],[1,0,-1]]。滤波器从图像左上角开始，每次滑动一个像素（步幅为1），计算滤波器与对应图像区域的点积。这个特定滤波器实际上是一个垂直边缘检测器——当它滑过图像时，会在垂直边缘处产生高响应值，输出一个3×3的特征图。特征图中的每个值代表了滤波器在对应位置检测到的特征强度。</p><blockquote><p><strong>误区澄清</strong>：有人认为CNN只能处理图像数据，实际上CNN适用于任何具有网格结构的数据。一维CNN可以处理时间序列数据，三维CNN可以处理视频或医学影像数据。关键在于数据是否具有局部相关性——相邻数据点之间存在有意义的关联。</p></blockquote><p>理解了为什么需要CNN以及卷积的基本原理后，我们自然会问：单个滤波器只能检测一种特征模式（如垂直边缘），但真实图像包含多种特征（边缘、纹理、形状等）。如何组合多种特征进行更复杂的识别？这引出了CNN的多层结构设计。</p><h3>卷积层与池化层：特征提取的双引擎</h3><p>在实际的CNN架构中，我们通常使用多个卷积层，每层包含多个不同的滤波器。浅层卷积层倾向于检测低级特征如边缘和角点，而深层卷积层则能够组合这些低级特征，检测更复杂的高级特征如物体部件或整体形状。这种分层特征提取的能力是CNN在计算机视觉任务中表现出色的关键原因。</p><p>除了卷积层，CNN通常还包含<strong>池化层（Pooling Layer）</strong>，最常见的是最大池化。池化层对特征图进行下采样，减少空间尺寸同时保留最重要的特征信息。例如，一个2×2的最大池化以步幅2在特征图上滑动，每次取2×2区域中的最大值作为输出。这带来了三个好处：减少计算量、增加感受野（使高层神经元能看到更广的输入区域）、以及提供一定的平移不变性（特征在小范围内的位置变化不会影响池化输出）。</p><p>卷积层有两个重要的超参数需要理解：<strong>步幅（Stride）</strong>控制滤波器滑动的步长，<strong>填充（Padding）</strong>决定是否在输入边界添加零值。步幅越大，输出特征图尺寸越小；填充可以帮助控制输出尺寸，并保留边缘信息。在实际应用中，我们经常使用“相同填充”来保持输入输出尺寸一致。</p><blockquote><p><strong>误区澄清</strong>：有人认为池化层就是简单地丢弃信息，实际上池化是一种有策略的抽象。最大池化保留最显著的特征响应，平均池化考虑区域整体特征，全局池化（如全局平均池化）甚至可以直接将特征图转换为特征向量。不同池化方法在不同场景下各有优势，需要根据任务特点选择。</p></blockquote><p>在我们的MNIST分类示例中，我们将使用两层卷积+池化的组合：第一层提取低级边缘特征，第二层组合这些边缘形成更复杂的数字部件特征。特征提取完成后，我们需要将这些特征映射到具体的数字类别（0-9），这需要通过全连接层实现分类。</p><h3>搭建CNN进行图像分类：从原理到PyTorch实践</h3><p>现在我们将所有理论知识整合到一个完整的实践项目中：使用PyTorch搭建CNN对MNIST手写数字数据集进行分类。MNIST包含70,000张28×28的灰度手写数字图像，其中60,000张用于训练，10,000张用于测试。这是一个经典的入门级计算机视觉数据集，足够简单以便快速实验，又足够复杂能够展示CNN的优势。</p><p>我们将实现一个简化版的LeNet-5架构（来源：Gradient-Based Learning Applied to Document Recognition, 1998），这是Yann LeCun早期提出的CNN架构，专门用于手写数字识别。我们的网络结构包括：两个卷积层（每层后接ReLU激活和最大池化），然后展平特征图，最后通过两个全连接层输出10个类别的概率分布。训练使用交叉熵损失函数和Adam优化器。</p><p>在训练过程中，我们需要关注几个关键点：数据预处理（归一化像素值到[0,1]范围）、批处理（使用DataLoader设置batch_size=64）、模型初始化、训练循环（前向传播、损失计算、反向传播、参数更新）以及评估指标（测试准确率）。我们将设置固定随机种子确保结果可复现，这是研究和工作中的重要习惯。</p><blockquote><p><strong>误区澄清</strong>：有人认为CNN训练必须使用GPU加速，实际上对于MNIST这样的小规模数据集，CPU训练已经足够快速。GPU的真正优势在于处理大规模图像数据集（如ImageNet）或高分辨率图像时显著加速训练过程。初学者完全可以先在CPU上运行完整流程，理解基本原理后再考虑硬件优化。</p></blockquote><p>下面的代码块展示了完整的实现流程。我们首先加载和预处理数据，然后定义CNN模型，接着进行训练，最后评估模型性能。代码包含了必要的注释和关键输出打印，确保你可以直接运行并理解每个步骤。</p><pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torchvision\nimport torchvision.transforms as transforms\nimport matplotlib.pyplot as plt\nimport numpy as np\nfrom sklearn.metrics import confusion_matrix\nimport seaborn as sns\n\n# 设置随机种子确保可复现性\ntorch.manual_seed(42)\nnp.random.seed(42)\n\n# 数据加载与预处理\ntransform = transforms.Compose([\n    transforms.ToTensor(),\n    transforms.Normalize((0.5,), (0.5,))\n])\n\ntrain_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntest_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)\n\ntrain_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)\ntest_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)\n\nprint(f\"训练集样本数: {len(train_dataset)}, 测试集样本数: {len(test_dataset)}\")\nprint(f\"图像尺寸: {train_dataset[0][0].shape}\")\n\n# 定义CNN模型\nclass SimpleCNN(nn.Module):\n    def __init__(self):\n        super(SimpleCNN, self).__init__()\n        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)\n        self.pool = nn.MaxPool2d(2, 2)\n        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)\n        self.fc1 = nn.Linear(64 * 7 * 7, 128)\n        self.fc2 = nn.Linear(128, 10)\n        self.relu = nn.ReLU()\n        self.flatten = nn.Flatten()\n    \n    def forward(self, x):\n        x = self.pool(self.relu(self.conv1(x)))  # 28x28 -> 14x14\n        x = self.pool(self.relu(self.conv2(x)))  # 14x14 -> 7x7\n        x = self.flatten(x)\n        x = self.relu(self.fc1(x))\n        x = self.fc2(x)\n        return x\n\nmodel = SimpleCNN()\nprint(model)\n\n# 训练配置\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# 训练循环\ntrain_losses = []\ntrain_accuracies = []\n\nfor epoch in range(10):\n    model.train()\n    running_loss = 0.0\n    correct = 0\n    total = 0\n    \n    for images, labels in train_loader:\n        optimizer.zero_grad()\n        outputs = model(images)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer.step()\n        \n        running_loss += loss.item()\n        _, predicted = torch.max(outputs.data, 1)\n        total += labels.size(0)\n        correct += (predicted == labels).sum().item()\n    \n    epoch_loss = running_loss / len(train_loader)\n    epoch_acc = 100 * correct / total\n    train_losses.append(epoch_loss)\n    train_accuracies.append(epoch_acc)\n    \n    print(f\"Epoch {epoch+1}/10 - Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%\")\n\n# 评估模型\nmodel.eval()\ntest_correct = 0\ntest_total = 0\nall_preds = []\nall_labels = []\n\nwith torch.no_grad():\n    for images, labels in test_loader:\n        outputs = model(images)\n        _, predicted = torch.max(outputs.data, 1)\n        test_total += labels.size(0)\n        test_correct += (predicted == labels).sum().item()\n        all_preds.extend(predicted.cpu().numpy())\n        all_labels.extend(labels.cpu().numpy())\n\ntest_accuracy = 100 * test_correct / test_total\nprint(f\"\\n测试集准确率: {test_accuracy:.2f}%\")\n\n# 可视化训练过程\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(train_losses, label='Training Loss')\nplt.xlabel('Epoch')\nplt.ylabel('Loss')\nplt.title('Training Loss Curve')\nplt.legend()\n\nplt.subplot(1, 2, 2)\nplt.plot(train_accuracies, label='Training Accuracy', color='orange')\nplt.xlabel('Epoch')\nplt.ylabel('Accuracy (%)')\nplt.title('Training Accuracy Curve')\nplt.legend()\nplt.tight_layout()\nplt.show()\n\n# 混淆矩阵\ncm = confusion_matrix(all_labels, all_preds)\nplt.figure(figsize=(8, 6))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=range(10), yticklabels=range(10))\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.title('Confusion Matrix')\nplt.show()\n\n# 输出环境信息\nprint(f\"\\n环境信息:\")\nprint(f\"PyTorch版本: {torch.__version__}\")\nprint(f\"torchvision版本: {torchvision.__version__}\")\nprint(f\"随机种子: 42\")</code></pre><p>运行这段代码，你应该能看到训练过程中的损失和准确率变化，最终测试准确率应该能达到98%以上。混淆矩阵会显示模型在哪些数字上容易混淆——通常8和9、3和5等形状相似的数字对模型来说更具挑战性。这个完整的示例展示了CNN从数据准备到模型评估的全流程，为你后续处理更复杂的视觉任务奠定了坚实基础。</p><p>通过这个实践，你已经掌握了CNN的核心工作流程：数据预处理→模型架构设计→训练优化→评估分析。这个流程可以迁移到任何图像分类任务中，无论是医学影像分析、自动驾驶中的物体检测，还是工业质检中的缺陷识别。关键是根据具体任务调整网络深度、滤波器数量、数据增强策略等超参数。</p>",
+      "en": "<h3>From Fully Connected Networks to Convolution: An Intuitive Breakthrough in Image Processing</h3><p>Imagine using a fully connected network to process a 28×28 pixel grayscale image. The input layer would require 784 neurons. If the first hidden layer has 128 neurons, this single layer alone would have approximately 784×128≈100,000 weight parameters. This is just for a single-layer network—as layers increase, the parameter count explodes, leading to inefficient training and overfitting. More critically, fully connected networks treat images as one-dimensional vectors, completely destroying the inherent spatial structure information—the relationships between adjacent pixels are ignored, like randomly rearranging the pieces of a puzzle.</p><p>Convolutional Neural Networks solve this problem through two core ideas: <strong>Local Connectivity</strong> and <strong>Weight Sharing</strong>. Local connectivity means each neuron connects only to a local region of the input data, not the entire input. For example, a 3×3 filter focuses only on a 3×3 patch of the image. Weight sharing refers to using the same set of parameters for a filter as it slides across the entire input image, dramatically reducing the number of parameters to learn. These two properties enable CNNs to efficiently extract local features from images while maintaining translation invariance—the same filter can detect a feature regardless of its position in the image.</p><p>Let's understand convolution through a concrete example: Suppose we have a 5×5 grayscale image and a 3×3 filter [[1,0,-1],[1,0,-1],[1,0,-1]]. The filter starts at the top-left corner of the image, sliding one pixel at a time (stride=1), computing the dot product between the filter and the corresponding image region. This specific filter is actually a vertical edge detector—as it slides over the image, it produces high response values at vertical edges, outputting a 3×3 feature map. Each value in the feature map represents the strength of the feature detected by the filter at that position.</p><blockquote><p><strong>Misconception Clarification</strong>: Some believe CNNs can only process image data, but in reality, CNNs are suitable for any data with a grid structure. 1D CNNs can handle time series data, while 3D CNNs can process video or medical imaging data. The key is whether the data has local correlations—meaningful relationships between adjacent data points.</p></blockquote><p>Understanding why CNNs are needed and the basic principles of convolution naturally leads to the question: A single filter can only detect one type of feature pattern (like vertical edges), but real images contain multiple features (edges, textures, shapes, etc.). How do we combine multiple features for more complex recognition? This introduces the multi-layer structure design of CNNs.</p><h3>Convolutional and Pooling Layers: The Dual Engines of Feature Extraction</h3><p>In practical CNN architectures, we typically use multiple convolutional layers, each containing several different filters. Shallow convolutional layers tend to detect low-level features like edges and corners, while deeper layers combine these low-level features to detect more complex high-level features like object parts or overall shapes. This hierarchical feature extraction capability is key to CNNs' excellent performance in computer vision tasks.</p><p>In addition to convolutional layers, CNNs usually include <strong>Pooling Layers</strong>, most commonly max pooling. Pooling layers downsample feature maps, reducing spatial dimensions while preserving the most important feature information. For example, a 2×2 max pooling with stride 2 slides over the feature map, taking the maximum value from each 2×2 region as output. This provides three benefits: reduced computational load, increased receptive field (allowing higher-level neurons to see broader input regions), and some degree of translation invariance (small positional changes of features don't affect pooling output).</p><p>Convolutional layers have two important hyperparameters to understand: <strong>Stride</strong> controls the step size of the filter's slide, and <strong>Padding</strong> determines whether to add zero values at input boundaries. Larger strides result in smaller output feature maps; padding helps control output dimensions and preserve edge information. In practice, we often use \"same padding\" to maintain consistent input-output dimensions.</p><blockquote><p><strong>Misconception Clarification</strong>: Some think pooling layers simply discard information, but in reality, pooling is a strategic abstraction. Max pooling retains the most significant feature responses, average pooling considers the overall characteristics of a region, and global pooling (like global average pooling) can even directly convert feature maps into feature vectors. Different pooling methods have their own advantages in different scenarios and should be chosen based on task characteristics.</p></blockquote><p>In our MNIST classification example, we will use a combination of two convolutional+pooling layers: the first extracts low-level edge features, and the second combines these edges to form more complex digit part features. After feature extraction, we need to map these features to specific digit classes (0-9), which is achieved through fully connected layers for classification.</p><h3>Building a CNN for Image Classification: From Principles to PyTorch Practice</h3><p>Now we integrate all theoretical knowledge into a complete practical project: building a CNN with PyTorch to classify the MNIST handwritten digit dataset. MNIST contains 70,000 28×28 grayscale handwritten digit images, with 60,000 for training and 10,000 for testing. This is a classic entry-level computer vision dataset—simple enough for quick experimentation yet complex enough to demonstrate CNN advantages.</p><p>We will implement a simplified version of the LeNet-5 architecture (source: Gradient-Based Learning Applied to Document Recognition, 1998), an early CNN architecture proposed by Yann LeCun specifically for handwritten digit recognition. Our network structure includes: two convolutional layers (each followed by ReLU activation and max pooling), then flattening the feature map, and finally passing through two fully connected layers to output probability distributions for 10 classes. Training uses cross-entropy loss and the Adam optimizer.</p><p>During training, we need to focus on several key points: data preprocessing (normalizing pixel values to [0,1]), batch processing (using DataLoader with batch_size=64), model initialization, training loop (forward propagation, loss computation, backpropagation, parameter updates), and evaluation metrics (test accuracy). We will set a fixed random seed to ensure reproducible results—an important habit in research and work.</p><blockquote><p><strong>Misconception Clarification</strong>: Some believe CNN training requires GPU acceleration, but for small-scale datasets like MNIST, CPU training is sufficiently fast. The real advantage of GPUs lies in significantly accelerating training when processing large-scale image datasets (like ImageNet) or high-resolution images. Beginners can完全可以 run the complete流程 on CPU first to understand basic principles before considering hardware optimization.</p></blockquote><p>The following code block shows the complete implementation process. We first load and preprocess data, then define the CNN model, proceed with training, and finally evaluate model performance. The code includes necessary comments and key output printing, ensuring you can run it directly and understand each step.</p><pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torchvision\nimport torchvision.transforms as transforms\nimport matplotlib.pyplot as plt\nimport numpy as np\nfrom sklearn.metrics import confusion_matrix\nimport seaborn as sns\n\n# Set random seed for reproducibility\ntorch.manual_seed(42)\nnp.random.seed(42)\n\n# Data loading and preprocessing\ntransform = transforms.Compose([\n    transforms.ToTensor(),\n    transforms.Normalize((0.5,), (0.5,))\n])\n\ntrain_dataset = torchvision.datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntest_dataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=transform)\n\ntrain_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True)\ntest_loader = torch.utils.data.DataLoader(test_dataset, batch_size=64, shuffle=False)\n\nprint(f\"Training samples: {len(train_dataset)}, Test samples: {len(test_dataset)}\")\nprint(f\"Image dimensions: {train_dataset[0][0].shape}\")\n\n# Define CNN model\nclass SimpleCNN(nn.Module):\n    def __init__(self):\n        super(SimpleCNN, self).__init__()\n        self.conv1 = nn.Conv2d(1, 32, kernel_size=3, padding=1)\n        self.pool = nn.MaxPool2d(2, 2)\n        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, padding=1)\n        self.fc1 = nn.Linear(64 * 7 * 7, 128)\n        self.fc2 = nn.Linear(128, 10)\n        self.relu = nn.ReLU()\n        self.flatten = nn.Flatten()\n    \n    def forward(self, x):\n        x = self.pool(self.relu(self.conv1(x)))  # 28x28 -> 14x14\n        x = self.pool(self.relu(self.conv2(x)))  # 14x14 -> 7x7\n        x = self.flatten(x)\n        x = self.relu(self.fc1(x))\n        x = self.fc2(x)\n        return x\n\nmodel = SimpleCNN()\nprint(model)\n\n# Training configuration\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# Training loop\ntrain_losses = []\ntrain_accuracies = []\n\nfor epoch in range(10):\n    model.train()\n    running_loss = 0.0\n    correct = 0\n    total = 0\n    \n    for images, labels in train_loader:\n        optimizer.zero_grad()\n        outputs = model(images)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer.step()\n        \n        running_loss += loss.item()\n        _, predicted = torch.max(outputs.data, 1)\n        total += labels.size(0)\n        correct += (predicted == labels).sum().item()\n    \n    epoch_loss = running_loss / len(train_loader)\n    epoch_acc = 100 * correct / total\n    train_losses.append(epoch_loss)\n    train_accuracies.append(epoch_acc)\n    \n    print(f\"Epoch {epoch+1}/10 - Loss: {epoch_loss:.4f}, Accuracy: {epoch_acc:.2f}%\")\n\n# Evaluate model\nmodel.eval()\ntest_correct = 0\ntest_total = 0\nall_preds = []\nall_labels = []\n\nwith torch.no_grad():\n    for images, labels in test_loader:\n        outputs = model(images)\n        _, predicted = torch.max(outputs.data, 1)\n        test_total += labels.size(0)\n        test_correct += (predicted == labels).sum().item()\n        all_preds.extend(predicted.cpu().numpy())\n        all_labels.extend(labels.cpu().numpy())\n\ntest_accuracy = 100 * test_correct / test_total\nprint(f\"\\nTest accuracy: {test_accuracy:.2f}%\")\n\n# Visualize training process\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(train_losses, label='Training Loss')\nplt.xlabel('Epoch')\nplt.ylabel('Loss')\nplt.title('Training Loss Curve')\nplt.legend()\n\nplt.subplot(1, 2, 2)\nplt.plot(train_accuracies, label='Training Accuracy', color='orange')\nplt.xlabel('Epoch')\nplt.ylabel('Accuracy (%)')\nplt.title('Training Accuracy Curve')\nplt.legend()\nplt.tight_layout()\nplt.show()\n\n# Confusion matrix\ncm = confusion_matrix(all_labels, all_preds)\nplt.figure(figsize=(8, 6))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=range(10), yticklabels=range(10))\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.title('Confusion Matrix')\nplt.show()\n\n# Output environment information\nprint(f\"\\nEnvironment Information:\")\nprint(f\"PyTorch version: {torch.__version__}\")\nprint(f\"torchvision version: {torchvision.__version__}\")\nprint(f\"Random seed: 42\")</code></pre><p>Running this code, you should see the loss and accuracy changes during training, with final test accuracy likely exceeding 98%. The confusion matrix will show which digits the model confuses—typically shape-similar pairs like 8 and 9, or 3 and 5 pose greater challenges. This complete example demonstrates the full CNN workflow from data preparation to model evaluation, laying a solid foundation for handling more complex vision tasks.</p><p>Through this practice, you have mastered the core CNN workflow: data preprocessing → model architecture design → training optimization → evaluation analysis. This workflow can be migrated to any image classification task, whether medical image analysis, object detection in autonomous driving, or defect identification in industrial inspection. The key is adjusting hyperparameters like network depth, filter counts, and data augmentation strategies based on specific tasks.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：卷积神经网络基础 · 结构总览 · 数据：课程大纲】在设计《卷积神经网络基础》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 卷积神经网络基础 · 结构总览 · Data: 课程大纲】When outlining \"卷积神经网络基础\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：卷积神经网络基础 · worked example · 数据：理解卷积运算及其在图像中的应用 数据/代码】在复现《卷积神经网络基础》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 卷积神经网络基础 · worked example · Data: 理解卷积运算及其在图像中的应用 数据/代码】While reproducing the worked example in \"卷积神经网络基础\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：卷积神经网络基础 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《卷积神经网络基础》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 卷积神经网络基础 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"卷积神经网络基础\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：卷积神经网络基础 · 参考资料 · 数据：课程引用文献】当引用文献支撑《卷积神经网络基础》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 卷积神经网络基础 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"卷积神经网络基础\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Gradient-Based Learning Applied to Document Recognition（Proceedings of the IEEE，1998）",
+          "en": "Gradient-Based Learning Applied to Document Recognition (Proceedings of the IEEE, 1998)"
+        },
+        "url": "http://yann.lecun.com/exdb/publis/pdf/lecun-01a.pdf"
+      },
+      {
+        "label": {
+          "zh": "PyTorch Documentation: torchvision.datasets.MNIST（PyTorch，2023）",
+          "en": "PyTorch Documentation: torchvision.datasets.MNIST (PyTorch, 2023)"
+        },
+        "url": "https://pytorch.org/vision/stable/generated/torchvision.datasets.MNIST.html"
+      },
+      {
+        "label": {
+          "zh": "Deep Learning（MIT Press，2016）",
+          "en": "Deep Learning (MIT Press, 2016)"
+        },
+        "url": "https://www.deeplearningbook.org"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-16-cnn-zh.mp3"
+    },
+    "meta": {
+      "category": "Neural Network Fundamentals",
+      "level": "2. Deep Learning & Neural Networks",
+      "difficultyScore": 2,
+      "related": [
+        "卷积层",
+        "池化层"
+      ],
+      "learningObjectives": [
+        "理解卷积运算及其在图像中的应用",
+        "搭建简单卷积网络进行图像分类"
+      ],
+      "personas": [
+        "视觉初学者",
+        "工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 卷积神经网络基础 可帮助团队在 Neural Network Fundamentals 上做出可复用的实践。",
+        "best_for": "适合 视觉初学者、工程师，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "视觉初学者 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 视觉初学者、工程师，帮助他们把 卷积神经网络基础 应用于 Neural Network Fundamentals",
+        "prefersEnglish": false,
+        "industries": [
+          "视觉初学者",
+          "工程师"
+        ],
+        "personas": [
+          "视觉初学者",
+          "工程师"
+        ],
+        "pains": "在 Neural Network Fundamentals 场景缺乏 卷积神经网络基础 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "2. Deep Learning & Neural Networks"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为视觉初学者，你在处理图像数据时是否曾因传统方法效果不佳而困扰？请思考：卷积神经网络中的局部连接和权值共享机制，如何帮助你更高效地提取图像特征？",
+          "action_hint": "尝试用卷积核的滑动窗口概念，分析一张简单图片（如条纹图案）的特征提取过程。"
+        },
+        {
+          "lang": "zh",
+          "question": "工程师在部署模型时，常面临计算资源与精度的平衡问题。回顾你最近的项目：卷积层中的池化操作，如何通过降采样在保持关键特征的同时减少参数量？",
+          "action_hint": "对比同一张图片经过最大池化和平均池化后的效果差异，并思考不同场景下的适用性。"
+        }
+      ]
+    }
   }
 ]
