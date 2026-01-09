@@ -4406,5 +4406,187 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-16-pytorch",
+    "date": "2025-12-16",
+    "title": {
+      "zh": "PyTorch 基础与模型构建",
+      "en": "PyTorch Fundamentals and Model Building"
+    },
+    "summary": {
+      "zh": "PyTorch基础与模型构建是深度学习框架的核心技能，通过掌握张量操作、自动求导和模型定义，实现从理论到实践的可复现神经网络训练流程。本课程从动态计算图的哲学优势出发，逐步深入张量操作与自动求导机制，最终构建完整的训练循环。贯穿示例使用鸢尾花数据集实现全连接网络分类，涵盖数据预处理、模型定义、训练评估全流程，并强调可复现性设置。",
+      "en": "PyTorch fundamentals and model building are core skills in deep learning frameworks, enabling reproducible neural network training from theory to practice through tensor operations, automatic differentiation, and model definition. This course starts with the philosophical advantages of dynamic computational graphs, delves into tensor operations and autograd mechanisms, and culminates in building complete training loops. The integrated example implements a fully connected network for iris classification, covering data preprocessing, model definition, training evaluation, and reproducibility settings."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "PyTorch",
+      "deep learning"
+    ],
+    "content": {
+      "zh": "<h2>从NumPy到PyTorch：为什么需要动态计算图</h2><p>许多学习者在掌握NumPy后会产生疑问：“我已经会用NumPy做矩阵运算，为什么还要学PyTorch？”这种困惑源于对深度学习框架核心功能的理解不足。PyTorch不仅仅是NumPy的GPU加速版本，它引入了计算图（computational graph）和自动求导（automatic differentiation）机制，这是构建可训练神经网络的关键。</p><p>动态计算图（Dynamic Computational Graph）是PyTorch的核心设计哲学。与TensorFlow 1.x的静态图（先定义后执行）不同，PyTorch的计算图在运行时动态构建，允许灵活修改网络结构。这种设计带来了两大优势：调试时可以直接使用Python标准调试工具，无需重新编译整个计算图；研究时能够实现更复杂的控制流（如循环、条件语句）。动态图通过支持Python原生控制流（如if-else、for循环）实现这种灵活性，这在研究场景中特别重要，因为实验常需要根据数据动态调整网络结构。</p><p>一个常见的误区是将PyTorch视为“NumPy的GPU版本”。实际上，PyTorch的张量（Tensor）虽然与NumPy数组接口相似，但增加了梯度跟踪能力。当设置<code>requires_grad=True</code>时，PyTorch会自动记录所有操作，构建计算图用于反向传播。这种机制使得我们可以专注于前向传播逻辑，而将复杂的梯度计算交给框架处理。</p><p>在贯穿示例中，我们将看到动态图的实际应用：数据加载后，模型的前向传播路径会根据输入数据动态构建，这使得我们可以轻松实现可变长度的网络结构（如循环神经网络）。这种灵活性是静态图框架难以实现的。</p><p>理解了动态图的优势，接下来我们需要掌握操作这些张量的具体方法。张量不仅是数据的容器，更是计算图的节点，它们的属性（dtype, device, requires_grad）决定了计算行为。</p><h2>张量操作与自动求导：PyTorch的引擎</h2><p>学习者在实践中常遇到这样的问题：“PyTorch声称自动求导，但为什么我的模型训练时梯度不更新？”这通常源于对张量属性和autograd机制理解不深。PyTorch的自动求导（Automatic Differentiation）通过反向传播（backpropagation）实现梯度计算，但需要正确设置张量属性。</p><p>张量的<code>requires_grad</code>属性控制是否记录梯度信息。可以将它比作“录音开关”：开启时，PyTorch会记录所有操作，构建计算图；关闭时，则作为普通数据张量使用。需要注意的是，只有需要计算梯度的参数（如模型权重）才应设置<code>requires_grad=True</code>，输入数据通常不需要，以避免不必要的内存开销。</p><p>自动求导的工作原理基于计算图的链式法则。每个张量都有一个<code>grad_fn</code>属性，指向创建它的操作，形成链式结构。调用<code>backward()</code>时，PyTorch会从输出张量开始，沿着计算图反向传播，计算每个叶子节点（Leaf Tensor，用户直接创建的张量）的梯度。常见的误区包括：对非叶子节点直接调用<code>backward()</code>会导致错误；忘记调用<code>zero_grad()</code>会导致梯度累积。</p><p>在示例中，我们将创建简单的张量进行自动求导演示：<code>x = torch.tensor([2.0], requires_grad=True)</code>，计算<code>y = x**2 + 2*x + 1</code>，然后调用<code>y.backward()</code>。此时<code>x.grad</code>将包含导数<code>2*x + 2</code>，即6.0。这个简单的例子展示了PyTorch如何自动计算复杂函数的导数。</p><p>掌握了张量和自动求导，我们就可以用<code>nn.Module</code>来组织这些组件，构建真正的神经网络。模块化设计使得网络结构清晰、可复用，是工程实践的关键。</p><h2>模型定义与训练循环：从模块到完整流程</h2><p>当学习者定义了一个复杂网络但训练时loss不下降时，常会困惑：“是模型结构问题还是训练代码问题？”实际上，这可能是多种因素导致，需要系统化检查训练循环的每个环节。PyTorch通过<code>nn.Module</code>提供标准化的模型定义接口，配合优化器（optimizer）和损失函数（loss function）实现完整的训练流程。</p><p><code>nn.Module</code>是所有神经网络模块的基类，它管理参数、提供前向传播（Forward Propagation）接口，并支持模块嵌套。可以将它比作“乐高积木”：每个模块（如线性层、激活函数）都是独立的积木，可以组合成复杂的结构。定义模块时需要实现两个核心方法：<code>__init__</code>用于初始化参数和子模块，<code>forward</code>定义前向传播逻辑。<code>nn.Module</code>通过<code>parameters()</code>方法自动管理所有可训练参数，简化了参数更新过程。</p><p>训练循环的标准步骤包括：前向传播计算输出、计算损失、反向传播计算梯度、优化器更新参数。常见的误区包括：忘记调用<code>optimizer.zero_grad()</code>导致梯度累积；错误设置学习率导致训练不稳定；未正确分离训练和评估模式（<code>train()</code>/<code>eval()</code>）。</p><p>在示例中，我们将定义一个简单的全连接网络：输入层（4个特征）、隐藏层（10个神经元）、输出层（3个类别）。使用交叉熵损失（CrossEntropyLoss）和Adam优化器，实现完整的训练循环。关键代码结构如下：</p><pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\n\nclass IrisClassifier(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.fc1(x)\n        x = F.relu(x)\n        x = self.fc2(x)\n        return x\n\n# 数据预处理（X_train, y_train 来自后续完整代码块）\nmodel = IrisClassifier()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# 训练循环\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()</code></pre><p>掌握了单个模型的训练，我们需要考虑如何确保整个过程可复现。深度学习中的随机性来源包括权重初始化、数据打乱、dropout等，需要通过设置随机种子来控制。</p><h2>可复现的完整流程：从实验到工程</h2><p>深度学习研究不仅需要模型能够训练，更需要结果可复现（reproducibility）。可复现性是指在相同条件下重复实验，能够获得一致结果的能力。在实际项目中，缺乏可复现性会导致无法验证改进、难以调试问题、论文结果不可信等严重后果。</p><p>实现可复现性的关键步骤包括：设置全局随机种子、记录环境配置、版本控制代码和数据。PyTorch中需要设置的随机种子包括：<code>torch.manual_seed()</code>、<code>torch.cuda.manual_seed_all()</code>（如果使用GPU）、<code>numpy.random.seed()</code>（如果使用NumPy）。此外，数据加载器的<code>worker_init_fn</code>也需要特殊处理以确保多进程下的可复现性。</p><p>在示例中，我们将实现完整的可复现流程。首先设置所有随机种子，然后加载鸢尾花数据集（来源：Scikit-learn: Iris Dataset, 2023），进行标准化预处理，按7:3比例分割训练集和验证集（保持类别分布）。训练过程中记录每个epoch的loss和准确率，最终输出混淆矩阵和关键包版本。完整代码展示了如何将理论转化为可运行的工程实践。</p><pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.metrics import confusion_matrix, accuracy_score\n\n# 设置可复现性\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# 加载和预处理数据\niris = load_iris()\nX, y = iris.data, iris.target\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\nX_train, X_val, y_train, y_val = train_test_split(\n    X_scaled, y, test_size=0.3, random_state=seed, stratify=y\n)\n\n# 转换为PyTorch张量\nX_train = torch.FloatTensor(X_train)\ny_train = torch.LongTensor(y_train)\nX_val = torch.FloatTensor(X_val)\ny_val = torch.LongTensor(y_val)\n\n# 模型定义\nclass IrisClassifier(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.fc1(x)\n        x = F.relu(x)\n        x = self.fc2(x)\n        return x\n\nmodel = IrisClassifier()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# 训练循环\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()\n\n# 评估\nmodel.eval()\nwith torch.no_grad():\n    val_outputs = model(X_val)\n    val_preds = torch.argmax(val_outputs, dim=1)\n    accuracy = accuracy_score(y_val.numpy(), val_preds.numpy())\n    cm = confusion_matrix(y_val.numpy(), val_preds.numpy())\n\nprint(f\"数据shape: {X.shape}\")\nprint(f\"类别分布: 每个类别50个样本\")\nprint(f\"验证集准确率: {accuracy:.2%}\")\nprint(\"混淆矩阵:\")\nprint(cm)\nprint(f\"PyTorch版本: {torch.__version__}\")\nprint(f\"NumPy版本: {np.__version__}\")</code></pre><p>运行上述代码，我们期望获得以下输出：数据shape为(150, 4)特征和3个类别，每个类别50个样本，验证集准确率超过90%，混淆矩阵对角线值高，表明模型能够正确分类大多数样本。这些结果验证了PyTorch基础组件的正确使用。</p><p>将今天的工作流迁移到自己的项目时，可以遵循以下路径：首先明确数据特性和任务类型，选择合适的网络结构；然后实现标准化的训练循环，注意梯度管理和优化器设置；最后加入可复现性措施，记录所有实验配置。通过这种系统化方法，你可以将PyTorch从学习工具转化为生产力工具。</p>",
+      "en": "<h2>From NumPy to PyTorch: Why Dynamic Computational Graphs Matter</h2><p>Many learners who have mastered NumPy wonder: \"If I can already do matrix operations with NumPy, why learn PyTorch?\" This confusion stems from incomplete understanding of deep learning frameworks' core functionalities. PyTorch is not merely a GPU-accelerated version of NumPy; it introduces computational graphs and automatic differentiation mechanisms, which are essential for building trainable neural networks.</p><p>The dynamic computational graph is PyTorch's core design philosophy. Unlike TensorFlow 1.x's static graphs (define-then-execute), PyTorch builds computational graphs dynamically at runtime, allowing flexible modification of network architecture. This design offers two major advantages: debugging can use standard Python tools without recompiling the entire graph; research can implement complex control flows (like loops and conditionals) more naturally. Dynamic graphs achieve this flexibility by supporting Python's native control flow (e.g., if-else, for loops), which is particularly important in research scenarios where experiments often require adjusting network structures based on data.</p><p>A common misconception is viewing PyTorch as \"just NumPy with GPU support.\" In reality, while PyTorch tensors share interfaces with NumPy arrays, they add gradient tracking capabilities. When <code>requires_grad=True</code> is set, PyTorch automatically records all operations to build computational graphs for backpropagation. This mechanism lets us focus on forward propagation logic while delegating complex gradient calculations to the framework.</p><p>In our integrated example, we'll see dynamic graphs in action: after data loading, the model's forward propagation path builds dynamically based on input data, enabling easy implementation of variable-length network structures (like RNNs). This flexibility is difficult to achieve with static graph frameworks.</p><p>Understanding dynamic graphs' advantages, we next need to master specific methods for manipulating these tensors. Tensors are not just data containers but also computational graph nodes, whose properties (dtype, device, requires_grad) determine computational behavior.</p><h2>Tensor Operations and Automatic Differentiation: PyTorch's Engine</h2><p>Learners often encounter this issue in practice: \"PyTorch claims automatic differentiation, but why don't my model's gradients update during training?\" This usually results from insufficient understanding of tensor properties and autograd mechanisms. PyTorch's automatic differentiation computes gradients via backpropagation but requires correct tensor property settings.</p><p>A tensor's <code>requires_grad</code> property controls whether gradient information is recorded. Think of it as a \"recording switch\": when enabled, PyTorch records all operations to build computational graphs; when disabled, it functions as a regular data tensor. Note that only parameters requiring gradient computation (like model weights) should have <code>requires_grad=True</code>, while input data typically doesn't, to avoid unnecessary memory overhead.</p><p>Automatic differentiation works based on the chain rule over computational graphs. Each tensor has a <code>grad_fn</code> attribute pointing to the operation that created it, forming a chain structure. When <code>backward()</code> is called, PyTorch starts from the output tensor and propagates backward along the graph, computing gradients for each leaf tensor (user-created tensors). Common pitfalls include: calling <code>backward()</code> directly on non-leaf tensors causes errors; forgetting <code>zero_grad()</code> leads to gradient accumulation.</p><p>In our example, we'll create simple tensors for autograd demonstration: <code>x = torch.tensor([2.0], requires_grad=True)</code>, compute <code>y = x**2 + 2*x + 1</code>, then call <code>y.backward()</code>. Now <code>x.grad</code> contains the derivative <code>2*x + 2</code>, i.e., 6.0. This simple example shows how PyTorch automatically computes derivatives of complex functions.</p><p>Mastering tensors and automatic differentiation, we can use <code>nn.Module</code> to organize these components into real neural networks. Modular design makes network structures clear and reusable, key to engineering practice.</p><h2>Model Definition and Training Loops: From Modules to Complete Pipelines</h2><p>When learners define complex networks but see no loss decrease during training, they often wonder: \"Is it a model architecture problem or training code issue?\" Actually, multiple factors could be involved, requiring systematic checking of each training loop component. PyTorch provides standardized model definition interfaces via <code>nn.Module</code>, combined with optimizers and loss functions to implement complete training pipelines.</p><p><code>nn.Module</code> is the base class for all neural network modules, managing parameters, providing forward propagation interfaces, and supporting module nesting. Think of it as \"Lego bricks\": each module (like linear layers, activation functions) is an independent brick that can combine into complex structures. Defining modules requires implementing two core methods: <code>__init__</code> for initializing parameters and submodules, <code>forward</code> for defining forward propagation logic. <code>nn.Module</code> automatically manages all trainable parameters via the <code>parameters()</code> method, simplifying parameter updates.</p><p>Standard training loop steps include: forward propagation to compute outputs, loss calculation, backward propagation for gradients, optimizer parameter updates. Common pitfalls include: forgetting <code>optimizer.zero_grad()</code> causing gradient accumulation; incorrect learning rate settings leading to unstable training; not properly separating training and evaluation modes (<code>train()</code>/<code>eval()</code>).</p><p>In our example, we'll define a simple fully connected network: input layer (4 features), hidden layer (10 neurons), output layer (3 classes). Using cross-entropy loss and Adam optimizer, we implement a complete training loop. Key code structure:</p><pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\n\nclass IrisClassifier(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.fc1(x)\n        x = F.relu(x)\n        x = self.fc2(x)\n        return x\n\n# Data preprocessing (X_train, y_train from the full code block below)\nmodel = IrisClassifier()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# Training loop\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()</code></pre><p>Mastering single-model training, we need to consider ensuring reproducibility. Randomness sources in deep learning include weight initialization, data shuffling, dropout, etc., requiring control via random seed settings.</p><h2>Reproducible Complete Pipeline: From Experiment to Engineering</h2><p>Deep learning research requires not only trainable models but also reproducible results. Reproducibility means the ability to obtain consistent results when repeating experiments under identical conditions. In real projects, lack of reproducibility leads to inability to verify improvements, difficulty debugging issues, and unreliable paper results.</p><p>Key steps for achieving reproducibility include: setting global random seeds, recording environment configurations, version-controlling code and data. In PyTorch, random seeds to set include: <code>torch.manual_seed()</code>, <code>torch.cuda.manual_seed_all()</code> (if using GPU), <code>numpy.random.seed()</code> (if using NumPy). Additionally, data loaders' <code>worker_init_fn</code> requires special handling for reproducibility in multi-process settings.</p><p>In our example, we implement a complete reproducible pipeline. First set all random seeds, then load the iris dataset (source: Scikit-learn: Iris Dataset, 2023), apply standardization preprocessing, split into 7:3 train-validation sets (maintaining class distribution). During training, record each epoch's loss and accuracy, finally output confusion matrix and key package versions. The complete code demonstrates translating theory into runnable engineering practice.</p><pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.metrics import confusion_matrix, accuracy_score\n\n# Set reproducibility\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# Load and preprocess data\niris = load_iris()\nX, y = iris.data, iris.target\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\nX_train, X_val, y_train, y_val = train_test_split(\n    X_scaled, y, test_size=0.3, random_state=seed, stratify=y\n)\n\n# Convert to PyTorch tensors\nX_train = torch.FloatTensor(X_train)\ny_train = torch.LongTensor(y_train)\nX_val = torch.FloatTensor(X_val)\ny_val = torch.LongTensor(y_val)\n\n# Model definition\nclass IrisClassifier(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.fc1(x)\n        x = F.relu(x)\n        x = self.fc2(x)\n        return x\n\nmodel = IrisClassifier()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# Training loop\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()\n\n# Evaluation\nmodel.eval()\nwith torch.no_grad():\n    val_outputs = model(X_val)\n    val_preds = torch.argmax(val_outputs, dim=1)\n    accuracy = accuracy_score(y_val.numpy(), val_preds.numpy())\n    cm = confusion_matrix(y_val.numpy(), val_preds.numpy())\n\nprint(f\"Data shape: {X.shape}\")\nprint(f\"Class distribution: 50 samples per class\")\nprint(f\"Validation accuracy: {accuracy:.2%}\")\nprint(\"Confusion matrix:\")\nprint(cm)\nprint(f\"PyTorch version: {torch.__version__}\")\nprint(f\"NumPy version: {np.__version__}\")</code></pre><p>Running this code, we expect outputs: data shape (150, 4) features and 3 classes, 50 samples per class, validation accuracy over 90%, confusion matrix with high diagonal values indicating correct classification for most samples. These results validate correct usage of PyTorch's fundamental components.</p><p>To migrate today's workflow to your own projects, follow this path: first clarify data characteristics and task type, choose appropriate network architecture; then implement standardized training loops, noting gradient management and optimizer settings; finally add reproducibility measures, recording all experiment configurations. Through this systematic approach, you can transform PyTorch from a learning tool into a productivity tool.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：PyTorch 基础与模型构建 · 结构总览 · 数据：课程大纲】在设计《PyTorch 基础与模型构建》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: PyTorch 基础与模型构建 · 结构总览 · Data: 课程大纲】When outlining \"PyTorch 基础与模型构建\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：PyTorch 基础与模型构建 · worked example · 数据：掌握 PyTorch 基本使用和模型定义 数据/代码】在复现《PyTorch 基础与模型构建》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: PyTorch 基础与模型构建 · worked example · Data: 掌握 PyTorch 基本使用和模型定义 数据/代码】While reproducing the worked example in \"PyTorch 基础与模型构建\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：PyTorch 基础与模型构建 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《PyTorch 基础与模型构建》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: PyTorch 基础与模型构建 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"PyTorch 基础与模型构建\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：PyTorch 基础与模型构建 · 参考资料 · 数据：课程引用文献】当引用文献支撑《PyTorch 基础与模型构建》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: PyTorch 基础与模型构建 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"PyTorch 基础与模型构建\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "PyTorch Documentation: Tensors（PyTorch，2023）",
+          "en": "PyTorch Documentation: Tensors (PyTorch, 2023)"
+        },
+        "url": "https://pytorch.org/docs/stable/tensors.html"
+      },
+      {
+        "label": {
+          "zh": "Automatic Differentiation in PyTorch（PyTorch Tutorials，2023）",
+          "en": "Automatic Differentiation in PyTorch (PyTorch Tutorials, 2023)"
+        },
+        "url": "https://pytorch.org/tutorials/beginner/blitz/autograd_tutorial.html"
+      },
+      {
+        "label": {
+          "zh": "PyTorch nn.Module Documentation（PyTorch，2023）",
+          "en": "PyTorch nn.Module Documentation (PyTorch, 2023)"
+        },
+        "url": "https://pytorch.org/docs/stable/generated/torch.nn.Module.html"
+      },
+      {
+        "label": {
+          "zh": "Scikit-learn: Iris Dataset（Scikit-learn，2023）",
+          "en": "Scikit-learn: Iris Dataset (Scikit-learn, 2023)"
+        },
+        "url": "https://scikit-learn.org/stable/modules/generated/sklearn.datasets.load_iris.html"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-16-pytorch-zh.mp3"
+    },
+    "meta": {
+      "category": "Deep Learning Frameworks",
+      "level": "2. Deep Learning & Neural Networks",
+      "difficultyScore": 1,
+      "related": [
+        "自动求导",
+        "张量运算"
+      ],
+      "learningObjectives": [
+        "掌握 PyTorch 基本使用和模型定义",
+        "实现前向传播与训练循环"
+      ],
+      "personas": [
+        "学生",
+        "工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "掌握PyTorch基础与模型构建是深度学习实践的关键步骤，帮助学习者在实际项目中实现可复现的神经网络训练流程。",
+        "best_for": "适合具备Python基础、了解机器学习基本概念的学生和工程师，需要系统学习PyTorch框架。",
+        "visual_hint": "建议使用流程图展示从数据加载到模型评估的完整流程，并用表格对比动态图与静态图的差异。阅读时建议先理解各节理论，再运行代码块验证概念。"
+      },
+      "tone_profile": {
+        "persona": "学生 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 学生、工程师，帮助他们把 PyTorch 基础与模型构建 应用于 Deep Learning Frameworks",
+        "prefersEnglish": false,
+        "industries": [
+          "学生",
+          "工程师"
+        ],
+        "personas": [
+          "学生",
+          "工程师"
+        ],
+        "pains": "在 Deep Learning Frameworks 场景缺乏 PyTorch 基础与模型构建 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "2. Deep Learning & Neural Networks"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为学生或工程师，你在使用深度学习框架时，是否曾因PyTorch基础不牢而难以构建可运行的模型？回想最近的项目，哪些张量操作或自动求导的细节让你感到困惑，阻碍了从理论到实践的转化？",
+          "action_hint": "尝试描述一个具体场景，并思考如何通过本课程的张量操作和模型定义知识来解决它。"
+        },
+        {
+          "lang": "zh",
+          "question": "在深度学习框架应用中，你如何确保模型训练流程的可复现性？结合鸢尾花数据集的示例，你认为PyTorch的动态计算图优势，能在你的学习或工程项目中带来哪些效率提升或创新可能？",
+          "action_hint": "基于你的行业背景（学生或工程师），设想一个应用场景，并规划如何利用本课程的训练循环知识来实现它。"
+        }
+      ]
+    }
   }
 ]
