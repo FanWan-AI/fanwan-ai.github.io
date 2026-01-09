@@ -4237,5 +4237,174 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-16-recurrent-neural-network",
+    "date": "2025-12-16",
+    "title": {
+      "zh": "循环神经网络与时序模型",
+      "en": "Recurrent Neural Networks and Time Series Models"
+    },
+    "summary": {
+      "zh": "循环神经网络（RNN）及其变体LSTM、GRU是处理序列数据的核心架构，通过引入时间维度的循环连接来捕捉时序依赖关系。本课程从序列数据的本质挑战出发，逐步深入RNN的隐藏状态机制、LSTM/GRU的门控原理，最终通过一个完整的IMDb电影评论情感分析项目，展示从数据预处理、模型构建到训练评估的完整流程。读者将掌握如何将理论应用于实际任务，实现可复现的序列建模工作流。",
+      "en": "Recurrent Neural Networks (RNNs) and their variants LSTM and GRU are core architectures for processing sequential data, capturing temporal dependencies through time-dimensional recurrent connections. This course starts from the fundamental challenges of sequential data, progressively delves into RNN hidden state mechanisms and LSTM/GRU gating principles, and culminates in a complete IMDb movie review sentiment analysis project, demonstrating the full workflow from data preprocessing and model building to training evaluation. Readers will learn how to apply theory to practical tasks, implementing reproducible sequence modeling workflows."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "recurrent neural network",
+      "sequence"
+    ],
+    "content": {
+      "zh": "<h2>循环神经网络与时序模型：从记忆缺失到情感分析实战</h2>\n\n<p>想象一下，你正在阅读一本小说，但每读一句话就忘记前文的情节——这就像传统神经网络处理文本时的困境。在自然语言处理（NLP）和时间序列分析中，数据点之间存在顺序依赖关系，而全连接网络（fully connected network）却像“金鱼记忆”，无法捕捉这种时序依赖（temporal dependency）。今天，我们将深入探索循环神经网络（Recurrent Neural Network, RNN）及其变体LSTM和GRU，它们通过引入“记忆”能力，让模型能够理解序列中的上下文关系。通过一个完整的IMDb电影评论情感分析项目，你将掌握从理论到实践的完整工作流，学会如何构建、训练和评估序列模型。</p>\n\n<h3>从“记忆”缺失到循环连接：序列数据的本质挑战</h3>\n\n<p>让我们从一个具体问题开始：如果用全连接网络预测句子“我爱北京天安门”的下一个词，模型会如何处理？它会将每个词视为独立输入，完全忽略“天安门”前的“北京”和“我爱”提供的上下文。这就是序列数据（sequential data）的核心挑战——数据点不是独立同分布（i.i.d.），而是存在时序依赖。传统神经网络缺乏“记忆”机制，无法保留历史信息，导致在文本生成、语音识别或股票预测等任务中表现受限。</p>\n\n<p>严谨来说，序列数据是指数据点按特定顺序排列，当前值受前面值影响的集合，如时间序列、文本句子或DNA序列。时序依赖则描述了这种前后影响的关系。与图像数据不同，序列的长度可能可变，且顺序至关重要——打乱单词顺序会完全改变句子的含义。</p>\n\n<p>为什么全连接网络无法有效处理序列？关键在于其结构假设：每个输入被独立处理，层与层之间没有时间维度的连接。这就像试图用静态照片理解电影剧情——丢失了动态连贯性。RNN通过引入循环连接（recurrent connection）解决了这一问题，允许信息在时间步（time step）间传递，从而模拟“记忆”功能。</p>\n\n<blockquote><strong>误区澄清：</strong>“循环神经网络只能处理时间序列数据。”<br><strong>纠正：</strong>RNN适用于任何具有顺序结构的数据，包括文本、DNA序列、视频帧等，只要数据点之间存在依赖关系。</blockquote>\n\n<p>在我们的IMDb情感分析示例中，电影评论是典型的文本序列。模型需要理解整个句子的情感倾向，而不是孤立分析每个词。例如，句子“这部电影很棒”中的“很棒”强烈依赖于前文“电影”的语境。接下来，我们将看到RNN如何通过隐藏状态（hidden state）实现这种上下文理解。</p>\n\n<p>理解了序列数据的挑战，接下来我们看看RNN如何通过循环连接实现“记忆”功能。</p>\n\n<h3>RNN的核心：循环连接与隐藏状态</h3>\n\n<p>RNN的“循环”到底循环什么？简单来说，它循环的是隐藏状态——一个在每个时间步更新的内部向量，用于编码到当前步为止的序列信息。形式化地，RNN在每个时间步t的操作可以表示为：h_t = f(W_h * h_{t-1} + W_x * x_t + b)，其中h_t是当前隐藏状态，h_{t-1}是前一步隐藏状态，x_t是当前输入，W_h、W_x是权重矩阵，b是偏置，f是激活函数（如tanh）。</p>\n\n<p>这个公式揭示了RNN的两个关键特性：首先，参数（W_h, W_x, b）在所有时间步共享，大大减少了模型参数量；其次，隐藏状态h_t充当了“记忆载体”，将历史信息传递给未来时间步。与全连接网络相比，RNN不是通过增加网络深度，而是通过时间上展开（unrolling）来处理序列，形成一种“时间深度”。</p>\n\n<p>让我们通过一个简单例子理解：输入时间序列[1, 2, 3]，RNN逐步处理每个值。在t=1，h_1编码了“1”；t=2，h_2编码了“1和2”的组合信息；t=3，h_3最终编码了整个序列[1,2,3]的表示。这种逐步更新使得RNN能够捕捉序列中的模式。</p>\n\n<blockquote><strong>误区澄清：</strong>“RNN的隐藏状态是‘记忆’的全部，完美存储所有历史信息。”<br><strong>纠正：</strong>隐藏状态是压缩表示，可能丢失早期信息，尤其在长序列中。随着时间步增加，早期信息可能被稀释或覆盖。</blockquote>\n\n<p>在情感分析任务中，RNN会逐词处理评论句子。隐藏状态逐步累积情感线索：例如，处理“电影”时可能初始化状态，遇到“很棒”时更新为积极信号，最终状态用于预测整体情感。然而，当评论很长时，简单RNN可能“忘记”开头的关键信息——这正是梯度问题（gradient problem）的体现。</p>\n\n<p>RNN虽然引入了记忆，但面对长序列时，梯度问题会使其“遗忘”早期信息。</p>\n\n<h3>从RNN到LSTM/GRU：门控机制如何解决长程依赖</h3>\n\n<p>为什么RNN在长文本中经常“忘记”开头的内容？根源在于梯度消失（vanishing gradient）和梯度爆炸（exploding gradient）。在反向传播过程中，梯度需要跨越多个时间步传递，如果梯度值过小（消失）或过大（爆炸），早期层的权重无法有效更新，导致模型难以学习长程依赖（long-term dependency）（来源：On the difficulty of training recurrent neural networks, 2013）。</p>\n\n<p>长短期记忆网络（Long Short-Term Memory, LSTM）通过引入门控机制（gating mechanism）解决了这一问题（来源：Long Short-Term Memory, 1997）。LSTM的核心是细胞状态（cell state）——一条贯穿时间步的“高速公路”，专门用于长期信息传递。它通过三个门控制信息流：遗忘门（forget gate）决定丢弃多少旧信息，输入门（input gate）决定添加多少新信息，输出门（output gate）决定当前隐藏状态的输出。数学上，这些门使用sigmoid激活函数产生0到1之间的值，表示信息保留比例。</p>\n\n<p>门控循环单元（Gated Recurrent Unit, GRU）是LSTM的简化版本，将遗忘门和输入门合并为更新门（update gate），并添加重置门（reset gate）（来源：Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation, 2014）。GRU参数更少，训练更快，在许多任务中表现与LSTM相当。选择LSTM还是GRU取决于具体任务：LSTM在需要精细控制信息流的复杂序列上可能更优，而GRU在计算资源有限或序列较短时更高效。</p>\n\n<blockquote><strong>误区澄清：</strong>“LSTM总是比RNN好，应该永远使用LSTM。”<br><strong>纠正：</strong>对于短序列或简单任务，RNN可能更高效；LSTM适用于长序列或复杂依赖。模型选择应基于任务需求和数据特性。</blockquote>\n\n<p>在我们的IMDb示例中，电影评论长度不一，有些可能长达数百词。LSTM的遗忘门可以学会保留如“电影”这样的主题词，同时过滤掉无关细节；输入门则重点捕捉情感词如“精彩”或“糟糕”。这种选择性记忆使模型能够准确判断长评论的情感倾向，即使关键信息出现在开头。</p>\n\n<p>现在，让我们把这些理论付诸实践，构建一个可运行的序列分类模型。</p>\n\n<h3>实战：用PyTorch构建情感分析模型</h3>\n\n<p>如何将文本数据转换成RNN可处理的格式？这需要一系列预处理步骤：首先，分词（tokenization）将句子拆分为单词或子词；其次，构建词汇表（vocabulary）将词映射到整数索引；然后，使用词嵌入（word embedding）如Word2Vec或GloVe将索引转换为密集向量；最后，由于序列长度可变，需要填充（padding）或打包（packing）以便批量处理。</p>\n\n<p>为什么需要这些步骤？词嵌入将离散的词语映射到连续向量空间，使语义相似的词在向量空间中靠近，这比one-hot编码更高效且能捕捉语义关系。填充确保批量中的序列长度一致，但直接填充零会引入无效计算；pack_padded_sequence通过打包变长序列，在LSTM中跳过填充部分，提高计算效率。这些预处理步骤与模型架构紧密交互：嵌入层将整数索引转换为向量，LSTM处理这些向量序列，最终全连接层输出分类结果。</p>\n\n<p>下面是一个综合代码示例，展示了从数据加载到模型评估的完整流程。我们使用IMDb数据集，包含50,000条电影评论（25,000条训练，25,000条测试），任务是将评论分类为正面或负面情感。</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchtext.datasets import IMDB\nfrom torchtext.data.utils import get_tokenizer\nfrom torchtext.vocab import build_vocab_from_iterator\nfrom torch.utils.data import DataLoader, Dataset\nimport numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay\n\n# 设置随机种子确保可复现性 reproducibility\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\n# 步骤1：数据加载与预处理\nprint(\"加载IMDb数据集...\")\ntrain_iter, test_iter = IMDB(split=('train', 'test'))\n\n# 转换为列表以便多次迭代\ntrain_data = list(train_iter)\ntest_data = list(test_iter)\nprint(f\"训练集大小: {len(train_data)}\")\nprint(f\"测试集大小: {len(test_data)}\")\n\n# 构建词汇表\ntokenizer = get_tokenizer('basic_english')\ndef yield_tokens(data_iter):\n    for label, text in data_iter:\n        yield tokenizer(text)\nvocab = build_vocab_from_iterator(yield_tokens(train_data), specials=['<unk>', '<pad>', '<bos>', '<eos>'])\nvocab.set_default_index(vocab['<unk>'])\nprint(f\"词汇表大小: {len(vocab)}\")\n\n# 数据转换函数\ndef text_pipeline(text):\n    return [vocab[token] for token in tokenizer(text)]\n\ndef label_pipeline(label):\n    return 1 if label == 'pos' else 0\n\n# 创建自定义Dataset\nclass TextDataset(Dataset):\n    def __init__(self, data):\n        self.data = data\n    def __len__(self):\n        return len(self.data)\n    def __getitem__(self, idx):\n        label, text = self.data[idx]\n        return torch.tensor(text_pipeline(text), dtype=torch.long), torch.tensor(label_pipeline(label), dtype=torch.long)\n\ndef collate_batch(batch):\n    text_list, label_list = [], []\n    for text, label in batch:\n        text_list.append(text)\n        label_list.append(label)\n    text_list = nn.utils.rnn.pad_sequence(text_list, batch_first=True, padding_value=vocab['<pad>'])\n    label_list = torch.stack(label_list)\n    return text_list, label_list\n\n# 创建DataLoader\ntrain_dataset = TextDataset(train_data)\ntest_dataset = TextDataset(test_data)\ntrain_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_batch)\ntest_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=collate_batch)\n\n# 步骤2：模型定义\nclass LSTMModel(nn.Module):\n    def __init__(self, vocab_size, embed_dim, hidden_dim, output_dim, n_layers, dropout):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=vocab['<pad>'])\n        self.lstm = nn.LSTM(embed_dim, hidden_dim, n_layers, dropout=dropout, batch_first=True)\n        self.fc = nn.Linear(hidden_dim, output_dim)\n        self.dropout = nn.Dropout(dropout)\n    \n    def forward(self, text):\n        embedded = self.dropout(self.embedding(text))\n        # 计算序列长度用于打包\n        lengths = (text != vocab['<pad>']).sum(dim=1).cpu()\n        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)\n        packed_output, (hidden, cell) = self.lstm(packed_embedded)\n        return self.fc(self.dropout(hidden[-1]))\n\n# 模型实例化\nVOCAB_SIZE = len(vocab)\nEMBED_DIM = 100\nHIDDEN_DIM = 256\nOUTPUT_DIM = 2  # 正面/负面\nN_LAYERS = 2\nDROPOUT = 0.5\nmodel = LSTMModel(VOCAB_SIZE, EMBED_DIM, HIDDEN_DIM, OUTPUT_DIM, N_LAYERS, DROPOUT)\nprint(f\"模型参数量: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}\")\n\n# 步骤3：训练循环\ndef train_epoch(model, loader, optimizer, criterion):\n    model.train()\n    total_loss, total_acc = 0, 0\n    for text, labels in loader:\n        optimizer.zero_grad()\n        predictions = model(text)\n        loss = criterion(predictions, labels)\n        acc = (predictions.argmax(1) == labels).float().mean()\n        loss.backward()\n        optimizer.step()\n        total_loss += loss.item()\n        total_acc += acc.item()\n    return total_loss / len(loader), total_acc / len(loader)\n\ndef evaluate(model, loader, criterion):\n    model.eval()\n    total_loss, total_acc = 0, 0\n    all_preds, all_labels = [], []\n    with torch.no_grad():\n        for text, labels in loader:\n            predictions = model(text)\n            loss = criterion(predictions, labels)\n            acc = (predictions.argmax(1) == labels).float().mean()\n            total_loss += loss.item()\n            total_acc += acc.item()\n            all_preds.extend(predictions.argmax(1).cpu().numpy())\n            all_labels.extend(labels.cpu().numpy())\n    return total_loss / len(loader), total_acc / len(loader), all_preds, all_labels\n\n# 训练准备\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# 训练5个epoch\nepochs = 5\ntrain_losses, train_accs = [], []\nval_losses, val_accs = [], []\nfor epoch in range(epochs):\n    train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion)\n    val_loss, val_acc, _, _ = evaluate(model, test_loader, criterion)\n    train_losses.append(train_loss)\n    train_accs.append(train_acc)\n    val_losses.append(val_loss)\n    val_accs.append(val_acc)\n    print(f\"Epoch {epoch+1}: Train Loss={train_loss:.4f}, Train Acc={train_acc:.4f}; Val Loss={val_loss:.4f}, Val Acc={val_acc:.4f}\")\n\n# 步骤4：可视化与评估\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(train_losses, label='Training Loss')\nplt.plot(val_losses, label='Validation Loss')\nplt.xlabel('Epoch')\nplt.ylabel('Loss')\nplt.title('Loss Curves')\nplt.legend()\n\nplt.subplot(1, 2, 2)\nplt.plot(train_accs, label='Training Accuracy')\nplt.plot(val_accs, label='Validation Accuracy')\nplt.xlabel('Epoch')\nplt.ylabel('Accuracy')\nplt.title('Accuracy Curves')\nplt.legend()\nplt.tight_layout()\nplt.show()\n\n# 最终评估\n_, test_acc, all_preds, all_labels = evaluate(model, test_loader, criterion)\nprint(f\"最终测试准确率: {test_acc:.4f}\")\n\n# 混淆矩阵\ncm = confusion_matrix(all_labels, all_preds)\ndisp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['Negative', 'Positive'])\ndisp.plot(cmap='Blues')\nplt.title('Confusion Matrix')\nplt.show()\n\nprint(f\"环境信息: PyTorch {torch.__version__}, 随机种子 {SEED}\")\n</code></pre>\n\n<blockquote><strong>误区澄清：</strong>“RNN模型训练后可以直接部署，无需考虑预处理步骤。”<br><strong>纠正：</strong>预处理（如分词、嵌入）是模型的一部分，必须与训练时保持一致。部署时需要相同的分词器和词汇表。</blockquote>\n\n<p>在这个示例中，我们构建了一个两层LSTM模型，使用嵌入维度100和隐藏维度256。通过pack_padded_sequence处理变长序列，提高了计算效率。训练过程中，损失曲线应逐渐下降，准确率逐渐上升，最终在测试集上达到80%以上的准确率。混淆矩阵帮助我们分析模型错误：例如，哪些负面评论被误判为正面，可能由于反讽或复杂表达。</p>\n\n<p>掌握了这些，你已经可以开始自己的序列建模项目了。</p>\n\n<h3>总结与迁移路径</h3>\n\n<p>通过今天的学习，你不仅理解了RNN、LSTM和GRU的理论基础，还实践了一个完整的情感分析项目。关键收获在于：序列数据需要特殊的“记忆”机制，RNN通过循环连接实现这一点，而LSTM/GRU通过门控解决了长程依赖问题。工程上，从文本预处理到模型训练，每个环节都影响最终性能。</p>\n\n<p>要将这个工作流迁移到你的项目中，遵循以下路径：首先，明确你的序列任务类型（分类、生成、预测）；其次，准备和预处理数据，确保格式一致；然后，选择合适的模型（RNN用于短序列，LSTM/GRU用于长序列）；接着，实现训练循环，监控损失和指标；最后，评估并迭代改进。例如，如果你要分析社交媒体情感，可以替换IMDb数据集为推文数据，调整词汇表和嵌入维度；如果你要预测股票价格，可以将文本输入改为时间序列数值，使用LSTM进行回归预测。</p>\n\n<p>记住，序列建模的核心是捕捉时间维度上的依赖关系。无论你的数据是文本、语音还是传感器读数，RNN家族都提供了强大的工具来理解其动态模式。现在，尝试将今天的方法应用到你的下一个序列任务中吧。</p>",
+      "en": "<h2>Recurrent Neural Networks and Sequential Models: From Memory Gaps to Sentiment Analysis in Practice</h2>\n\n<p>Imagine reading a novel but forgetting the plot after each sentence—this is the dilemma traditional neural networks face when processing text. In natural language processing (NLP) and time series analysis, data points have sequential dependencies, yet fully connected networks act like “goldfish memory,” unable to capture temporal dependencies. Today, we will delve into Recurrent Neural Networks (RNNs) and their variants LSTM and GRU, which introduce “memory” capabilities, enabling models to understand contextual relationships in sequences. Through a complete IMDb movie review sentiment analysis project, you will master the full workflow from theory to practice, learning how to build, train, and evaluate sequence models.</p>\n\n<h3>From Memory Gaps to Recurrent Connections: The Core Challenge of Sequential Data</h3>\n\n<p>Let’s start with a concrete problem: If using a fully connected network to predict the next word in the sentence “I love Beijing Tiananmen,” how would the model process it? It would treat each word as an independent input, completely ignoring the context provided by “Beijing” and “I love” before “Tiananmen.” This is the core challenge of sequential data—data points are not independent and identically distributed (i.i.d.) but exhibit temporal dependencies. Traditional neural networks lack a “memory” mechanism, unable to retain historical information, leading to limitations in tasks like text generation, speech recognition, or stock prediction.</p>\n\n<p>Formally, sequential data refers to collections where data points are arranged in a specific order, with current values influenced by preceding ones, such as time series, text sentences, or DNA sequences. Temporal dependency describes this forward-backward influence relationship. Unlike image data, sequences can have variable lengths, and order is crucial—scrambling word order completely changes a sentence’s meaning.</p>\n\n<p>Why can’t fully connected networks effectively handle sequences? The key lies in their structural assumption: each input is processed independently, with no time-dimensional connections between layers. It’s like trying to understand a movie plot from static photos—losing dynamic continuity. RNNs address this by introducing recurrent connections, allowing information to pass between time steps, thus simulating “memory” functionality.</p>\n\n<blockquote><strong>Misconception Clarification:</strong> “Recurrent neural networks can only handle time series data.”<br><strong>Correction:</strong> RNNs are suitable for any data with sequential structure, including text, DNA sequences, video frames, etc., as long as dependencies exist between data points.</blockquote>\n\n<p>In our IMDb sentiment analysis example, movie reviews are typical text sequences. The model needs to understand the emotional tendency of the entire sentence, not analyze each word in isolation. For instance, the word “great” in the sentence “This movie is great” strongly depends on the context of “movie.” Next, we will see how RNNs achieve this contextual understanding through hidden states.</p>\n\n<p>Understanding the challenges of sequential data, let’s explore how RNNs implement “memory” through recurrent connections.</p>\n\n<h3>The Core of RNNs: Recurrent Connections and Hidden States</h3>\n\n<p>What exactly is “recurrent” in RNNs? Simply put, it’s the hidden state—an internal vector updated at each time step, encoding sequence information up to the current step. Formally, the RNN operation at each time step t can be expressed as: h_t = f(W_h * h_{t-1} + W_x * x_t + b), where h_t is the current hidden state, h_{t-1} is the previous hidden state, x_t is the current input, W_h and W_x are weight matrices, b is the bias, and f is an activation function (e.g., tanh).</p>\n\n<p>This formula reveals two key properties of RNNs: first, parameters (W_h, W_x, b) are shared across all time steps, significantly reducing model parameters; second, the hidden state h_t acts as a “memory carrier,” passing historical information to future time steps. Compared to fully connected networks, RNNs handle sequences not by increasing network depth but by unrolling over time, creating a form of “temporal depth.”</p>\n\n<p>Let’s understand through a simple example: input time series [1, 2, 3], RNN processes each value stepwise. At t=1, h_1 encodes “1”; at t=2, h_2 encodes combined information of “1 and 2”; at t=3, h_3 finally encodes the representation of the entire sequence [1,2,3]. This gradual updating allows RNNs to capture patterns in sequences.</p>\n\n<blockquote><strong>Misconception Clarification:</strong> “The hidden state in RNNs is the entirety of ‘memory,’ perfectly storing all historical information.”<br><strong>Correction:</strong> The hidden state is a compressed representation and may lose early information, especially in long sequences. As time steps increase, early information can be diluted or overwritten.</blockquote>\n\n<p>In the sentiment analysis task, RNNs process review sentences word by word. The hidden state gradually accumulates emotional cues: for example, initializing state when processing “movie,” updating to positive signals upon encountering “great,” with the final state used to predict overall sentiment. However, when reviews are long, simple RNNs may “forget” key information from the beginning—this is where gradient problems manifest.</p>\n\n<p>While RNNs introduce memory, gradient problems can cause them to “forget” early information in long sequences.</p>\n\n<h3>From RNN to LSTM/GRU: How Gating Mechanisms Solve Long-Term Dependencies</h3>\n\n<p>Why do RNNs often “forget” content from the beginning in long texts? The root cause lies in vanishing gradients and exploding gradients. During backpropagation, gradients need to propagate across multiple time steps; if gradient values are too small (vanishing) or too large (exploding), weights in early layers cannot update effectively, making it difficult for models to learn long-term dependencies (Source: On the difficulty of training recurrent neural networks, 2013).</p>\n\n<p>Long Short-Term Memory (LSTM) networks address this by introducing gating mechanisms (Source: Long Short-Term Memory, 1997). The core of LSTM is the cell state—a “highway” running through time steps, dedicated to long-term information transmission. It controls information flow through three gates: the forget gate decides how much old information to discard, the input gate decides how much new information to add, and the output gate determines the output of the current hidden state. Mathematically, these gates use sigmoid activation functions to produce values between 0 and 1, representing information retention ratios.</p>\n\n<p>The Gated Recurrent Unit (GRU) is a simplified version of LSTM, merging the forget and input gates into an update gate and adding a reset gate (Source: Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation, 2014). GRUs have fewer parameters, train faster, and perform comparably to LSTMs in many tasks. Choosing between LSTM and GRU depends on the specific task: LSTMs may be better for complex sequences requiring fine-grained control of information flow, while GRUs are more efficient with limited computational resources or shorter sequences.</p>\n\n<blockquote><strong>Misconception Clarification:</strong> “LSTM is always better than RNN; LSTM should always be used.”<br><strong>Correction:</strong> For short sequences or simple tasks, RNNs may be more efficient; LSTMs are suitable for long sequences or complex dependencies. Model selection should be based on task requirements and data characteristics.</blockquote>\n\n<p>In our IMDb example, movie reviews vary in length, some extending to hundreds of words. LSTM’s forget gate can learn to retain topic words like “movie” while filtering irrelevant details; the input gate focuses on capturing emotional words like “brilliant” or “terrible.” This selective memory enables the model to accurately judge sentiment in long reviews, even if key information appears at the beginning.</p>\n\n<p>Now, let’s put this theory into practice by building a runnable sequence classification model.</p>\n\n<h3>Practical Implementation: Building a Sentiment Analysis Model with PyTorch</h3>\n\n<p>How do we convert text data into a format processable by RNNs? This requires a series of preprocessing steps: first, tokenization splits sentences into words or subwords; second, building a vocabulary maps words to integer indices; then, word embeddings like Word2Vec or GloVe convert indices into dense vectors; finally, since sequence lengths vary, padding or packing is needed for batch processing.</p>\n\n<p>Why are these steps necessary? Word embeddings map discrete words to continuous vector spaces, positioning semantically similar words closer together, which is more efficient than one-hot encoding and captures semantic relationships. Padding ensures uniform sequence lengths in batches, but direct zero-padding introduces无效计算; pack_padded_sequence improves computational efficiency by packing variable-length sequences and skipping padded parts in LSTMs. These preprocessing steps interact closely with the model architecture: the embedding layer converts integer indices to vectors, the LSTM processes these vector sequences, and the final fully connected layer outputs classification results.</p>\n\n<p>Below is a comprehensive code example showing the complete workflow from data loading to model evaluation. We use the IMDb dataset, containing 50,000 movie reviews (25,000 training, 25,000 testing), with the task of classifying reviews as positive or negative sentiment.</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchtext.datasets import IMDB\nfrom torchtext.data.utils import get_tokenizer\nfrom torchtext.vocab import build_vocab_from_iterator\nfrom torch.utils.data import DataLoader, Dataset\nimport numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay\n\n# Set random seed for reproducibility\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\n# Step 1: Data loading and preprocessing\nprint(\"Loading IMDb dataset...\")\ntrain_iter, test_iter = IMDB(split=('train', 'test'))\n\n# Convert to lists for multiple iterations\ntrain_data = list(train_iter)\ntest_data = list(test_iter)\nprint(f\"Training set size: {len(train_data)}\")\nprint(f\"Test set size: {len(test_data)}\")\n\n# Build vocabulary\ntokenizer = get_tokenizer('basic_english')\ndef yield_tokens(data_iter):\n    for label, text in data_iter:\n        yield tokenizer(text)\nvocab = build_vocab_from_iterator(yield_tokens(train_data), specials=['<unk>', '<pad>', '<bos>', '<eos>'])\nvocab.set_default_index(vocab['<unk>'])\nprint(f\"Vocabulary size: {len(vocab)}\")\n\n# Data transformation functions\ndef text_pipeline(text):\n    return [vocab[token] for token in tokenizer(text)]\n\ndef label_pipeline(label):\n    return 1 if label == 'pos' else 0\n\n# Create custom Dataset\nclass TextDataset(Dataset):\n    def __init__(self, data):\n        self.data = data\n    def __len__(self):\n        return len(self.data)\n    def __getitem__(self, idx):\n        label, text = self.data[idx]\n        return torch.tensor(text_pipeline(text), dtype=torch.long), torch.tensor(label_pipeline(label), dtype=torch.long)\n\ndef collate_batch(batch):\n    text_list, label_list = [], []\n    for text, label in batch:\n        text_list.append(text)\n        label_list.append(label)\n    text_list = nn.utils.rnn.pad_sequence(text_list, batch_first=True, padding_value=vocab['<pad>'])\n    label_list = torch.stack(label_list)\n    return text_list, label_list\n\n# Create DataLoader\ntrain_dataset = TextDataset(train_data)\ntest_dataset = TextDataset(test_data)\ntrain_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, collate_fn=collate_batch)\ntest_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, collate_fn=collate_batch)\n\n# Step 2: Model definition\nclass LSTMModel(nn.Module):\n    def __init__(self, vocab_size, embed_dim, hidden_dim, output_dim, n_layers, dropout):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, embed_dim, padding_idx=vocab['<pad>'])\n        self.lstm = nn.LSTM(embed_dim, hidden_dim, n_layers, dropout=dropout, batch_first=True)\n        self.fc = nn.Linear(hidden_dim, output_dim)\n        self.dropout = nn.Dropout(dropout)\n    \n    def forward(self, text):\n        embedded = self.dropout(self.embedding(text))\n        # Calculate sequence lengths for packing\n        lengths = (text != vocab['<pad>']).sum(dim=1).cpu()\n        packed_embedded = nn.utils.rnn.pack_padded_sequence(embedded, lengths, batch_first=True, enforce_sorted=False)\n        packed_output, (hidden, cell) = self.lstm(packed_embedded)\n        return self.fc(self.dropout(hidden[-1]))\n\n# Model instantiation\nVOCAB_SIZE = len(vocab)\nEMBED_DIM = 100\nHIDDEN_DIM = 256\nOUTPUT_DIM = 2  # Positive/negative\nN_LAYERS = 2\nDROPOUT = 0.5\nmodel = LSTMModel(VOCAB_SIZE, EMBED_DIM, HIDDEN_DIM, OUTPUT_DIM, N_LAYERS, DROPOUT)\nprint(f\"Model parameters: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}\")\n\n# Step 3: Training loop\ndef train_epoch(model, loader, optimizer, criterion):\n    model.train()\n    total_loss, total_acc = 0, 0\n    for text, labels in loader:\n        optimizer.zero_grad()\n        predictions = model(text)\n        loss = criterion(predictions, labels)\n        acc = (predictions.argmax(1) == labels).float().mean()\n        loss.backward()\n        optimizer.step()\n        total_loss += loss.item()\n        total_acc += acc.item()\n    return total_loss / len(loader), total_acc / len(loader)\n\ndef evaluate(model, loader, criterion):\n    model.eval()\n    total_loss, total_acc = 0, 0\n    all_preds, all_labels = [], []\n    with torch.no_grad():\n        for text, labels in loader:\n            predictions = model(text)\n            loss = criterion(predictions, labels)\n            acc = (predictions.argmax(1) == labels).float().mean()\n            total_loss += loss.item()\n            total_acc += acc.item()\n            all_preds.extend(predictions.argmax(1).cpu().numpy())\n            all_labels.extend(labels.cpu().numpy())\n    return total_loss / len(loader), total_acc / len(loader), all_preds, all_labels\n\n# Training preparation\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# Train for 5 epochs\nepochs = 5\ntrain_losses, train_accs = [], []\nval_losses, val_accs"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：循环神经网络与时序模型 · 结构总览 · 数据：课程大纲】在设计《循环神经网络与时序模型》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 循环神经网络与时序模型 · 结构总览 · Data: 课程大纲】When outlining \"循环神经网络与时序模型\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：循环神经网络与时序模型 · worked example · 数据：掌握 RNN、LSTM、GRU 等模型结构 数据/代码】在复现《循环神经网络与时序模型》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 循环神经网络与时序模型 · worked example · Data: 掌握 RNN、LSTM、GRU 等模型结构 数据/代码】While reproducing the worked example in \"循环神经网络与时序模型\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：循环神经网络与时序模型 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《循环神经网络与时序模型》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 循环神经网络与时序模型 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"循环神经网络与时序模型\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：循环神经网络与时序模型 · 参考资料 · 数据：课程引用文献】当引用文献支撑《循环神经网络与时序模型》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 循环神经网络与时序模型 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"循环神经网络与时序模型\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation（arXiv，2014）",
+          "en": "Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation (arXiv, 2014)"
+        },
+        "url": "https://arxiv.org/abs/1406.1078"
+      },
+      {
+        "label": {
+          "zh": "Long Short-Term Memory（Neural Computation，1997）",
+          "en": "Long Short-Term Memory (Neural Computation, 1997)"
+        },
+        "url": "https://www.bioinf.jku.at/publications/older/2604.pdf"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-16-recurrent-neural-network-zh.mp3"
+    },
+    "meta": {
+      "category": "Neural Network Fundamentals",
+      "level": "2. Deep Learning & Neural Networks",
+      "difficultyScore": 2,
+      "related": [
+        "RNN",
+        "LSTM",
+        "GRU"
+      ],
+      "learningObjectives": [
+        "掌握 RNN、LSTM、GRU 等模型结构",
+        "应用在时间序列与序列数据建模"
+      ],
+      "personas": [
+        "NLP 入门者",
+        "研究生"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 循环神经网络与时序模型 可帮助团队在 Neural Network Fundamentals 上做出可复用的实践。",
+        "best_for": "适合 NLP 入门者、研究生，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "NLP 入门者 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 NLP 入门者、研究生，帮助他们把 循环神经网络与时序模型 应用于 Neural Network Fundamentals",
+        "prefersEnglish": false,
+        "industries": [
+          "NLP 入门者",
+          "研究生"
+        ],
+        "personas": [
+          "NLP 入门者",
+          "研究生"
+        ],
+        "pains": "在 Neural Network Fundamentals 场景缺乏 循环神经网络与时序模型 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "2. Deep Learning & Neural Networks"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为NLP入门者，你在处理文本数据时是否遇到过难以捕捉上下文依赖的问题？请思考：循环神经网络如何通过隐藏状态机制解决这类时序挑战，并尝试描述一个你熟悉的文本场景中可能的应用路径。",
+          "action_hint": "结合你正在研究的文本任务（如文档分类或对话生成），分析其中哪些环节需要时序建模，并初步构思RNN可能发挥的作用。"
+        },
+        {
+          "lang": "zh",
+          "question": "在研究生阶段的序列建模项目中，你通常如何评估模型对长期依赖关系的捕捉能力？基于LSTM/GRU的门控原理，你认为哪些实际因素（如梯度消失或数据噪声）会影响时序模型的性能，并如何调整你的实验设计？",
+          "action_hint": "回顾你过往的序列数据处理经验，识别具体任务中的时序依赖模式，并规划如何在本课程的IMDb项目框架下验证这些理论洞察。"
+        }
+      ]
+    }
   }
 ]
