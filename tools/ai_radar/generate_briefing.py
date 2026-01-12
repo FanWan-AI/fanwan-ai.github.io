@@ -1202,6 +1202,9 @@ def _synthesize_audio(
     existing: Optional[Dict[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    # Force disable TTS to save space
+    return None
+
     if not api_key or not dashscope:
         log["tts_status"] = "skipped-no-sdk" if dashscope is None else "skipped-no-key"
         return None

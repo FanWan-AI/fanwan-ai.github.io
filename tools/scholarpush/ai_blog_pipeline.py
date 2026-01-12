@@ -1712,6 +1712,9 @@ def _synthesize_card_audio(
     audio_dir: Path,
     text_dir: Path,
 ) -> Optional[dict]:
+    # FORCE DISABLE AUDIO to save space
+    return None
+
     summary_map = item.get("summary_i18n") or {}
     zh_summary = (summary_map.get("zh") or "").strip()
     if not zh_summary:
