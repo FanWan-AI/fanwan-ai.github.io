@@ -1,6 +1,181 @@
 {
-  "generatedAt": "2026-01-13T14:10:13.425Z",
+  "generatedAt": "2026-01-14T02:40:52.147Z",
   "lessons": [
+    {
+      "id": "2026-01-14-q-learning-q",
+      "date": "2026-01-14",
+      "title": {
+        "zh": "Q-Learning 与深度 Q 网络",
+        "en": "Q-Learning and Deep Q-Networks"
+      },
+      "summary": {
+        "zh": "本课程系统讲解强化学习中的Q-Learning与深度Q网络（DQN）。首先分析表格型Q-Learning在高维状态下面临的维度灾难，引出DQN用神经网络近似Q函数的必要性。随后深入剖析DQN的双重稳定机制——经验回放与目标网络，解释其数学原理与工程实现要点。最后通过完整的代码实现，展示如何用DQN解决CartPole控制问题，包括环境交互、网络架构、训练循环与性能评估。课程强调从理论定义到可复现实践的连贯路径，为后续复杂强化学习应用奠定基础。",
+        "en": "This course systematically explains Q-Learning and Deep Q-Networks (DQN) in reinforcement learning. It begins by analyzing the curse of dimensionality faced by tabular Q-Learning in high-dimensional states, leading to the necessity of DQN's neural network approximation of Q-functions. It then delves into DQN's dual stabilization mechanisms—experience replay and target networks—explaining their mathematical principles and engineering implementation details. Finally, through a complete code implementation, it demonstrates how to solve the CartPole control problem with DQN, covering environment interaction, network architecture, training loops, and performance evaluation. The course emphasizes a coherent path from theoretical definitions to reproducible practice, laying groundwork for advanced reinforcement learning applications."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "q-learning",
+        "dqn"
+      ],
+      "content": {
+        "zh": "<h3>从表格到神经网络：Q-Learning的维度灾难</h3>\n<p>在强化学习领域，Q-Learning作为经典的时序差分学习算法，通过维护一个Q值表格来记录每个状态-动作对的预期累积奖励。其核心更新规则基于贝尔曼最优方程：\\(Q(s_t, a_t) \\leftarrow Q(s_t, a_t) + \\alpha [r_{t+1} + \\gamma \\max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t)]\\)，其中\\(\\alpha\\)是学习率，\\(\\gamma\\)是折扣因子。这个公式直观地表示当前Q值向目标值（即时奖励加上下一状态最大Q值的折现）的调整。然而，当状态空间从离散低维扩展到连续高维时，表格方法面临根本性挑战。</p>\n<p>以Atari游戏为例，一帧210×160的RGB图像包含\\(256^{3 \\times 210 \\times 160}\\)种可能状态，远超出任何存储系统的容量。这种指数级增长被称为“维度灾难”，它使得表格型Q-Learning在复杂环境中完全不可行。此时，我们需要从离散的Q值表转向连续的Q函数近似，这正是深度Q网络（Deep Q-Network, DQN）的出发点。DQN用深度神经网络参数化Q函数，将状态作为输入，输出每个动作的Q值，从而实现对高维状态空间的泛化（来源：Playing Atari with Deep Reinforcement Learning, 2013）。</p>\n<p>从工程视角看，这种转变引入了新的设计边界：神经网络架构必须平衡表达能力和训练稳定性。一个典型的DQN网络包含卷积层处理图像特征，全连接层输出Q值。关键实现要点包括输入归一化（如将像素值缩放到[0,1]）、输出层维度匹配动作空间大小。复杂度敏感点在于前向传播的延迟，尤其是在实时控制场景中，需要优化网络深度和宽度以满足帧率要求。</p>\n<p>常见误区是认为DQN仅仅是Q-Learning的“深度化版本”，忽略了其内在的算法差异。实际上，直接使用神经网络拟合Q-Learning的TD目标会导致训练发散，因为连续样本之间的强相关性破坏了梯度更新的独立性。失败模式表现为Q值爆炸或振荡，智能体无法学习有效策略。诊断方法包括监控损失函数曲线和Q值分布：健康的训练应显示损失平稳下降，Q值范围逐渐收敛。</p>\n<p>理解维度灾难的数学本质后，我们自然过渡到下一个问题：如何设计稳定的训练机制来克服神经网络近似带来的挑战？这引出了DQN的两个核心创新——经验回放和目标网络。</p>\n<h3>DQN的双重稳定机制：经验回放与目标网络</h3>\n<p>深度Q网络的核心挑战在于如何让神经网络在非平稳环境中稳定学习Q函数。原始Q-Learning的在线更新假设样本独立同分布，但实际交互产生的状态转移序列具有强时序相关性，直接用于训练会导致梯度方差过大和灾难性遗忘。DQN通过引入经验回放（Experience Replay）和目标网络（Target Network）双重机制来解决这一问题（来源：Human-level control through deep reinforcement learning, 2015）。</p>\n<p>经验回放定义为一个固定容量的回放缓冲区\\(\\mathcal{D}\\)，存储智能体的经验元组\\((s_t, a_t, r_{t+1}, s_{t+1})\\)。训练时，随机采样一小批样本\\(\\{(s_i, a_i, r_i, s'_i)\\}_{i=1}^N\\)用于计算损失函数：\\(L(\\theta) = \\mathbb{E}_{(s,a,r,s') \\sim \\mathcal{D}}[(r + \\gamma \\max_{a'} Q_{\\text{target}}(s', a'; \\theta^-) - Q(s, a; \\theta))^2]\\)，其中\\(\\theta\\)是主网络参数，\\(\\theta^-\\)是目标网络参数。这个公式的关键在于目标网络提供了稳定的TD目标，减少了Q值估计的振荡。</p>\n<p>目标网络是主网络的定期复制品，每C步更新一次参数：\\(\\theta^- \\leftarrow \\theta\\)。这种延迟更新打破了目标值和当前估计之间的反馈循环，防止训练发散。从工程实现角度，需要维护两个相同的网络实例，并设计高效的参数复制逻辑。复杂度敏感点在于缓冲区大小和采样策略：过小的缓冲区会限制样本多样性，而过大的缓冲区会增加内存开销。实践中，通常使用循环队列实现，并优先采样TD误差较大的经验以提高学习效率。</p>\n<p>一个常见误区是将经验回放视为单纯的“加速技巧”，认为没有它也能训练。实际上，在连续高相关样本下，神经网络会过度拟合最近经验，导致策略退化。失败模式表现为智能体在局部最优策略中震荡，无法探索更优区域。诊断方法包括分析缓冲区样本的时序自相关性和检查目标网络更新频率是否匹配环境动态。</p>\n<p>掌握了稳定机制的理论基础后，我们可以将这些概念转化为具体的代码实现，构建一个完整的DQN系统来解决实际控制问题。</p>\n<h3>工程实现：用DQN解决CartPole控制问题</h3>\n<p>本节提供一个端到端的DQN实现，解决Gymnasium的CartPole-v1环境（来源：Gymnasium Documentation, 2023）。该环境要求智能体通过左右移动小车来保持杆子竖直，状态空间是4维连续向量（小车位置、速度、杆子角度、角速度），动作空间是2维离散（左移、右移）。成功标准是在连续100回合中平均奖励达到195以上。我们将按照环境交互、网络定义、经验回放、训练循环的顺序构建可复现流程。</p>\n<p>首先定义DQN网络架构：输入层接收4维状态，经过两个全连接隐藏层（128和64个神经元，使用ReLU激活），输出层输出2个动作的Q值。超参数设置包括学习率\\(\\alpha=0.001\\)，折扣因子\\(\\gamma=0.99\\)，探索率\\(\\epsilon\\)从1.0衰减到0.01，目标网络更新频率\\(C=100\\)步。损失函数采用均方误差：\\(L = \\frac{1}{N}\\sum_{i=1}^N (y_i - Q(s_i, a_i))^2\\)，其中目标值\\(y_i = r_i + \\gamma \\max_{a'} Q_{\\text{target}}(s'_i, a')\\)。</p>\n<p>经验回放缓冲区实现为固定容量的队列，支持添加经验和随机采样。关键工程要点包括使用NumPy数组高效存储，以及采样时确保批次数据形状一致。训练循环中，每个时间步智能体根据ε-贪婪策略选择动作：以概率\\(\\epsilon\\)随机探索，否则选择\\(\\arg\\max_a Q(s, a)\\)。每步后存储经验到缓冲区，当缓冲区足够满时，采样批次计算损失并反向传播更新主网络。</p>\n<p>为了评估性能，我们计算每100回合的平均奖励作为指标：\\(\\bar{R}_{100} = \\frac{1}{100}\\sum_{t=1}^{100} \\sum_{k=0}^{T_t} \\gamma^k r_{t,k}\\)，其中\\(T_t\\)是第t回合的步数。这个公式衡量智能体在折扣奖励下的长期表现。实现中需要跟踪每回合的累积奖励，并定期输出统计结果。常见失败模式包括奖励曲线停滞不前或剧烈波动，通常源于超参数设置不当或网络架构缺陷。诊断方法包括可视化Q值分布和检查探索率衰减曲线：例如，如果Q值分布过早收敛到狭窄范围，可能表明探索不足；如果奖励曲线剧烈波动，应检查目标网络更新频率是否过低。</p>\n<pre><code>import gymnasium as gym\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport random\nfrom collections import deque\nimport matplotlib.pyplot as plt\n\n# Environment initialization\nenv = gym.make('CartPole-v1')\nstate_dim = env.observation_space.shape[0]\naction_dim = env.action_space.n\nprint(f\"State space shape: {env.observation_space.shape}\")\nprint(f\"Action space size: {action_dim}\")\n\n# DQN network definition\nclass DQN(nn.Module):\n    def __init__(self, state_dim, action_dim):\n        super(DQN, self).__init__()\n        self.fc1 = nn.Linear(state_dim, 128)\n        self.fc2 = nn.Linear(128, 64)\n        self.fc3 = nn.Linear(64, action_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.relu(self.fc2(x))\n        return self.fc3(x)\n\n# Experience replay buffer\nclass ReplayBuffer:\n    def __init__(self, capacity):\n        self.buffer = deque(maxlen=capacity)\n    \n    def push(self, state, action, reward, next_state, done):\n        self.buffer.append((state, action, reward, next_state, done))\n    \n    def sample(self, batch_size):\n        batch = random.sample(self.buffer, batch_size)\n        states, actions, rewards, next_states, dones = zip(*batch)\n        return (np.array(states), np.array(actions), np.array(rewards),\n                np.array(next_states), np.array(dones))\n    \n    def __len__(self):\n        return len(self.buffer)\n\n# Hyperparameter settings\nlearning_rate = 0.001\ngamma = 0.99\nepsilon_start = 1.0\nepsilon_end = 0.01\nepsilon_decay = 0.995\nbatch_size = 64\nbuffer_capacity = 10000\ntarget_update_freq = 100\nnum_episodes = 500\n\n# Initialize networks and optimizer\npolicy_net = DQN(state_dim, action_dim)\ntarget_net = DQN(state_dim, action_dim)\ntarget_net.load_state_dict(policy_net.state_dict())\noptimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)\nbuffer = ReplayBuffer(buffer_capacity)\nepsilon = epsilon_start\n\n# Training loop\nrewards_history = []\nfor episode in range(num_episodes):\n    state, _ = env.reset()\n    total_reward = 0\n    done = False\n    \n    while not done:\n        # ε-greedy policy\n        if random.random() < epsilon:\n            action = env.action_space.sample()\n        else:\n            with torch.no_grad():\n                state_tensor = torch.FloatTensor(state).unsqueeze(0)\n                q_values = policy_net(state_tensor)\n                action = q_values.argmax().item()\n        \n        # Environment interaction\n        next_state, reward, terminated, truncated, _ = env.step(action)\n        done = terminated or truncated\n        buffer.push(state, action, reward, next_state, done)\n        state = next_state\n        total_reward += reward\n        \n        # Experience replay training\n        if len(buffer) >= batch_size:\n            states, actions, rewards, next_states, dones = buffer.sample(batch_size)\n            states = torch.FloatTensor(states)\n            actions = torch.LongTensor(actions).unsqueeze(1)\n            rewards = torch.FloatTensor(rewards).unsqueeze(1)\n            next_states = torch.FloatTensor(next_states)\n            dones = torch.FloatTensor(dones).unsqueeze(1)\n            \n            # Compute current Q-values\n            current_q = policy_net(states).gather(1, actions)\n            # Compute target Q-values\n            with torch.no_grad():\n                next_q = target_net(next_states).max(1, keepdim=True)[0]\n                target_q = rewards + gamma * next_q * (1 - dones)\n            \n            # Loss computation and backpropagation\n            loss = nn.MSELoss()(current_q, target_q)\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n        \n        # Target network update\n        if episode % target_update_freq == 0:\n            target_net.load_state_dict(policy_net.state_dict())\n    \n    # Exploration rate decay\n    epsilon = max(epsilon_end, epsilon * epsilon_decay)\n    rewards_history.append(total_reward)\n    \n    # Performance output every 100 episodes\n    if (episode + 1) % 100 == 0:\n        avg_reward = np.mean(rewards_history[-100:])\n        print(f\"Episode {episode+1}, Average reward over last 100 episodes: {avg_reward:.2f}, ε: {epsilon:.3f}\")\n        if avg_reward >= 195:\n            print(\"Success criterion met!\")\n            break\n\nenv.close()\n\n# Performance visualization\nplt.plot(rewards_history)\nplt.xlabel('Episode')\nplt.ylabel('Reward')\nplt.title('DQN Training Reward Curve')\nplt.show()\n\n# Compute final evaluation metric\nfinal_avg_reward = np.mean(rewards_history[-100:]) if len(rewards_history) >= 100 else np.mean(rewards_history)\nprint(f\"Final average reward over 100 episodes: {final_avg_reward:.2f}\")\nprint(f\"Total training episodes: {len(rewards_history)}\")\nprint(f\"Final exploration rate: {epsilon:.3f}\")</code></pre>\n<p>运行上述代码，预期输出包括状态空间形状Box(4,)、动作空间大小2、训练过程中每100回合的平均奖励（目标>195）、最终Q网络在测试环境中的表现。关键中间结果如缓冲区样本形状和损失值可在训练循环中添加打印语句查看。这个实现完整展示了DQN从理论到实践的转化，为后续更复杂的强化学习应用奠定了基础。</p>\n<p>通过本课程的学习，我们建立了从表格型Q-Learning到深度Q网络的完整认知框架。理解维度灾难的数学本质、掌握经验回放和目标网络的稳定机制、实现可复现的工程流程，这些能力将帮助你在更广泛的强化学习场景中设计有效解决方案。</p>",
+        "en": "<h3>From Tables to Neural Networks: The Curse of Dimensionality in Q-Learning</h3>\n<p>In reinforcement learning, Q-Learning is a classic temporal difference algorithm that maintains a Q-table to record the expected cumulative reward for each state-action pair. Its core update rule is based on the Bellman optimality equation: \\(Q(s_t, a_t) \\leftarrow Q(s_t, a_t) + \\alpha [r_{t+1} + \\gamma \\max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t)]\\), where \\(\\alpha\\) is the learning rate and \\(\\gamma\\) is the discount factor. This formula intuitively adjusts the current Q-value toward the target value (immediate reward plus discounted maximum Q-value of the next state). However, when the state space expands from discrete low-dimensional to continuous high-dimensional, the tabular approach faces fundamental challenges.</p>\n<p>Consider Atari games as an example: a single 210×160 RGB frame contains \\(256^{3 \\times 210 \\times 160}\\) possible states, far exceeding the capacity of any storage system. This exponential growth is known as the \"curse of dimensionality,\" rendering tabular Q-Learning entirely infeasible in complex environments. At this point, we need to shift from discrete Q-tables to continuous Q-function approximation, which is precisely the motivation behind Deep Q-Networks (DQN). DQN parameterizes the Q-function using deep neural networks, taking states as input and outputting Q-values for each action, thereby enabling generalization to high-dimensional state spaces (Source: Playing Atari with Deep Reinforcement Learning, 2013).</p>\n<p>From an engineering perspective, this transition introduces new design boundaries: the neural network architecture must balance expressive power and training stability. A typical DQN network includes convolutional layers for image feature extraction and fully connected layers for Q-value output. Key implementation considerations involve input normalization (e.g., scaling pixel values to [0,1]) and matching the output layer dimension to the action space size. Complexity-sensitive aspects include forward propagation latency, particularly in real-time control scenarios where network depth and width must be optimized to meet frame rate requirements.</p>\n<p>A common misconception is viewing DQN merely as a \"deep version\" of Q-Learning, overlooking inherent algorithmic differences. In practice, directly fitting neural networks to Q-Learning's TD target leads to training divergence because strong correlations between consecutive samples undermine the independence of gradient updates. Failure modes manifest as exploding or oscillating Q-values, preventing the agent from learning effective policies. Diagnostic methods include monitoring loss function curves and Q-value distributions: healthy training should show steady loss decrease and convergent Q-value ranges.</p>\n<p>Understanding the mathematical essence of the curse of dimensionality naturally leads to the next question: how to design stable training mechanisms to overcome challenges introduced by neural network approximation? This brings us to DQN's two core innovations—experience replay and target networks.</p>\n<h3>DQN's Dual Stabilization Mechanisms: Experience Replay and Target Networks</h3>\n<p>The core challenge of Deep Q-Networks is enabling neural networks to stably learn Q-functions in non-stationary environments. Original Q-Learning's online updates assume independent and identically distributed samples, but actual interaction-generated state transition sequences exhibit strong temporal correlations, causing excessive gradient variance and catastrophic forgetting if used directly for training. DQN addresses this through dual mechanisms: experience replay and target networks (Source: Human-level control through deep reinforcement learning, 2015).</p>\n<p>Experience replay is defined as a fixed-capacity replay buffer \\(\\mathcal{D}\\) storing agent experience tuples \\((s_t, a_t, r_{t+1}, s_{t+1})\\). During training, a small batch of samples \\(\\{(s_i, a_i, r_i, s'_i)\\}_{i=1}^N\\) is randomly sampled to compute the loss function: \\(L(\\theta) = \\mathbb{E}_{(s,a,r,s') \\sim \\mathcal{D}}[(r + \\gamma \\max_{a'} Q_{\\text{target}}(s', a'; \\theta^-) - Q(s, a; \\theta))^2]\\), where \\(\\theta\\) are main network parameters and \\(\\theta^-\\) are target network parameters. The key to this formula is that the target network provides stable TD targets, reducing oscillations in Q-value estimates.</p>\n<p>The target network is a periodic copy of the main network, updating its parameters every C steps: \\(\\theta^- \\leftarrow \\theta\\). This delayed update breaks the feedback loop between target values and current estimates, preventing training divergence. From an engineering implementation perspective, maintaining two identical network instances and designing efficient parameter copying logic are essential. Complexity-sensitive aspects include buffer size and sampling strategy: too small a buffer limits sample diversity, while too large a buffer increases memory overhead. In practice, circular queues are commonly used, with prioritized sampling of experiences having high TD errors to improve learning efficiency.</p>\n<p>A common misconception is treating experience replay as merely an \"acceleration trick,\" believing training is possible without it. In reality, under continuous high-correlation samples, neural networks overfit recent experiences, leading to policy degradation. Failure modes manifest as agents oscillating in local optimal policies, unable to explore better regions. Diagnostic methods include analyzing temporal autocorrelation of buffer samples and checking whether target network update frequency matches environmental dynamics.</p>\n<p>With a theoretical foundation in stabilization mechanisms, we can translate these concepts into concrete code implementations, building a complete DQN system to solve practical control problems.</p>\n<h3>Engineering Implementation: Solving CartPole Control with DQN</h3>\n<p>This section provides an end-to-end DQN implementation for Gymnasium's CartPole-v1 environment (Source: Gymnasium Documentation, 2023). The environment requires the agent to keep a pole upright by moving a cart left or right, with a 4-dimensional continuous state space (cart position, velocity, pole angle, angular velocity) and a 2-dimensional discrete action space (move left, move right). Success is defined as achieving an average reward over 195 across 100 consecutive episodes. We will construct a reproducible pipeline following the sequence of environment interaction, network definition, experience replay, and training loop.</p>\n<p>First, define the DQN network architecture: the input layer receives 4-dimensional states, passes through two fully connected hidden layers (128 and 64 neurons with ReLU activation), and the output layer produces Q-values for two actions. Hyperparameter settings include learning rate \\(\\alpha=0.001\\), discount factor \\(\\gamma=0.99\\), exploration rate \\(\\epsilon\\) decaying from 1.0 to 0.01, and target network update frequency \\(C=100\\) steps. The loss function uses mean squared error: \\(L = \\frac{1}{N}\\sum_{i=1}^N (y_i - Q(s_i, a_i))^2\\), where target values \\(y_i = r_i + \\gamma \\max_{a'} Q_{\\text{target}}(s'_i, a')\\).</p>\n<p>The experience replay buffer is implemented as a fixed-capacity queue supporting experience addition and random sampling. Key engineering points include using NumPy arrays for efficient storage and ensuring consistent batch data shapes during sampling. In the training loop, at each timestep, the agent selects actions using an ε-greedy policy: explore randomly with probability \\(\\epsilon\\), otherwise choose \\(\\arg\\max_a Q(s, a)\\). After each step, store experiences in the buffer; when sufficiently full, sample batches to compute loss and backpropagate to update the main network.</p>\n<p>To evaluate performance, we compute the average reward per 100 episodes as the metric: \\(\\bar{R}_{100} = \\frac{1}{100}\\sum_{t=1}^{100} \\sum_{k=0}^{T_t} \\gamma^k r_{t,k}\\), where \\(T_t\\) is the number of steps in episode t. This formula measures the agent's long-term performance under discounted rewards. Implementation requires tracking cumulative rewards per episode and periodically outputting statistics. Common failure modes include stagnant or highly volatile reward curves, often due to improper hyperparameter settings or network architecture flaws. Diagnostic methods involve visualizing Q-value distributions and checking exploration rate decay curves: for instance, if Q-values converge too early to a narrow range, it may indicate insufficient exploration; if reward curves fluctuate wildly, verify that the target network update frequency is not too low.</p>\n<pre><code>import gymnasium as gym\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport random\nfrom collections import deque\nimport matplotlib.pyplot as plt\n\n# Environment initialization\nenv = gym.make('CartPole-v1')\nstate_dim = env.observation_space.shape[0]\naction_dim = env.action_space.n\nprint(f\"State space shape: {env.observation_space.shape}\")\nprint(f\"Action space size: {action_dim}\")\n\n# DQN network definition\nclass DQN(nn.Module):\n    def __init__(self, state_dim, action_dim):\n        super(DQN, self).__init__()\n        self.fc1 = nn.Linear(state_dim, 128)\n        self.fc2 = nn.Linear(128, 64)\n        self.fc3 = nn.Linear(64, action_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.relu(self.fc2(x))\n        return self.fc3(x)\n\n# Experience replay buffer\nclass ReplayBuffer:\n    def __init__(self, capacity):\n        self.buffer = deque(maxlen=capacity)\n    \n    def push(self, state, action, reward, next_state, done):\n        self.buffer.append((state, action, reward, next_state, done))\n    \n    def sample(self, batch_size):\n        batch = random.sample(self.buffer, batch_size)\n        states, actions, rewards, next_states, dones = zip(*batch)\n        return (np.array(states), np.array(actions), np.array(rewards),\n                np.array(next_states), np.array(dones))\n    \n    def __len__(self):\n        return len(self.buffer)\n\n# Hyperparameter settings\nlearning_rate = 0.001\ngamma = 0.99\nepsilon_start = 1.0\nepsilon_end = 0.01\nepsilon_decay = 0.995\nbatch_size = 64\nbuffer_capacity = 10000\ntarget_update_freq = 100\nnum_episodes = 500\n\n# Initialize networks and optimizer\npolicy_net = DQN(state_dim, action_dim)\ntarget_net = DQN(state_dim, action_dim)\ntarget_net.load_state_dict(policy_net.state_dict())\noptimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)\nbuffer = ReplayBuffer(buffer_capacity)\nepsilon = epsilon_start\n\n# Training loop\nrewards_history = []\nfor episode in range(num_episodes):\n    state, _ = env.reset()\n    total_reward = 0\n    done = False\n    \n    while not done:\n        # ε-greedy policy\n        if random.random() < epsilon:\n            action = env.action_space.sample()\n        else:\n            with torch.no_grad():\n                state_tensor = torch.FloatTensor(state).unsqueeze(0)\n                q_values = policy_net(state_tensor)\n                action = q_values.argmax().item()\n        \n        # Environment interaction\n        next_state, reward, terminated, truncated, _ = env.step(action)\n        done = terminated or truncated\n        buffer.push(state, action, reward, next_state, done)\n        state = next_state\n        total_reward += reward\n        \n        # Experience replay training\n        if len(buffer) >= batch_size:\n            states, actions, rewards, next_states, dones = buffer.sample(batch_size)\n            states = torch.FloatTensor(states)\n            actions = torch.LongTensor(actions).unsqueeze(1)\n            rewards = torch.FloatTensor(rewards).unsqueeze(1)\n            next_states = torch.FloatTensor(next_states)\n            dones = torch.FloatTensor(dones).unsqueeze(1)\n            \n            # Compute current Q-values\n            current_q = policy_net(states).gather(1, actions)\n            # Compute target Q-values\n            with torch.no_grad():\n                next_q = target_net(next_states).max(1, keepdim=True)[0]\n                target_q = rewards + gamma * next_q * (1 - dones)\n            \n            # Loss computation and backpropagation\n            loss = nn.MSELoss()(current_q, target_q)\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n        \n        # Target network update\n        if episode % target_update_freq == 0:\n            target_net.load_state_dict(policy_net.state_dict())\n    \n    # Exploration rate decay\n    epsilon = max(epsilon_end, epsilon * epsilon_decay)\n    rewards_history.append(total_reward)\n    \n    # Performance output every 100 episodes\n    if (episode + 1) % 100 == 0:\n        avg_reward = np.mean(rewards_history[-100:])\n        print(f\"Episode {episode+1}, Average reward over last 100 episodes: {avg_reward:.2f}, ε: {epsilon:.3f}\")\n        if avg_reward >= 195:\n            print(\"Success criterion met!\")\n            break\n\nenv.close()\n\n# Performance visualization\nplt.plot(rewards_history)\nplt.xlabel('Episode')\nplt.ylabel('Reward')\nplt.title('DQN Training Reward Curve')\nplt.show()\n\n# Compute final evaluation metric\nfinal_avg_reward = np.mean(rewards_history[-100:]) if len(rewards_history) >= 100 else np.mean(rewards_history)\nprint(f\"Final average reward over 100 episodes: {final_avg_reward:.2f}\")\nprint(f\"Total training episodes: {len(rewards_history)}\")\nprint(f\"Final exploration rate: {epsilon:.3f}\")</code></pre>\n<p>Running the above code, expected outputs include state space shape Box(4,), action space size 2, average reward per 100 episodes during training (target >195), and final Q-network performance in test environments. Key intermediate results such as buffer sample shapes and loss values can be viewed by adding print statements in the training loop. This implementation fully demonstrates the translation of DQN from theory to practice, laying groundwork for more complex reinforcement learning applications.</p>\n<p>Through this course, we have established a complete cognitive framework from tabular Q-Learning to Deep Q-Networks. Understanding the mathematical essence of the curse of dimensionality, mastering stabilization mechanisms of experience replay and target networks, and implementing reproducible engineering pipelines—these capabilities will empower you to design effective solutions in broader reinforcement learning scenarios.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Q-Learning 与深度 Q 网络 · 结构总览 · 数据：课程大纲】在设计《Q-Learning 与深度 Q 网络》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Q-Learning 与深度 Q 网络 · 结构总览 · Data: 课程大纲】When outlining \"Q-Learning 与深度 Q 网络\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Q-Learning 与深度 Q 网络 · worked example · 数据：掌握表格型 Q-Learning 和 DQN 的实现 数据/代码】在复现《Q-Learning 与深度 Q 网络》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Q-Learning 与深度 Q 网络 · worked example · Data: 掌握表格型 Q-Learning 和 DQN 的实现 数据/代码】While reproducing the worked example in \"Q-Learning 与深度 Q 网络\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Q-Learning 与深度 Q 网络 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Q-Learning 与深度 Q 网络》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Q-Learning 与深度 Q 网络 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Q-Learning 与深度 Q 网络\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Q-Learning 与深度 Q 网络 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Q-Learning 与深度 Q 网络》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Q-Learning 与深度 Q 网络 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Q-Learning 与深度 Q 网络\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Playing Atari with Deep Reinforcement Learning（arXiv，2013）",
+            "en": "Playing Atari with Deep Reinforcement Learning (arXiv, 2013)"
+          },
+          "url": "https://arxiv.org/abs/1312.5602"
+        },
+        {
+          "label": {
+            "zh": "Human-level control through deep reinforcement learning（Nature，2015）",
+            "en": "Human-level control through deep reinforcement learning (Nature, 2015)"
+          },
+          "url": "https://www.nature.com/articles/nature14236"
+        },
+        {
+          "label": {
+            "zh": "Gymnasium Documentation（Farama Foundation，2023）",
+            "en": "Gymnasium Documentation (Farama Foundation, 2023)"
+          },
+          "url": "https://gymnasium.farama.org/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-01-14-q-learning-q-zh.mp3"
+      },
+      "meta": {
+        "category": "Reinforcement Learning Foundations",
+        "level": "6. Reinforcement Learning & Decision Making",
+        "difficultyScore": 3,
+        "related": [
+          "值迭代",
+          "Experience Replay"
+        ],
+        "learningObjectives": [
+          "掌握表格型 Q-Learning 和 DQN 的实现",
+          "理解经验回放和目标网络的作用"
+        ],
+        "personas": [
+          "学生",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 Q-Learning 与深度 Q 网络 可帮助团队在 Reinforcement Learning Foundations 上做出可复用的实践。",
+          "best_for": "适合 学生、工程师，需要快速吸收 6. Reinforcement Learning & Decision Making 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "学生 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 学生、工程师，帮助他们把 Q-Learning 与深度 Q 网络 应用于 Reinforcement Learning Foundations",
+          "prefersEnglish": false,
+          "industries": [
+            "学生",
+            "工程师"
+          ],
+          "personas": [
+            "学生",
+            "工程师"
+          ],
+          "pains": "在 Reinforcement Learning Foundations 场景缺乏 Q-Learning 与深度 Q 网络 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. Reinforcement Learning & Decision Making"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为工程师，你在处理高维状态空间时是否遇到过维度灾难？Q-Learning的表格方法如何限制了你的项目，而深度Q网络能提供什么新思路？",
+            "action_hint": "回顾一个具体项目，思考状态表示方式如何影响算法选择。"
+          },
+          {
+            "lang": "zh",
+            "question": "如果你是学生，在实现强化学习算法时，如何平衡理论理解与实践编码？DQN的经验回放和目标网络机制，对你的学习路径有什么启发？",
+            "action_hint": "联系课程中的代码实现，设想如何将这些机制应用到你的实验或作业中。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-01-13-markov-decision-process",
       "date": "2026-01-13",
@@ -7588,181 +7763,6 @@
             "lang": "zh",
             "question": "在您的研究中，单模态模型在复杂任务上的泛化能力不足体现在哪些方面？结合跨模态学习原理，您认为如何设计对齐方法（如共享表示）能提升模型的实际应用效果？",
             "action_hint": "评估现有数据模态间的关联性，并构思一个跨模态对齐的实验方案。"
-          }
-        ]
-      }
-    },
-    {
-      "id": "2025-12-18-self-supervised",
-      "date": "2025-12-18",
-      "title": {
-        "zh": "自监督学习简介",
-        "en": "Introduction to Self-Supervised Learning"
-      },
-      "summary": {
-        "zh": "自监督学习是一种无需人工标注即可从数据自身学习表示的机器学习范式。本文从数据标注的现实困境切入，逐步深入自监督学习的定义边界、对比学习机制与工程实践流程。通过CIFAR-10数据集上的SimCLR风格预训练与微调示例，展示如何设计数据增强、实现InfoNCE损失、进行线性评估，最终提升少样本学习性能。课程适合具备深度学习基础的研究人员和博士生，帮助他们掌握自监督学习的核心思想与可执行路径。",
-        "en": "Self-supervised learning is a machine learning paradigm that learns representations from data itself without manual annotation. This article starts from the practical challenges of data labeling, progressively delves into the definition boundaries of self-supervised learning, the mechanisms of contrastive learning, and engineering workflows. Through a SimCLR-style pre-training and fine-tuning example on the CIFAR-10 dataset, it demonstrates how to design data augmentations, implement InfoNCE loss, perform linear evaluation, and ultimately enhance few-shot learning performance. The course is suitable for researchers and PhD students with a foundation in deep learning, helping them grasp the core concepts and executable pathways of self-supervised learning."
-      },
-      "difficulty": "intermediate",
-      "tags": [
-        "self-supervised",
-        "contrastive learning"
-      ],
-      "content": {
-        "zh": "<h2>自监督学习：从数据困境到表示突破</h2>\n<p>如果你正在处理图像分类、自然语言理解或推荐系统任务，可能已经感受到高质量标注数据的稀缺与昂贵。传统监督学习依赖大量人工标注，而现实世界的数据往往是无标注的。自监督学习通过设计数据自身的预测任务，让模型从海量无标注数据中学习通用表示，为下游任务提供强大的特征基础。本文将带你从直觉到实践，理解自监督学习的核心机制，并通过CIFAR-10数据集上的SimCLR风格预训练与微调示例，掌握完整的工程流程。</p>\n\n<h3>从数据困境到自监督直觉</h3>\n<p>在图像分类任务中，ImageNet等数据集需要数百万张精确标注的图像，标注成本高昂且易受主观偏差影响。自监督学习 self-supervised learning 的核心思想是：利用数据自身结构设计预测任务，无需外部标注。例如，通过随机裁剪同一图像的两个区域作为正样本对，让模型学习“这两个裁剪来自同一图像”的表示。这类似于教孩子认动物时，不需要每张图片都标注名称，而是通过比较相似与不同来学习特征。</p>\n<blockquote><strong>误区澄清：</strong>自监督学习是无监督学习的一种特例吗？实际上，自监督学习有明确的预测目标（伪标签），如预测图像旋转角度；而无监督学习通常没有明确优化目标，如聚类或降维。</blockquote>\n<p>在后续的CIFAR-10示例中，我们将应用随机裁剪、颜色抖动等数据增强 data augmentation 创建正样本对，验证模型能否从无标注数据中学习有效表示。理解了自监督的动机，接下来需要严格界定它的定义边界。</p>\n\n<h3>定义边界：自监督 vs 监督 vs 无监督</h3>\n<p>自监督学习常被误认为是监督学习或無監督學習的变体。监督学习 supervised learning 基于外部标注y=f(x)进行预测；无监督学习 unsupervised learning 旨在发现数据内在结构，如聚类；而自监督学习通过从数据x生成伪标签y'，设计预测任务y'=f(x')。例如，利用历史天气数据预测未来温度，而非依赖人工标注的“炎热”或“寒冷”标签（来源：A Simple Framework for Contrastive Learning of Visual Representations, 2020）。</p>\n<blockquote><strong>误区澄清：</strong>自监督学习的伪标签就是真实标签的近似吗？伪标签是数据变换产生的任务目标，如预测旋转角度，而非真实语义标签。这确保了模型学习的是通用表示，而非特定类别信息。</blockquote>\n<p>自监督学习通常分为预训练 pre-training 和微调 fine-tuning 两阶段：先在大量无标注数据上训练获得通用表示，再用少量标注数据适应特定任务。在CIFAR-10示例中，我们将先在无标注训练集上进行预训练，然后用10%标注数据微调分类任务。定义了自监督学习，现在探索其最成功的实现机制——对比学习。</p>\n\n<h3>机制解析：对比学习如何工作</h3>\n<p>对比学习 contrastive learning 是自监督学习的核心方法之一，通过拉近正样本、推远负样本学习表示。正样本通常来自同一数据的不同增强版本，负样本则来自其他数据。例如，在人脸识别中，同一个人的不同照片是正样本，不同人的照片是负样本。对比损失 contrastive loss（如InfoNCE损失 InfoNCE loss）衡量正样本相似度与负样本差异度，其理论动机是最大化互信息，即让正样本在表示空间中共享更多信息。InfoNCE损失公式为：L = -log(exp(sim(z_i, z_j)/τ) / Σ_k exp(sim(z_i, z_k)/τ))，其中z_i和z_j是正样本表示，z_k是负样本表示，τ是温度参数，用于调节对困难样本的敏感度（来源：A Simple Framework for Contrastive Learning of Visual Representations, 2020）。</p>\n<blockquote><strong>误区澄清：</strong>对比学习只需要大量负样本就能学好吗？负样本质量（难负样本）比数量更重要。难负样本是指与正样本相似但属于不同类别的样本，能迫使模型学习更精细的判别特征。需要精心设计采样策略，如MoCo的队列机制（来源：Momentum Contrast for Unsupervised Visual Representation Learning, 2020），而非简单增加批量大小。</blockquote>\n<p>在CIFAR-10示例中，我们将实现SimCLR风格的对比学习，对每张图像生成两个增强版本作为正样本对，其他图像增强作为负样本，通过InfoNCE损失优化表示空间。掌握了对比学习原理，现在将其应用于实际任务。</p>\n\n<h3>工程落地：从预训练到下游任务</h3>\n<p>自监督学习的完整流程包括自监督预训练和下游任务微调。预训练后，模型获得通用表示，但通常需要微调以适应特定任务。具体步骤包括：数据准备（如应用增强）、模型配置（如选择ResNet骨干）、训练循环（优化对比损失）和评估方法（如线性评估）。线性评估 linear evaluation 是一种常用评估方法：冻结预训练骨干网络 backbone network（如ResNet），仅训练线性分类头，评估表示质量。这类似于先学习通用英语，再适应医学英语专业术语。</p>\n<blockquote><strong>误区澄清：</strong>自监督预训练后可以直接在测试集上取得好效果吗？预训练模型通常需要微调，因为预训练任务（如对比学习）与下游任务（如图像分类）的目标可能不同。直接测试可能导致性能不佳，需通过微调或至少线性评估来适应（来源：Big Self-Supervised Models are Strong Semi-Supervised Learners, 2020）。</blockquote>\n<p>在CIFAR-10示例中，我们将展示完整的工程流程：使用SimCLR风格预训练ResNet骨干，然后在10%标注数据上微调进行图像分类，评估准确率和混淆矩阵。下表概述了关键步骤：</p>\n<table border=\"1\">\n<tr><th>阶段</th><th>关键操作</th><th>输出</th></tr>\n<tr><td>预训练</td><td>数据增强、对比损失优化</td><td>通用表示模型</td></tr>\n<tr><td>微调</td><td>冻结骨干、训练分类头</td><td>任务特定模型</td></tr>\n<tr><td>评估</td><td>计算准确率、混淆矩阵</td><td>性能指标</td></tr>\n</table>\n<p>现在，让我们通过代码实现这一流程，验证自监督学习的实际效果。</p>\n\n<h3>代码实现：CIFAR-10自监督预训练与微调</h3>\n<p>以下代码块展示了在CIFAR-10数据集上实现SimCLR风格自监督预训练与微调的端到端流程。我们使用PyTorch框架，内置CIFAR-10数据，避免读取本地文件。代码包括数据加载、增强、InfoNCE损失实现、预训练、微调和评估。</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torchvision\nimport torchvision.transforms as transforms\nfrom torchvision.models import resnet18\nimport numpy as np\n\n# 设置随机种子确保复现性\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# 设备检测\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\nprint(f\"Using device: {device}\")\n\n# 数据加载与增强\nclass ContrastiveTransform:\n    def __init__(self):\n        self.transform = transforms.Compose([\n            transforms.RandomResizedCrop(32, scale=(0.2, 1.0)),\n            transforms.RandomHorizontalFlip(),\n            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),\n            transforms.RandomGrayscale(p=0.2),\n            transforms.GaussianBlur(kernel_size=3),\n            transforms.ToTensor(),\n            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))\n        ])\n    \n    def __call__(self, x):\n        return self.transform(x), self.transform(x)\n\n# 加载CIFAR-10无标注数据\ntrainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=ContrastiveTransform())\ntrainloader = torch.utils.data.DataLoader(trainset, batch_size=256, shuffle=True, num_workers=2)\nprint(f\"训练集大小: {len(trainset)}\")\n\n# 定义SimCLR模型\nclass SimCLR(nn.Module):\n    def __init__(self, backbone=resnet18, projection_dim=128):\n        super().__init__()\n        self.backbone = backbone(pretrained=False)\n        self.backbone.fc = nn.Identity()  # 移除原始分类头\n        self.projection = nn.Sequential(\n            nn.Linear(512, 512),\n            nn.ReLU(),\n            nn.Linear(512, projection_dim)\n        )\n    \n    def forward(self, x):\n        features = self.backbone(x)\n        return self.projection(features)\n\n# InfoNCE损失实现\ndef info_nce_loss(features, temperature=0.5):\n    batch_size = features.shape[0] // 2\n    labels = torch.cat([torch.arange(batch_size) for _ in range(2)], dim=0)\n    labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float().to(device)\n    features = torch.nn.functional.normalize(features, dim=1)\n    similarity_matrix = torch.matmul(features, features.T) / temperature\n    mask = torch.eye(labels.shape[0], dtype=torch.bool).to(device)\n    labels = labels[~mask].view(labels.shape[0], -1)\n    similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)\n    positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)\n    negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)\n    logits = torch.cat([positives, negatives], dim=1)\n    labels = torch.zeros(logits.shape[0], dtype=torch.long).to(device)\n    loss = torch.nn.CrossEntropyLoss()(logits, labels)\n    return loss\n\nmodel = SimCLR().to(device)\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# 预训练循环\nfor epoch in range(10):\n    running_loss = 0.0\n    for i, (inputs, _) in enumerate(trainloader):\n        inputs = torch.cat(inputs, dim=0).to(device)  # 拼接两个增强视图\n        optimizer.zero_grad()\n        outputs = model(inputs)\n        loss = info_nce_loss(outputs)\n        loss.backward()\n        optimizer.step()\n        running_loss += loss.item()\n    print(f\"Epoch {epoch+1}, Loss: {running_loss/len(trainloader):.4f}\")\n\nprint(\"预训练完成。\")\n\n# 微调：加载10%标注数据\nfrom torch.utils.data import Subset\nindices = list(range(0, len(trainset), 10))  # 10%采样\nsubset = Subset(trainset, indices)\n# 微调数据变换\nfine_tune_transform = transforms.Compose([\n    transforms.ToTensor(),\n    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))\n])\n# 重新加载数据以避免变换冲突\nfine_tune_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=fine_tune_transform)\nsubset = Subset(fine_tune_dataset, indices)\nlabeled_loader = torch.utils.data.DataLoader(subset, batch_size=64, shuffle=True)\n\n# 微调模型：添加分类头\nclass FineTuneModel(nn.Module):\n    def __init__(self, backbone):\n        super().__init__()\n        self.backbone = backbone.backbone  # 重用预训练骨干\n        self.backbone.fc = nn.Linear(512, 10)  # 添加分类头\n    \n    def forward(self, x):\n        return self.backbone(x)\n\nfine_tune_model = FineTuneModel(model).to(device)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.SGD(fine_tune_model.parameters(), lr=0.01, momentum=0.9)\n\nfor epoch in range(5):\n    correct = 0\n    total = 0\n    for inputs, labels in labeled_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer.zero_grad()\n        outputs = fine_tune_model(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer.step()\n        _, predicted = outputs.max(1)\n        total += labels.size(0)\n        correct += predicted.eq(labels).sum().item()\n    accuracy = 100. * correct / total\n    print(f\"微调 Epoch {epoch+1}, 准确率: {accuracy:.2f}%\")\n\n# 评估测试集\ntestset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=fine_tune_transform)\ntestloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False)\nfine_tune_model.eval()\ncorrect = 0\ntotal = 0\nwith torch.no_grad():\n    for inputs, labels in testloader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        outputs = fine_tune_model(inputs)\n        _, predicted = outputs.max(1)\n        total += labels.size(0)\n        correct += predicted.eq(labels).sum().item()\n\nprint(f\"测试集准确率: {100. * correct / total:.2f}%\")\nprint(f\"环境信息: Python 3.9, PyTorch {torch.__version__}, torchvision {torchvision.__version__}\")\n</code></pre>\n<p>运行上述代码，预期输出包括训练集大小50000、预训练损失曲线下降、微调后测试准确率高于随机初始化（例如可达70%以上），以及环境版本信息。这验证了自监督预训练能提升少样本学习性能。</p>\n\n<h3>总结与迁移路径</h3>\n<p>自监督学习通过设计数据自身的预测任务，解决了标注数据稀缺的困境。本文从直觉、定义、机制到工程实践，构建了完整的理解框架。关键要点包括：自监督学习有明确的伪标签目标，区别于无监督学习；对比学习通过正负样本构建学习表示；工程上需遵循预训练-微调两阶段流程。</p>\n<p>要将此工作流迁移到自己的项目，建议：1) 分析数据特性，设计合适的自监督任务（如图像旋转预测、文本掩码预测）；2) 选择骨干网络（如ResNet、Vision Transformer）和对比学习框架（如SimCLR、MoCo）；3) 实施预训练后，通过线性评估或微调适应下游任务；4) 监控表示质量，使用t-SNE等可视化工具分析特征空间。例如，在自然语言处理中，可借鉴BERT的掩码语言模型进行预训练，然后在特定领域文本上微调。</p>\n<p>自监督学习正成为表示学习 representation learning 的核心范式，推动着计算机视觉、自然语言处理等领域的进步。通过掌握其原理与实践，你能够更高效地利用无标注数据，提升模型在资源受限场景下的性能。</p>",
-        "en": "<h2>Self-Supervised Learning: From Data Dilemmas to Representation Breakthroughs</h2>\n<p>If you're working on image classification, natural language understanding, or recommendation systems, you've likely encountered the scarcity and high cost of high-quality labeled data. Traditional supervised learning relies on extensive manual annotation, while real-world data is often unlabeled. Self-supervised learning designs predictive tasks from the data itself, enabling models to learn general representations from vast unlabeled datasets, providing a robust feature foundation for downstream tasks. This article guides you from intuition to practice, explaining the core mechanisms of self-supervised learning, and through a SimCLR-style pre-training and fine-tuning example on the CIFAR-10 dataset, you'll master the complete engineering workflow.</p>\n\n<h3>From Data Dilemmas to Self-Supervised Intuition</h3>\n<p>In image classification tasks, datasets like ImageNet require millions of precisely labeled images, with high annotation costs and susceptibility to subjective bias. The core idea of self-supervised learning is to design predictive tasks using the data's own structure, without external labels. For example, by randomly cropping two regions from the same image as a positive pair, the model learns a representation that \"these two crops come from the same image.\" This is akin to teaching a child to recognize animals without labeling every picture, but by comparing similarities and differences to learn features.</p>\n<blockquote><strong>Misconception Clarification:</strong> Is self-supervised learning a special case of unsupervised learning? Actually, self-supervised learning has explicit predictive targets (pseudo-labels), such as predicting image rotation angles, while unsupervised learning typically lacks clear optimization objectives, like clustering or dimensionality reduction.</blockquote>\n<p>In the subsequent CIFAR-10 example, we'll apply data augmentations like random cropping and color jittering to create positive pairs, verifying whether the model can learn effective representations from unlabeled data. Understanding the motivation for self-supervision, we next need to strictly define its boundaries.</p>\n\n<h3>Defining Boundaries: Self-Supervised vs. Supervised vs. Unsupervised</h3>\n<p>Self-supervised learning is often misunderstood as a variant of supervised or unsupervised learning. Supervised learning predicts based on external labels y=f(x); unsupervised learning aims to discover intrinsic data structures, such as clustering; while self-supervised learning designs predictive tasks by generating pseudo-labels y' from data x, with y'=f(x'). For example, using historical weather data to predict future temperatures, rather than relying on manually labeled \"hot\" or \"cold\" tags (source: A Simple Framework for Contrastive Learning of Visual Representations, 2020).</p>\n<blockquote><strong>Misconception Clarification:</strong> Are pseudo-labels in self-supervised learning approximations of true labels? Pseudo-labels are task objectives generated from data transformations, such as predicting rotation angles, not true semantic labels. This ensures the model learns general representations, not specific category information.</blockquote>\n<p>Self-supervised learning typically involves two stages: pre-training and fine-tuning. First, train on large unlabeled data to obtain general representations, then adapt to specific tasks with small amounts of labeled data. In the CIFAR-10 example, we'll pre-train on the unlabeled training set, then fine-tune a classification task with 10% labeled data. Having defined self-supervised learning, we now explore its most successful implementation mechanism—contrastive learning.</p>\n\n<h3>Mechanism Analysis: How Contrastive Learning Works</h3>\n<p>Contrastive learning is a core method in self-supervised learning, learning representations by pulling positive samples closer and pushing negative samples apart. Positive samples usually come from different augmentations of the same data, while negative samples come from other data. For example, in face recognition, different photos of the same person are positive samples, and photos of different people are negative samples. The contrastive loss (e.g., InfoNCE loss) measures the similarity of positive samples and the dissimilarity of negative samples, with its theoretical motivation being to maximize mutual information, meaning positive samples share more information in the representation space. The InfoNCE loss formula is: L = -log(exp(sim(z_i, z_j)/τ) / Σ_k exp(sim(z_i, z_k)/τ)), where z_i and z_j are positive sample representations, z_k are negative sample representations, and τ is a temperature parameter that adjusts sensitivity to hard samples (source: A Simple Framework for Contrastive Learning of Visual Representations, 2020).</p>\n<blockquote><strong>Misconception Clarification:</strong> Does contrastive learning only need many negative samples to perform well? Negative sample quality (hard negatives) is more important than quantity. Hard negatives are samples similar to positives but from different categories, forcing the model to learn finer discriminative features. Careful sampling strategies are needed, such as MoCo's queue mechanism (source: Momentum Contrast for Unsupervised Visual Representation Learning, 2020), not simply increasing batch size.</blockquote>\n<p>In the CIFAR-10 example, we'll implement SimCLR-style contrastive learning, generating two augmented versions per image as positive pairs and other image augmentations as negatives, optimizing the representation space with InfoNCE loss. Having grasped the principles of contrastive learning, we now apply it to practical tasks.</p>\n\n<h3>Engineering Implementation: From Pre-training to Downstream Tasks</h3>\n<p>The complete workflow of self-supervised learning includes self-supervised pre-training and downstream task fine-tuning. After pre-training, the model obtains general representations but usually requires fine-tuning to adapt to specific tasks. Specific steps include: data preparation (e.g., applying augmentations), model configuration (e.g., selecting a ResNet backbone), training loop (optimizing contrastive loss), and evaluation methods (e.g., linear evaluation). Linear evaluation is a common assessment method: freeze the pre-trained backbone network (e.g., ResNet) and train only a linear classification head to evaluate representation quality. This is similar to learning general English first, then adapting to medical English terminology.</p>\n<blockquote><strong>Misconception Clarification:</strong> Can self-supervised pre-trained models directly achieve good results on test sets? Pre-trained models typically need fine-tuning because pre-training tasks (e.g., contrastive learning) may differ from downstream tasks (e.g., image classification). Direct testing might lead to poor performance, requiring adaptation via fine-tuning or at least linear evaluation (source: Big Self-Supervised Models are Strong Semi-Supervised Learners, 2020).</blockquote>\n<p>In the CIFAR-10 example, we'll demonstrate the full engineering process: pre-training a ResNet backbone with SimCLR style, then fine-tuning on 10% labeled data for image classification, evaluating accuracy and confusion matrix. The table below outlines key steps:</p>\n<table border=\"1\">\n<tr><th>Stage</th><th>Key Operations</th><th>Output</th></tr>\n<tr><td>Pre-training</td><td>Data augmentation, contrastive loss optimization</td><td>General representation model</td></tr>\n<tr><td>Fine-tuning</td><td>Freeze backbone, train classification head</td><td>Task-specific model</td></tr>\n<tr><td>Evaluation</td><td>Compute accuracy, confusion matrix</td><td>Performance metrics</td></tr>\n</table>\n<p>Now, let's implement this workflow through code to verify the practical effects of self-supervised learning.</p>\n\n<h3>Code Implementation: Self-Supervised Pre-training and Fine-tuning on CIFAR-10</h3>\n<p>The following code block shows an end-to-end workflow for implementing SimCLR-style self-supervised pre-training and fine-tuning on the CIFAR-10 dataset. We use the PyTorch framework with built-in CIFAR-10 data, avoiding local file reads. The code includes data loading, augmentation, InfoNCE loss implementation, pre-training, fine-tuning, and evaluation.</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torchvision\nimport torchvision.transforms as transforms\nfrom torchvision.models import resnet18\nimport numpy as np\n\n# Set random seed for reproducibility\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# Device detection\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\nprint(f\"Using device: {device}\")\n\n# Data loading and augmentation\nclass ContrastiveTransform:\n    def __init__(self):\n        self.transform = transforms.Compose([\n            transforms.RandomResizedCrop(32, scale=(0.2, 1.0)),\n            transforms.RandomHorizontalFlip(),\n            transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)], p=0.8),\n            transforms.RandomGrayscale(p=0.2),\n            transforms.GaussianBlur(kernel_size=3),\n            transforms.ToTensor(),\n            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))\n        ])\n    \n    def __call__(self, x):\n        return self.transform(x), self.transform(x)\n\n# Load CIFAR-10 unlabeled data\ntrainset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=ContrastiveTransform())\ntrainloader = torch.utils.data.DataLoader(trainset, batch_size=256, shuffle=True, num_workers=2)\nprint(f\"Training set size: {len(trainset)}\")\n\n# Define SimCLR model\nclass SimCLR(nn.Module):\n    def __init__(self, backbone=resnet18, projection_dim=128):\n        super().__init__()\n        self.backbone = backbone(pretrained=False)\n        self.backbone.fc = nn.Identity()  # Remove original classification head\n        self.projection = nn.Sequential(\n            nn.Linear(512, 512),\n            nn.ReLU(),\n            nn.Linear(512, projection_dim)\n        )\n    \n    def forward(self, x):\n        features = self.backbone(x)\n        return self.projection(features)\n\n# InfoNCE loss implementation\ndef info_nce_loss(features, temperature=0.5):\n    batch_size = features.shape[0] // 2\n    labels = torch.cat([torch.arange(batch_size) for _ in range(2)], dim=0)\n    labels = (labels.unsqueeze(0) == labels.unsqueeze(1)).float().to(device)\n    features = torch.nn.functional.normalize(features, dim=1)\n    similarity_matrix = torch.matmul(features, features.T) / temperature\n    mask = torch.eye(labels.shape[0], dtype=torch.bool).to(device)\n    labels = labels[~mask].view(labels.shape[0], -1)\n    similarity_matrix = similarity_matrix[~mask].view(similarity_matrix.shape[0], -1)\n    positives = similarity_matrix[labels.bool()].view(labels.shape[0], -1)\n    negatives = similarity_matrix[~labels.bool()].view(similarity_matrix.shape[0], -1)\n    logits = torch.cat([positives, negatives], dim=1)\n    labels = torch.zeros(logits.shape[0], dtype=torch.long).to(device)\n    loss = torch.nn.CrossEntropyLoss()(logits, labels)\n    return loss\n\nmodel = SimCLR().to(device)\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# Pre-training loop\nfor epoch in range(10):\n    running_loss = 0.0\n    for i, (inputs, _) in enumerate(trainloader):\n        inputs = torch.cat(inputs, dim=0).to(device)  # Concatenate two augmented views\n        optimizer.zero_grad()\n        outputs = model(inputs)\n        loss = info_nce_loss(outputs)\n        loss.backward()\n        optimizer.step()\n        running_loss += loss.item()\n    print(f\"Epoch {epoch+1}, Loss: {running_loss/len(trainloader):.4f}\")\n\nprint(\"Pre-training completed.\")\n\n# Fine-tuning: Load 10% labeled data\nfrom torch.utils.data import Subset\nindices = list(range(0, len(trainset), 10))  # 10% sampling\nsubset = Subset(trainset, indices)\n# Fine-tuning data transform\nfine_tune_transform = transforms.Compose([\n    transforms.ToTensor(),\n    transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2470, 0.2435, 0.2616))\n])\n# Reload data to avoid transform conflicts\nfine_tune_dataset = torchvision.datasets.CIFAR10(root='./data', train=True, download=True, transform=fine_tune_transform)\nsubset = Subset(fine_tune_dataset, indices)\nlabeled_loader = torch.utils.data.DataLoader(subset, batch_size=64, shuffle=True)\n\n# Fine-tune model: Add classification head\nclass FineTuneModel(nn.Module):\n    def __init__(self, backbone):\n        super().__init__()\n        self.backbone = backbone.backbone  # Reuse pre-trained backbone\n        self.backbone.fc = nn.Linear(512, 10)  # Add classification head\n    \n    def forward(self, x):\n        return self.backbone(x)\n\nfine_tune_model = FineTuneModel(model).to(device)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.SGD(fine_tune_model.parameters(), lr=0.01, momentum=0.9)\n\nfor epoch in range(5):\n    correct = 0\n    total = 0\n    for inputs, labels in labeled_loader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        optimizer.zero_grad()\n        outputs = fine_tune_model(inputs)\n        loss = criterion(outputs, labels)\n        loss.backward()\n        optimizer.step()\n        _, predicted = outputs.max(1)\n        total += labels.size(0)\n        correct += predicted.eq(labels).sum().item()\n    accuracy = 100. * correct / total\n    print(f\"Fine-tuning Epoch {epoch+1}, Accuracy: {accuracy:.2f}%\")\n\n# Evaluate on test set\ntestset = torchvision.datasets.CIFAR10(root='./data', train=False, download=True, transform=fine_tune_transform)\ntestloader = torch.utils.data.DataLoader(testset, batch_size=64, shuffle=False)\nfine_tune_model.eval()\ncorrect = 0\ntotal = 0\nwith torch.no_grad():\n    for inputs, labels in testloader:\n        inputs, labels = inputs.to(device), labels.to(device)\n        outputs = fine_tune_model(inputs)\n        _, predicted = outputs.max(1)\n        total += labels.size(0)\n        correct += predicted.eq(labels).sum().item()\n\nprint(f\"Test set accuracy: {100. * correct / total:.2f}%\")\nprint(f\"Environment info: Python 3.9, PyTorch {torch.__version__}, torchvision {torchvision.__version__}\")\n</code></pre>\n<p>Running the above code, expected outputs include training set size 50000, pre-training loss curve decreasing, fine-tuned test accuracy higher than random initialization (e.g., above 70%), and environment version information. This verifies that self-supervised pre-training enhances few-shot learning performance.</p>\n\n<h3>Summary and Migration Path</h3>\n<p>Self-supervised learning addresses the dilemma of scarce labeled data by designing predictive tasks from the data itself. This article builds a complete understanding framework from intuition, definition, mechanism to engineering practice. Key takeaways include: self-supervised learning has explicit pseudo-label objectives, distinguishing it from unsupervised learning; contrastive learning learns representations through positive-negative sample construction; engineering requires a two-stage pre-training-fine-tuning workflow.</p>\n<p>To migrate this workflow to your own projects, it is recommended to: 1) Analyze data characteristics and design appropriate self-supervised tasks (e.g., image rotation prediction, text mask prediction); 2) Select backbone networks (e.g., ResNet, Vision Transformer) and contrastive learning frameworks (e.g., SimCLR, MoCo); 3) After pre-training, adapt to downstream tasks via linear evaluation or fine-tuning; 4) Monitor representation quality using visualization tools like t-SNE to analyze feature spaces. For example, in natural language processing, you can leverage BERT's masked language model for pre-training, then fine-tune on domain-specific text.</p>\n<p>Self-supervised learning is becoming a core paradigm in representation learning, driving advancements in fields like computer vision and natural language processing. By mastering its principles and practices, you can more efficiently utilize unlabeled data to enhance model performance in resource-constrained scenarios.</p>"
-      },
-      "practice": [
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：自监督学习简介 · 结构总览 · 数据：课程大纲】在设计《自监督学习简介》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
-            "en": "【Source: 自监督学习简介 · 结构总览 · Data: 课程大纲】When outlining \"自监督学习简介\", which sequence best helps readers progress from concepts to applications?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
-            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
-          },
-          "options": [
-            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
-            "直接列公式 → 给出练习 → 最后再解释概念",
-            "只讲历史 → 只列参考文献 → 不展示示例",
-            "先贴代码 → 略过背景 → 简单总结"
-          ]
-        },
-        {
-          "type": "multi",
-          "question": {
-            "zh": "【来自：自监督学习简介 · worked example · 数据：了解自监督学习的核心思想 数据/代码】在复现《自监督学习简介》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
-            "en": "【Source: 自监督学习简介 · worked example · Data: 了解自监督学习的核心思想 数据/代码】While reproducing the worked example in \"自监督学习简介\", which actions improve reproducibility? (Select all that apply)"
-          },
-          "answer": [
-            0,
-            2,
-            3
-          ],
-          "explain": {
-            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
-            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
-          },
-          "options": [
-            "列出输入数据字段与来源",
-            "仅口头描述处理步骤",
-            "逐行解释代码或公式逻辑",
-            "记录关键输出指标及其含义"
-          ]
-        },
-        {
-          "type": "input",
-          "question": {
-            "zh": "【来自：自监督学习简介 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《自监督学习简介》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
-            "en": "【Source: 自监督学习简介 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"自监督学习简介\" into your context: outline the scenario, the reused steps, and the metric you would check."
-          },
-          "answer": "plan",
-          "explain": {
-            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
-            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
-          }
-        },
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：自监督学习简介 · 参考资料 · 数据：课程引用文献】当引用文献支撑《自监督学习简介》中的观点时，以下哪一做法能强化可信度？",
-            "en": "【Source: 自监督学习简介 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"自监督学习简介\", which action strengthens credibility?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
-            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
-          },
-          "options": [
-            "指出文献的年份、作者/机构并提炼与本节的关系",
-            "只在文末集中列出所有链接，不在正文说明",
-            "引用尚未发表的私有数据但不给出处",
-            "用营销口吻概括文献而不提研究方法"
-          ]
-        }
-      ],
-      "references": [
-        {
-          "label": {
-            "zh": "A Simple Framework for Contrastive Learning of Visual Representations（arXiv，2020）",
-            "en": "A Simple Framework for Contrastive Learning of Visual Representations (arXiv, 2020)"
-          },
-          "url": "https://arxiv.org/abs/2002.05709"
-        },
-        {
-          "label": {
-            "zh": "Big Self-Supervised Models are Strong Semi-Supervised Learners（arXiv，2020）",
-            "en": "Big Self-Supervised Models are Strong Semi-Supervised Learners (arXiv, 2020)"
-          },
-          "url": "https://arxiv.org/abs/2006.10029"
-        },
-        {
-          "label": {
-            "zh": "Momentum Contrast for Unsupervised Visual Representation Learning（arXiv，2020）",
-            "en": "Momentum Contrast for Unsupervised Visual Representation Learning (arXiv, 2020)"
-          },
-          "url": "https://arxiv.org/abs/1911.05722"
-        }
-      ],
-      "audio": {
-        "zh": "/assets/audio/daily/2025-12-18-self-supervised-zh.mp3"
-      },
-      "meta": {
-        "category": "Advanced Architectures",
-        "level": "2. Deep Learning & Neural Networks",
-        "difficultyScore": 3,
-        "related": [
-          "Contrastive Learning",
-          "预训练"
-        ],
-        "learningObjectives": [
-          "了解自监督学习的核心思想",
-          "探索对比学习与预训练方法"
-        ],
-        "personas": [
-          "研究人员",
-          "博士生"
-        ],
-        "contextual_notes": {
-          "why_now": "当前阶段掌握自监督学习可帮助团队",
-          "best_for": "适合 研究人员、博士生，需要快速吸收 2. Deep Learning & Neural Networks 主题。",
-          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
-        },
-        "tone_profile": {
-          "persona": "研究人员 指导者",
-          "style": "数据驱动",
-          "energy": "precise",
-          "call_to_action": "引导学习者写下一条可执行行动"
-        },
-        "learner_profile": {
-          "summary": "课程面向 研究人员、博士生，帮助他们把 自监督学习简介 应用于 Advanced Architectures",
-          "prefersEnglish": false,
-          "industries": [
-            "研究人员",
-            "博士生"
-          ],
-          "personas": [
-            "研究人员",
-            "博士生"
-          ],
-          "pains": "在 Advanced Architectures 场景缺乏 自监督学习简介 的可执行路径",
-          "preferredMetrics": [],
-          "maturity": "2. Deep Learning & Neural Networks"
-        },
-        "prompt_version": "2025-02-19",
-        "starter_questions": [
-          {
-            "lang": "zh",
-            "question": "作为研究人员，你在构建Advanced Architectures时是否面临数据标注成本高的问题？请思考：自监督学习如何通过数据增强和对比学习机制，为你的架构提供无需人工标注的可执行学习路径？",
-            "action_hint": "尝试分析你当前项目中数据标注的瓶颈，并设计一个简单的自监督预训练方案来验证其可行性。"
-          },
-          {
-            "lang": "zh",
-            "question": "在Advanced Architectures研究中，你如何评估模型在少样本场景下的性能？自监督学习通过SimCLR风格的预训练与微调，能如何优化你的架构表示学习过程？",
-            "action_hint": "选择一个你的研究场景，规划如何应用自监督学习流程来提升模型的少样本学习能力。"
           }
         ]
       }
