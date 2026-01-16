@@ -6674,5 +6674,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-21-ner",
+    "date": "2025-12-21",
+    "title": {
+      "zh": "命名实体识别与序列标注",
+      "en": "Named Entity Recognition and Sequence Labeling"
+    },
+    "summary": {
+      "zh": "命名实体识别（Named Entity Recognition, NER）是自然语言处理中的序列标注任务，用于自动识别文本中的人名、地名、机构名等预定义实体。本课程从现实需求出发，逐步讲解NER的任务定义、BIO标注方案、条件随机场（CRF）原理，并构建一个可复现的NER流水线。通过CoNLL-2003数据集示例，你将掌握从数据加载、特征工程到模型训练与评估的完整流程，学会如何将理论应用于实际项目。",
+      "en": "Named Entity Recognition (NER) is a sequence labeling task in natural language processing that automatically identifies predefined entities such as person names, locations, and organizations in text. This course starts from practical needs, gradually explaining NER task definition, BIO tagging schemes, Conditional Random Field (CRF) principles, and building a reproducible NER pipeline. Through the CoNLL-2003 dataset example, you will master the complete workflow from data loading and feature engineering to model training and evaluation, learning how to apply theory to real-world projects."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "NER",
+      "sequence labeling"
+    ],
+    "content": {
+      "zh": "<h2>命名实体识别与序列标注：从文本到结构化信息的桥梁</h2>\n\n<p>想象一下，你正在处理海量的新闻文档，需要快速提取其中的人物、地点和机构信息。手动标注不仅耗时，而且难以规模化。这正是命名实体识别（Named Entity Recognition, NER）要解决的核心问题——如何让机器自动识别文本中的特定实体，并将其归类为预定义的类型。本课程将带你从直觉建立到工程实践，完整掌握NER的任务定义、序列标注机制以及可复现的流水线构建。</p>\n\n<p>我们将使用公开的CoNLL-2003数据集（来源：CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003），构建一个基于条件随机场（Conditional Random Field, CRF）的NER系统，识别人名、地名和机构名。通过这个贯穿示例，你将看到从数据加载、特征工程到模型训练与评估的完整流程，并理解如何将理论转化为可执行的代码。</p>\n\n<h3>从文本到实体：为什么需要自动识别？</h3>\n\n<p>在日常的NLP任务中，我们经常需要从非结构化文本中提取结构化信息。例如，从一篇新闻报道中自动找出所有提到的人物和地点，或者从医疗记录中识别疾病名称和药物。这种需求催生了命名实体识别——一个将文本中的实体标注为预定义类别的序列标注任务。</p>\n\n<p>命名实体识别（NER）的核心是识别文本中具有特定意义的实体，如人名（PERSON）、地名（LOCATION）、机构名（ORGANIZATION）等。与简单的关键词提取不同，NER需要考虑上下文信息。例如，“苹果”在“我吃了一个苹果”中是水果，而在“苹果发布了新手机”中则是公司名。这种基于上下文的分类能力，使得NER成为信息提取、知识图谱构建等下游应用的基础。</p>\n\n<p>序列标注（Sequence Labeling）是NER的底层框架，它为文本中的每个词（或字符）分配一个标签。常见的标注方案包括BIO（B-实体开始，I-实体内部，O-非实体），它明确了实体的边界和类型。通过这种结构化表示，机器可以更准确地理解文本中的实体信息。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：NER不仅仅是找专有名词。许多实体（如“医院”、“大学”）是普通名词，但在特定上下文中被识别为机构。NER的任务是基于上下文进行分类，而非简单匹配词典。</p>\n</blockquote>\n\n<p>在我们的贯穿示例中，我们将使用CoNLL-2003数据集（来源：CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003），它包含了新闻文本中的人名、地名、机构名等实体标注。通过分析数据，你可以直观看到实体在文本中的分布，以及BIO标注如何表示实体边界。例如，句子“马云在杭州创办了阿里巴巴”会被标注为：</p>\n\n<ul>\n<li>马云: B-PERSON</li>\n<li>在: O</li>\n<li>杭州: B-LOCATION</li>\n<li>创办了: O</li>\n<li>阿里巴巴: B-ORGANIZATION</li>\n</ul>\n\n<p>理解了NER的现实需求，接下来我们明确任务的具体定义。</p>\n\n<h3>任务定义：NER在做什么？</h3>\n\n<p>NER的任务是为文本中的每个词分配一个实体标签，表示它属于哪个预定义的实体类型（或非实体）。常见的实体类型包括：</p>\n\n<table>\n<thead>\n<tr>\n<th>实体类型</th>\n<th>英文缩写</th>\n<th>示例</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>人物</td>\n<td>PER</td>\n<td>马云、爱因斯坦</td>\n</tr>\n<tr>\n<td>地点</td>\n<td>LOC</td>\n<td>北京、太平洋</td>\n</tr>\n<tr>\n<td>机构</td>\n<td>ORG</td>\n<td>阿里巴巴、联合国</td>\n</tr>\n<tr>\n<td>其他</td>\n<td>MISC</td>\n<td>奥运会、COVID-19</td>\n</tr>\n</tbody>\n</table>\n\n<p>为了表示实体边界，我们使用BIO标注方案：</p>\n\n<ul>\n<li>B-XXX: 实体开始（Begin）</li>\n<li>I-XXX: 实体内部（Inside）</li>\n<li>O: 非实体（Outside）</li>\n</ul>\n\n<p>例如，句子“北京是中国的首都”的BIO标注为：['B-LOC', 'O', 'B-LOC', 'O']，对应实体{'北京': 'LOCATION', '中国': 'LOCATION'}。这种标注方式清晰区分了实体边界，避免了歧义。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：并非所有文本都需要NER。NER主要应用于信息提取、问答系统、知识图谱等需要结构化实体信息的场景。对于情感分析、文本分类等任务，实体识别可能不是必需的。</p>\n</blockquote>\n\n<p>在我们的示例中，CoNLL-2003数据集已经用BIO标注好了实体。我们将直接使用这些标注来训练模型。通过查看数据，你可以理解不同实体类型的分布，以及BIO标注如何在实际数据中应用。这为后续的模型训练提供了基础。</p>\n\n<p>任务定义清晰后，我们来看如何用序列标注模型来实现NER。</p>\n\n<h3>机制解析：序列标注如何工作？</h3>\n\n<p>序列标注的核心挑战是标签之间的依赖关系。例如，在BIO标注中，I-LOC通常跟在B-LOC之后，而不是独立出现。简单的分类器（如逻辑回归）无法捕捉这种依赖，导致效果不佳。条件随机场（CRF）通过建模标签间的转移概率，解决了这个问题。</p>\n\n<p>CRF是一种概率图模型（来源：Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data, 2001），它定义了给定输入序列X时，输出标签序列Y的条件概率P(Y|X)。其核心是特征函数（Feature Function），它连接输入特征（如词形、词性、前缀/后缀）和标签。CRF通过最大化训练数据的对数似然来学习特征函数的权重，从而在预测时找到最可能的标签序列。</p>\n\n<p>为什么CRF能有效建模标签依赖？关键在于它考虑了相邻标签的转移概率。公式上，CRF的条件概率定义为：P(Y|X) = (1/Z(X)) * exp(∑_i ∑_k λ_k f_k(y_{i-1}, y_i, X, i))，其中Z(X)是归一化因子，f_k是特征函数，λ_k是权重。这个公式捕捉了相邻标签间的依赖（通过y_{i-1}, y_i），使得预测更符合序列结构。与隐马尔可夫模型（HMM）相比，CRF是判别式模型，直接建模P(Y|X)，避免了HMM对观测独立性的强假设，因此在序列标注任务中通常表现更好。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：CRF不一定需要与深度学习结合。传统CRF使用手工特征（如词形、词性）即可工作，常与神经网络结合以自动学习特征，提升性能。但对于小数据集，手工特征的CRF可能更稳定。</p>\n</blockquote>\n\n<p>在我们的示例中，我们将使用sklearn-crfsuite库（来源：sklearn-crfsuite documentation, 2023）实现CRF模型。特征函数包括词形（word）、词性（POS tag）、前缀/后缀等。例如，对于词序列['New', 'York', 'City']，特征可能包括{'word': 'New', 'is_capitalized': True}，CRF会利用这些特征和标签依赖，输出['B-LOC', 'I-LOC', 'I-LOC']。</p>\n\n<p>理解了CRF的原理，接下来我们将其应用到完整的NER流水线中。</p>\n\n<h3>工程实践：构建可复现的NER流水线</h3>\n\n<p>一个可复现的NER流水线包括数据准备、特征工程、模型训练和评估四个步骤。可复现性（Reproducibility）通过固定随机种子、记录环境版本等方式确保结果可重复验证。以下是流水线的关键步骤：</p>\n\n<ol>\n<li><strong>数据准备</strong>：加载CoNLL-2003数据集，按句子分割，并固定随机种子进行训练集/测试集划分。</li>\n<li><strong>特征工程</strong>：为每个词提取特征，如词形、词性、前缀（前3个字符）、后缀（后3个字符）、是否大写等。</li>\n<li><strong>模型训练</strong>：使用CRF模型训练特征和标签，调整超参数（如正则化强度）。</li>\n<li><strong>评估</strong>：计算准确率、召回率、F1分数，绘制混淆矩阵进行错误分析。</li>\n</ol>\n\n<p>下面是一个综合代码块，展示了从数据加载到模型评估的完整流程：</p>\n\n<pre><code>import nltk\nfrom sklearn.model_selection import train_test_split\nfrom sklearn_crfsuite import CRF\nfrom sklearn_crfsuite.metrics import flat_classification_report\nimport numpy as np\n\n# 步骤1: 数据加载（使用CoNLL-2003示例数据）\n# 注意：这里使用内置示例数据，实际中可从https://www.clips.uantwerpen.be/conll2003/ner/下载完整数据集\nnltk.download('conll2002')  # 使用nltk中的示例数据，实际项目应替换为CoNLL-2003\nfrom nltk.corpus import conll2002\n\ndata = conll2002.iob_sents('esp.train')  # 示例数据，实际应使用CoNLL-2003\nsentences = [list(zip(*sent)) for sent in data]  # 转换为(词, POS, 标签)格式\n\n# 步骤2: 特征提取函数\ndef word2features(sent, i):\n    word = sent[i][0]\n    features = {\n        'word': word,\n        'is_capitalized': word[0].isupper(),\n        'prefix': word[:3],\n        'suffix': word[-3:],\n    }\n    if i > 0:\n        prev_word = sent[i-1][0]\n        features.update({'prev_word': prev_word})\n    return features\n\ndef sent2features(sent):\n    return [word2features(sent, i) for i in range(len(sent))]\n\ndef sent2labels(sent):\n    return [label for _, _, label in sent]\n\nX = [sent2features(s) for s in sentences]\ny = [sent2labels(s) for s in sentences]\n\n# 步骤3: 数据分割（固定随机种子）\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# 步骤4: CRF模型训练\ncrf = CRF(algorithm='lbfgs', c1=0.1, c2=0.1, max_iterations=100)\ncrf.fit(X_train, y_train)\n\n# 步骤5: 评估\ny_pred = crf.predict(X_test)\nreport = flat_classification_report(y_test, y_pred)\nprint(\"Classification Report:\")\nprint(report)\n\n# 输出数据集信息\nprint(f\"数据集样本数: {len(sentences)}\")\nprint(f\"训练集大小: {len(X_train)}, 测试集大小: {len(X_test)}\")\n</code></pre>\n\n<p>另一个代码块展示了混淆矩阵的可视化，帮助分析错误：</p>\n\n<pre><code>from sklearn.metrics import confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# 将标签序列展平\nlabels = ['O', 'B-PER', 'I-PER', 'B-LOC', 'I-LOC', 'B-ORG', 'I-ORG']  # 示例标签\ny_test_flat = [label for sent in y_test for label in sent]\ny_pred_flat = [label for sent in y_pred for label in sent]\n\n# 计算混淆矩阵\ncm = confusion_matrix(y_test_flat, y_pred_flat, labels=labels)\n\n# 可视化\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)\nplt.title('Confusion Matrix for NER')\nplt.xlabel('Predicted')\nplt.ylabel('True')\nplt.show()\n\n# 输出环境信息\nimport sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"sklearn-crfsuite版本: 0.3.6\")  # 假设版本\nprint(f\"随机种子: 42\")\n</code></pre>\n\n<blockquote>\n<p><strong>误区澄清</strong>：NER模型不是越大越好。在小数据集上，复杂的深度学习模型容易过拟合。CRF结合手工特征通常在中等数据集上表现稳定，且训练速度快。</p>\n</blockquote>\n\n<p>通过这个流水线，你可以得到模型在测试集上的性能报告（如F1分数）、混淆矩阵可视化以及环境版本信息。这确保了实验的可复现性，便于后续优化。</p>\n\n<h3>总结与迁移路径</h3>\n\n<p>本课程从NER的现实需求出发，逐步深入任务定义、CRF机制和工程实践。你学会了如何构建一个可复现的NER流水线，使用CoNLL-2003数据集和CRF模型识别人名、地名和机构名。关键点包括：理解BIO标注、掌握CRF的原理、实现特征工程和评估指标。</p>\n\n<p>要将这个工作流迁移到自己的项目，你可以：</p>\n\n<ol>\n<li><strong>调整实体类型</strong>：根据你的领域（如医疗、法律）定义新的实体类型，并准备标注数据。</li>\n<li><strong>优化特征</strong>：在特征工程中，加入领域特定特征（如医疗术语、法律条款）。</li>\n<li><strong>模型选择</strong>：对于大数据集，考虑结合神经网络（如BiLSTM-CRF）以提升性能。</li>\n<li><strong>评估迭代</strong>：使用混淆矩阵分析错误，持续改进特征和模型。</li>\n</ol>\n\n<p>通过实践，你将能够把NER技术应用到信息提取、知识图谱等实际场景中，提升NLP项目的效率。</p>",
+      "en": "<h2>Named Entity Recognition and Sequence Labeling: Bridging Text to Structured Information</h2>\n\n<p>Imagine you are processing vast amounts of news documents and need to quickly extract information about people, locations, and organizations. Manual annotation is time-consuming and difficult to scale. This is the core problem that Named Entity Recognition (NER) addresses—how to enable machines to automatically identify specific entities in text and classify them into predefined types. This course will guide you from building intuition to engineering practice, fully mastering the task definition of NER, the mechanisms of sequence labeling, and the construction of reproducible pipelines.</p>\n\n<p>We will use the publicly available CoNLL-2003 dataset (Source: CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003) to build a CRF-based NER system that identifies person names, locations, and organizations. Through this running example, you will see the complete workflow from data loading and feature engineering to model training and evaluation, and understand how to translate theory into executable code.</p>\n\n<h3>From Text to Entities: Why Do We Need Automatic Recognition?</h3>\n\n<p>In everyday NLP tasks, we often need to extract structured information from unstructured text. For example, automatically finding all mentioned people and places in a news article, or identifying disease names and medications in medical records. This demand gave rise to Named Entity Recognition—a sequence labeling task that annotates entities in text with predefined categories.</p>\n\n<p>The core of Named Entity Recognition (NER) is identifying entities with specific meanings in text, such as persons (PERSON), locations (LOCATION), organizations (ORGANIZATION), and others. Unlike simple keyword extraction, NER requires considering contextual information. For instance, \"apple\" in \"I ate an apple\" refers to a fruit, while in \"Apple released a new phone\" it refers to a company. This context-based classification capability makes NER a foundation for downstream applications like information extraction and knowledge graph construction.</p>\n\n<p>Sequence Labeling is the underlying framework for NER, assigning a label to each word (or character) in the text. Common tagging schemes include BIO (B-beginning of entity, I-inside entity, O-outside entity), which clarifies entity boundaries and types. Through this structured representation, machines can more accurately understand entity information in text.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: NER is not just about finding proper nouns. Many entities (e.g., \"hospital\", \"university\") are common nouns but are identified as organizations in specific contexts. The task of NER is classification based on context, not simple dictionary matching.</p>\n</blockquote>\n\n<p>In our running example, we will use the CoNLL-2003 dataset (Source: CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003), which contains annotations for persons, locations, organizations, and other entities in news text. By analyzing the data, you can visually see the distribution of entities in text and how BIO tagging represents entity boundaries. For example, the sentence \"Ma Yun founded Alibaba in Hangzhou\" would be tagged as:</p>\n\n<ul>\n<li>Ma Yun: B-PERSON</li>\n<li>in: O</li>\n<li>Hangzhou: B-LOCATION</li>\n<li>founded: O</li>\n<li>Alibaba: B-ORGANIZATION</li>\n</ul>\n\n<p>With an understanding of the practical need for NER, let's clarify the specific task definition.</p>\n\n<h3>Task Definition: What Does NER Do?</h3>\n\n<p>The task of NER is to assign an entity label to each word in the text, indicating which predefined entity type it belongs to (or if it is a non-entity). Common entity types include:</p>\n\n<table>\n<thead>\n<tr>\n<th>Entity Type</th>\n<th>Abbreviation</th>\n<th>Example</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>Person</td>\n<td>PER</td>\n<td>Ma Yun, Einstein</td>\n</tr>\n<tr>\n<td>Location</td>\n<td>LOC</td>\n<td>Beijing, Pacific Ocean</td>\n</tr>\n<tr>\n<td>Organization</td>\n<td>ORG</td>\n<td>Alibaba, United Nations</td>\n</tr>\n<tr>\n<td>Miscellaneous</td>\n<td>MISC</td>\n<td>Olympics, COVID-19</td>\n</tr>\n</tbody>\n</table>\n\n<p>To represent entity boundaries, we use the BIO tagging scheme:</p>\n\n<ul>\n<li>B-XXX: Beginning of entity</li>\n<li>I-XXX: Inside entity</li>\n<li>O: Outside entity (non-entity)</li>\n</ul>\n\n<p>For example, the sentence \"Beijing is the capital of China\" has BIO tags: ['B-LOC', 'O', 'B-LOC', 'O'], corresponding to entities {'Beijing': 'LOCATION', 'China': 'LOCATION'}. This tagging method clearly distinguishes entity boundaries, avoiding ambiguity.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: Not all text requires NER. NER is primarily applied in scenarios that need structured entity information, such as information extraction, question answering, and knowledge graphs. For tasks like sentiment analysis or text classification, entity recognition may not be necessary.</p>\n</blockquote>\n\n<p>In our example, the CoNLL-2003 dataset is already tagged with BIO labels. We will directly use these annotations to train the model. By examining the data, you can understand the distribution of different entity types and how BIO tagging is applied in real data. This provides a foundation for subsequent model training.</p>\n\n<p>With a clear task definition, let's explore how to implement NER with sequence labeling models.</p>\n\n<h3>Mechanism Explanation: How Does Sequence Labeling Work?</h3>\n\n<p>The core challenge of sequence labeling is the dependency between labels. For example, in BIO tagging, I-LOC typically follows B-LOC, rather than appearing independently. Simple classifiers (like logistic regression) cannot capture this dependency, leading to poor performance. Conditional Random Fields (CRF) address this by modeling transition probabilities between labels.</p>\n\n<p>CRF is a probabilistic graphical model (Source: Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data, 2001) that defines the conditional probability P(Y|X) of an output label sequence Y given an input sequence X. Its core is the feature function, which connects input features (e.g., word form, part-of-speech, prefixes/suffixes) and labels. CRF learns the weights of feature functions by maximizing the log-likelihood of training data, thereby finding the most likely label sequence during prediction.</p>\n\n<p>Why does CRF effectively model label dependencies? The key lies in its consideration of transition probabilities between adjacent labels. Formally, the conditional probability of CRF is defined as: P(Y|X) = (1/Z(X)) * exp(∑_i ∑_k λ_k f_k(y_{i-1}, y_i, X, i)), where Z(X) is the normalization factor, f_k are feature functions, and λ_k are weights. This formula captures dependencies between adjacent labels (via y_{i-1}, y_i), making predictions more consistent with sequence structure. Compared to Hidden Markov Models (HMM), CRF is a discriminative model that directly models P(Y|X), avoiding HMM's strong assumption of observation independence, thus typically performing better in sequence labeling tasks.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: CRF does not necessarily need to be combined with deep learning. Traditional CRF can work with handcrafted features (e.g., word form, POS tags) and is often combined with neural networks to automatically learn features and improve performance. However, for small datasets, CRF with handcrafted features may be more stable.</p>\n</blockquote>\n\n<p>In our example, we will implement a CRF model using the sklearn-crfsuite library (Source: sklearn-crfsuite documentation, 2023). Feature functions include word form, POS tag, prefixes/suffixes, etc. For instance, for the word sequence ['New', 'York', 'City'], features might include {'word': 'New', 'is_capitalized': True}, and CRF will use these features and label dependencies to output ['B-LOC', 'I-LOC', 'I-LOC'].</p>\n\n<p>With an understanding of CRF principles, let's apply it to a complete NER pipeline.</p>\n\n<h3>Engineering Practice: Building a Reproducible NER Pipeline</h3>\n\n<p>A reproducible NER pipeline includes four steps: data preparation, feature engineering, model training, and evaluation. Reproducibility is ensured by fixing random seeds, recording environment versions, and other methods to verify that results can be repeated. Here are the key steps of the pipeline:</p>\n\n<ol>\n<li><strong>Data Preparation</strong>: Load the CoNLL-2003 dataset, split by sentences, and fix random seeds for train/test split.</li>\n<li><strong>Feature Engineering</strong>: Extract features for each word, such as word form, POS tag, prefix (first 3 characters), suffix (last 3 characters), capitalization, etc.</li>\n<li><strong>Model Training</strong>: Train the CRF model with features and labels, tuning hyperparameters (e.g., regularization strength).</li>\n<li><strong>Evaluation</strong>: Calculate accuracy, recall, F1 score, and plot a confusion matrix for error analysis.</li>\n</ol>\n\n<p>Below is a comprehensive code block showing the complete workflow from data loading to model evaluation:</p>\n\n<pre><code>import nltk\nfrom sklearn.model_selection import train_test_split\nfrom sklearn_crfsuite import CRF\nfrom sklearn_crfsuite.metrics import flat_classification_report\nimport numpy as np\n\n# Step 1: Data Loading (using CoNLL-2003 example data)\n# Note: This uses built-in example data; in practice, download the full dataset from https://www.clips.uantwerpen.be/conll2003/ner/\nnltk.download('conll2002')  # Using nltk example data; replace with CoNLL-2003 in real projects\nfrom nltk.corpus import conll2002\n\ndata = conll2002.iob_sents('esp.train')  # Example data; use CoNLL-2003 in practice\nsentences = [list(zip(*sent)) for sent in data]  # Convert to (word, POS, label) format\n\n# Step 2: Feature Extraction Function\ndef word2features(sent, i):\n    word = sent[i][0]\n    features = {\n        'word': word,\n        'is_capitalized': word[0].isupper(),\n        'prefix': word[:3],\n        'suffix': word[-3:],\n    }\n    if i > 0:\n        prev_word = sent[i-1][0]\n        features.update({'prev_word': prev_word})\n    return features\n\ndef sent2features(sent):\n    return [word2features(sent, i) for i in range(len(sent))]\n\ndef sent2labels(sent):\n    return [label for _, _, label in sent]\n\nX = [sent2features(s) for s in sentences]\ny = [sent2labels(s) for s in sentences]\n\n# Step 3: Data Splitting (fix random seed)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# Step 4: CRF Model Training\ncrf = CRF(algorithm='lbfgs', c1=0.1, c2=0.1, max_iterations=100)\ncrf.fit(X_train, y_train)\n\n# Step 5: Evaluation\ny_pred = crf.predict(X_test)\nreport = flat_classification_report(y_test, y_pred)\nprint(\"Classification Report:\")\nprint(report)\n\n# Output Dataset Information\nprint(f\"Number of dataset samples: {len(sentences)}\")\nprint(f\"Training set size: {len(X_train)}, Test set size: {len(X_test)}\")\n</code></pre>\n\n<p>Another code block shows visualization of the confusion matrix to aid error analysis:</p>\n\n<pre><code>from sklearn.metrics import confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# Flatten label sequences\nlabels = ['O', 'B-PER', 'I-PER', 'B-LOC', 'I-LOC', 'B-ORG', 'I-ORG']  # Example labels\ny_test_flat = [label for sent in y_test for label in sent]\ny_pred_flat = [label for sent in y_pred for label in sent]\n\n# Compute Confusion Matrix\ncm = confusion_matrix(y_test_flat, y_pred_flat, labels=labels)\n\n# Visualization\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)\nplt.title('Confusion Matrix for NER')\nplt.xlabel('Predicted')\nplt.ylabel('True')\nplt.show()\n\n# Output Environment Information\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"sklearn-crfsuite version: 0.3.6\")  # Assumed version\nprint(f\"Random seed: 42\")\n</code></pre>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: Bigger is not always better for NER models. On small datasets, complex deep learning models are prone to overfitting. CRF with handcrafted features often performs stably on medium-sized datasets and trains quickly.</p>\n</blockquote>\n\n<p>Through this pipeline, you can obtain the model's performance report on the test set (e.g., F1 score), confusion matrix visualization, and environment version information. This ensures reproducibility of the experiment, facilitating subsequent optimization.</p>\n\n<h3>Summary and Migration Path</h3>\n\n<p>This course started from the practical need for NER, gradually delving into task definition, CRF mechanisms, and engineering practice. You learned how to build a reproducible NER pipeline, using the CoNLL-2003 dataset and a CRF model to identify person names, locations, and organizations. Key points include understanding BIO tagging, mastering CRF principles, implementing feature engineering, and evaluation metrics.</p>\n\n<p>To migrate this workflow to your own projects, you can:</p>\n\n<ol>\n<li><strong>Adjust Entity Types</strong>: Define new entity types based on your domain (e.g., medical, legal) and prepare annotated data.</li>\n<li><strong>Optimize Features</strong>: In feature engineering, add domain-specific features (e.g., medical terms, legal clauses).</li>\n<li><strong>Model Selection</strong>: For large datasets, consider combining neural networks (e.g., BiLSTM-CRF) to improve performance.</li>\n<li><strong>Evaluate and Iterate</strong>: Use confusion matrices to analyze errors and continuously improve features and models.</li>\n</ol>\n\n<p>Through practice, you will be able to apply NER techniques to real-world scenarios like information extraction and knowledge graphs, enhancing the efficiency of your NLP projects.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：命名实体识别与序列标注 · 结构总览 · 数据：课程大纲】在设计《命名实体识别与序列标注》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 命名实体识别与序列标注 · 结构总览 · Data: 课程大纲】When outlining \"命名实体识别与序列标注\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：命名实体识别与序列标注 · worked example · 数据：掌握命名实体识别的任务和方法 数据/代码】在复现《命名实体识别与序列标注》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 命名实体识别与序列标注 · worked example · Data: 掌握命名实体识别的任务和方法 数据/代码】While reproducing the worked example in \"命名实体识别与序列标注\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：命名实体识别与序列标注 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《命名实体识别与序列标注》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 命名实体识别与序列标注 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"命名实体识别与序列标注\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：命名实体识别与序列标注 · 参考资料 · 数据：课程引用文献】当引用文献支撑《命名实体识别与序列标注》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 命名实体识别与序列标注 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"命名实体识别与序列标注\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition（CoNLL，2003）",
+          "en": "CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition (CoNLL, 2003)"
+        },
+        "url": "https://www.clips.uantwerpen.be/conll2003/ner/"
+      },
+      {
+        "label": {
+          "zh": "Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data（University of Pennsylvania，2001）",
+          "en": "Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data (University of Pennsylvania, 2001)"
+        },
+        "url": "https://repository.upenn.edu/cis_papers/159/"
+      },
+      {
+        "label": {
+          "zh": "sklearn-crfsuite documentation（开源项目，2023）",
+          "en": "sklearn-crfsuite documentation (开源项目, 2023)"
+        },
+        "url": "https://sklearn-crfsuite.readthedocs.io/en/latest/"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-21-ner-zh.mp3"
+    },
+    "meta": {
+      "category": "NLP Fundamentals",
+      "level": "3. Natural Language Processing & Transformers",
+      "difficultyScore": 2,
+      "related": [
+        "CRF",
+        "序列标注任务"
+      ],
+      "learningObjectives": [
+        "掌握命名实体识别的任务和方法",
+        "应用 CRF 等工具进行序列标注"
+      ],
+      "personas": [
+        "NLP 工程师",
+        "数据科学家"
+      ],
+      "contextual_notes": {
+        "why_now": "Mastering Named Entity Recognition and Sequence Labeling at this stage helps teams develop reusable practices in NLP Fundamentals.",
+        "best_for": "Suitable for NLP engineers and data scientists who need to quickly absorb topics in Natural Language Processing & Transformers.",
+        "visual_hint": "Use bullet lists + flow arrows to show the process; include confusion matrices for error analysis."
+      },
+      "tone_profile": {
+        "persona": "NLP 工程师 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 NLP 工程师、数据科学家，帮助他们把 命名实体识别与序列标注 应用于 NLP Fundamentals",
+        "prefersEnglish": false,
+        "industries": [
+          "NLP 工程师",
+          "数据科学家"
+        ],
+        "personas": [
+          "NLP 工程师",
+          "数据科学家"
+        ],
+        "pains": "在 NLP Fundamentals 场景缺乏 命名实体识别与序列标注 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "3. Natural Language Processing & Transformers"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为NLP工程师，你在处理客户反馈时，如何识别文本中的关键实体（如产品名、地点）来优化分析？思考当前项目中哪些环节可以应用NER提升效率？",
+          "action_hint": "尝试列出你最近处理的文本数据，标注其中可能存在的实体类型，并评估现有流程的自动化潜力。"
+        },
+        {
+          "lang": "zh",
+          "question": "数据科学家在构建分类模型时，常忽略实体信息对特征工程的影响。回顾你的项目，序列标注如何帮助提取更丰富的上下文特征？",
+          "action_hint": "选择一个现有数据集，手动标注部分样本的实体，观察这些标注能否为模型提供新的预测维度。"
+        }
+      ]
+    }
   }
 ]

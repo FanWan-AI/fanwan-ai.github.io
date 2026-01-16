@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2026-01-16T02:43:54.901Z",
+  "generatedAt": "2026-01-16T14:10:12.467Z",
   "lessons": [
+    {
+      "id": "2026-01-16-hierarchical-rl",
+      "date": "2026-01-16",
+      "title": {
+        "zh": "分层与多任务强化学习",
+        "en": "Hierarchical and Multi-Task Reinforcement Learning"
+      },
+      "summary": {
+        "zh": "分层与多任务强化学习通过构建层次化策略和共享知识，解决复杂决策任务中的长期规划与多目标优化问题，是提升智能体泛化能力的关键技术，课程围绕 RL Algorithms & Variants 中的可执行路径展开。内容串联 从单一任务到复杂决策：为什么需要分层与多任务？、核心定义与边界：什么是分层与多任务RL？、机制剖析：分层策略与多任务共享如何实现？，梳理定义、推导与迁移步骤。",
+        "en": "分层与多任务强化学习 is positioned for RL Algorithms & Variants initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从单一任务到复杂决策：为什么需要分层与多任务？, 核心定义与边界：什么是分层与多任务RL？, 机制剖析：分层策略与多任务共享如何实现？ to translate theory into executable steps."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "hierarchical rl",
+        "multi-task rl"
+      ],
+      "content": {
+        "zh": "<h3>从单一任务到复杂决策：为什么需要分层与多任务强化学习？</h3>\n<p>在强化学习的实际应用中，如机器人自主导航或游戏智能体控制，智能体常面临需要同时协调多个子目标的长序列决策问题。单一、扁平的强化学习策略在处理此类任务时，往往因动作空间维度灾难、奖励信号稀疏以及长期信用分配困难而收敛缓慢甚至失败。例如，一个家庭服务机器人需要完成“取物-移动-放置”的连贯操作，扁平策略难以有效分解这一系列动作的时间依赖关系。这引出了对更结构化决策框架的需求，即通过引入时间抽象和知识共享来管理复杂性。</p>\n<p>精确定义上，分层强化学习（Hierarchical Reinforcement Learning, HRL）旨在通过构建层次化的策略结构，将复杂任务分解为高层子任务（或抽象动作）的选择和底层原始动作的执行。其核心是时间抽象（Temporal Abstraction）。多任务强化学习（Multi-task Reinforcement Learning, MTRL）则关注于在多个相关但不同的任务上训练一个智能体，通过在任务间共享表示或参数，以提高样本效率并促进向新任务的泛化。两者虽常结合使用，但HRL侧重于单个任务内部的结构化分解，而MTRL侧重于跨任务的知识迁移。</p>\n<p>从机制与数学角度看，HRL的一个经典形式化工具是Option框架。一个Option \\(O\\) 定义为一个三元组 \\(O = \\langle I, \\pi, \\beta \\rangle\\)，其中：\\(I \\subseteq S\\) 是初始化状态集，决定了Option何时可被启动；\\(\\pi: S \\times A \\rightarrow [0, 1]\\) 是Option的内部策略，决定了在Option激活期间执行何种原始动作；\\(\\beta: S \\rightarrow [0, 1]\\) 是终止条件，决定了Option在何时以何种概率结束。当高层策略在状态\\(s_t\\)选择一个Option \\(o_t\\)后，底层策略\\(\\pi_{o_t}\\)将连续执行\\(k\\)步，直到在状态\\(s_{t+k}\\)满足终止条件\\(\\beta(s_{t+k}) = 1\\)。这实质上将原始的马尔可夫决策过程（MDP）转换为一个半马尔可夫决策过程（Semi-MDP），其价值函数可以表示为：\\[V^{\\pi}(s) = \\mathbb{E}_{o \\sim \\pi_h(\\cdot|s)} \\left[ Q^{\\pi}(s, o) \\right]\\]，其中\\(\\pi_h\\)是高层Option选择策略，\\(Q^{\\pi}(s, o) = \\mathbb{E} \\left[ \\sum_{i=0}^{k-1} \\gamma^i r_{t+i} + \\gamma^k V^{\\pi}(s_{t+k}) \\mid s_t = s, o_t = o \\right]\\) 是Option-状态价值函数，\\(k\\)是Option执行的随机步数。</p>\n<p>在工程实现层面，构建HRL系统需明确几个要点。数据流方面，经验回放缓冲区需要同时记录Option级别的轨迹（起始状态、Option、累积奖励、终止状态）和原始动作级别的转移。模块边界上，通常需要设计两个策略网络：一个高层网络（Manager）输出Option的分布，一个底层网络（Worker）或一组底层网络执行选定Option的内部策略。复杂度敏感点主要在于Option终止条件的设计——过于频繁的终止会导致策略碎片化，失去抽象意义；而终止过晚则可能使Option变得僵化，无法适应环境变化。延迟则主要来源于层次间的通信和同步开销。</p>\n<p>常见的误区包括将分层简单理解为按固定时间间隔分组执行动作，或认为引入层次必然带来性能提升。典型的失败模式有：1）高层策略陷入局部最优，反复选择同一个无效的Option；2）Option的终止条件学习不稳定，导致训练振荡。诊断这些失败模式，可以监控Option的激活持续时间分布（方差过小可能表示抽象不足），或可视化Option被激活时的状态聚类（看其是否对应有意义的子目标）。</p>\n<p>理解了分层与多任务RL解决复杂决策问题的动机及其核心形式化工具，下一节我们将严格界定两者的定义边界，并探讨其典型应用场景。</p>\n<h3>核心定义与边界：什么是分层与多任务强化学习？</h3>\n<p>尽管“分层”和“多任务”在讨论中常被一并提及，但它们在问题定义、目标和技术路径上存在清晰边界，混淆二者是常见的概念误区。明确区分有助于为具体问题选择正确的技术框架。分层RL的核心是解决单个复杂任务内部的时序信用分配和技能复用问题，其灵感来源于人类和动物将复杂行为分解为子程序的能力。多任务RL的核心则是解决从一组相关任务中高效学习并实现正向知识迁移的问题，其动机在于许多现实场景（如不同游戏关卡、不同机器人操作任务）共享底层规律。</p>\n<p>精确定义上，分层强化学习（HRL）特指在单个马尔可夫决策过程（MDP）或半MDP中，通过引入具有时间扩展性的抽象动作（如Options、Skills）来构建策略层次结构的学习方法。多任务强化学习（MTRL）则定义为在多个任务\\(\\{ \\mathcal{M}_i \\}_{i=1}^{N}\\)上同时或顺序地训练一个智能体，其中每个任务\\(\\mathcal{M}_i = (\\mathcal{S}_i, \\mathcal{A}_i, \\mathcal{P}_i, \\mathcal{R}_i, \\gamma)\\)可能具有不同的状态空间、动作空间或奖励函数，目标是找到一组策略\\(\\{\\pi_i\\}\\)或一个共享策略\\(\\pi\\)，以优化所有任务上的综合性能。</p>\n<p>从机制与数学形式化来看，MTRL通常通过参数共享来实现知识迁移。设共享参数为\\(\\theta_{shared}\\)，任务\\(i\\)的特有参数为\\(\\theta_i\\)。一种常见的多任务目标函数是加权求和各个任务的期望回报：\\[\\mathcal{J}_{MT}(\\theta_{shared}, \\{\\theta_i\\}) = \\sum_{i=1}^{N} w_i \\, \\mathbb{E}_{\\tau \\sim \\pi_{\\theta_{shared}, \\theta_i}} \\left[ \\sum_{t=0}^{T} \\gamma^t r_t^{(i)} \\right]\\]，其中\\(w_i\\)是任务\\(i\\)的权重，\\(\\tau\\)表示轨迹，\\(r_t^{(i)}\\)是任务\\(i\\)在时间步\\(t\\)的奖励。优化该目标旨在同时提升所有任务的性能。而HRL的目标，如前所述，是优化单个任务在引入Option后的分层价值函数。</p>\n<p>工程实现中，两者的架构设计有显著区别。对于MTRL，一个标准的实现是“硬参数共享”（Hard Parameter Sharing）：输入层和若干隐藏层在所有任务间共享，仅最后的输出层（或最后几层）是任务特定的。这种结构强制网络学习对所有任务有用的通用特征表示。关键工程要点包括：1）输入标准化：不同任务的状态可能需要对齐或填充至统一维度；2）梯度管理：需要设计机制（如梯度裁剪、任务特定掩码）来防止某个任务的梯度更新严重干扰共享参数，从而损害其他任务，即避免“负迁移”（Negative Transfer）；3）任务调度：如何平衡不同任务的样本采集频率（如轮询、基于性能的动态采样）会影响最终的学习效率和均衡性。</p>\n<p>常见的误区包括认为“多任务学习就是同时在多个环境实例上训练同一个网络”，而忽略了显式的参数共享结构设计和任务间干扰管理。另一个误区是将HRL仅应用于有明显子任务序列的场景，而忽视了其在探索、技能发现等更广泛问题上的价值。失败模式方面，对于MTRL，最典型的是“负迁移”，即共享学习反而导致某些任务性能比单独训练时更差。诊断负迁移需要系统性的对比实验：分别记录共享训练和每个任务独立训练时的性能曲线，并计算性能差异。此外，分析共享层激活值在不同任务上的可分性（例如通过t-SNE可视化）也能揭示表征共享的有效性。</p>\n<p>厘清了分层与多任务RL各自的定义、形式化目标和工程边界后，我们可以深入探讨其核心算法机制，特别是Option的具体实现和多任务知识共享的高级策略。</p>\n<h3>机制剖析：分层策略与多任务共享如何实现？</h3>\n<p>理解了分层与多任务RL的“是什么”和“为什么”，本节的焦点转向“如何实现”，即深入其算法机制内部。我们将剖析Option框架的详细运作原理，并探讨超越基础参数共享的、更先进的多任务知识迁移技术，如策略蒸馏（Policy Distillation）。这些机制是连接理论定义与工程实践的桥梁。</p>\n<p>精确定义上，策略蒸馏（Policy Distillation）是一种将多个“教师”策略（通常是在不同任务上独立训练得到）的知识，压缩或迁移到一个“学生”策略中的技术。其核心思想是让学生策略模仿教师策略的动作分布或价值函数，而非直接优化环境奖励。在MTRL中，这可用于将多个单任务专家策略融合为一个通用的多任务策略。</p>\n<p>从机制与数学推导来看，Option框架的运作依赖于半MDP的规划与学习。Option内部策略\\(\\pi\\)和终止条件\\(\\beta\\)都需要被学习。一种学习Option的方法是联合优化高层和底层策略。其目标可以表述为最大化期望累积奖励，同时考虑Option的持续时间。相应的，Option-状态价值函数\\(Q^{\\pi}(s, o)\\)的贝尔曼更新方程为：\\[Q^{\\pi}(s, o) \\leftarrow \\mathbb{E}_{s', r, k} \\left[ r + \\gamma^k \\sum_{o'} \\pi_h(o'|s') Q^{\\pi}(s', o') + \\gamma^k (1-\\beta(s')) \\max_{o''} Q^{\\pi}(s', o'') \\mid s, o \\right]\\]，这个方程复杂之处在于它混合了Option终止（进入下一Option选择）和未终止（继续当前Option）两种情况。对于策略蒸馏，一个典型的目标函数是最小化学生策略与教师策略动作分布之间的KL散度：\\[\\mathcal{L}_{distill}(\\theta_s) = \\sum_{i=1}^{N} \\mathbb{E}_{s \\sim \\mathcal{D}_i} \\left[ D_{KL} \\left( \\pi_{teacher}^{(i)}(\\cdot|s) \\, \\| \\, \\pi_{\\theta_s}(\\cdot|s) \\right) \\right]\\]，其中\\(\\theta_s\\)是学生策略参数，\\(\\mathcal{D}_i\\)是任务\\(i\\)的状态分布，\\(\\pi_{teacher}^{(i)}\\)是任务\\(i\\)的教师策略。通过优化此目标，学生策略学会了在多个任务状态下做出与各教师策略相似的决策，从而继承了多任务知识。</p>\n<p>工程实现要点上，实现一个完整的Option-Critic架构需要：1）Option选择模块：通常是一个基于状态的分类器（如softmax层），输出每个Option的选择概率。2）内部策略模块：可以是每个Option对应一个独立的策略网络，或者一个共享网络以Option索引为条件输入。3）终止条件模块：通常是一个二分类器（如sigmoid层），输入状态，输出当前Option应终止的概率。训练时，需要为Option级别的转换和原始动作级别的转换分别计算策略梯度和价值目标，更新相应的模块。对于策略蒸馏，工程关键点在于收集各教师策略在不同状态下的动作概率分布（或Q值）作为监督信号，并设计一个能够容纳多任务信息的学生网络架构。</p>\n<p>常见误区包括：认为Option的终止条件可以简单地设为固定步长，或认为策略蒸馏总是优于直接的多任务联合训练。失败模式可能包括：1）Option的“遗忘”问题：某个Option的内部策略在训练后期因很少被选中而性能退化；2）在策略蒸馏中，如果教师策略的质量参差不齐，学生策略可能学到糟糕的混合行为。诊断Option的遗忘可以通过跟踪每个Option的历史选择频率和近期性能。诊断蒸馏失败可以通过比较学生策略在验证集上的动作分布与各教师策略的分布相似度。</p>\n<p>深入理解了Option和策略蒸馏等核心机制后，我们将通过一个完整的、可复现的工程示例，展示如何将这些理论付诸实践，构建一个处理两个经典控制任务的分层多任务RL智能体。</p>\n<h3>工程实践：构建可复现的分层多任务强化学习管线</h3>\n<p>理论最终需要实践的检验。本节我们将设计并实现一个综合性的工程示例，它同时体现分层RL（通过一个简化的时间抽象Option）和多任务RL（通过在两个不同控制任务间共享神经网络参数）的思想。我们选择Gymnasium库中的两个经典环境：CartPole-v1（杆子平衡）和MountainCar-v0（小车爬山）。这两个任务状态空间维度不同（4维 vs 2维），但共享“连续控制”的本质，适合作为多任务学习的测试床。我们的目标是构建一个可复现的管线，训练一个智能体处理这两个任务，并定量评估其性能及是否存在负迁移。</p>\n<p>精确定义上，本示例中的“分层”体现为一个基于固定时间步长的简单Option：智能体每执行一个原始动作后，会以固定概率决定是否“重新规划”（即终止当前Option，高层策略重新选择）。这虽然简化，但保留了时间抽象的核心思想——动作序列的打包执行。“多任务”则通过一个共享特征提取层和两个任务特定的输出头来实现硬参数共享。我们将使用近端策略优化（PPO）作为基础算法进行策略优化。</p>\n<p>从机制与评估指标来看，我们需要定义清晰的指标来评估多任务学习的效果。除了每个任务单独的平均回合奖励，一个关键指标是衡量多任务学习相对于单任务学习是带来了增益还是损害。为此，我们定义“多任务增益”（Multi-Task Gain, MTG）为：\\[\\text{MTG}_i = \\frac{R_{MT}^{(i)} - R_{ST}^{(i)}}{|R_{ST}^{(i)}|} \\times 100\\%\\]，其中\\(R_{MT}^{(i)}\\)是多任务训练后智能体在任务\\(i\\)上的平均测试回报，\\(R_{ST}^{(i)}\\)是任务\\(i\\)独立单任务训练（相同网络结构和训练步数）下的平均测试回报。\\(\\text{MTG}_i > 0\\)表示正向迁移，\\(\\text{MTG}_i < 0\\)表示负迁移。我们还将计算并打印每个任务的成功率（Success Rate, SR）。对于CartPole，成功定义为回合奖励大于195（接近满分200）；对于MountainCar，成功定义为回合中达到目标位置（即回合奖励大于-110）。成功率公式为：\\[\\text{SR} = \\frac{\\text{# Successful Episodes}}{\\text{# Total Test Episodes}} \\times 100\\%\\]。</p>\n<p>工程实现要点与可复现性保障是本示例的核心。我们将遵循以下步骤：1）环境封装：将两个Gymnasium环境封装到一个统一接口中，对状态进行填充（Padding）以使维度一致，便于批处理。2）网络架构：设计一个共享的MLP特征提取器，后接两个独立的全连接输出头，分别对应两个环境的动作空间（CartPole是2个离散动作，MountainCar是3个离散动作）。3）分层机制：在训练循环中，引入一个概率\\(p_{terminate}\\)，每一步以此概率决定是否“重置”高层决策（在本简化实现中，体现为任务和Option的重新采样）。4）可复现性：固定Python、NumPy、PyTorch和Gymnasium的随机种子。5）数据流：使用一个经验回放缓冲区，存储（状态，任务ID，动作，奖励，下一状态，终止标志）元组。6）训练与评估：交替从两个任务中采样进行训练，定期在独立测试集上评估性能。</p>\n<p>常见误区与失败模式：1）忽略状态归一化/填充：直接将不同维度的状态输入共享网络会导致错误。2）未固定随机种子：导致实验结果无法复现。3）任务采样不平衡：如果智能体在某个任务上采样过多，可能会损害另一个任务的性能。4）共享层容量不足：无法同时学习两个任务的特征，导致性能瓶颈。诊断这些失败需要：检查训练曲线（两个任务的回报是否都能增长），计算并比较MTG指标，以及可视化共享层激活在任务间的分布（例如，对测试状态提取共享层特征后进行PCA降维并绘图，观察两个任务的状态是否在特征空间中有较好分离）。</p>\n<p>以下端到端代码块实现了上述完整管线，包含环境设置、网络定义、分层多任务PPO训练循环以及最终的性能评估与指标计算。代码被设计为自包含、可独立运行。</p>\n<pre><code>import gymnasium as gym\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport torch.nn.functional as F\nfrom collections import deque\nimport random\nimport sys\n\n# ========== 1. 可复现性设置 ==========\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\nrandom.seed(SEED)\n\n# ========== 2. 环境与任务定义 ==========\nenv_configs = [\n    {'name': 'CartPole', 'id': 'CartPole-v1', 'state_dim': 4, 'action_dim': 2, 'success_threshold': 195},\n    {'name': 'MountainCar', 'id': 'MountainCar-v0', 'state_dim': 2, 'action_dim': 3, 'success_threshold': -110}\n]\nmax_state_dim = max(cfg['state_dim'] for cfg in env_configs)\nenvs = {}\nfor cfg in env_configs:\n    env = gym.make(cfg['id'], render_mode=None)\n    env.reset(seed=SEED)\n    envs[cfg['name']] = env\n\nprint(\"[环境状态维度]\")\nfor name, env in envs.items():\n    print(f\"  {name}: {env.observation_space.shape}\")\n\n# ========== 3. 共享多任务策略网络 ==========\nclass MultiTaskPolicy(nn.Module):\n    def __init__(self, input_dim, hidden_dim=64):\n        super().__init__()\n        # 共享特征提取层\n        self.shared_net = nn.Sequential(\n            nn.Linear(input_dim, hidden_dim),\n            nn.ReLU(),\n            nn.Linear(hidden_dim, hidden_dim),\n            nn.ReLU()\n        )\n        # 任务特定的策略头\n        self.policy_heads = nn.ModuleDict({\n            'CartPole': nn.Linear(hidden_dim, env_configs[0]['action_dim']),\n            'MountainCar': nn.Linear(hidden_dim, env_configs[1]['action_dim'])\n        })\n        # 任务特定的价值头（用于PPO中的价值函数估计）\n        self.value_heads = nn.ModuleDict({\n            'CartPole': nn.Linear(hidden_dim, 1),\n            'MountainCar': nn.Linear(hidden_dim, 1)\n        })\n    \n    def forward(self, x, task_name):\n        features = self.shared_net(x)\n        logits = self.policy_heads[task_name](features)\n        value = self.value_heads[task_name](features)\n        return logits, value\n\n# ========== 4. 分层多任务PPO代理 ==========\nclass HierarchicalMultiTaskPPO:\n    def __init__(self, policy, lr=3e-4, gamma=0.99, gae_lambda=0.95, clip_epsilon=0.2, p_terminate=0.05):\n        self.policy = policy\n        self.optimizer = optim.Adam(policy.parameters(), lr=lr)\n        self.gamma = gamma\n        self.gae_lambda = gae_lambda\n        self.clip_epsilon = clip_epsilon\n        self.p_terminate = p_terminate  # Option终止概率（简化分层）\n        self.replay_buffer = []\n    \n    def select_action(self, state, task_name):\n        state_tensor = torch.FloatTensor(state).unsqueeze(0)\n        with torch.no_grad():\n            logits, _ = self.policy(state_tensor, task_name)\n            probs = F.softmax(logits, dim=-1)\n            dist = torch.distributions.Categorical(probs)\n            action = dist.sample()\n            log_prob = dist.log_prob(action)\n        return action.item(), log_prob.item()\n    \n    def store_transition(self, transition):\n        self.replay_buffer.append(transition)\n    \n    def compute_gae(self, rewards, values, dones, next_value):\n        \"\"\"计算广义优势估计（GAE）。\"\"\"\n        gae = 0\n        returns = []\n        for t in reversed(range(len(rewards))):\n            delta = rewards[t] + self.gamma * next_value * (1 - dones[t]) - values[t]\n            gae = delta + self.gamma * self.gae_lambda * (1 - dones[t]) * gae\n            returns.insert(0, gae + values[t])\n            next_value = values[t]\n        return returns\n    \n    def update(self):\n        if len(self.replay_buffer) < 32:  # 小批量更新\n            return\n        \n        # 从缓冲区解包数据\n        states, tasks, actions, old_log_probs, rewards, next_states, dones = zip(*self.replay_buffer)\n        \n        states = torch.FloatTensor(np.array(states))\n        actions = torch.LongTensor(actions).unsqueeze(1)\n        old_log_probs = torch.FloatTensor(old_log_probs).unsqueeze(1)\n        rewards = torch.FloatTensor(rewards)\n        dones = torch.FloatTensor(dones)\n        \n        # 按任务分组处理（简化：这里假设缓冲区中只有一个任务的数据，实际应分组处理）\n        # 为简化演示，我们假设缓冲区中只有一种任务的数据，实际多任务PPO需要更复杂的数据组织。\n        # 此处我们仅以第一个任务为例进行更新演示。\n        task_name = tasks[0]\n        \n        # 计算当前策略的价值和动作概率\n        logits, values = self.policy(states, task_name)\n        values = values.squeeze()\n        dist = torch.distributions.Categorical(logits=logits)\n        log_probs = dist.log_prob(actions.squeeze()).unsqueeze(1)\n        entropy = dist.entropy().mean()\n        \n        # 计算GAE和returns\n        with torch.no_grad():\n            _, next_value = self.policy(torch.FloatTensor(next_states[-1]).unsqueeze(0), task_name)\n            next_value = next_value.item()\n        returns = self.compute_gae(rewards.numpy(), values.detach().numpy(), dones.numpy(), next_value)\n        returns = torch.FloatTensor(returns)\n        \n        # 计算优势\n        advantages = returns - values.detach()\n        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)\n        \n        # PPO损失函数\n        ratio = torch.exp(log_probs - old_log_probs)\n        surr1 = ratio * advantages.unsqueeze(1)\n        surr2 = torch.clamp(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages.unsqueeze(1)\n        policy_loss = -torch.min(surr1, surr2).mean()\n        value_loss = F.mse_loss(values, returns)\n        loss = policy_loss + 0.5 * value_loss - 0.01 * entropy\n        \n        # 反向传播\n        self.optimizer.zero_grad()\n        loss.backward()\n        torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)\n        self.optimizer.step()\n        \n        # 清空缓冲区\n        self.replay_buffer.clear()\n\n# ========== 5. 训练循环 ==========\npolicy_net = MultiTaskPolicy(input_dim=max_state_dim, hidden_dim=64)\nagent = HierarchicalMultiTaskPPO(policy_net, lr=1e-3, p_terminate=0.1)\n\nnum_episodes = 500\nupdate_freq = 10  # 每10个回合更新一次策略\ncurrent_task = None\noption_active = False\noption_steps = 0\n\nprint(\"\\n[开始分层多任务训练]\")\ntraining_history = {cfg['name']: [] for cfg in env_configs}\n\nfor episode in range(num_episodes):\n    # 分层决策：以概率p_terminate重新选择任务（简化Option）\n    if not option_active or random.random() < agent.p_terminate:\n        current_task = random.choice(list(envs.keys()))\n        option_active = True\n        option_steps = 0\n    \n    env = envs[current_task]\n    state, _ = env.reset()\n    # 状态填充至统一维度\n    state_padded = np.pad(state, (0, max_state_dim - len(state)), mode='constant')\n    \n    episode_reward = 0\n    done = False\n    \n    while not done:\n        action, log_prob = agent.select_action(state_padded, current_task)\n        next_state, reward, terminated, truncated, _ = env.step(action)\n        done = terminated or truncated\n        next_state_padded = np.pad(next_state, (0, max_state_dim - len(next_state)), mode='constant')\n        \n        # 存储转移\n        agent.store_transition((state_padded.copy(), current_task, action, log_prob, reward, next_state_padded.copy(), done))\n        \n        state_padded = next_state_padded\n        episode_reward += reward\n        option_steps += 1\n    \n    # 记录历史\n    training_history[current_task].append(episode_reward)\n    \n    # 定期更新策略\n    if episode % update_freq == 0:\n        agent.update()\n    \n    if episode % 100 == 0:\n        avg_reward_cartpole = np.mean(training_history['CartPole'][-50:]) if len(training_history['CartPole']) >= 50 else np.mean(training_history['CartPole']) if training_history['CartPole'] else 0\n        avg_reward_mountaincar = np.mean(training_history['MountainCar'][-50:]) if len(training_history['MountainCar']) >= 50 else np.mean(training_history['MountainCar']) if training_history['MountainCar'] else 0\n        print(f\"Episode {episode:4d} | Task: {current_task:12s} | Reward: {episode_reward:7.2f} | Avg (last 50): CartPole={avg_reward_cartpole:6.2f}, MountainCar={avg_reward_mountaincar:6.2f}\")\n\n# ========== 6. 评估与指标计算 ==========\nprint(\"\\n[最终评估]\")\nnum_test_episodes = 50\nsuccess_counts = {cfg['name']: 0 for cfg in env_configs}\ntest_rewards = {cfg['name']: [] for cfg in env_configs}\n\nfor task_name, env in envs.items():\n    for _ in range(num_test_episodes):\n        state, _ = env.reset()\n        state_padded = np.pad(state, (0, max_state_dim - len(state)), mode='constant')\n        episode_reward = 0\n        done = False\n        while not done:\n            with torch.no_grad():\n                logits, _ = policy_net(torch.FloatTensor(state_padded).unsqueeze(0), task_name)\n                probs = F.softmax(logits, dim=-1)\n                action = torch.argmax(probs).item()\n            next_state, reward, terminated, truncated, _ = env.step(action)\n            done = terminated or truncated\n            state_padded = np.pad(next_state, (0, max_state_dim - len(next_state)), mode='constant')\n            episode_reward += reward\n        test_rewards[task_name].append(episode_reward)\n        # 判断是否成功\n        threshold = next(cfg['success_threshold'] for cfg in env_configs if cfg['name'] == task_name)\n        if episode_reward > threshold:\n            success_counts[task_name] += 1\n\n# 打印关键中间结果\nprint(\"\\n[测试回合奖励样本]\")\nfor task_name, rewards in test_rewards.items():\n    print(f\"  {task_name}: 前5个回合奖励 {rewards[:5]}\")\n\nprint(\"\\n[性能指标]\")\nfor cfg in env_configs:\n    task_name = cfg['name']\n    avg_reward = np.mean(test_rewards[task_name])\n    success_rate = success_counts[task_name] / num_test_episodes * 100\n    print(f\"  {task_name}:\")\n    print(f\"    平均测试回报: {avg_reward:.2f}\")\n    print(f\"    成功率 (SR): {success_rate:.1f}% (阈值>{cfg['success_threshold']})\")\n\n# 打印环境版本信息（可复现性关键）\nprint(\"\\n[环境与版本信息]\")\nprint(f\"  Python: {sys.version.split()[0]}\")\nprint(f\"  Gymnasium: {gym.__version__}\")\nprint(f\"  PyTorch: {torch.__version__}\")\nprint(f\"  随机种子: {SEED}\")\nprint(f\"  状态填充维度: {max_state_dim}\")</code></pre>\n<p>代码执行后，将输出环境状态维度、训练过程中的平均回报、以及最终在独立测试集上的评估指标，包括平均测试回报和成功率（SR）。关键中间结果如测试回合奖励的前几个样本也被打印出来，用于直观感受策略的性能。成功率指标的计算公式已在前面给出。这个示例虽然简化了Option机制（使用固定概率重新选择任务来模拟），但完整展示了构建一个可复现的分层多任务RL管线所需的核心组件：环境处理、共享网络架构、融入分层思想的训练循环、以及系统性的评估与指标报告。通过修改网络结构、调整分层概率\\(p_{terminate}\\)或引入更复杂的Option设计，可以在此基础上进行深入的扩展实验。</p>\n<p>通过本课程，我们从复杂决策的挑战出发，明确了分层与多任务强化学习的定义与边界，深入剖析了Option框架和策略蒸馏等核心机制，并最终通过一个可复现的工程管线将理论落地。掌握这些内容，为你在机器人学、游戏AI等需要处理复杂、多目标决策问题的领域中，设计和实现更高效、更通用的强化学习系统奠定了坚实基础。</p>",
+        "en": "<h3>From Single-Task to Complex Decision-Making: Why Hierarchical and Multi-Task RL?</h3>\n<p>In practical reinforcement learning applications, such as robotic autonomous navigation or game agent control, agents often face long-horizon decision problems requiring the simultaneous coordination of multiple sub-goals. Flat, single-task RL policies frequently struggle with such tasks, suffering from the curse of dimensionality in action spaces, sparse reward signals, and the difficulty of long-term credit assignment, leading to slow convergence or failure. For instance, a domestic service robot performing a \"fetch-move-place\" sequence presents temporal dependencies that a flat policy cannot effectively decompose. This highlights the need for more structured decision-making frameworks that manage complexity through temporal abstraction and knowledge sharing.</p>\n<p>Precisely defined, Hierarchical Reinforcement Learning (HRL) aims to construct hierarchical policy structures that decompose complex tasks into high-level sub-task (or abstract action) selection and low-level primitive action execution. Its core is Temporal Abstraction. Multi-task Reinforcement Learning (MTRL) focuses on training a single agent on multiple related but distinct tasks, sharing representations or parameters across tasks to improve sample efficiency and promote generalization to new tasks. While often used together, HRL emphasizes the structured decomposition within a single task, whereas MTRL emphasizes knowledge transfer across tasks.</p>\n<p>From a mechanistic and mathematical perspective, a classic formalization tool for HRL is the Option framework. An Option \\(O\\) is defined as a triple \\(O = \\langle I, \\pi, \\beta \\rangle\\), where: \\(I \\subseteq S\\) is the initiation set, determining when the Option can be started; \\(\\pi: S \\times A \\rightarrow [0, 1]\\) is the Option's internal policy, dictating which primitive actions to execute while the Option is active; \\(\\beta: S \\rightarrow [0, 1]\\) is the termination condition, determining when and with what probability the Option ends. When a high-level policy selects an Option \\(o_t\\) in state \\(s_t\\), the low-level policy \\(\\pi_{o_t}\\) executes continuously for \\(k\\) steps until termination condition \\(\\beta(s_{t+k}) = 1\\) is met in state \\(s_{t+k}\\). This effectively transforms the original Markov Decision Process (MDP) into a Semi-Markov Decision Process (Semi-MDP), whose value function can be expressed as: \\[V^{\\pi}(s) = \\mathbb{E}_{o \\sim \\pi_h(\\cdot|s)} \\left[ Q^{\\pi}(s, o) \\right]\\], where \\(\\pi_h\\) is the high-level Option selection policy, and \\(Q^{\\pi}(s, o) = \\mathbb{E} \\left[ \\sum_{i=0}^{k-1} \\gamma^i r_{t+i} + \\gamma^k V^{\\pi}(s_{t+k}) \\mid s_t = s, o_t = o \\right]\\) is the Option-state value function, with \\(k\\) being the stochastic number of steps the Option executes.</p>\n<p>In engineering implementation, building an HRL system requires attention to several key points. Regarding data flow, the experience replay buffer must record trajectories at both the Option level (start state, Option, cumulative reward, termination state) and the primitive action level (state-action-reward-next_state). In terms of module boundaries, it typically involves designing two policy networks: a high-level network (Manager) that outputs a distribution over Options, and a low-level network (Worker) or set of networks that execute the internal policy of the selected Option. Complexity-sensitive aspects primarily concern the design of the Option termination condition—terminating too frequently leads to policy fragmentation, losing the benefits of abstraction, while terminating too late can make Options rigid and unadaptive. Latency mainly stems from inter-level communication and synchronization overhead.</p>\n<p>Common misconceptions include equating hierarchy with simply grouping actions at fixed time intervals, or assuming that introducing hierarchy always improves performance. Typical failure modes include: 1) The high-level policy getting stuck in a local optimum, repeatedly selecting an ineffective Option; 2) Unstable learning of the Option termination condition, causing training oscillations. Diagnosing these failures can involve monitoring the distribution of Option activation durations (low variance may indicate insufficient abstraction) or visualizing state clusters when Options are activated (to see if they correspond to meaningful sub-goals).</p>\n<p>Having understood the motivation for hierarchical and multi-task RL in solving complex decision problems and its core formalization tools, the next section will strictly define the boundaries between the two and explore their typical application scenarios.</p>\n<h3>Core Definitions and Boundaries: What Are Hierarchical and Multi-T"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：分层与多任务强化学习 · 结构总览 · 数据：课程大纲】在设计《分层与多任务强化学习》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 分层与多任务强化学习 · 结构总览 · Data: 课程大纲】When outlining \"分层与多任务强化学习\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：分层与多任务强化学习 · worked example · 数据：学习分层策略的设计方法 数据/代码】在复现《分层与多任务强化学习》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 分层与多任务强化学习 · worked example · Data: 学习分层策略的设计方法 数据/代码】While reproducing the worked example in \"分层与多任务强化学习\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：分层与多任务强化学习 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《分层与多任务强化学习》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 分层与多任务强化学习 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"分层与多任务强化学习\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：分层与多任务强化学习 · 参考资料 · 数据：课程引用文献】当引用文献支撑《分层与多任务强化学习》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 分层与多任务强化学习 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"分层与多任务强化学习\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Between MDPs and Semi-MDPs: A Framework for Temporal Abstraction in Reinforcement Learning（arXiv，1999）",
+            "en": "Between MDPs and Semi-MDPs: A Framework for Temporal Abstraction in Reinforcement Learning (arXiv, 1999)"
+          },
+          "url": "https://arxiv.org/abs/cs/9905014"
+        },
+        {
+          "label": {
+            "zh": "Distral: Robust Multitask Reinforcement Learning（arXiv，2017）",
+            "en": "Distral: Robust Multitask Reinforcement Learning (arXiv, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1707.04175"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-01-16-hierarchical-rl-zh.mp3"
+      },
+      "meta": {
+        "category": "RL Algorithms & Variants",
+        "level": "6. Reinforcement Learning & Decision Making",
+        "difficultyScore": 3,
+        "related": [
+          "Hierarchical RL",
+          "multi-task"
+        ],
+        "learningObjectives": [
+          "学习分层策略的设计方法",
+          "实现多任务强化学习"
+        ],
+        "personas": [
+          "研究生",
+          "系统设计师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 分层与多任务强化学习 可帮助团队在 RL Algorithms & Variants 上做出可复用的实践。",
+          "best_for": "适合 研究生、系统设计师，需要快速吸收 6. Reinforcement Learning & Decision Making 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "研究生 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 研究生、系统设计师，帮助他们把 分层与多任务强化学习 应用于 RL Algorithms & Variants",
+          "prefersEnglish": false,
+          "industries": [
+            "研究生",
+            "系统设计师"
+          ],
+          "personas": [
+            "研究生",
+            "系统设计师"
+          ],
+          "pains": "在 RL Algorithms & Variants 场景缺乏 分层与多任务强化学习 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. Reinforcement Learning & Decision Making"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为系统设计师，你在处理复杂决策任务时，如何识别哪些子任务适合分层策略？请描述一个具体场景，并思考分层结构如何优化长期规划。",
+            "action_hint": "尝试将你的项目分解为层次化任务，并分析每层的决策边界。"
+          },
+          {
+            "lang": "zh",
+            "question": "研究生阶段，你研究的RL算法面临多目标优化挑战时，如何设计知识共享机制？请结合你的课题，说明多任务学习如何提升智能体泛化能力。",
+            "action_hint": "列出你课题中的相关任务，并规划一个共享表示的学习框架。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-01-16-ppo",
       "date": "2026-01-16",
@@ -7560,181 +7728,6 @@
             "lang": "zh",
             "question": "在NLP项目中，您是否遇到过长文本翻译导致信息丢失的问题？请描述注意力机制如何帮助您解决这类挑战。",
             "action_hint": "回顾一个具体项目，思考如何应用注意力机制来提升翻译质量。"
-          }
-        ]
-      }
-    },
-    {
-      "id": "2025-12-21-ner",
-      "date": "2025-12-21",
-      "title": {
-        "zh": "命名实体识别与序列标注",
-        "en": "Named Entity Recognition and Sequence Labeling"
-      },
-      "summary": {
-        "zh": "命名实体识别（Named Entity Recognition, NER）是自然语言处理中的序列标注任务，用于自动识别文本中的人名、地名、机构名等预定义实体。本课程从现实需求出发，逐步讲解NER的任务定义、BIO标注方案、条件随机场（CRF）原理，并构建一个可复现的NER流水线。通过CoNLL-2003数据集示例，你将掌握从数据加载、特征工程到模型训练与评估的完整流程，学会如何将理论应用于实际项目。",
-        "en": "Named Entity Recognition (NER) is a sequence labeling task in natural language processing that automatically identifies predefined entities such as person names, locations, and organizations in text. This course starts from practical needs, gradually explaining NER task definition, BIO tagging schemes, Conditional Random Field (CRF) principles, and building a reproducible NER pipeline. Through the CoNLL-2003 dataset example, you will master the complete workflow from data loading and feature engineering to model training and evaluation, learning how to apply theory to real-world projects."
-      },
-      "difficulty": "beginner",
-      "tags": [
-        "NER",
-        "sequence labeling"
-      ],
-      "content": {
-        "zh": "<h2>命名实体识别与序列标注：从文本到结构化信息的桥梁</h2>\n\n<p>想象一下，你正在处理海量的新闻文档，需要快速提取其中的人物、地点和机构信息。手动标注不仅耗时，而且难以规模化。这正是命名实体识别（Named Entity Recognition, NER）要解决的核心问题——如何让机器自动识别文本中的特定实体，并将其归类为预定义的类型。本课程将带你从直觉建立到工程实践，完整掌握NER的任务定义、序列标注机制以及可复现的流水线构建。</p>\n\n<p>我们将使用公开的CoNLL-2003数据集（来源：CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003），构建一个基于条件随机场（Conditional Random Field, CRF）的NER系统，识别人名、地名和机构名。通过这个贯穿示例，你将看到从数据加载、特征工程到模型训练与评估的完整流程，并理解如何将理论转化为可执行的代码。</p>\n\n<h3>从文本到实体：为什么需要自动识别？</h3>\n\n<p>在日常的NLP任务中，我们经常需要从非结构化文本中提取结构化信息。例如，从一篇新闻报道中自动找出所有提到的人物和地点，或者从医疗记录中识别疾病名称和药物。这种需求催生了命名实体识别——一个将文本中的实体标注为预定义类别的序列标注任务。</p>\n\n<p>命名实体识别（NER）的核心是识别文本中具有特定意义的实体，如人名（PERSON）、地名（LOCATION）、机构名（ORGANIZATION）等。与简单的关键词提取不同，NER需要考虑上下文信息。例如，“苹果”在“我吃了一个苹果”中是水果，而在“苹果发布了新手机”中则是公司名。这种基于上下文的分类能力，使得NER成为信息提取、知识图谱构建等下游应用的基础。</p>\n\n<p>序列标注（Sequence Labeling）是NER的底层框架，它为文本中的每个词（或字符）分配一个标签。常见的标注方案包括BIO（B-实体开始，I-实体内部，O-非实体），它明确了实体的边界和类型。通过这种结构化表示，机器可以更准确地理解文本中的实体信息。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：NER不仅仅是找专有名词。许多实体（如“医院”、“大学”）是普通名词，但在特定上下文中被识别为机构。NER的任务是基于上下文进行分类，而非简单匹配词典。</p>\n</blockquote>\n\n<p>在我们的贯穿示例中，我们将使用CoNLL-2003数据集（来源：CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003），它包含了新闻文本中的人名、地名、机构名等实体标注。通过分析数据，你可以直观看到实体在文本中的分布，以及BIO标注如何表示实体边界。例如，句子“马云在杭州创办了阿里巴巴”会被标注为：</p>\n\n<ul>\n<li>马云: B-PERSON</li>\n<li>在: O</li>\n<li>杭州: B-LOCATION</li>\n<li>创办了: O</li>\n<li>阿里巴巴: B-ORGANIZATION</li>\n</ul>\n\n<p>理解了NER的现实需求，接下来我们明确任务的具体定义。</p>\n\n<h3>任务定义：NER在做什么？</h3>\n\n<p>NER的任务是为文本中的每个词分配一个实体标签，表示它属于哪个预定义的实体类型（或非实体）。常见的实体类型包括：</p>\n\n<table>\n<thead>\n<tr>\n<th>实体类型</th>\n<th>英文缩写</th>\n<th>示例</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>人物</td>\n<td>PER</td>\n<td>马云、爱因斯坦</td>\n</tr>\n<tr>\n<td>地点</td>\n<td>LOC</td>\n<td>北京、太平洋</td>\n</tr>\n<tr>\n<td>机构</td>\n<td>ORG</td>\n<td>阿里巴巴、联合国</td>\n</tr>\n<tr>\n<td>其他</td>\n<td>MISC</td>\n<td>奥运会、COVID-19</td>\n</tr>\n</tbody>\n</table>\n\n<p>为了表示实体边界，我们使用BIO标注方案：</p>\n\n<ul>\n<li>B-XXX: 实体开始（Begin）</li>\n<li>I-XXX: 实体内部（Inside）</li>\n<li>O: 非实体（Outside）</li>\n</ul>\n\n<p>例如，句子“北京是中国的首都”的BIO标注为：['B-LOC', 'O', 'B-LOC', 'O']，对应实体{'北京': 'LOCATION', '中国': 'LOCATION'}。这种标注方式清晰区分了实体边界，避免了歧义。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：并非所有文本都需要NER。NER主要应用于信息提取、问答系统、知识图谱等需要结构化实体信息的场景。对于情感分析、文本分类等任务，实体识别可能不是必需的。</p>\n</blockquote>\n\n<p>在我们的示例中，CoNLL-2003数据集已经用BIO标注好了实体。我们将直接使用这些标注来训练模型。通过查看数据，你可以理解不同实体类型的分布，以及BIO标注如何在实际数据中应用。这为后续的模型训练提供了基础。</p>\n\n<p>任务定义清晰后，我们来看如何用序列标注模型来实现NER。</p>\n\n<h3>机制解析：序列标注如何工作？</h3>\n\n<p>序列标注的核心挑战是标签之间的依赖关系。例如，在BIO标注中，I-LOC通常跟在B-LOC之后，而不是独立出现。简单的分类器（如逻辑回归）无法捕捉这种依赖，导致效果不佳。条件随机场（CRF）通过建模标签间的转移概率，解决了这个问题。</p>\n\n<p>CRF是一种概率图模型（来源：Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data, 2001），它定义了给定输入序列X时，输出标签序列Y的条件概率P(Y|X)。其核心是特征函数（Feature Function），它连接输入特征（如词形、词性、前缀/后缀）和标签。CRF通过最大化训练数据的对数似然来学习特征函数的权重，从而在预测时找到最可能的标签序列。</p>\n\n<p>为什么CRF能有效建模标签依赖？关键在于它考虑了相邻标签的转移概率。公式上，CRF的条件概率定义为：P(Y|X) = (1/Z(X)) * exp(∑_i ∑_k λ_k f_k(y_{i-1}, y_i, X, i))，其中Z(X)是归一化因子，f_k是特征函数，λ_k是权重。这个公式捕捉了相邻标签间的依赖（通过y_{i-1}, y_i），使得预测更符合序列结构。与隐马尔可夫模型（HMM）相比，CRF是判别式模型，直接建模P(Y|X)，避免了HMM对观测独立性的强假设，因此在序列标注任务中通常表现更好。</p>\n\n<blockquote>\n<p><strong>误区澄清</strong>：CRF不一定需要与深度学习结合。传统CRF使用手工特征（如词形、词性）即可工作，常与神经网络结合以自动学习特征，提升性能。但对于小数据集，手工特征的CRF可能更稳定。</p>\n</blockquote>\n\n<p>在我们的示例中，我们将使用sklearn-crfsuite库（来源：sklearn-crfsuite documentation, 2023）实现CRF模型。特征函数包括词形（word）、词性（POS tag）、前缀/后缀等。例如，对于词序列['New', 'York', 'City']，特征可能包括{'word': 'New', 'is_capitalized': True}，CRF会利用这些特征和标签依赖，输出['B-LOC', 'I-LOC', 'I-LOC']。</p>\n\n<p>理解了CRF的原理，接下来我们将其应用到完整的NER流水线中。</p>\n\n<h3>工程实践：构建可复现的NER流水线</h3>\n\n<p>一个可复现的NER流水线包括数据准备、特征工程、模型训练和评估四个步骤。可复现性（Reproducibility）通过固定随机种子、记录环境版本等方式确保结果可重复验证。以下是流水线的关键步骤：</p>\n\n<ol>\n<li><strong>数据准备</strong>：加载CoNLL-2003数据集，按句子分割，并固定随机种子进行训练集/测试集划分。</li>\n<li><strong>特征工程</strong>：为每个词提取特征，如词形、词性、前缀（前3个字符）、后缀（后3个字符）、是否大写等。</li>\n<li><strong>模型训练</strong>：使用CRF模型训练特征和标签，调整超参数（如正则化强度）。</li>\n<li><strong>评估</strong>：计算准确率、召回率、F1分数，绘制混淆矩阵进行错误分析。</li>\n</ol>\n\n<p>下面是一个综合代码块，展示了从数据加载到模型评估的完整流程：</p>\n\n<pre><code>import nltk\nfrom sklearn.model_selection import train_test_split\nfrom sklearn_crfsuite import CRF\nfrom sklearn_crfsuite.metrics import flat_classification_report\nimport numpy as np\n\n# 步骤1: 数据加载（使用CoNLL-2003示例数据）\n# 注意：这里使用内置示例数据，实际中可从https://www.clips.uantwerpen.be/conll2003/ner/下载完整数据集\nnltk.download('conll2002')  # 使用nltk中的示例数据，实际项目应替换为CoNLL-2003\nfrom nltk.corpus import conll2002\n\ndata = conll2002.iob_sents('esp.train')  # 示例数据，实际应使用CoNLL-2003\nsentences = [list(zip(*sent)) for sent in data]  # 转换为(词, POS, 标签)格式\n\n# 步骤2: 特征提取函数\ndef word2features(sent, i):\n    word = sent[i][0]\n    features = {\n        'word': word,\n        'is_capitalized': word[0].isupper(),\n        'prefix': word[:3],\n        'suffix': word[-3:],\n    }\n    if i > 0:\n        prev_word = sent[i-1][0]\n        features.update({'prev_word': prev_word})\n    return features\n\ndef sent2features(sent):\n    return [word2features(sent, i) for i in range(len(sent))]\n\ndef sent2labels(sent):\n    return [label for _, _, label in sent]\n\nX = [sent2features(s) for s in sentences]\ny = [sent2labels(s) for s in sentences]\n\n# 步骤3: 数据分割（固定随机种子）\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# 步骤4: CRF模型训练\ncrf = CRF(algorithm='lbfgs', c1=0.1, c2=0.1, max_iterations=100)\ncrf.fit(X_train, y_train)\n\n# 步骤5: 评估\ny_pred = crf.predict(X_test)\nreport = flat_classification_report(y_test, y_pred)\nprint(\"Classification Report:\")\nprint(report)\n\n# 输出数据集信息\nprint(f\"数据集样本数: {len(sentences)}\")\nprint(f\"训练集大小: {len(X_train)}, 测试集大小: {len(X_test)}\")\n</code></pre>\n\n<p>另一个代码块展示了混淆矩阵的可视化，帮助分析错误：</p>\n\n<pre><code>from sklearn.metrics import confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# 将标签序列展平\nlabels = ['O', 'B-PER', 'I-PER', 'B-LOC', 'I-LOC', 'B-ORG', 'I-ORG']  # 示例标签\ny_test_flat = [label for sent in y_test for label in sent]\ny_pred_flat = [label for sent in y_pred for label in sent]\n\n# 计算混淆矩阵\ncm = confusion_matrix(y_test_flat, y_pred_flat, labels=labels)\n\n# 可视化\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)\nplt.title('Confusion Matrix for NER')\nplt.xlabel('Predicted')\nplt.ylabel('True')\nplt.show()\n\n# 输出环境信息\nimport sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"sklearn-crfsuite版本: 0.3.6\")  # 假设版本\nprint(f\"随机种子: 42\")\n</code></pre>\n\n<blockquote>\n<p><strong>误区澄清</strong>：NER模型不是越大越好。在小数据集上，复杂的深度学习模型容易过拟合。CRF结合手工特征通常在中等数据集上表现稳定，且训练速度快。</p>\n</blockquote>\n\n<p>通过这个流水线，你可以得到模型在测试集上的性能报告（如F1分数）、混淆矩阵可视化以及环境版本信息。这确保了实验的可复现性，便于后续优化。</p>\n\n<h3>总结与迁移路径</h3>\n\n<p>本课程从NER的现实需求出发，逐步深入任务定义、CRF机制和工程实践。你学会了如何构建一个可复现的NER流水线，使用CoNLL-2003数据集和CRF模型识别人名、地名和机构名。关键点包括：理解BIO标注、掌握CRF的原理、实现特征工程和评估指标。</p>\n\n<p>要将这个工作流迁移到自己的项目，你可以：</p>\n\n<ol>\n<li><strong>调整实体类型</strong>：根据你的领域（如医疗、法律）定义新的实体类型，并准备标注数据。</li>\n<li><strong>优化特征</strong>：在特征工程中，加入领域特定特征（如医疗术语、法律条款）。</li>\n<li><strong>模型选择</strong>：对于大数据集，考虑结合神经网络（如BiLSTM-CRF）以提升性能。</li>\n<li><strong>评估迭代</strong>：使用混淆矩阵分析错误，持续改进特征和模型。</li>\n</ol>\n\n<p>通过实践，你将能够把NER技术应用到信息提取、知识图谱等实际场景中，提升NLP项目的效率。</p>",
-        "en": "<h2>Named Entity Recognition and Sequence Labeling: Bridging Text to Structured Information</h2>\n\n<p>Imagine you are processing vast amounts of news documents and need to quickly extract information about people, locations, and organizations. Manual annotation is time-consuming and difficult to scale. This is the core problem that Named Entity Recognition (NER) addresses—how to enable machines to automatically identify specific entities in text and classify them into predefined types. This course will guide you from building intuition to engineering practice, fully mastering the task definition of NER, the mechanisms of sequence labeling, and the construction of reproducible pipelines.</p>\n\n<p>We will use the publicly available CoNLL-2003 dataset (Source: CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003) to build a CRF-based NER system that identifies person names, locations, and organizations. Through this running example, you will see the complete workflow from data loading and feature engineering to model training and evaluation, and understand how to translate theory into executable code.</p>\n\n<h3>From Text to Entities: Why Do We Need Automatic Recognition?</h3>\n\n<p>In everyday NLP tasks, we often need to extract structured information from unstructured text. For example, automatically finding all mentioned people and places in a news article, or identifying disease names and medications in medical records. This demand gave rise to Named Entity Recognition—a sequence labeling task that annotates entities in text with predefined categories.</p>\n\n<p>The core of Named Entity Recognition (NER) is identifying entities with specific meanings in text, such as persons (PERSON), locations (LOCATION), organizations (ORGANIZATION), and others. Unlike simple keyword extraction, NER requires considering contextual information. For instance, \"apple\" in \"I ate an apple\" refers to a fruit, while in \"Apple released a new phone\" it refers to a company. This context-based classification capability makes NER a foundation for downstream applications like information extraction and knowledge graph construction.</p>\n\n<p>Sequence Labeling is the underlying framework for NER, assigning a label to each word (or character) in the text. Common tagging schemes include BIO (B-beginning of entity, I-inside entity, O-outside entity), which clarifies entity boundaries and types. Through this structured representation, machines can more accurately understand entity information in text.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: NER is not just about finding proper nouns. Many entities (e.g., \"hospital\", \"university\") are common nouns but are identified as organizations in specific contexts. The task of NER is classification based on context, not simple dictionary matching.</p>\n</blockquote>\n\n<p>In our running example, we will use the CoNLL-2003 dataset (Source: CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition, 2003), which contains annotations for persons, locations, organizations, and other entities in news text. By analyzing the data, you can visually see the distribution of entities in text and how BIO tagging represents entity boundaries. For example, the sentence \"Ma Yun founded Alibaba in Hangzhou\" would be tagged as:</p>\n\n<ul>\n<li>Ma Yun: B-PERSON</li>\n<li>in: O</li>\n<li>Hangzhou: B-LOCATION</li>\n<li>founded: O</li>\n<li>Alibaba: B-ORGANIZATION</li>\n</ul>\n\n<p>With an understanding of the practical need for NER, let's clarify the specific task definition.</p>\n\n<h3>Task Definition: What Does NER Do?</h3>\n\n<p>The task of NER is to assign an entity label to each word in the text, indicating which predefined entity type it belongs to (or if it is a non-entity). Common entity types include:</p>\n\n<table>\n<thead>\n<tr>\n<th>Entity Type</th>\n<th>Abbreviation</th>\n<th>Example</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>Person</td>\n<td>PER</td>\n<td>Ma Yun, Einstein</td>\n</tr>\n<tr>\n<td>Location</td>\n<td>LOC</td>\n<td>Beijing, Pacific Ocean</td>\n</tr>\n<tr>\n<td>Organization</td>\n<td>ORG</td>\n<td>Alibaba, United Nations</td>\n</tr>\n<tr>\n<td>Miscellaneous</td>\n<td>MISC</td>\n<td>Olympics, COVID-19</td>\n</tr>\n</tbody>\n</table>\n\n<p>To represent entity boundaries, we use the BIO tagging scheme:</p>\n\n<ul>\n<li>B-XXX: Beginning of entity</li>\n<li>I-XXX: Inside entity</li>\n<li>O: Outside entity (non-entity)</li>\n</ul>\n\n<p>For example, the sentence \"Beijing is the capital of China\" has BIO tags: ['B-LOC', 'O', 'B-LOC', 'O'], corresponding to entities {'Beijing': 'LOCATION', 'China': 'LOCATION'}. This tagging method clearly distinguishes entity boundaries, avoiding ambiguity.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: Not all text requires NER. NER is primarily applied in scenarios that need structured entity information, such as information extraction, question answering, and knowledge graphs. For tasks like sentiment analysis or text classification, entity recognition may not be necessary.</p>\n</blockquote>\n\n<p>In our example, the CoNLL-2003 dataset is already tagged with BIO labels. We will directly use these annotations to train the model. By examining the data, you can understand the distribution of different entity types and how BIO tagging is applied in real data. This provides a foundation for subsequent model training.</p>\n\n<p>With a clear task definition, let's explore how to implement NER with sequence labeling models.</p>\n\n<h3>Mechanism Explanation: How Does Sequence Labeling Work?</h3>\n\n<p>The core challenge of sequence labeling is the dependency between labels. For example, in BIO tagging, I-LOC typically follows B-LOC, rather than appearing independently. Simple classifiers (like logistic regression) cannot capture this dependency, leading to poor performance. Conditional Random Fields (CRF) address this by modeling transition probabilities between labels.</p>\n\n<p>CRF is a probabilistic graphical model (Source: Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data, 2001) that defines the conditional probability P(Y|X) of an output label sequence Y given an input sequence X. Its core is the feature function, which connects input features (e.g., word form, part-of-speech, prefixes/suffixes) and labels. CRF learns the weights of feature functions by maximizing the log-likelihood of training data, thereby finding the most likely label sequence during prediction.</p>\n\n<p>Why does CRF effectively model label dependencies? The key lies in its consideration of transition probabilities between adjacent labels. Formally, the conditional probability of CRF is defined as: P(Y|X) = (1/Z(X)) * exp(∑_i ∑_k λ_k f_k(y_{i-1}, y_i, X, i)), where Z(X) is the normalization factor, f_k are feature functions, and λ_k are weights. This formula captures dependencies between adjacent labels (via y_{i-1}, y_i), making predictions more consistent with sequence structure. Compared to Hidden Markov Models (HMM), CRF is a discriminative model that directly models P(Y|X), avoiding HMM's strong assumption of observation independence, thus typically performing better in sequence labeling tasks.</p>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: CRF does not necessarily need to be combined with deep learning. Traditional CRF can work with handcrafted features (e.g., word form, POS tags) and is often combined with neural networks to automatically learn features and improve performance. However, for small datasets, CRF with handcrafted features may be more stable.</p>\n</blockquote>\n\n<p>In our example, we will implement a CRF model using the sklearn-crfsuite library (Source: sklearn-crfsuite documentation, 2023). Feature functions include word form, POS tag, prefixes/suffixes, etc. For instance, for the word sequence ['New', 'York', 'City'], features might include {'word': 'New', 'is_capitalized': True}, and CRF will use these features and label dependencies to output ['B-LOC', 'I-LOC', 'I-LOC'].</p>\n\n<p>With an understanding of CRF principles, let's apply it to a complete NER pipeline.</p>\n\n<h3>Engineering Practice: Building a Reproducible NER Pipeline</h3>\n\n<p>A reproducible NER pipeline includes four steps: data preparation, feature engineering, model training, and evaluation. Reproducibility is ensured by fixing random seeds, recording environment versions, and other methods to verify that results can be repeated. Here are the key steps of the pipeline:</p>\n\n<ol>\n<li><strong>Data Preparation</strong>: Load the CoNLL-2003 dataset, split by sentences, and fix random seeds for train/test split.</li>\n<li><strong>Feature Engineering</strong>: Extract features for each word, such as word form, POS tag, prefix (first 3 characters), suffix (last 3 characters), capitalization, etc.</li>\n<li><strong>Model Training</strong>: Train the CRF model with features and labels, tuning hyperparameters (e.g., regularization strength).</li>\n<li><strong>Evaluation</strong>: Calculate accuracy, recall, F1 score, and plot a confusion matrix for error analysis.</li>\n</ol>\n\n<p>Below is a comprehensive code block showing the complete workflow from data loading to model evaluation:</p>\n\n<pre><code>import nltk\nfrom sklearn.model_selection import train_test_split\nfrom sklearn_crfsuite import CRF\nfrom sklearn_crfsuite.metrics import flat_classification_report\nimport numpy as np\n\n# Step 1: Data Loading (using CoNLL-2003 example data)\n# Note: This uses built-in example data; in practice, download the full dataset from https://www.clips.uantwerpen.be/conll2003/ner/\nnltk.download('conll2002')  # Using nltk example data; replace with CoNLL-2003 in real projects\nfrom nltk.corpus import conll2002\n\ndata = conll2002.iob_sents('esp.train')  # Example data; use CoNLL-2003 in practice\nsentences = [list(zip(*sent)) for sent in data]  # Convert to (word, POS, label) format\n\n# Step 2: Feature Extraction Function\ndef word2features(sent, i):\n    word = sent[i][0]\n    features = {\n        'word': word,\n        'is_capitalized': word[0].isupper(),\n        'prefix': word[:3],\n        'suffix': word[-3:],\n    }\n    if i > 0:\n        prev_word = sent[i-1][0]\n        features.update({'prev_word': prev_word})\n    return features\n\ndef sent2features(sent):\n    return [word2features(sent, i) for i in range(len(sent))]\n\ndef sent2labels(sent):\n    return [label for _, _, label in sent]\n\nX = [sent2features(s) for s in sentences]\ny = [sent2labels(s) for s in sentences]\n\n# Step 3: Data Splitting (fix random seed)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)\n\n# Step 4: CRF Model Training\ncrf = CRF(algorithm='lbfgs', c1=0.1, c2=0.1, max_iterations=100)\ncrf.fit(X_train, y_train)\n\n# Step 5: Evaluation\ny_pred = crf.predict(X_test)\nreport = flat_classification_report(y_test, y_pred)\nprint(\"Classification Report:\")\nprint(report)\n\n# Output Dataset Information\nprint(f\"Number of dataset samples: {len(sentences)}\")\nprint(f\"Training set size: {len(X_train)}, Test set size: {len(X_test)}\")\n</code></pre>\n\n<p>Another code block shows visualization of the confusion matrix to aid error analysis:</p>\n\n<pre><code>from sklearn.metrics import confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# Flatten label sequences\nlabels = ['O', 'B-PER', 'I-PER', 'B-LOC', 'I-LOC', 'B-ORG', 'I-ORG']  # Example labels\ny_test_flat = [label for sent in y_test for label in sent]\ny_pred_flat = [label for sent in y_pred for label in sent]\n\n# Compute Confusion Matrix\ncm = confusion_matrix(y_test_flat, y_pred_flat, labels=labels)\n\n# Visualization\nplt.figure(figsize=(10, 8))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)\nplt.title('Confusion Matrix for NER')\nplt.xlabel('Predicted')\nplt.ylabel('True')\nplt.show()\n\n# Output Environment Information\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"sklearn-crfsuite version: 0.3.6\")  # Assumed version\nprint(f\"Random seed: 42\")\n</code></pre>\n\n<blockquote>\n<p><strong>Misconception Clarification</strong>: Bigger is not always better for NER models. On small datasets, complex deep learning models are prone to overfitting. CRF with handcrafted features often performs stably on medium-sized datasets and trains quickly.</p>\n</blockquote>\n\n<p>Through this pipeline, you can obtain the model's performance report on the test set (e.g., F1 score), confusion matrix visualization, and environment version information. This ensures reproducibility of the experiment, facilitating subsequent optimization.</p>\n\n<h3>Summary and Migration Path</h3>\n\n<p>This course started from the practical need for NER, gradually delving into task definition, CRF mechanisms, and engineering practice. You learned how to build a reproducible NER pipeline, using the CoNLL-2003 dataset and a CRF model to identify person names, locations, and organizations. Key points include understanding BIO tagging, mastering CRF principles, implementing feature engineering, and evaluation metrics.</p>\n\n<p>To migrate this workflow to your own projects, you can:</p>\n\n<ol>\n<li><strong>Adjust Entity Types</strong>: Define new entity types based on your domain (e.g., medical, legal) and prepare annotated data.</li>\n<li><strong>Optimize Features</strong>: In feature engineering, add domain-specific features (e.g., medical terms, legal clauses).</li>\n<li><strong>Model Selection</strong>: For large datasets, consider combining neural networks (e.g., BiLSTM-CRF) to improve performance.</li>\n<li><strong>Evaluate and Iterate</strong>: Use confusion matrices to analyze errors and continuously improve features and models.</li>\n</ol>\n\n<p>Through practice, you will be able to apply NER techniques to real-world scenarios like information extraction and knowledge graphs, enhancing the efficiency of your NLP projects.</p>"
-      },
-      "practice": [
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：命名实体识别与序列标注 · 结构总览 · 数据：课程大纲】在设计《命名实体识别与序列标注》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
-            "en": "【Source: 命名实体识别与序列标注 · 结构总览 · Data: 课程大纲】When outlining \"命名实体识别与序列标注\", which sequence best helps readers progress from concepts to applications?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
-            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
-          },
-          "options": [
-            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
-            "直接列公式 → 给出练习 → 最后再解释概念",
-            "只讲历史 → 只列参考文献 → 不展示示例",
-            "先贴代码 → 略过背景 → 简单总结"
-          ]
-        },
-        {
-          "type": "multi",
-          "question": {
-            "zh": "【来自：命名实体识别与序列标注 · worked example · 数据：掌握命名实体识别的任务和方法 数据/代码】在复现《命名实体识别与序列标注》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
-            "en": "【Source: 命名实体识别与序列标注 · worked example · Data: 掌握命名实体识别的任务和方法 数据/代码】While reproducing the worked example in \"命名实体识别与序列标注\", which actions improve reproducibility? (Select all that apply)"
-          },
-          "answer": [
-            0,
-            2,
-            3
-          ],
-          "explain": {
-            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
-            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
-          },
-          "options": [
-            "列出输入数据字段与来源",
-            "仅口头描述处理步骤",
-            "逐行解释代码或公式逻辑",
-            "记录关键输出指标及其含义"
-          ]
-        },
-        {
-          "type": "input",
-          "question": {
-            "zh": "【来自：命名实体识别与序列标注 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《命名实体识别与序列标注》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
-            "en": "【Source: 命名实体识别与序列标注 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"命名实体识别与序列标注\" into your context: outline the scenario, the reused steps, and the metric you would check."
-          },
-          "answer": "plan",
-          "explain": {
-            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
-            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
-          }
-        },
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：命名实体识别与序列标注 · 参考资料 · 数据：课程引用文献】当引用文献支撑《命名实体识别与序列标注》中的观点时，以下哪一做法能强化可信度？",
-            "en": "【Source: 命名实体识别与序列标注 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"命名实体识别与序列标注\", which action strengthens credibility?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
-            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
-          },
-          "options": [
-            "指出文献的年份、作者/机构并提炼与本节的关系",
-            "只在文末集中列出所有链接，不在正文说明",
-            "引用尚未发表的私有数据但不给出处",
-            "用营销口吻概括文献而不提研究方法"
-          ]
-        }
-      ],
-      "references": [
-        {
-          "label": {
-            "zh": "CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition（CoNLL，2003）",
-            "en": "CoNLL-2003 Shared Task: Language-Independent Named Entity Recognition (CoNLL, 2003)"
-          },
-          "url": "https://www.clips.uantwerpen.be/conll2003/ner/"
-        },
-        {
-          "label": {
-            "zh": "Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data（University of Pennsylvania，2001）",
-            "en": "Conditional Random Fields: Probabilistic Models for Segmenting and Labeling Sequence Data (University of Pennsylvania, 2001)"
-          },
-          "url": "https://repository.upenn.edu/cis_papers/159/"
-        },
-        {
-          "label": {
-            "zh": "sklearn-crfsuite documentation（开源项目，2023）",
-            "en": "sklearn-crfsuite documentation (开源项目, 2023)"
-          },
-          "url": "https://sklearn-crfsuite.readthedocs.io/en/latest/"
-        }
-      ],
-      "audio": {
-        "zh": "/assets/audio/daily/2025-12-21-ner-zh.mp3"
-      },
-      "meta": {
-        "category": "NLP Fundamentals",
-        "level": "3. Natural Language Processing & Transformers",
-        "difficultyScore": 2,
-        "related": [
-          "CRF",
-          "序列标注任务"
-        ],
-        "learningObjectives": [
-          "掌握命名实体识别的任务和方法",
-          "应用 CRF 等工具进行序列标注"
-        ],
-        "personas": [
-          "NLP 工程师",
-          "数据科学家"
-        ],
-        "contextual_notes": {
-          "why_now": "Mastering Named Entity Recognition and Sequence Labeling at this stage helps teams develop reusable practices in NLP Fundamentals.",
-          "best_for": "Suitable for NLP engineers and data scientists who need to quickly absorb topics in Natural Language Processing & Transformers.",
-          "visual_hint": "Use bullet lists + flow arrows to show the process; include confusion matrices for error analysis."
-        },
-        "tone_profile": {
-          "persona": "NLP 工程师 指导者",
-          "style": "故事化",
-          "energy": "encouraging",
-          "call_to_action": "引导学习者写下一条可执行行动"
-        },
-        "learner_profile": {
-          "summary": "课程面向 NLP 工程师、数据科学家，帮助他们把 命名实体识别与序列标注 应用于 NLP Fundamentals",
-          "prefersEnglish": false,
-          "industries": [
-            "NLP 工程师",
-            "数据科学家"
-          ],
-          "personas": [
-            "NLP 工程师",
-            "数据科学家"
-          ],
-          "pains": "在 NLP Fundamentals 场景缺乏 命名实体识别与序列标注 的可执行路径",
-          "preferredMetrics": [],
-          "maturity": "3. Natural Language Processing & Transformers"
-        },
-        "prompt_version": "2025-02-19",
-        "starter_questions": [
-          {
-            "lang": "zh",
-            "question": "作为NLP工程师，你在处理客户反馈时，如何识别文本中的关键实体（如产品名、地点）来优化分析？思考当前项目中哪些环节可以应用NER提升效率？",
-            "action_hint": "尝试列出你最近处理的文本数据，标注其中可能存在的实体类型，并评估现有流程的自动化潜力。"
-          },
-          {
-            "lang": "zh",
-            "question": "数据科学家在构建分类模型时，常忽略实体信息对特征工程的影响。回顾你的项目，序列标注如何帮助提取更丰富的上下文特征？",
-            "action_hint": "选择一个现有数据集，手动标注部分样本的实体，观察这些标注能否为模型提供新的预测维度。"
           }
         ]
       }
