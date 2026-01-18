@@ -7024,5 +7024,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-22-bert",
+    "date": "2025-12-22",
+    "title": {
+      "zh": "BERT 与双向编码器",
+      "en": "BERT and Bidirectional Encoders"
+    },
+    "summary": {
+      "zh": "BERT（Bidirectional Encoder Representations from Transformers）是一种基于Transformer架构的双向编码器预训练模型，通过掩码语言建模和下一句预测任务学习上下文感知的词表示，显著提升了自然语言理解任务的性能。本课程将带你从理解双向编码的必要性出发，深入解析BERT的核心机制，最终实现从预训练模型加载到下游任务微调的完整工程流程。我们将以电影评论情感分类为例，构建可复现的微调pipeline，涵盖数据预处理、模型构建、训练评估等关键步骤，帮助你掌握BERT在实际项目中的应用方法。",
+      "en": "BERT (Bidirectional Encoder Representations from Transformers) is a pre-trained bidirectional encoder model based on the Transformer architecture. It learns context-aware word representations through masked language modeling and next sentence prediction tasks, significantly improving performance on natural language understanding tasks. This course will guide you from understanding the necessity of bidirectional encoding to in-depth analysis of BERT's core mechanisms, culminating in a complete engineering workflow from loading pre-trained models to fine-tuning for downstream tasks. Using movie review sentiment classification as an example, we'll build a reproducible fine-tuning pipeline covering data preprocessing, model construction, training, and evaluation, helping you master BERT's application in real-world projects."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "BERT",
+      "pretraining"
+    ],
+    "content": {
+      "zh": "<h3>从单向到双向：为什么BERT改变了游戏规则？</h3><p>想象这样一个场景：在阅读句子“他在银行工作”时，人类能立即理解“银行”指的是金融机构而非河岸，因为我们同时看到了左侧的“他在”和右侧的“工作”。然而，传统的单向语言模型如GPT只能像从左到右阅读一样，在预测每个词时只能利用左侧的上下文信息。这种单向性限制导致模型在理解歧义词时面临根本性挑战——为什么单向模型无法区分“存款银行”与“河岸银行”？答案在于它们缺乏同时访问双向上下文的能力。</p><p>双向编码器（Bidirectional Encoder）正是为解决这一问题而生。它指一种能同时利用输入序列左右两侧上下文信息进行编码的神经网络结构。与自回归模型（如GPT）的因果掩码不同，双向编码器允许每个位置关注序列中的所有其他位置，从而获得更丰富的上下文表示。这种设计使模型能够像人类一样“同时看到整句话”，而不是逐词生成。</p><p>一个常见的误解是：BERT是生成式模型，能像GPT一样生成文本。实际上，BERT是纯粹的编码器模型，主要用于理解任务（如分类、问答）；文本生成需要解码器架构，如BART或T5。这种区别源于BERT的双向注意力机制——它在训练时能看到整个输入序列（通过随机遮盖部分词），但无法像自回归模型那样顺序生成新词。</p><p>在我们的贯穿示例中，电影评论“这部电影太精彩了！”将被BERT编码为上下文感知的向量表示。当模型处理“精彩”这个词时，它会同时考虑左侧的“这部电影太”和右侧的“了！”，从而准确捕捉情感极性。这种双向理解能力是后续情感分类任务成功的基础。</p><p>理解了为什么需要双向编码后，我们自然要问：BERT具体通过什么机制来实现这种能力？答案在于Transformer编码器与精心设计的预训练任务。</p><h3>BERT的核心机制：Transformer编码器与预训练任务</h3><p>BERT如何在不看到完整句子的情况下训练双向表示？这似乎是个悖论——如果训练时让模型看到所有词，它岂不是可以直接“抄袭”答案？关键在于掩码语言建模（Masked Language Modeling, MLM）的巧妙设计。MLM随机遮盖输入序列中15%的词（替换为[MASK]标记），让模型基于剩余85%的上下文预测被遮盖的词。这种随机遮盖迫使模型学习深层的上下文依赖，而不是简单的记忆模式。</p><p>掩码语言建模（Masked Language Modeling）是一种预训练任务，随机遮盖输入序列中的部分词，让模型基于上下文预测被遮盖的词。例如，输入“[MASK]在银行工作。”时，BERT通过自注意力机制聚合“在”、“银行”、“工作”的上下文信息，输出预测被遮盖词为“他”（概率最高）。同时，下一句预测（Next Sentence Prediction, NSP）任务让模型判断两个句子在原文中是否连续出现，以学习句子间关系。这两个任务共同使BERT获得语言理解和推理能力。</p><p>关于BERT的“双向”特性，存在一个关键误区：有人认为BERT训练时能看到整个句子，所以没有信息泄露问题。实际上，MLM通过随机遮盖确保模型不能直接“看到”被预测词，但注意力机制仍允许间接信息流动——这与自回归模型的因果掩码有本质区别。自回归模型（如GPT）使用因果掩码阻止当前位置关注未来位置，而BERT的注意力是全连接的（除被遮盖位置外），这正是它能捕获双向依赖的原因。</p><p>在我们的电影评论示例中，预训练BERT已经通过MLM和NSP学习了丰富的语言表示。例如，它知道“精彩”常与正面评价词共现，“糟糕”常与负面评价词关联。这些表示被编码为768维向量（以bert-base-uncased为例），为下游任务提供了强大的特征基础。</p><p>预训练任务（MLM/NSP）提供了通用语言理解，但针对特定任务（如情感分类），需要适配任务特定的决策边界，这通过微调实现。理解了预训练机制后，我们来看看如何将学到的表示应用到实际任务中。</p><h3>从预训练到微调：让BERT为你所用</h3><p>有了预训练BERT，为什么不能直接用于分类任务？因为预训练目标是通用语言理解，而下游任务（如情感分类）需要特定的决策边界。微调（Fine-tuning）指在预训练模型基础上，用下游任务数据继续训练，调整模型参数以适应新任务。这类似于“迁移学习”——在已有知识基础上做小幅调整，而不是从头开始训练。</p><p>微调过程通常涉及添加任务特定层。对于文本分类，我们在BERT编码器输出（[CLS]标记的表示）后添加一个线性分类层，将768维向量映射到类别数（如2维表示正面/负面）。然后，用下游任务数据（电影评论及其标签）训练整个模型，但学习率通常设置得较低（如2e-5），以避免破坏预训练学到的通用表示。选择2e-5这样的低学习率是因为预训练权重已经编码了大量语言知识，过高的学习率可能导致灾难性遗忘——模型快速忘记预训练知识而过度拟合小规模下游数据。</p><p>一个常见误解是：微调需要大量数据和计算资源，不如直接使用预训练特征。实际上，对于许多任务，即使少量数据（几百个样本）微调BERT也能显著提升性能；且现代库（如Hugging Face Transformers）简化了流程，使微调在单GPU上即可完成。下表对比了不同方法的资源需求：</p><table><tr><th>方法</th><th>数据需求</th><th>计算需求</th><th>典型准确率</th></tr><tr><td>预训练特征+线性分类</td><td>中等（数千样本）</td><td>低</td><td>85-90%</td></tr><tr><td>全模型微调</td><td>低（数百样本）</td><td>中等</td><td>90-95%</td></tr><tr><td>从头训练BERT</td><td>极高（数十亿词）</td><td>极高</td><td>不适用</td></tr></table><p>在我们的示例中，输入电影评论“这部电影太精彩了！”经过微调BERT处理：预训练编码器生成句子表示，分类层输出情感标签。假设输出为正面情感（概率0.92），这表明模型成功地将通用语言知识适配到了情感分析任务。</p><p>理论已备，现在让我们动手构建一个可复现的文本分类示例，体验BERT微调的全流程。以下代码将展示从数据加载到模型评估的关键步骤。</p><pre><code>import torch\nfrom transformers import BertTokenizer, BertForSequenceClassification, AdamW\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport numpy as np\n\n# 步骤1：数据加载与预处理\n# 使用20newsgroups数据集模拟情感数据（筛选特定类别）\ncategories = ['rec.sport.baseball', 'sci.med']  # 模拟正面/负面\nnewsgroups = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = newsgroups.data[:200]  # 取200个样本\n# 清洗文本：去除换行符和多余空格\ntexts = [text.replace('\\n', ' ').replace('\\r', '').strip() for text in texts]\nlabels = newsgroups.target[:200]\nlabels = [1 if label == 0 else 0 for label in labels]  # 映射为0/1（负面/正面）\n\n# 步骤2：可复现切分\ntrain_texts, test_texts, train_labels, test_labels = train_test_split(\n    texts, labels, test_size=0.2, random_state=42, stratify=labels\n)\nprint(f\"训练集样本数: {len(train_texts)}, 测试集样本数: {len(test_texts)}\")\nprint(f\"类别分布 - 训练集: {np.bincount(train_labels)}, 测试集: {np.bincount(test_labels)}\")\n\n# 步骤3：构建微调pipeline\ntokenizer = BertTokenizer.from_pretrained('bert-base-uncased')\nmodel = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)\n\n# 编码训练数据\ntrain_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=128)\ntest_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=128)\n\n# 转换为PyTorch数据集\ntrain_dataset = torch.utils.data.TensorDataset(\n    torch.tensor(train_encodings['input_ids']),\n    torch.tensor(train_encodings['attention_mask']),\n    torch.tensor(train_labels)\n)\ntest_dataset = torch.utils.data.TensorDataset(\n    torch.tensor(test_encodings['input_ids']),\n    torch.tensor(test_encodings['attention_mask']),\n    torch.tensor(test_labels)\n)\n\n# 训练配置\ndevice = torch.device('cuda' if torch.cuda.is_available() else 'cpu')\nmodel.to(device)\noptimizer = AdamW(model.parameters(), lr=2e-5)\n\n# 完整训练循环（包含验证）\nmodel.train()\nbest_val_loss = float('inf')\npatience = 2\npatience_counter = 0\nfor epoch in range(10):  # 增加epoch数\n    total_loss = 0\n    for batch in torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True):\n        input_ids, attention_mask, labels = [b.to(device) for b in batch]\n        outputs = model(input_ids, attention_mask=attention_mask, labels=labels)\n        loss = outputs.loss\n        loss.backward()\n        optimizer.step()\n        optimizer.zero_grad()\n        total_loss += loss.item()\n    avg_loss = total_loss / len(train_dataset)\n    print(f\"Epoch {epoch+1} - 平均训练损失: {avg_loss:.4f}\")\n    \n    # 简单验证（实际应使用独立验证集）\n    model.eval()\n    val_loss = 0\n    with torch.no_grad():\n        for batch in torch.utils.data.DataLoader(test_dataset, batch_size=8):\n            input_ids, attention_mask, labels = [b.to(device) for b in batch]\n            outputs = model(input_ids, attention_mask=attention_mask, labels=labels)\n            val_loss += outputs.loss.item()\n    avg_val_loss = val_loss / len(test_dataset)\n    print(f\"Epoch {epoch+1} - 验证损失: {avg_val_loss:.4f}\")\n    \n    # 早停机制\n    if avg_val_loss < best_val_loss:\n        best_val_loss = avg_val_loss\n        patience_counter = 0\n    else:\n        patience_counter += 1\n        if patience_counter >= patience:\n            print(f\"早停触发于 epoch {epoch+1}\")\n            break\n    model.train()\n\n# 步骤4：评估\nmodel.eval()\npredictions = []\nwith torch.no_grad():\n    for batch in torch.utils.data.DataLoader(test_dataset, batch_size=8):\n        input_ids, attention_mask, labels = [b.to(device) for b in batch]\n        outputs = model(input_ids, attention_mask=attention_mask)\n        preds = torch.argmax(outputs.logits, dim=1)\n        predictions.extend(preds.cpu().numpy())\n\naccuracy = accuracy_score(test_labels, predictions)\nprint(f\"测试集准确率: {accuracy:.4f}\")\nprint(\"混淆矩阵:\")\nprint(confusion_matrix(test_labels, predictions))\n\n# 步骤5：环境记录\nimport transformers\nprint(f\"transformers版本: {transformers.__version__}\")\nprint(f\"torch版本: {torch.__version__}\")\nprint(f\"随机种子: 42\")</code></pre><p>这段代码展示了BERT微调的核心流程：加载模拟情感数据、使用BertTokenizer进行分词、构建包含预训练BERT和分类头的模型、进行完整训练（包含早停机制）、最后评估性能。输出将包括数据集形状、类别分布、测试准确率和混淆矩阵，以及环境版本信息以确保可复现性（来源：Hugging Face Transformers Library, 2023）。</p><p>通过这个示例，你可以看到微调如何将通用语言模型适配到特定任务。但更重要的是，你需要理解这套方法论背后的设计原则，以便迁移到自己的项目中。</p><h3>方法论迁移：将BERT工作流应用到你的项目</h3><p>今天的课程不仅教会了你BERT的技术细节，更重要的是提供了一套可迁移的方法论。无论你的项目是文档分类、情感分析、问答系统还是实体识别，都可以遵循相同的工作流：从理解任务需求开始，选择适当的预训练模型（如BERT、RoBERTa、DistilBERT），设计数据预处理pipeline，添加任务特定层，然后进行微调与评估。</p><p>关键迁移步骤包括：1) 任务分析——明确输入输出格式和评估指标；2) 数据准备——确保数据质量与标注一致性；3) 模型选择——根据计算资源和精度需求权衡模型大小；4) 微调策略——设置适当的学习率、批次大小和训练轮数；5) 可复现性保障——记录随机种子、环境版本和超参数。</p><p>例如，如果你要将此工作流迁移到新闻主题分类任务，只需将情感标签替换为主题类别，调整分类层输出维度，并可能使用领域适配的预训练模型（如BERT在新闻语料上进一步预训练）。整个架构和训练流程保持不变，体现了迁移学习的强大之处。</p><p>记住，BERT不是银弹——它在某些任务上可能不如更专门的架构高效。但作为通用的双向编码器，它为大多数自然语言理解任务提供了强大的基线。掌握今天的内容后，你可以自信地将BERT集成到自己的项目中，开始构建更智能的文本处理系统。</p>",
+      "en": "<h3>From Unidirectional to Bidirectional: Why BERT Changed the Game</h3><p>Consider this scenario: When reading the sentence \"He works at the bank,\" humans immediately understand that \"bank\" refers to a financial institution rather than a riverbank, because we simultaneously see the left context \"He works at\" and the right context \".\" However, traditional unidirectional language models like GPT can only process text from left to right, using only left-side context when predicting each word. This unidirectional limitation creates a fundamental challenge in understanding ambiguous words—why can't unidirectional models distinguish between \"deposit bank\" and \"river bank\"? The answer lies in their inability to access bidirectional context simultaneously.</p><p>The bidirectional encoder was created to solve this problem. It refers to a neural network architecture that can encode information using both left and right context of the input sequence simultaneously. Unlike the causal masking of autoregressive models (like GPT), bidirectional encoders allow each position to attend to all other positions in the sequence, resulting in richer contextual representations. This design enables models to \"see the entire sentence at once\" like humans do, rather than generating words sequentially.</p><p>A common misconception is that BERT is a generative model that can generate text like GPT. In reality, BERT is purely an encoder model primarily used for understanding tasks (like classification, QA); text generation requires decoder architectures like BART or T5. This distinction stems from BERT's bidirectional attention mechanism—it can see the entire input sequence during training (by randomly masking some words) but cannot generate new words sequentially like autoregressive models.</p><p>In our running example, the movie review \"This movie is fantastic!\" will be encoded by BERT as context-aware vector representations. When processing the word \"fantastic,\" the model considers both the left context \"This movie is\" and the right context \"!,\" accurately capturing sentiment polarity. This bidirectional understanding forms the foundation for successful sentiment classification.</p><p>Having understood why bidirectional encoding is necessary, we naturally ask: How does BERT achieve this capability? The answer lies in the Transformer encoder and carefully designed pre-training tasks.</p><h3>BERT's Core Mechanisms: Transformer Encoder and Pre-training Tasks</h3><p>How does BERT train bidirectional representations without seeing complete sentences? This seems paradoxical—if the model sees all words during training, couldn't it simply \"copy\" the answers? The key lies in the clever design of masked language modeling (MLM). MLM randomly masks 15% of input words (replacing them with [MASK] tokens), forcing the model to predict masked words based on the remaining 85% context. This random masking compels the model to learn deep contextual dependencies rather than simple memorization patterns.</p><p>Masked language modeling is a pre-training task that randomly masks portions of the input sequence, requiring the model to predict masked words based on context. For example, given input \"[MASK] works at the bank,\" BERT aggregates contextual information from \"works,\" \"at,\" \"the,\" and \"bank\" through self-attention, outputting the prediction \"He\" as the masked word (with highest probability). Simultaneously, the next sentence prediction (NSP) task requires the model to determine whether two sentences appear consecutively in the original text, learning inter-sentence relationships. These two tasks together enable BERT to acquire language understanding and reasoning capabilities.</p><p>Regarding BERT's \"bidirectional\" nature, a key misconception exists: some believe BERT can see the entire sentence during training, thus avoiding information leakage. Actually, MLM ensures the model cannot directly \"see\" predicted words through random masking, but attention mechanisms still allow indirect information flow—this fundamentally differs from the causal masking of autoregressive models. Autoregressive models (like GPT) use causal masking to prevent current positions from attending to future positions, while BERT's attention is fully connected (except for masked positions), enabling it to capture bidirectional dependencies.</p><p>In our movie review example, pre-trained BERT has already learned rich language representations through MLM and NSP. For instance, it knows \"fantastic\" frequently co-occurs with positive evaluation words, while \"terrible\" often associates with negative ones. These representations are encoded as 768-dimensional vectors (using bert-base-uncased as example), providing powerful feature foundations for downstream tasks.</p><p>Pre-training tasks (MLM/NSP) provide general language understanding, but for specific tasks like sentiment classification, adaptation to task-specific decision boundaries is needed, which is achieved through fine-tuning. Having understood the pre-training mechanisms, let's see how to apply the learned representations to practical tasks.</p><h3>From Pre-training to Fine-tuning: Making BERT Work for You</h3><p>Why can't pre-trained BERT be directly used for classification tasks? Because pre-training targets general language understanding, while downstream tasks (like sentiment classification) require specific decision boundaries. Fine-tuning refers to continuing training on pre-trained models using downstream task data, adjusting model parameters to adapt to new tasks. This resembles \"transfer learning\"—making minor adjustments based on existing knowledge rather than training from scratch.</p><p>Fine-tuning typically involves adding task-specific layers. For text classification, we add a linear classification layer after the BERT encoder output (representation of the [CLS] token), mapping the 768-dimensional vector to the number of classes (e.g., 2 dimensions for positive/negative). Then, we train the entire model with downstream task data (movie reviews and their labels), usually setting a lower learning rate (e.g., 2e-5) to avoid damaging the general representations learned during pre-training. The choice of a low learning rate like 2e-5 is because pre-trained weights already encode extensive language knowledge; higher rates could cause catastrophic forgetting—where the model quickly forgets pre-trained knowledge and overfits to small downstream datasets.</p><p>A common misconception is that fine-tuning requires large amounts of data and computational resources, making it inferior to directly using pre-trained features. Actually, for many tasks, fine-tuning BERT with even small datasets (hundreds of samples) can significantly improve performance; and modern libraries (like Hugging Face Transformers) simplify the process, enabling fine-tuning on single GPUs. The following table compares resource requirements of different approaches:</p><table><tr><th>Approach</th><th>Data Requirement</th><th>Computation Requirement</th><th>Typical Accuracy</th></tr><tr><td>Pre-trained features + linear classifier</td><td>Medium (thousands of samples)</td><td>Low</td><td>85-90%</td></tr><tr><td>Full model fine-tuning</td><td>Low (hundreds of samples)</td><td>Medium</td><td>90-95%</td></tr><tr><td>Training BERT from scratch</td><td>Extremely high (billions of words)</td><td>Extremely high</td><td>Not applicable</td></tr></table><p>In our example, input movie review \"This movie is fantastic!\" is processed by fine-tuned BERT: the pre-trained encoder generates sentence representations, and the classification layer outputs sentiment labels. Assuming the output is positive sentiment (probability 0.92), this indicates successful adaptation of general language knowledge to sentiment analysis tasks.</p><p>With theory established, let's now build a reproducible text classification example to experience the complete BERT fine-tuning workflow. The following code demonstrates key steps from data loading to model evaluation.</p><pre><code>import torch\nfrom transformers import BertTokenizer, BertForSequenceClassification, AdamW\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport numpy as np\n\n# Step 1: Data loading and preprocessing\n# Using 20newsgroups dataset to simulate sentiment data (filtering specific categories)\ncategories = ['rec.sport.baseball', 'sci.med']  # Simulating positive/negative\nnewsgroups = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = newsgroups.data[:200]  # Take 200 samples\n# Clean text: remove newlines and extra spaces\ntexts = [text.replace('\\n', ' ').replace('\\r', '').strip() for text in texts]\nlabels = newsgroups.target[:200]\nlabels = [1 if label == 0 else 0 for label in labels]  # Map to 0/1 (negative/positive)\n\n# Step 2: Reproducible splitting\ntrain_texts, test_texts, train_labels, test_labels = train_test_split(\n    texts, labels, test_size=0.2, random_state=42, stratify=labels\n)\nprint(f\"Training samples: {len(train_texts)}, Test samples: {len(test_texts)}\")\nprint(f\"Class distribution - Training: {np.bincount(train_labels)}, Test: {np.bincount(test_labels)}\")\n\n# Step 3: Building fine-tuning pipeline\ntokenizer = BertTokenizer.from_pretrained('bert-base-uncased')\nmodel = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=2)\n\n# Encoding training data\ntrain_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=128)\ntest_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=128)\n\n# Converting to PyTorch datasets\ntrain_dataset = torch.utils.data.TensorDataset(\n    torch.tensor(train_encodings['input_ids']),\n    torch.tensor(train_encodings['attention_mask']),\n    torch.tensor(train_labels)\n)\ntest_dataset = torch.utils.data.TensorDataset(\n    torch.tensor(test_encodings['input_ids']),\n    torch.tensor(test_encodings['attention_mask']),\n    torch.tensor(test_labels)\n)\n\n# Training configuration\ndevice = torch.device('cuda' if torch.cuda.is_available() else 'cpu')\nmodel.to(device)\noptimizer = AdamW(model.parameters(), lr=2e-5)\n\n# Complete training loop (with validation)\nmodel.train()\nbest_val_loss = float('inf')\npatience = 2\npatience_counter = 0\nfor epoch in range(10):  # Increased epochs\n    total_loss = 0\n    for batch in torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True):\n        input_ids, attention_mask, labels = [b.to(device) for b in batch]\n        outputs = model(input_ids, attention_mask=attention_mask, labels=labels)\n        loss = outputs.loss\n        loss.backward()\n        optimizer.step()\n        optimizer.zero_grad()\n        total_loss += loss.item()\n    avg_loss = total_loss / len(train_dataset)\n    print(f\"Epoch {epoch+1} - Average training loss: {avg_loss:.4f}\")\n    \n    # Simple validation (should use separate validation set in practice)\n    model.eval()\n    val_loss = 0\n    with torch.no_grad():\n        for batch in torch.utils.data.DataLoader(test_dataset, batch_size=8):\n            input_ids, attention_mask, labels = [b.to(device) for b in batch]\n            outputs = model(input_ids, attention_mask=attention_mask, labels=labels)\n            val_loss += outputs.loss.item()\n    avg_val_loss = val_loss / len(test_dataset)\n    print(f\"Epoch {epoch+1} - Validation loss: {avg_val_loss:.4f}\")\n    \n    # Early stopping\n    if avg_val_loss < best_val_loss:\n        best_val_loss = avg_val_loss\n        patience_counter = 0\n    else:\n        patience_counter += 1\n        if patience_counter >= patience:\n            print(f\"Early stopping triggered at epoch {epoch+1}\")\n            break\n    model.train()\n\n# Step 4: Evaluation\nmodel.eval()\npredictions = []\nwith torch.no_grad():\n    for batch in torch.utils.data.DataLoader(test_dataset, batch_size=8):\n        input_ids, attention_mask, labels = [b.to(device) for b in batch]\n        outputs = model(input_ids, attention_mask=attention_mask)\n        preds = torch.argmax(outputs.logits, dim=1)\n        predictions.extend(preds.cpu().numpy())\n\naccuracy = accuracy_score(test_labels, predictions)\nprint(f\"Test accuracy: {accuracy:.4f}\")\nprint(\"Confusion matrix:\")\nprint(confusion_matrix(test_labels, predictions))\n\n# Step 5: Environment recording\nimport transformers\nprint(f\"transformers version: {transformers.__version__}\")\nprint(f\"torch version: {torch.__version__}\")\nprint(f\"Random seed: 42\")</code></pre><p>This code demonstrates the core BERT fine-tuning workflow: loading simulated sentiment data, tokenizing with BertTokenizer, building a model combining pre-trained BERT with a classification head, performing complete training (with early stopping), and finally evaluating performance. Outputs will include dataset shape, class distribution, test accuracy, confusion matrix, and environment version information to ensure reproducibility (source: Hugging Face Transformers Library, 2023).</p><p>Through this example, you can see how fine-tuning adapts general language models to specific tasks. More importantly, you need to understand the design principles behind this methodology to transfer it to your own projects.</p><h3>Methodology Transfer: Applying BERT Workflow to Your Projects</h3><p>Today's course not only teaches BERT's technical details but, more importantly, provides a transferable methodology. Whether your project involves document classification, sentiment analysis, question answering, or entity recognition, you can follow the same workflow: start by understanding task requirements, select appropriate pre-trained models (like BERT, RoBERTa, DistilBERT), design data preprocessing pipelines, add task-specific layers, then perform fine-tuning and evaluation.</p><p>Key transfer steps include: 1) Task analysis—clarify input/output formats and evaluation metrics; 2) Data preparation—ensure data quality and labeling consistency; 3) Model selection—balance model size based on computational resources and accuracy requirements; 4) Fine-tuning strategy—set appropriate learning rates, batch sizes, and training epochs; 5) Reproducibility assurance—record random seeds, environment versions, and hyperparameters.</p><p>For example, if you want to transfer this workflow to news topic classification, simply replace sentiment labels with topic categories, adjust classification layer output dimensions, and potentially use domain-adapted pre-trained models (like BERT further pre-trained on news corpora). The entire architecture and training process remain unchanged, demonstrating the power of transfer learning.</p><p>Remember, BERT is not a silver bullet—it may be less efficient than more specialized architectures for certain tasks. But as a general bidirectional encoder, it provides powerful baselines for most natural language understanding tasks. Having mastered today's content, you can confidently integrate BERT into your own projects and start building more intelligent text processing systems.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：BERT 与双向编码器 · 结构总览 · 数据：课程大纲】在设计《BERT 与双向编码器》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: BERT 与双向编码器 · 结构总览 · Data: 课程大纲】When outlining \"BERT 与双向编码器\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：BERT 与双向编码器 · worked example · 数据：理解 BERT 的预训练任务 数据/代码】在复现《BERT 与双向编码器》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: BERT 与双向编码器 · worked example · Data: 理解 BERT 的预训练任务 数据/代码】While reproducing the worked example in \"BERT 与双向编码器\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：BERT 与双向编码器 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《BERT 与双向编码器》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: BERT 与双向编码器 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"BERT 与双向编码器\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：BERT 与双向编码器 · 参考资料 · 数据：课程引用文献】当引用文献支撑《BERT 与双向编码器》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: BERT 与双向编码器 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"BERT 与双向编码器\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（arXiv，2018）",
+          "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (arXiv, 2018)"
+        },
+        "url": "https://arxiv.org/abs/1810.04805"
+      },
+      {
+        "label": {
+          "zh": "Hugging Face Transformers Library（Hugging Face，2023）",
+          "en": "Hugging Face Transformers Library (Hugging Face, 2023)"
+        },
+        "url": "https://github.com/huggingface/transformers"
+      },
+      {
+        "label": {
+          "zh": "Attention Is All You Need（arXiv，2017）",
+          "en": "Attention Is All You Need (arXiv, 2017)"
+        },
+        "url": "https://arxiv.org/abs/1706.03762"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-22-bert-zh.mp3"
+    },
+    "meta": {
+      "category": "Transformer Models & Pretraining",
+      "level": "3. Natural Language Processing & Transformers",
+      "difficultyScore": 2,
+      "related": [
+        "Masked LM",
+        "Next Sentence Prediction"
+      ],
+      "learningObjectives": [
+        "理解 BERT 的预训练任务",
+        "应用 BERT 进行下游任务微调"
+      ],
+      "personas": [
+        "研究人员",
+        "工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 BERT 与双向编码器 可帮助团队在 Transformer Models & Pretraining 上做出可复用的实践。",
+        "best_for": "适合 研究人员、工程师，需要快速吸收 3. Natural Language Processing & Transformers 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。建议阅读顺序：先通读前三节理论部分，理解双向编码、预训练机制和微调原理，然后运行代码块体验完整流程，最后参考方法论迁移部分应用到自己的项目。可视化建议：绘制BERT架构图展示编码器堆叠，使用流程图展示从预训练到微调的工作流，用混淆矩阵分析模型性能。"
+      },
+      "tone_profile": {
+        "persona": "研究人员 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 研究人员、工程师，帮助他们把 BERT 与双向编码器 应用于 Transformer Models & Pretraining",
+        "prefersEnglish": false,
+        "industries": [
+          "研究人员",
+          "工程师"
+        ],
+        "personas": [
+          "研究人员",
+          "工程师"
+        ],
+        "pains": "在 Transformer Models & Pretraining 场景缺乏 BERT 与双向编码器 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "3. Natural Language Processing & Transformers"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为研究人员，你在处理文本分类任务时，是否曾因模型无法理解上下文而影响准确率？请思考：BERT的双向编码机制如何帮助你解决这类问题？",
+          "action_hint": "尝试分析一个你遇到的具体案例，对比单向与双向编码的效果差异。"
+        },
+        {
+          "lang": "zh",
+          "question": "作为工程师，在构建NLP微调pipeline时，你如何评估预训练模型对下游任务的适配性？请结合BERT的掩码语言建模机制，思考它如何提升你的工程效率？",
+          "action_hint": "从数据预处理步骤出发，设想BERT如何简化你的特征工程流程。"
+        }
+      ]
+    }
   }
 ]
