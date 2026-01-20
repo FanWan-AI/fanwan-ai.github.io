@@ -1,6 +1,174 @@
 {
-  "generatedAt": "2026-01-20T02:36:25.824Z",
+  "generatedAt": "2026-01-20T14:14:15.444Z",
   "lessons": [
+    {
+      "id": "2026-01-20-financial-trading",
+      "date": "2026-01-20",
+      "title": {
+        "zh": "金融交易与算法竞价",
+        "en": "Financial Trading and Algorithmic Bidding"
+      },
+      "summary": {
+        "zh": "金融交易与算法竞价通过强化学习优化决策过程，在动态市场环境中实现风险调整后的收益最大化，同时满足监管约束，课程围绕 Decision Making & Control 中的可执行路径展开。内容串联 从静态规则到动态学习：交易策略的演进困境、设计奖励函数：平衡收益、风险与约束、实现与评估：从模拟环境到可复现流程，梳理定义、推导与迁移步骤。",
+        "en": "金融交易与算法竞价 is positioned for Decision Making & Control initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从静态规则到动态学习：交易策略的演进困境, 设计奖励函数：平衡收益、风险与约束, 实现与评估：从模拟环境到可复现流程 to translate theory into executable steps."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "financial trading",
+        "algorithmic bidding"
+      ],
+      "content": {
+        "zh": "<h3>从静态规则到动态学习：交易策略的演进困境</h3>\n<p>在金融交易领域，传统策略通常基于历史数据回测构建固定规则，例如均值回归或动量策略。这些方法假设市场结构保持稳定，但实际交易环境是动态变化的——流动性波动、监管政策调整、突发事件等都会改变价格形成机制。一个典型困境是：在回测中夏普比率高达1.5的策略，实盘时可能因买卖价差扩大而失效。这揭示了静态规则的局限性：它们无法自适应地调整决策边界，导致在实时市场中表现不佳。因此，需要一种能够从交互中学习的框架，以适应不断变化的市场条件。</p>\n<p>精确定义是理解问题的起点。算法竞价（Algorithmic Bidding）指通过预定义规则自动执行交易指令，例如TWAP（时间加权平均价格）或VWAP（成交量加权平均价格）。强化学习交易（Reinforcement Learning-based Trading）则不同：它将交易过程建模为马尔可夫决策过程（Markov Decision Process, MDP），智能体通过与环境交互学习最优策略。关键术语包括：状态（state）——当前市场观测（如价格序列、仓位、资金）；动作（action）——买卖决策（如限价单价格、数量）；奖励（reward）——交易结果的量化反馈。这种框架允许策略动态适应市场变化，但需严谨设计以避免过拟合噪声。</p>\n<p>从机制上看，强化学习优化的是策略函数 \\(\\pi(a|s)\\)，即在状态 \\(s\\) 下选择动作 \\(a\\) 的概率分布。目标函数是最大化期望累积奖励：\\[J(\\pi) = \\mathbb{E}_{\\tau \\sim \\pi}\\left[\\sum_{t=0}^{T} \\gamma^t r_t\\right]\\]，其中 \\(\\tau\\) 是轨迹（trajectory），\\(\\gamma\\) 是折扣因子，\\(r_t\\) 是时刻 \\(t\\) 的奖励。这本质上是一个序列决策问题，而非价格预测。对比传统方法：静态规则如同按照固定食谱做菜，而强化学习策略如同厨师根据食材新鲜度实时调整——后者能处理市场波动，但需要平衡探索（exploration）与利用（exploitation）。探索-利用权衡（Exploration-Exploitation Trade-off）指在尝试新策略和利用已知最优策略之间取得平衡，常用 \\(\\epsilon\\)-greedy 或上置信界（UCB）方法实现。</p>\n<p>工程实现时，首要挑战是构建可信的交易模拟环境（trading simulator）。数据流通常包括：从数据源（如雅虎财经API）获取OHLCV数据；预处理（处理缺失值、标准化）；封装为gym风格环境，其中step函数执行动作并返回奖励和下一状态。模块边界需清晰：环境模块负责市场模拟（包含滑点slippage、佣金计算），智能体模块实现策略更新（如DQN或PPO）。复杂度敏感点在于实时性——高频交易场景要求毫秒级延迟，而中低频策略可容忍秒级计算。一个常见误区是忽略市场冲击（market impact）：大额订单可能暂时推高价格，导致模拟性能高估。诊断方法包括：在模拟器中添加随机噪声或使用更精细的订单簿模型。</p>\n<p>失败模式往往源于错误假设。例如，假设价格序列是平稳的（stationary），而实际存在结构性断点（structural breaks）；或假设交易成本恒定，而实际随流动性变化。这些会导致策略在实盘中出现最大回撤（Maximum Drawdown）远超预期。纠正方法是引入鲁棒性测试：在训练中使用多种市场regime（如牛市、熊市、震荡市）的数据，并加入对抗性样本。此外，必须区分相关性与因果关系——价格波动可能与策略动作无关，而是由外部事件驱动。通过上述分析，我们建立了从静态规则到动态学习的理论框架，接下来需要具体设计奖励函数来引导智能体学习。</p>\n<p>理解了决策框架的自适应需求后，我们面临的核心问题是：如何量化交易结果以驱动学习？奖励函数的设计直接决定策略的优化方向，但单一利润目标可能引发过度风险。下一节将深入探讨如何构建多目标奖励函数，平衡收益、风险与监管约束。</p>\n<h3>设计奖励函数：平衡收益、风险与约束</h3>\n<p>奖励函数（Reward Function）是将交易结果映射为标量反馈的机制，它定义了强化学习智能体的优化目标。在金融交易中，单纯最大化累计收益往往导致高风险暴露——例如，策略可能过度杠杆化或在波动市场中频繁交易，从而积累巨大下行风险。因此，设计奖励函数时必须同时考虑收益、风险和业务约束。这类似于司机驾驶：只追求速度（收益）而忽略油耗（成本）和交通规则（约束）会导致事故；理想奖励应促进安全高效的抵达目的地。</p>\n<p>精确定义有助于明确边界。风险调整后收益（Risk-Adjusted Return）是同时衡量收益和风险的指标，常用夏普比率（Sharpe Ratio）表示：\\[\\text{Sharpe Ratio} = \\frac{\\mathbb{E}[R_p - R_f]}{\\sigma_p}\\]，其中 \\(R_p\\) 是投资组合收益，\\(R_f\\) 是无风险利率，\\(\\sigma_p\\) 是收益标准差。另一个关键指标是最大回撤（Maximum Drawdown）：\\(\\text{MDD} = \\max_{t \\in [0,T]} \\left( \\frac{P_{\\text{peak},t} - P_t}{P_{\\text{peak},t}} \\right)\\)，其中 \\(P_{\\text{peak},t}\\) 是到时间 \\(t\\) 的资产峰值，\\(P_t\\) 是当前资产值。这些指标可融入奖励函数，以平衡目标。</p>\n<p>从机制上，奖励函数 \\(r_t\\) 在每一步交易后计算。一个多目标设计示例是：\\[r_t = \\alpha \\cdot \\text{return}_t - \\beta \\cdot \\text{risk}_t - \\gamma \\cdot \\text{penalty}_t\\]，其中 \\(\\text{return}_t\\) 是瞬时收益（如价格变化乘以仓位），\\(\\text{risk}_t\\) 是风险度量（如收益方差或回撤），\\(\\text{penalty}_t\\) 是约束违反惩罚（如超出仓位上限），\\(\\alpha, \\beta, \\gamma\\) 是权重参数。这种分解允许灵活调整优先级：例如，在监管严格的环境中，可增大 \\(\\gamma\\) 以强化约束。数学上，这等价于带约束的优化问题：最大化收益，同时满足风险上限和监管规则。概率视角下，奖励可视为从交易结果分布中采样的随机变量，其期望影响策略梯度更新。</p>\n<p>工程实现要点包括：实时计算奖励、避免延迟、确保可微分性（对于策略梯度方法）。数据流中，奖励模块接收交易结果（成交价格、数量、成本）和当前状态（仓位、市场指标），输出标量值。模块边界上，奖励计算应独立于环境模拟，便于调整参数。复杂度敏感点在于高频计算——如果每笔交易都需计算复杂指标（如滚动夏普比率），可能成为瓶颈。解决方案是预计算或使用近似值。一个常见误区是过度参数化：加入太多项（如波动率、偏度、峰度）可能导致训练不稳定或难以解释。诊断方法是进行消融实验（ablation study），逐一移除奖励项观察策略变化。</p>\n<p>失败模式通常源于奖励设计缺陷。例如，使用短期收益作为奖励，可能鼓励高频刷单（churning），产生高佣金而净收益为负；或忽略交易成本，导致模拟中表现良好但实盘亏损。另一个陷阱是奖励黑客（reward hacking）：智能体找到漏洞获得高奖励却未实现真实目标，比如通过操纵模拟器参数而非实际交易获利。纠正方法包括：使用稀疏奖励（仅在episode结束时给出）、引入内在好奇心（intrinsic curiosity）鼓励探索、或采用逆强化学习（inverse RL）从专家轨迹中学习奖励函数。通过严谨设计，奖励函数能有效引导策略优化，接下来需要选择具体算法来实现学习过程。</p>\n<p>有了合适的奖励函数，智能体如何实际学习最优策略？这需要算法层面的实现，从经典Q-learning到深度强化学习，每种方法有其适用场景和陷阱。下一节将通过一个端到端示例，展示如何构建可复现的交易模拟环境并训练策略。</p>\n<h3>实现与评估：从模拟环境到可复现流程</h3>\n<p>构建强化学习交易策略的最终步骤是工程实现与评估，这要求从理论框架过渡到可执行代码。核心挑战是如何在避免使用专有数据的前提下，创建一个可信且可复现的交易模拟环境（trading simulator）。许多从业者依赖历史回测，但回测（backtesting）存在过拟合风险——策略可能仅适应过去数据，而无法泛化到未来市场。因此，实现流程必须强调可复现性（reproducibility）和现实摩擦因素，如交易成本和市场冲击。</p>\n<p>精确定义确保一致性。交易模拟器使用公开市场数据（如OHLCV数据）模拟订单执行，它应包含开盘价（Open）、最高价（High）、最低价（Low）、收盘价（Close）和成交量（Volume）。可复现性指在相同环境配置和输入数据下，能重复获得完全一致的实验结果，通常通过固定随机种子（random seed）和版本控制实现。关键术语还包括滑点（slippage）：订单预期价格与实际成交价格之间的差异，由市场流动性不足导致；以及市场冲击（market impact）：大额交易对价格的临时影响。这些因素必须在模拟中建模，否则会导致性能高估。</p>\n<p>从机制上，评估强化学习策略需计算多个指标。除了夏普比率和最大回撤，还可使用年化收益（Annualized Return）：\\(\\text{AR} = \\left( \\frac{P_T}{P_0} \\right)^{\\frac{252}{T}} - 1\\)，其中 \\(P_0\\) 和 \\(P_T\\) 是初始和最终资产，\\(T\\) 是交易日数；以及索提诺比率（Sortino Ratio）：\\(\\text{Sortino} = \\frac{\\mathbb{E}[R_p - R_f]}{\\sigma_{\\text{down}}}\\)，其中 \\(\\sigma_{\\text{down}}\\) 是下行标准差。这些指标在测试集（样本外数据）上计算，以评估泛化能力。数学上，策略评估可视为估计策略价值函数 \\(V^\\pi(s)\\) 的过程，通过蒙特卡洛采样或时序差分学习实现。</p>\n<p>工程实现要点包括端到端pipeline设计。数据流：从数据源（如sklearn内置数据集或内联数据）加载数据；预处理（标准化、划分训练/测试集）；构建gym环境（实现reset、step函数）；训练智能体（如DQN，含经验回放）；评估指标。模块边界：环境模块封装市场模拟，智能体模块处理策略学习和推理，评估模块计算指标并可视化。复杂度敏感点在于计算资源——训练深度强化学习模型可能需要GPU加速，但简单环境可用CPU运行。一个常见误区是忽略版本控制：未记录Python包版本或随机种子，导致结果不可复现。诊断方法是运行多次实验，检查指标方差。</p>\n<p>失败模式往往源于模拟与现实的差距。例如，模拟环境基于历史数据，可能无法捕捉未来市场结构变化（如金融危机期间的流动性枯竭），导致策略失效。另一个陷阱是数据窥探（data snooping）：在预处理中无意使用了未来信息，如用整个数据集计算标准化参数。纠正方法包括：严格按时间顺序划分数据；使用滚动窗口（rolling window）训练；在模拟中添加随机噪声或对抗性扰动以测试鲁棒性。此外，应始终进行样本外测试，并监控实盘风险指标。通过完整实现流程，我们能够构建可复现的策略，接下来通过一个具体示例巩固所有概念。</p>\n<p>掌握了实现框架后，我们将通过一个最小可复现实验，展示从数据加载到策略评估的全过程。这个示例使用公开数据，确保任何人都能运行并验证结果。</p>\n<h3>完整示例：基于公开数据的强化学习交易策略</h3>\n<p>本节提供一个端到端的最小可复现实验，构建一个基于公开数据的强化学习交易策略，在本地模拟环境中优化风险调整后收益。目标是通过实际代码演示关键概念：环境构建、奖励设计、算法训练和评估。我们使用合成数据以避免外部依赖，确保代码可立即运行。</p>\n<p>首先，我们创建交易环境。状态包括过去N根K线的价格序列，动作是离散的（买入、卖出、持有），奖励基于瞬时收益和风险调整。环境模拟包含滑点和佣金，以增加现实性。智能体使用DQN（深度Q网络）进行训练，这是一种基于值函数的方法，适合离散动作空间。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import make_regression\nimport gym\nfrom gym import spaces\nimport random\n\n# 生成合成价格数据\nX, y = make_regression(n_samples=1000, n_features=1, noise=0.1, random_state=42)\nprices = 100 + np.cumsum(y) / 10  # 模拟价格序列\ndata = pd.DataFrame({'Close': prices})\nprint(\"数据shape:\", data.shape)\nprint(\"数据样例head:\")\nprint(data.head())\n\n# 自定义交易环境\nclass TradingEnv(gym.Env):\n    def __init__(self, data, window_size=10):\n        super(TradingEnv, self).__init__()\n        self.data = data.values\n        self.window_size = window_size\n        self.current_step = window_size\n        self.position = 0  # 仓位，0表示空仓，1表示持有多头\n        self.cash = 10000  # 初始资金\n        self.asset_value = self.cash\n        \n        # 动作空间：0=买入，1=卖出，2=持有\n        self.action_space = spaces.Discrete(3)\n        # 状态空间：过去window_size个价格，加上仓位和资金\n        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(window_size + 2,))\n        \n    def reset(self):\n        self.current_step = self.window_size\n        self.position = 0\n        self.cash = 10000\n        self.asset_value = self.cash\n        return self._get_obs()\n    \n    def _get_obs(self):\n        # 状态：过去价格、仓位、资金比例\n        prices = self.data[self.current_step - self.window_size:self.current_step, 0]\n        obs = np.append(prices, [self.position, self.cash / 10000])\n        return obs\n    \n    def step(self, action):\n        current_price = self.data[self.current_step, 0]\n        prev_asset = self.asset_value\n        \n        # 执行动作\n        if action == 0 and self.position == 0:  # 买入\n            self.position = 1\n            # 模拟滑点：实际成交价为当前价格的1.001倍\n            cost = current_price * 1.001\n            self.cash -= cost\n        elif action == 1 and self.position == 1:  # 卖出\n            self.position = 0\n            # 模拟滑点和佣金：实际成交价为当前价格的0.999倍\n            revenue = current_price * 0.999\n            self.cash += revenue\n        # 持有动作不改变仓位\n        \n        # 更新资产价值\n        if self.position == 1:\n            self.asset_value = self.cash + current_price\n        else:\n            self.asset_value = self.cash\n        \n        # 计算奖励：瞬时收益减去风险惩罚（使用价格变化方差作为风险代理）\n        price_changes = np.diff(self.data[self.current_step - self.window_size:self.current_step + 1, 0])\n        risk = np.var(price_changes) if len(price_changes) > 1 else 0\n        reward = (self.asset_value - prev_asset) - 0.1 * risk  # 权重0.1可调整\n        \n        self.current_step += 1\n        done = self.current_step >= len(self.data) - 1\n        return self._get_obs(), reward, done, {}\n\n# 初始化环境\nenv = TradingEnv(data, window_size=10)\nobs = env.reset()\nprint(\"初始状态样例:\", obs[:5])  # 打印前5个值\n\n# 简单随机策略测试\nrewards = []\nfor _ in range(100):\n    action = env.action_space.sample()\n    obs, reward, done, info = env.step(action)\n    rewards.append(reward)\n    if done:\n        break\nprint(\"随机策略累计奖励:\", sum(rewards))\nprint(\"最终资产价值:\", env.asset_value)</code></pre>\n<p>接下来，我们实现DQN智能体并训练。由于完整DQN代码较长，这里提供简化版本，重点展示训练循环和评估。</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom collections import deque\nimport random\n\n# 定义Q网络\nclass QNetwork(nn.Module):\n    def __init__(self, state_size, action_size):\n        super(QNetwork, self).__init__()\n        self.fc1 = nn.Linear(state_size, 64)\n        self.fc2 = nn.Linear(64, 64)\n        self.fc3 = nn.Linear(64, action_size)\n    \n    def forward(self, state):\n        x = torch.relu(self.fc1(state))\n        x = torch.relu(self.fc2(x))\n        return self.fc3(x)\n\n# DQN智能体\nclass DQNAgent:\n    def __init__(self, state_size, action_size):\n        self.state_size = state_size\n        self.action_size = action_size\n        self.memory = deque(maxlen=2000)\n        self.gamma = 0.95  # 折扣因子\n        self.epsilon = 1.0  # 探索率\n        self.epsilon_min = 0.01\n        self.epsilon_decay = 0.995\n        self.model = QNetwork(state_size, action_size)\n        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)\n        self.criterion = nn.MSELoss()\n    \n    def remember(self, state, action, reward, next_state, done):\n        self.memory.append((state, action, reward, next_state, done))\n    \n    def act(self, state):\n        if random.random() <= self.epsilon:\n            return random.randrange(self.action_size)\n        state = torch.FloatTensor(state).unsqueeze(0)\n        with torch.no_grad():\n            q_values = self.model(state)\n        return torch.argmax(q_values).item()\n    \n    def replay(self, batch_size=32):\n        if len(self.memory) < batch_size:\n            return\n        batch = random.sample(self.memory, batch_size)\n        for state, action, reward, next_state, done in batch:\n            target = reward\n            if not done:\n                next_state = torch.FloatTensor(next_state).unsqueeze(0)\n                target = reward + self.gamma * torch.max(self.model(next_state)).item()\n            state = torch.FloatTensor(state).unsqueeze(0)\n            target_f = self.model(state).detach().clone()\n            target_f[0][action] = target\n            loss = self.criterion(self.model(state), target_f)\n            self.optimizer.zero_grad()\n            loss.backward()\n            self.optimizer.step()\n        if self.epsilon > self.epsilon_min:\n            self.epsilon *= self.epsilon_decay\n\n# 训练智能体\nstate_size = env.observation_space.shape[0]\naction_size = env.action_space.n\nagent = DQNAgent(state_size, action_size)\n\nepisodes = 50\nfor e in range(episodes):\n    state = env.reset()\n    total_reward = 0\n    while True:\n        action = agent.act(state)\n        next_state, reward, done, _ = env.step(action)\n        agent.remember(state, action, reward, next_state, done)\n        agent.replay()\n        state = next_state\n        total_reward += reward\n        if done:\n            break\n    if e % 10 == 0:\n        print(f\"Episode {e}, Total Reward: {total_reward:.2f}, Epsilon: {agent.epsilon:.3f}\")\n\n# 评估指标计算\n# 模拟测试集表现\ntest_env = TradingEnv(data, window_size=10)\nstate = test_env.reset()\ntest_rewards = []\nasset_values = []\nwhile True:\n    action = agent.act(state)\n    next_state, reward, done, _ = test_env.step(action)\n    test_rewards.append(reward)\n    asset_values.append(test_env.asset_value)\n    state = next_state\n    if done:\n        break\n\n# 计算夏普比率（简化版，假设无风险利率为0）\nreturns = np.diff(asset_values) / asset_values[:-1]\nsharpe_ratio = np.mean(returns) / np.std(returns) * np.sqrt(252) if np.std(returns) > 0 else 0\nprint(\"测试集夏普比率:\", sharpe_ratio)\n\n# 计算最大回撤\ndef max_drawdown(values):\n    peak = values[0]\n    max_dd = 0\n    for v in values:\n        if v > peak:\n            peak = v\n        dd = (peak - v) / peak\n        if dd > max_dd:\n            max_dd = dd\n    return max_dd\n\nmdd = max_drawdown(asset_values)\nprint(\"测试集最大回撤:\", mdd)\n\n# 打印环境版本（示例）\nprint(\"Package versions: numpy==\", np.__version__, \", pandas==\", pd.__version__, \", torch==\", torch.__version__)</code></pre>\n<p>这个示例展示了从数据生成到策略评估的完整流程。关键输出包括数据shape（如(1000, 1)）、初始状态样例、随机策略累计奖励、训练过程中的奖励、以及测试集的夏普比率和最大回撤。通过固定随机种子（如random_state=42），结果可复现。此代码块是端到端的最小可复现实验，覆盖了环境构建、奖励设计、DQN训练和风险评估。</p>\n<p>总结来说，金融交易与算法竞价通过强化学习提供了自适应决策框架，但成功实施需要严谨的数学建模、工程实现和持续验证。本课从静态规则局限出发，深入探讨了奖励函数设计和可复现流程，最终通过代码示例巩固了概念。作为金融工程师或量化研究员，您可以将此方法迁移到其他决策场景，如投资组合优化或风险管理。</p>",
+        "en": "<h3>From Static Rules to Dynamic Learning: The Evolution Dilemma of Trading Strategies</h3>\n<p>In financial trading, traditional strategies are often built on historical backtesting with fixed rules, such as mean reversion or momentum strategies. These methods assume stable market structures, but real trading environments are dynamic—liquidity fluctuations, regulatory changes, and unexpected events alter price formation mechanisms. A typical dilemma is: a strategy with a Sharpe Ratio of 1.5 in backtesting may fail in live trading due to widening bid-ask spreads. This reveals the limitation of static rules: they cannot adaptively adjust decision boundaries, leading to poor performance in real-time markets. Therefore, a framework capable of learning from interactions is needed to adapt to ever-changing market conditions.</p>\n<p>Precise definitions are the starting point for understanding. Algorithmic Bidding refers to automatically executing trade orders via predefined rules, such as TWAP (Time-Weighted Average Price) or VWAP (Volume-Weighted Average Price). Reinforcement Learning-based Trading is different: it models trading as a Markov Decision Process (MDP), where an agent learns optimal policies through interaction with the environment. Key terms include: state—current market observations (e.g., price series, position, capital); action—trading decisions (e.g., limit order price, quantity); reward—quantified feedback of trading outcomes. This framework allows policies to dynamically adapt to market changes but requires careful design to avoid overfitting noise.</p>\n<p>Mechanically, reinforcement learning optimizes the policy function \\(\\pi(a|s)\\), the probability distribution of choosing action \\(a\\) in state \\(s\\). The objective is to maximize expected cumulative reward: \\[J(\\pi) = \\mathbb{E}_{\\tau \\sim \\pi}\\left[\\sum_{t=0}^{T} \\gamma^t r_t\\right]\\], where \\(\\tau\\) is a trajectory, \\(\\gamma\\) is the discount factor, and \\(r_t\\) is the reward at time \\(t\\). This is inherently a sequential decision problem, not price prediction. Compared to traditional methods: static rules are like following a fixed recipe, while RL policies are like a chef adjusting in real-time based on ingredient freshness—the latter handles market volatility but must balance exploration and exploitation. The Exploration-Exploitation Trade-off refers to balancing trying new strategies and exploiting known optimal ones, often implemented with \\(\\epsilon\\)-greedy or Upper Confidence Bound (UCB) methods.</p>\n<p>In engineering implementation, the primary challenge is building a credible trading simulator. The data flow typically includes: fetching OHLCV data from sources (e.g., Yahoo Finance API); preprocessing (handling missing values, normalization); encapsulating into a gym-style environment where the step function executes actions and returns rewards and next states. Module boundaries should be clear: the environment module handles market simulation (including slippage and commission calculations), and the agent module implements policy updates (e.g., DQN or PPO). Complexity-sensitive points involve latency—high-frequency trading requires millisecond-level delays, while mid-low frequency strategies tolerate second-level computations. A common misconception is ignoring market impact: large orders may temporarily push prices, leading to overestimated simulated performance. Diagnostic methods include adding random noise to the simulator or using finer order book models.</p>\n<p>Failure modes often stem from incorrect assumptions. For example, assuming price series are stationary when structural breaks exist; or assuming constant transaction costs when they vary with liquidity. These can cause strategies to experience maximum drawdowns far beyond expectations in live trading. Corrective approaches involve robustness testing: using data from multiple market regimes (e.g., bull, bear, sideways) during training and incorporating adversarial samples. Additionally, correlation must be distinguished from causation—price movements may be unrelated to strategy actions but driven by external events. Through this analysis, we establish a theoretical framework from static rules to dynamic learning, and next need to design reward functions to guide agent learning.</p>\n<p>Understanding the adaptive needs of the decision framework, the core question we face is: how to quantify trading outcomes to drive learning? Reward function design directly determines the optimization direction of policies, but a single profit target may induce excessive risk. The next section delves into constructing multi-objective reward functions to balance returns, risk, and regulatory constraints.</p>\n<h3>Designing Reward Functions: Balancing Returns, Risk, and Constraints</h3>\n<p>The Reward Function is a mechanism that maps trading outcomes to scalar feedback, defining the optimization objective for reinforcement learning agents. In financial trading, solely maximizing cumulative returns often leads to high risk exposure—for instance, strategies may over-leverage or trade frequently in volatile markets, accumulating significant downside risk. Therefore, reward design must simultaneously consider returns, risk, and business constraints. This is analogous to driving: pursuing only speed (returns) while ignoring fuel efficiency (costs) and traffic rules (constraints) causes accidents; ideal rewards should promote safe and efficient arrival at the destination.</p>\n<p>Precise definitions help clarify boundaries. Risk-Adjusted Return is a metric that measures both returns and risk, commonly expressed as the Sharpe Ratio: \\[\\text{Sharpe Ratio} = \\frac{\\mathbb{E}[R_p - R_f]}{\\sigma_p}\\], where \\(R_p\\) is portfolio return, \\(R_f\\) is the risk-free rate, and \\(\\sigma_p\\) is the standard deviation of returns. Another key metric is Maximum Drawdown: \\(\\text{MDD} = \\max_{t \\in [0,T]} \\left( \\frac{P_{\\text{peak},t} - P_t}{P_{\\text{peak},t}} \\right)\\), where \\(P_{\\text{peak},t}\\) is the asset peak up to time \\(t\\), and \\(P_t\\) is the current asset value. These metrics can be incorporated into reward functions to balance objectives.</p>\n<p>Mechanically, the reward \\(r_t\\) is computed after each trading step. A multi-objective design example is: \\[r_t = \\alpha \\cdot \\text{return}_t - \\beta \\cdot \\text{risk}_t - \\gamma \\cdot \\text{penalty}_t\\], where \\(\\text{return}_t\\) is instantaneous return (e.g., price change multiplied by position), \\(\\text{risk}_t\\) is a risk measure (e.g., return variance or drawdown), \\(\\text{penalty}_t\\) is a constraint violation penalty (e.g., exceeding position limits), and \\(\\alpha, \\beta, \\gamma\\) are weight parameters. This decomposition allows flexible priority adjustment: for instance, in strictly regulated environments, increase \\(\\gamma\\) to enforce constraints. Mathematically, this is equivalent to a constrained optimization problem: maximize returns while satisfying risk caps and regulatory rules. From a probability perspective, rewards can be viewed as random variables sampled from trading outcome distributions, with their expectations influencing policy gradient updates.</p>\n<p>Engineering implementation points include: real-time reward computation, avoiding latency, and ensuring differentiability (for policy gradient methods). In the data flow, the reward module receives trading outcomes (execution price, quantity, costs) and current state (position, market indicators), outputting a scalar value. At module boundaries, reward calculation should be independent of environment simulation for easy parameter adjustment. Complexity-sensitive points involve high-frequency computation—if each trade requires complex metric calculations (e.g., rolling Sharpe Ratio), it may become a bottleneck. Solutions include precomputation or approximations. A common misconception is over-parameterization: adding too many terms (e.g., volatility, skewness, kurtosis) may cause training instability or interpretability issues. Diagnostic methods involve ablation studies, removing reward terms one by one to observe policy changes.</p>\n<p>Failure modes often stem from reward design flaws. For example, using short-term returns as rewards may encourage churning, generating high commissions with net losses; or ignoring transaction costs, leading to good simulated performance but live trading losses. Another pitfall is reward hacking: agents find loopholes to achieve high rewards without fulfilling the true objective, such as manipulating simulator parameters rather than actual trading. Corrective approaches include: using sparse rewards (given only at episode end), introducing intrinsic curiosity to encourage exploration, or employing inverse reinforcement learning to learn reward functions from expert trajectories. Through rigorous design, reward functions can effectively guide policy optimization, and next we need to select specific algorithms to implement the learning process.</p>\n<p>With appropriate reward functions, how do agents actually learn optimal policies? This requires algorithm-level implementation, from classic Q-learning to deep reinforcement learning, each with its applicable scenarios and pitfalls. The next section will demonstrate through an end-to-end example how to build a reproducible trading simulation environment and train policies.</p>\n<h3>Implementation and Evaluation: From Simulation Environment to Reproducible Pipeline</h3>\n<p>The final step in building reinforcement learning trading strategies is engineering implementation and evaluation, requiring a transition from theoretical frameworks to executable code. The core challenge is how to create a credible and reproducible trading simulator without relying on proprietary data. Many practitioners depend on historical backtesting, but backtesting carries overfitting risks—strategies may only adapt to past data and fail to generalize to future markets. Therefore, the implementation process must emphasize reproducibility and realistic friction factors, such as transaction costs and market impact.</p>\n<p>Precise definitions ensure consistency. A trading simulator uses public market data (e.g., OHLCV data) to simulate order execution, including Open, High, Low, Close, and Volume. Reproducibility refers to the ability to repeat experiments with identical environment configurations and input data, typically achieved by fixing random seeds and version control. Key terms also include slippage: the difference between expected and actual execution prices due to insufficient market liquidity; and market impact: the temporary effect of large trades on prices. These factors must be modeled in simulation, or performance will be overestimated.</p>\n<p>Mechanically, evaluating reinforcement learning policies requires computing multiple metrics. Beyond Sharpe Ratio and Maximum Drawdown, Annualized Return can be used: \\(\\text{AR} = \\left( \\frac{P_T}{P_0} \\right)^{\\frac{252}{T}} - 1\\), where \\(P_0\\) and \\(P_T\\) are initial and final assets, and \\(T\\) is the number of trading days; and Sortino Ratio: \\(\\text{Sortino} = \\frac{\\mathbb{E}[R_p - R_f]}{\\sigma_{\\text{down}}}\\), where \\(\\sigma_{\\text{down}}\\) is downside standard deviation. These metrics are computed on test sets (out-of-sample data) to assess generalization ability. Mathematically, policy evaluation can be viewed as estimating the policy value function \\(V^\\pi(s)\\) through Monte Carlo sampling or temporal difference learning.</p>\n<p>Engineering implementation points include end-to-end pipeline design. Data flow: load data from sources (e.g., sklearn built-in datasets or inline data); preprocess (normalize, split train/test); build gym environment (implement reset, step functions); train agent (e.g., DQN with experience replay); evaluate metrics. Module boundaries: environment module encapsulates market simulation, agent module handles policy learning and inference, evaluation module computes metrics and visualizations. Complexity-sensitive points involve computational resources—training deep reinforcement learning models may require GPU acceleration, but simple environments can run on CPU. A common misconception is neglecting version control: not recording Python package versions or random seeds leads to irreproducible results. Diagnostic methods involve running multiple experiments to check metric variance.</p>\n<p>Failure modes often arise from the gap between simulation and reality. For example, simulation environments based on historical data may fail to capture future market structure changes (e.g., liquidity dry-ups during financial crises), causing strategy failure. Another pitfall is data snooping: inadvertently using future information during preprocessing, such as computing normalization parameters with the entire dataset. Corrective methods include: strictly splitting data in chronological order; using rolling windows for training; adding random noise or adversarial perturbations to simulations for robustness testing. Additionally, out-of-sample testing should always be conducted, and live risk metrics monitored. Through a complete implementation process, we can build reproducible strategies, and next solidify all concepts with a concrete example.</p>\n<p>Mastering the implementation framework, we will demonstrate the entire process from data loading to policy evaluation through a minimal reproducible experiment. This example uses public data to ensure anyone can run and verify the results.</p>\n<h3>Complete Example: Reinforcement Learning Trading Strategy with Public Data</h3>\n<p>This section provides an end-to-end minimal reproducible experiment, building a reinforcement learning trading strategy with public data to optimize risk-adjusted returns in a local simulation environment. The goal is to demonstrate key concepts through actual code: environment construction, reward design, algorithm training, and evaluation. We use synthetic data to avoid external dependencies, ensuring the code runs immediately.</p>\n<p>First, we create a trading environment. The state includes past N bars of price series, actions are discrete (buy, sell, hold), and rewards are based on instantaneous returns and risk adjustment. The environment simulation includes slippage and commissions to increase realism. The agent uses DQN (Deep Q-Network) for training, a value-based method suitable for discrete action spaces.</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import make_regression\nimport gym\nfrom gym import spaces\nimport random"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：金融交易与算法竞价 · 结构总览 · 数据：课程大纲】在设计《金融交易与算法竞价》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 金融交易与算法竞价 · 结构总览 · Data: 课程大纲】When outlining \"金融交易与算法竞价\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：金融交易与算法竞价 · worked example · 数据：利用 RL 优化交易策略 数据/代码】在复现《金融交易与算法竞价》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 金融交易与算法竞价 · worked example · Data: 利用 RL 优化交易策略 数据/代码】While reproducing the worked example in \"金融交易与算法竞价\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：金融交易与算法竞价 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《金融交易与算法竞价》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 金融交易与算法竞价 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"金融交易与算法竞价\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：金融交易与算法竞价 · 参考资料 · 数据：课程引用文献】当引用文献支撑《金融交易与算法竞价》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 金融交易与算法竞价 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"金融交易与算法竞价\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem（arXiv，2017）",
+            "en": "A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem (arXiv, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1706.10059"
+        },
+        {
+          "label": {
+            "zh": "Market Microstructure: A Practitioner's Guide（Wiley，2019）",
+            "en": "Market Microstructure: A Practitioner's Guide (Wiley, 2019)"
+          },
+          "url": "https://www.wiley.com/en-us/Market+Microstructure%3A+A+Practitioner%27s+Guide-p-9781119596442"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-01-20-financial-trading-zh.mp3"
+      },
+      "meta": {
+        "category": "Decision Making & Control",
+        "level": "6. Reinforcement Learning & Decision Making",
+        "difficultyScore": 3,
+        "related": [
+          "强化学习",
+          "预测市场"
+        ],
+        "learningObjectives": [
+          "利用 RL 优化交易策略",
+          "注意风险与监管要求"
+        ],
+        "personas": [
+          "金融工程师",
+          "量化研究员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 金融交易与算法竞价 可帮助团队在 Decision Making & Control 上做出可复用的实践。",
+          "best_for": "适合 金融工程师、量化研究员，需要快速吸收 6. Reinforcement Learning & Decision Making 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "金融工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 金融工程师、量化研究员，帮助他们把 金融交易与算法竞价 应用于 Decision Making & Control",
+          "prefersEnglish": false,
+          "industries": [
+            "金融工程师",
+            "量化研究员"
+          ],
+          "personas": [
+            "金融工程师",
+            "量化研究员"
+          ],
+          "pains": "在 Decision Making & Control 场景缺乏 金融交易与算法竞价 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. Reinforcement Learning & Decision Making"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为金融工程师，在动态市场中设计交易策略时，你如何从静态规则转向强化学习？请描述一个具体场景，并思考哪些市场信号或约束条件会驱动这种转变。",
+            "action_hint": "尝试列出当前策略的局限性，并设想如何用奖励函数量化交易目标。"
+          },
+          {
+            "lang": "zh",
+            "question": "量化研究员在优化算法竞价时，常面临收益与风险的权衡。你如何设计奖励函数来平衡短期收益、长期风险以及监管约束？请结合一个实际交易案例说明。",
+            "action_hint": "回顾最近的项目，识别未充分建模的风险因素，并考虑如何将其纳入强化学习框架。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-01-20-industrial-control",
       "date": "2026-01-20",
@@ -7539,181 +7707,6 @@
             "lang": "zh",
             "question": "作为产品经理，在设计对话系统时，您如何平衡自动化效率与伦理边界（如用户隐私）？请结合一个产品功能决策案例说明。",
             "action_hint": "列出该功能涉及的NLP组件，并评估每个环节的伦理风险与缓解措施。"
-          }
-        ]
-      }
-    },
-    {
-      "id": "2025-12-25-summarization",
-      "date": "2025-12-25",
-      "title": {
-        "zh": "文本摘要与问答系统",
-        "en": "文本摘要与问答系统"
-      },
-      "summary": {
-        "zh": "本课程系统讲解文本摘要与问答系统的核心原理与工程实践。首先，区分抽取式与生成式摘要，以及检索式与生成式问答，明确技术边界。其次，解析TF-IDF评分、RAG概率分解等机制，提供数学公式与直觉解释。最后，通过可复现的代码示例，展示从数据加载到评估的端到端流程，涵盖ROUGE和F1等指标计算。课程强调可迁移方法，助力内容运营与科研人员在实际场景中高效应用。",
-        "en": "This course systematically explores the core principles and engineering practices of text summarization and question answering systems. It begins by distinguishing between extractive and abstractive summarization, as well as retrieval-based and generative question answering, clarifying technical boundaries. Next, it analyzes mechanisms such as TF-IDF scoring and RAG probability decomposition, providing mathematical formulas and intuitive explanations. Finally, through reproducible code examples, it demonstrates an end-to-end workflow from data loading to evaluation, covering metric calculations like ROUGE and F1. The course emphasizes transferable methods to help content operators and researchers efficiently apply these technologies in real-world scenarios."
-      },
-      "difficulty": "beginner",
-      "tags": [
-        "summarization",
-        "question answering"
-      ],
-      "content": {
-        "zh": "<h3>从信息过载到智能摘要：为什么我们需要自动化文本处理？</h3>\n<p>在内容运营与科研工作中，处理海量文本是常态。一篇5000字的行业报告、数十篇学术论文或社交媒体上的用户反馈，都需要快速提取核心信息。传统人工阅读不仅耗时，还容易因主观偏差遗漏关键点。文本摘要（Text Summarization）与问答系统（Question Answering）正是为解决这一痛点而生，它们通过自动化处理，将冗长文档转化为简洁摘要或直接回答用户问题，显著提升信息处理效率。对于内容运营者和科研人员而言，在NLP应用与伦理场景中，常缺乏可执行路径，导致信息处理效率低下。本课程将提供从原理到实践的完整解决方案。</p>\n<p>文本摘要分为抽取式（Extractive Summarization）与生成式（Abstractive Summarization）。抽取式摘要从原文中直接选取重要句子组成摘要，保持原句不变；生成式摘要则理解原文后生成新句子表达核心意思，可能改变措辞。问答系统同样有检索式（Retrieval-based）与生成式（Generative）之分，前者从知识库中检索答案，后者直接生成答案。这些技术的边界在于：摘要不是简单裁剪，问答不是关键词匹配。例如，仅取文章首尾句作为摘要，可能丢失中间的关键论证；而基于关键词匹配的问答，可能返回无关信息。</p>\n<p>从机制上看，摘要系统需要评估句子重要性。一种经典方法是TF-IDF（Term Frequency-Inverse Document Frequency），其公式为：\\( \\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)} \\)，其中\\( t \\)表示词项，\\( d \\)表示文档，\\( N \\)是文档总数，\\( \\text{TF} \\)是词频，\\( \\text{DF} \\)是包含该词的文档数。TF-IDF通过结合词频和逆文档频率，识别文档中的关键词汇。然而，高词频不等于高重要性——常见停用词（如“的”、“和”）可能得分高但无信息量，这需要通过停用词过滤或更高级的语义评分（如BERTScore）来修正。</p>\n<p>在工程实现中，构建摘要系统需关注数据流和模块边界。典型流程包括：文本预处理（分词、去除停用词）、特征提取（如TF-IDF向量化）、句子评分、排序和选择。复杂度敏感点在于句子评分算法——TF-IDF的时间复杂度为\\( O(n \\cdot m) \\)，其中\\( n \\)是文档数，\\( m \\)是词汇表大小，对于大规模文档可能成为瓶颈。延迟敏感点则在于实时应用，如新闻摘要生成，需要优化特征计算和排序步骤。</p>\n<p>常见误区包括认为“摘要就是删除不重要内容”。实际上，摘要需要评估句子重要性并重组，可能涉及语义理解。失败模式有：信息缺失（如忽略关键数据）、冗余（重复选取相似句子）、或不连贯（句子间逻辑断裂）。诊断方法包括人工评估、使用ROUGE（Recall-Oriented Understudy for Gisting Evaluation）指标对比参考摘要，或进行消融实验分析各模块贡献。例如，ROUGE-1基于unigram重叠率，公式为：\\( \\text{ROUGE-1} = \\frac{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}_{\\text{match}}(\\text{gram}_1)}{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \text{Count}(\\text{gram}_1)} \\)，其中Ref表示参考摘要，\\( \\text{Count}_{\\text{match}} \\)是匹配的unigram数。</p>\n<p>理解了摘要的基本原理和挑战，我们自然过渡到更核心的机制：如何精确评分句子，以及问答系统如何检索和生成答案？这需要深入算法内部，从直觉到数学推导。</p>\n<h3>核心机制：摘要如何评分句子，问答如何检索答案？</h3>\n<p>摘要系统的核心在于句子评分函数。除了TF-IDF，现代方法如BERTScore利用预训练语言模型计算语义相似度。对于问答系统，检索增强生成（Retrieval-Augmented Generation, RAG）结合了检索和生成两阶段：先检索相关文档段落，再基于检索结果生成答案。这种架构解决了纯生成模型可能产生幻觉（hallucination）或缺乏事实依据的问题。来源：RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020。</p>\n<p>从数学角度，RAG可以形式化为一个概率分解问题。给定问题\\( q \\)和文档集合\\( D \\)，目标是生成答案\\( a \\)。RAG将过程分解为检索和生成：\\( P(a|q) = \\sum_{d \\in D} P(d|q) \\cdot P(a|q,d) \\)，其中\\( P(d|q) \\)是检索概率（如基于BM25或密集检索），\\( P(a|q,d) \\)是生成概率（如使用GPT类模型）。这种分解允许系统利用外部知识，提高答案准确性。例如，对于问题“全球变暖的主要原因是什么？”，系统可能检索到相关段落提到“人类活动导致的温室气体排放”，然后生成简洁答案。</p>\n<p>工程实现要点包括检索模块和生成模块的集成。检索阶段常用BM25或基于BERT的密集检索，时间复杂度为\\( O(|D| \\cdot |q|) \\)，其中\\( |D| \\)是文档数，\\( |q| \\)是问题长度；生成阶段使用序列到序列模型，延迟受模型大小和生成长度影响。边界条件包括：当检索不到相关文档时，系统应返回“无法回答”或依赖生成模型的先验知识；对于开放域问答，文档集合可能极大，需要近似检索技术如FAISS（Facebook AI Similarity Search）来加速。</p>\n<p>常见误区是认为“问答系统总能给出精确答案”。实际上，受限于检索质量和模型理解，答案可能有误差或无法回答。失败模式包括：检索偏差（如文档过时或不全面）、生成幻觉（模型编造事实）、或语义误解（问题歧义）。诊断方法包括计算检索召回率（Recall@k）和生成准确性（如Exact Match, EM）。Exact Match公式为：\\( \\text{EM} = \\frac{1}{N} \\sum_{i=1}^{N} \\mathbb{I}(a_i = \\hat{a}_i) \\)，其中\\( a_i \\)是预测答案，\\( \\hat{a}_i \\)是参考答案，\\( \\mathbb{I} \\)是指示函数，\\( N \\)是样本数。</p>\n<p>掌握了这些机制，我们便有能力将原理落地。下一节将展示如何从零构建一个端到端系统，实现可复现的摘要和问答流程。</p>\n<h3>工程落地：使用公开数据构建端到端摘要与问答系统</h3>\n<p>构建端到端系统需要整合数据处理、模型训练和评估步骤，强调可复现性（Reproducibility）。我们使用公开数据集：CNN/Daily Mail用于摘要，SQuAD 2.0用于问答。这些数据集可通过Hugging Face Datasets库直接加载，避免本地文件依赖。目标是通过一个最小可复现实验，展示从数据到指标的完整流程。</p>\n<p>在数学层面，我们关注评估指标的计算。对于摘要，使用ROUGE-L（基于最长公共子序列），公式为：\\( \\text{ROUGE-L} = \\frac{(1+\\beta^2) \\cdot R_{\\text{lcs}} \\cdot P_{\\text{lcs}}}{R_{\\text{lcs}} + \\beta^2 \\cdot P_{\\text{lcs}}} \\)，其中\\( R_{\\text{lcs}} \\)是召回率，\\( P_{\\text{lcs}} \\)是精确率，\\( \\beta \\)是平衡参数（通常设为1.2）。对于问答，使用F1分数，基于预测和参考答案的词重叠：\\( F1 = \\frac{2 \\cdot P \\cdot R}{P + R} \\)，其中\\( P \\)是精确率，\\( R \\)是召回率。</p>\n<p>工程实现中，我们构建一个流水线（Pipeline），包括数据加载、预处理、模型推理和评估。关键要点是：使用随机种子（如random_state=42）确保数据分割可复现；对于摘要，采用轻量替代方案——先用TF-IDF实现抽取式摘要作为baseline，再可替换为BERT模型；对于问答，使用BM25检索和生成模型结合。复杂度敏感点在于模型推理时间，特别是生成式摘要或问答可能较慢；延迟敏感点包括检索速度和生成响应时间。</p>\n<p>常见误区是“工程实现只需关注模型精度”。实际上，还需考虑数据质量（如缺失值处理）、处理速度（实时应用要求）和系统可维护性（模块化设计）。失败模式包括：数据泄露（测试数据混入训练）、评估偏差（指标选择不当）、或环境依赖（包版本不匹配）。诊断方法包括：打印中间结果（如检索到的top-k文档）、进行错误分析（混淆矩阵）、和记录环境配置。</p>\n<p>以下是一个端到端最小可复现实验的代码示例，覆盖摘要和问答的关键概念：</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nfrom datasets import load_dataset\nimport random\n\n# 设置随机种子确保可复现性\nrandom.seed(42)\nnp.random.seed(42)\n\n# 加载数据集（摘要示例）\nprint(\"加载CNN/Daily Mail数据集...\")\ndataset = load_dataset(\"cnn_dailymail\", \"3.0.0\", split=\"train[:100]\")  # 取100条样本\nprint(f\"数据集shape: {len(dataset)}条样本\")\nprint(f\"字段结构: {dataset.column_names}\")\nprint(f\"样例head - 文章前200字符: {dataset[0]['article'][:200]}\")\nprint(f\"样例head - 摘要: {dataset[0]['highlights']}\")\n\n# 数据预处理：简单清洗\ndef preprocess(text):\n    return text.lower().replace(\"\\n\", \" \")\n\narticles = [preprocess(doc[\"article\"]) for doc in dataset]\nsummaries = [preprocess(doc[\"highlights\"]) for doc in dataset]\n\n# 使用TF-IDF实现抽取式摘要（轻量替代方案）\nvectorizer = TfidfVectorizer(stop_words='english', max_features=5000)\ntfidf_matrix = vectorizer.fit_transform(articles)\n\n# 句子分割（简单按句号分割）\ndef split_sentences(text):\n    return [s.strip() for s in text.split('.') if s.strip()]\n\nsentences_list = [split_sentences(art) for art in articles]\n\n# 计算每个句子的TF-IDF得分（取平均）\ndef score_sentences(sentences, vectorizer, doc_vector):\n    if not sentences:\n        return []\n    sent_vectors = vectorizer.transform(sentences)\n    scores = cosine_similarity(sent_vectors, doc_vector).flatten()\n    return scores\n\nsummary_results = []\nfor i, sentences in enumerate(sentences_list):\n    if len(sentences) == 0:\n        summary_results.append(\"\")\n        continue\n    doc_vector = tfidf_matrix[i:i+1]\n    scores = score_sentences(sentences, vectorizer, doc_vector)\n    # 选取top-3句子作为摘要\n    top_indices = np.argsort(scores)[-3:][::-1]\n    selected = [sentences[idx] for idx in top_indices]\n    summary_results.append('. '.join(selected) + '.')\n    if i == 0:  # 打印第一条样本的中间结果\n        print(f\"样本0的句子得分表（前5句）: {scores[:5]}\")\n        print(f\"样本0的top-3检索结果索引: {top_indices}\")\n        print(f\"样本0的生成摘要: {summary_results[0]}\")\n        print(f\"样本0的参考摘要: {summaries[0]}\")\n\n# 评估：计算ROUGE-1（简化版，基于unigram重叠）\ndef rouge_1(pred, ref):\n    pred_words = set(pred.split())\n    ref_words = set(ref.split())\n    if len(ref_words) == 0:\n        return 0.0\n    overlap = len(pred_words.intersection(ref_words))\n    return overlap / len(ref_words)\n\nrouge_scores = [rouge_1(pred, ref) for pred, ref in zip(summary_results, summaries)]\nprint(f\"摘要ROUGE-1平均分数: {np.mean(rouge_scores):.4f}\")\nprint(f\"关键包版本: transformers需安装，此处使用datasets {load_dataset.__version__ if hasattr(load_dataset, '__version__') else 'N/A'}\")</code></pre>\n<p>这个示例展示了从数据加载到评估的完整流程，打印了中间结果（如句子得分和检索索引）和指标（ROUGE-1）。对于问答部分，可类似加载SQuAD数据集，使用BM25检索和生成模型，计算F1分数。通过这样的实践，你将掌握构建文本摘要与问答系统的可迁移方法。</p>\n<p>narrative-intro: 在本课中，我们将深入文本摘要与问答系统的核心，从定义到机制，再到工程实现。无论你是内容运营者需要快速消化行业报告，还是科研人员处理文献综述，这些技术都能提供自动化解决方案。我们强调可复现性和数学严谨性，确保你能将原理转化为实际项目。</p>\n<p>narrative-outro: 通过本课的学习，你已经掌握了文本摘要与问答系统从理论到实践的全路径。从TF-IDF评分到RAG概率分解，再到端到端流水线构建，这些知识可应用于内容摘要、智能客服、文献检索等多种场景。尝试将这些方法迁移到你的工作中，例如使用公开数据集复现实验，或优化现有系统的评估指标。</p>",
-        "en": "<h3>From Information Overload to Intelligent Summarization: Why Do We Need Automated Text Processing?</h3>\n<p>In content operations and scientific research, handling massive text data is routine. A 5,000-word industry report, dozens of academic papers, or user feedback on social media all require quick extraction of core information. Traditional manual reading is not only time-consuming but also prone to subjective bias and missing key points. Text Summarization and Question Answering systems address this pain point by automating processing, transforming lengthy documents into concise summaries or directly answering user queries, significantly improving information processing efficiency. For content operators and researchers, the lack of executable paths in NLP application and ethics scenarios often leads to inefficient information handling. This course provides a complete solution from principles to practice.</p>\n<p>Text summarization is divided into two categories: Extractive Summarization and Abstractive Summarization. Extractive summarization selects important sentences directly from the original text to form a summary, keeping the sentences unchanged; abstractive summarization understands the original text and generates new sentences to express the core meaning, potentially altering wording. Similarly, question answering systems include Retrieval-based and Generative types, where the former retrieves answers from a knowledge base, and the latter generates answers directly. The boundaries of these technologies lie in: summarization is not simple truncation, and question answering is not keyword matching. For example, taking only the first and last sentences of an article as a summary may lose critical arguments in the middle; while keyword-based question answering may return irrelevant information.</p>\n<p>From a mechanistic perspective, summarization systems need to evaluate sentence importance. A classic method is TF-IDF (Term Frequency-Inverse Document Frequency), with the formula: \\( \\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)} \\), where \\( t \\) represents a term, \\( d \\) represents a document, \\( N \\) is the total number of documents, \\( \\text{TF} \\) is term frequency, and \\( \\text{DF} \\) is document frequency. TF-IDF identifies key terms in a document by combining term frequency and inverse document frequency. However, high term frequency does not equate to high importance—common stop words (e.g., \"the\", \"and\") may score high but carry little information, which requires correction through stop word filtering or more advanced semantic scoring (e.g., BERTScore).</p>\n<p>In engineering implementation, building a summarization system requires attention to data flow and module boundaries. A typical pipeline includes: text preprocessing (tokenization, stop word removal), feature extraction (e.g., TF-IDF vectorization), sentence scoring, sorting, and selection. The complexity-sensitive point lies in the sentence scoring algorithm—TF-IDF has a time complexity of \\( O(n \\cdot m) \\), where \\( n \\) is the number of documents and \\( m \\) is the vocabulary size, which may become a bottleneck for large-scale documents. Latency-sensitive points include real-time applications, such as news summarization generation, requiring optimization of feature computation and sorting steps.</p>\n<p>Common misconceptions include believing that \"summarization is just deleting unimportant content.\" In reality, summarization requires evaluating sentence importance and reorganization, potentially involving semantic understanding. Failure modes include: information loss (e.g., ignoring key data), redundancy (repetitively selecting similar sentences), or incoherence (logical breaks between sentences). Diagnostic methods include manual evaluation, using ROUGE (Recall-Oriented Understudy for Gisting Evaluation) metrics to compare with reference summaries, or conducting ablation experiments to analyze module contributions. For example, ROUGE-1 is based on unigram overlap, with the formula: \\( \\text{ROUGE-1} = \\frac{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}_{\\text{match}}(\\text{gram}_1)}{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}(\\text{gram}_1)} \\), where Ref represents reference summaries, and \\( \\text{Count}_{\\text{match}} \\) is the number of matching unigrams.</p>\n<p>Understanding the basic principles and challenges of summarization naturally leads to more core mechanisms: how to precisely score sentences, and how question answering systems retrieve and generate answers? This requires delving into algorithm internals, from intuition to mathematical derivation.</p>\n<h3>Core Mechanisms: How Summarization Scores Sentences and How Question Answering Retrieves Answers</h3>\n<p>The core of summarization systems lies in sentence scoring functions. Beyond TF-IDF, modern methods like BERTScore use pre-trained language models to compute semantic similarity. For question answering systems, Retrieval-Augmented Generation (RAG) combines retrieval and generation in two stages: first retrieving relevant document passages, then generating answers based on the retrieval results. This architecture addresses issues such as hallucination or lack of factual basis in pure generative models. Source: RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020.</p>\n<p>From a mathematical perspective, RAG can be formalized as a probability decomposition problem. Given a question \\( q \\) and a document collection \\( D \\), the goal is to generate an answer \\( a \\). RAG decomposes the process into retrieval and generation: \\( P(a|q) = \\sum_{d \\in D} P(d|q) \\cdot P(a|q,d) \\), where \\( P(d|q) \\) is the retrieval probability (e.g., based on BM25 or dense retrieval), and \\( P(a|q,d) \\) is the generation probability (e.g., using GPT-like models). This decomposition allows the system to leverage external knowledge, improving answer accuracy. For example, for the question \"What are the main causes of global warming?\", the system might retrieve a relevant passage mentioning \"greenhouse gas emissions from human activities,\" then generate a concise answer.</p>\n<p>Engineering implementation points include integrating retrieval and generation modules. The retrieval stage commonly uses BM25 or BERT-based dense retrieval, with time complexity \\( O(|D| \\cdot |q|) \\), where \\( |D| \\) is the number of documents and \\( |q| \\) is the question length; the generation stage uses sequence-to-sequence models, with latency affected by model size and generation length. Boundary conditions include: when no relevant documents are retrieved, the system should return \"unanswerable\" or rely on the generative model's prior knowledge; for open-domain question answering, the document collection may be huge, requiring approximate retrieval techniques like FAISS (Facebook AI Similarity Search) for acceleration.</p>\n<p>A common misconception is that \"question answering systems always provide precise answers.\" In reality, limited by retrieval quality and model understanding, answers may have errors or be unanswerable. Failure modes include: retrieval bias (e.g., outdated or incomplete documents), generation hallucination (models fabricating facts), or semantic misunderstanding (ambiguous questions). Diagnostic methods include computing retrieval recall (Recall@k) and generation accuracy (e.g., Exact Match, EM). The Exact Match formula is: \\( \\text{EM} = \\frac{1}{N} \\sum_{i=1}^{N} \\mathbb{I}(a_i = \\hat{a}_i) \\), where \\( a_i \\) is the predicted answer, \\( \\hat{a}_i \\) is the reference answer, \\( \\mathbb{I} \\) is the indicator function, and \\( N \\) is the number of samples.</p>\n<p>Mastering these mechanisms enables us to implement the principles. The next section will demonstrate how to build an end-to-end system from scratch, achieving reproducible summarization and question answering pipelines.</p>\n<h3>Engineering Implementation: Building End-to-End Summarization and Question Answering Systems with Public Data</h3>\n<p>Building an end-to-end system requires integrating data processing, model training, and evaluation steps, emphasizing Reproducibility. We use public datasets: CNN/Daily Mail for summarization and SQuAD 2.0 for question answering. These datasets can be loaded directly via the Hugging Face Datasets library, avoiding local file dependencies. The goal is to demonstrate a complete workflow from data to metrics through a minimal reproducible experiment.</p>\n<p>Mathematically, we focus on computing evaluation metrics. For summarization, we use ROUGE-L (based on longest common subsequence), with the formula: \\( \\text{ROUGE-L} = \\frac{(1+\\beta^2) \\cdot R_{\\text{lcs}} \\cdot P_{\\text{lcs}}}{R_{\\text{lcs}} + \\beta^2 \\cdot P_{\\text{lcs}}} \\), where \\( R_{\\text{lcs}} \\) is recall, \\( P_{\\text{lcs}} \\) is precision, and \\( \\beta \\) is a balance parameter (usually set to 1.2). For question answering, we use the F1 score, based on word overlap between predicted and reference answers: \\( F1 = \\frac{2 \\cdot P \\cdot R}{P + R} \\), where \\( P \\) is precision and \\( R \\) is recall.</p>\n<p>In engineering implementation, we build a Pipeline including data loading, preprocessing, model inference, and evaluation. Key points are: using a random seed (e.g., random_state=42) to ensure reproducible data splitting; for summarization, adopting a lightweight alternative—first implementing extractive summarization with TF-IDF as a baseline, then potentially replacing it with BERT models; for question answering, combining BM25 retrieval with generative models. Complexity-sensitive points include model inference time, especially for generative summarization or question answering, which may be slow; latency-sensitive points include retrieval speed and generation response time.</p>\n<p>A common misconception is that \"engineering implementation only needs to focus on model accuracy.\" In reality, data quality (e.g., handling missing values), processing speed (requirements for real-time applications), and system maintainability (modular design) must also be considered. Failure modes include: data leakage (test data mixing into training), evaluation bias (improper metric selection), or environment dependency (package version mismatches). Diagnostic methods include: printing intermediate results (e.g., retrieved top-k documents), conducting error analysis (confusion matrices), and recording environment configurations.</p>\n<p>Below is a code example of an end-to-end minimal reproducible experiment, covering key concepts in summarization and question answering:</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nfrom datasets import load_dataset\nimport random\n\n# Set random seeds for reproducibility\nrandom.seed(42)\nnp.random.seed(42)\n\n# Load dataset (summarization example)\nprint(\"Loading CNN/Daily Mail dataset...\")\ndataset = load_dataset(\"cnn_dailymail\", \"3.0.0\", split=\"train[:100]\")  # Take 100 samples\nprint(f\"Dataset shape: {len(dataset)} samples\")\nprint(f\"Column structure: {dataset.column_names}\")\nprint(f\"Sample head - first 200 chars of article: {dataset[0]['article'][:200]}\")\nprint(f\"Sample head - summary: {dataset[0]['highlights']}\")\n\n# Data preprocessing: simple cleaning\ndef preprocess(text):\n    return text.lower().replace(\"\\n\", \" \")\n\narticles = [preprocess(doc[\"article\"]) for doc in dataset]\nsummaries = [preprocess(doc[\"highlights\"]) for doc in dataset]\n\n# Implement extractive summarization with TF-IDF (lightweight alternative)\nvectorizer = TfidfVectorizer(stop_words='english', max_features=5000)\ntfidf_matrix = vectorizer.fit_transform(articles)\n\n# Sentence splitting (simple split by period)\ndef split_sentences(text):\n    return [s.strip() for s in text.split('.') if s.strip()]\n\nsentences_list = [split_sentences(art) for art in articles]\n\n# Compute TF-IDF scores for each sentence (take average)\ndef score_sentences(sentences, vectorizer, doc_vector):\n    if not sentences:\n        return []\n    sent_vectors = vectorizer.transform(sentences)\n    scores = cosine_similarity(sent_vectors, doc_vector).flatten()\n    return scores\n\nsummary_results = []\nfor i, sentences in enumerate(sentences_list):\n    if len(sentences) == 0:\n        summary_results.append(\"\")\n        continue\n    doc_vector = tfidf_matrix[i:i+1]\n    scores = score_sentences(sentences, vectorizer, doc_vector)\n    # Select top-3 sentences as summary\n    top_indices = np.argsort(scores)[-3:][::-1]\n    selected = [sentences[idx] for idx in top_indices]\n    summary_results.append('. '.join(selected) + '.')\n    if i == 0:  # Print intermediate results for the first sample\n        print(f\"Sample 0 sentence score table (first 5 sentences): {scores[:5]}\")\n        print(f\"Sample 0 top-3 retrieval result indices: {top_indices}\")\n        print(f\"Sample 0 generated summary: {summary_results[0]}\")\n        print(f\"Sample 0 reference summary: {summaries[0]}\")\n\n# Evaluation: compute ROUGE-1 (simplified, based on unigram overlap)\ndef rouge_1(pred, ref):\n    pred_words = set(pred.split())\n    ref_words = set(ref.split())\n    if len(ref_words) == 0:\n        return 0.0\n    overlap = len(pred_words.intersection(ref_words))\n    return overlap / len(ref_words)\n\nrouge_scores = [rouge_1(pred, ref) for pred, ref in zip(summary_results, summaries)]\nprint(f\"Average summarization ROUGE-1 score: {np.mean(rouge_scores):.4f}\")\nprint(f\"Key package versions: transformers required, here using datasets {load_dataset.__version__ if hasattr(load_dataset, '__version__') else 'N/A'}\")</code></pre>\n<p>This example demonstrates a complete workflow from data loading to evaluation, printing intermediate results (e.g., sentence scores and retrieval indices) and metrics (ROUGE-1). For question answering, one could similarly load the SQuAD dataset, use BM25 retrieval and generative models, and compute F1 scores. Through such practice, you will master transferable methods for building text summarization and question answering systems.</p>\n<p>narrative-intro: In this lesson, we delve into the core of text summarization and question answering systems, from definitions to mechanisms, and then to engineering implementation. Whether you are a content operator needing to quickly digest industry reports or a researcher handling literature reviews, these technologies offer automated solutions. We emphasize reproducibility and mathematical rigor, ensuring you can translate principles into practical projects.</p>\n<p>narrative-outro: Through this lesson, you have mastered the full path from theory to practice in text summarization and question answering systems. From TF-IDF scoring to RAG probability decomposition, to building end-to-end pipelines, this knowledge can be applied to various scenarios such as content summarization, intelligent customer service, and literature retrieval. Try transferring these methods to your work, for example, by reproducing experiments with public datasets or optimizing evaluation metrics in existing systems.</p>"
-      },
-      "practice": [
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：文本摘要与问答系统 · 结构总览 · 数据：课程大纲】在设计《文本摘要与问答系统》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
-            "en": "【Source: 文本摘要与问答系统 · 结构总览 · Data: 课程大纲】When outlining \"文本摘要与问答系统\", which sequence best helps readers progress from concepts to applications?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
-            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
-          },
-          "options": [
-            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
-            "直接列公式 → 给出练习 → 最后再解释概念",
-            "只讲历史 → 只列参考文献 → 不展示示例",
-            "先贴代码 → 略过背景 → 简单总结"
-          ]
-        },
-        {
-          "type": "multi",
-          "question": {
-            "zh": "【来自：文本摘要与问答系统 · worked example · 数据：掌握抽取式与生成式摘要 数据/代码】在复现《文本摘要与问答系统》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
-            "en": "【Source: 文本摘要与问答系统 · worked example · Data: 掌握抽取式与生成式摘要 数据/代码】While reproducing the worked example in \"文本摘要与问答系统\", which actions improve reproducibility? (Select all that apply)"
-          },
-          "answer": [
-            0,
-            2,
-            3
-          ],
-          "explain": {
-            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
-            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
-          },
-          "options": [
-            "列出输入数据字段与来源",
-            "仅口头描述处理步骤",
-            "逐行解释代码或公式逻辑",
-            "记录关键输出指标及其含义"
-          ]
-        },
-        {
-          "type": "input",
-          "question": {
-            "zh": "【来自：文本摘要与问答系统 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《文本摘要与问答系统》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
-            "en": "【Source: 文本摘要与问答系统 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"文本摘要与问答系统\" into your context: outline the scenario, the reused steps, and the metric you would check."
-          },
-          "answer": "plan",
-          "explain": {
-            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
-            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
-          }
-        },
-        {
-          "type": "mcq",
-          "question": {
-            "zh": "【来自：文本摘要与问答系统 · 参考资料 · 数据：课程引用文献】当引用文献支撑《文本摘要与问答系统》中的观点时，以下哪一做法能强化可信度？",
-            "en": "【Source: 文本摘要与问答系统 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"文本摘要与问答系统\", which action strengthens credibility?"
-          },
-          "answer": 0,
-          "explain": {
-            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
-            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
-          },
-          "options": [
-            "指出文献的年份、作者/机构并提炼与本节的关系",
-            "只在文末集中列出所有链接，不在正文说明",
-            "引用尚未发表的私有数据但不给出处",
-            "用营销口吻概括文献而不提研究方法"
-          ]
-        }
-      ],
-      "references": [
-        {
-          "label": {
-            "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（arXiv，2018）",
-            "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (arXiv, 2018)"
-          },
-          "url": "https://arxiv.org/abs/1810.04805"
-        },
-        {
-          "label": {
-            "zh": "RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks（arXiv，2020）",
-            "en": "RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (arXiv, 2020)"
-          },
-          "url": "https://arxiv.org/abs/2005.11401"
-        },
-        {
-          "label": {
-            "zh": "CNN/Daily Mail Dataset for Text Summarization（Hugging Face，2023）",
-            "en": "CNN/Daily Mail Dataset for Text Summarization (Hugging Face, 2023)"
-          },
-          "url": "https://huggingface.co/datasets/cnn_dailymail"
-        }
-      ],
-      "audio": {
-        "zh": "/assets/audio/daily/2025-12-25-summarization-zh.mp3"
-      },
-      "meta": {
-        "category": "NLP Applications & Ethics",
-        "level": "3. Natural Language Processing & Transformers",
-        "difficultyScore": 2,
-        "related": [
-          "Extractive Summary",
-          "QA Systems"
-        ],
-        "learningObjectives": [
-          "掌握抽取式与生成式摘要",
-          "理解问答系统的架构与应用"
-        ],
-        "personas": [
-          "内容运营",
-          "科研人员"
-        ],
-        "contextual_notes": {
-          "why_now": "当前阶段掌握文本摘要与问答系统可帮助团队在NLP应用与伦理上做出可复用的实践。",
-          "best_for": "适合内容运营、科研人员，需要快速吸收自然语言处理与Transformer主题。",
-          "visual_hint": "使用要点列表与流程箭头展示流转。"
-        },
-        "tone_profile": {
-          "persona": "内容运营 指导者",
-          "style": "故事化",
-          "energy": "encouraging",
-          "call_to_action": "引导学习者写下一条可执行行动"
-        },
-        "learner_profile": {
-          "summary": "课程面向 内容运营、科研人员，帮助他们把 文本摘要与问答系统 应用于 NLP Applications & Ethics",
-          "prefersEnglish": false,
-          "industries": [
-            "内容运营",
-            "科研人员"
-          ],
-          "personas": [
-            "内容运营",
-            "科研人员"
-          ],
-          "pains": "在 NLP Applications & Ethics 场景缺乏 文本摘要与问答系统 的可执行路径",
-          "preferredMetrics": [],
-          "maturity": "3. Natural Language Processing & Transformers"
-        },
-        "prompt_version": "2025-02-19",
-        "starter_questions": [
-          {
-            "lang": "zh",
-            "question": "作为内容运营，你每天处理大量文本。在应用文本摘要系统时，如何平衡抽取式摘要的准确性与生成式摘要的创造性，以确保内容既忠实原文又吸引读者？",
-            "action_hint": "思考你最近处理的文本类型，并尝试描述一个具体场景，说明不同摘要方法可能带来的效果差异。"
-          },
-          {
-            "lang": "zh",
-            "question": "科研人员常需从文献中快速获取关键信息。在设计问答系统时，你如何结合检索式问答的可靠性与生成式问答的灵活性，以提升研究效率并避免伦理风险？",
-            "action_hint": "回顾你最近的研究项目，设想一个问答系统的应用案例，并分析不同技术选择对信息准确性和伦理合规性的影响。"
           }
         ]
       }

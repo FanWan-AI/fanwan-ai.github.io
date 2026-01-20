@@ -7906,5 +7906,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2025-12-25-summarization",
+    "date": "2025-12-25",
+    "title": {
+      "zh": "文本摘要与问答系统",
+      "en": "文本摘要与问答系统"
+    },
+    "summary": {
+      "zh": "本课程系统讲解文本摘要与问答系统的核心原理与工程实践。首先，区分抽取式与生成式摘要，以及检索式与生成式问答，明确技术边界。其次，解析TF-IDF评分、RAG概率分解等机制，提供数学公式与直觉解释。最后，通过可复现的代码示例，展示从数据加载到评估的端到端流程，涵盖ROUGE和F1等指标计算。课程强调可迁移方法，助力内容运营与科研人员在实际场景中高效应用。",
+      "en": "This course systematically explores the core principles and engineering practices of text summarization and question answering systems. It begins by distinguishing between extractive and abstractive summarization, as well as retrieval-based and generative question answering, clarifying technical boundaries. Next, it analyzes mechanisms such as TF-IDF scoring and RAG probability decomposition, providing mathematical formulas and intuitive explanations. Finally, through reproducible code examples, it demonstrates an end-to-end workflow from data loading to evaluation, covering metric calculations like ROUGE and F1. The course emphasizes transferable methods to help content operators and researchers efficiently apply these technologies in real-world scenarios."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "summarization",
+      "question answering"
+    ],
+    "content": {
+      "zh": "<h3>从信息过载到智能摘要：为什么我们需要自动化文本处理？</h3>\n<p>在内容运营与科研工作中，处理海量文本是常态。一篇5000字的行业报告、数十篇学术论文或社交媒体上的用户反馈，都需要快速提取核心信息。传统人工阅读不仅耗时，还容易因主观偏差遗漏关键点。文本摘要（Text Summarization）与问答系统（Question Answering）正是为解决这一痛点而生，它们通过自动化处理，将冗长文档转化为简洁摘要或直接回答用户问题，显著提升信息处理效率。对于内容运营者和科研人员而言，在NLP应用与伦理场景中，常缺乏可执行路径，导致信息处理效率低下。本课程将提供从原理到实践的完整解决方案。</p>\n<p>文本摘要分为抽取式（Extractive Summarization）与生成式（Abstractive Summarization）。抽取式摘要从原文中直接选取重要句子组成摘要，保持原句不变；生成式摘要则理解原文后生成新句子表达核心意思，可能改变措辞。问答系统同样有检索式（Retrieval-based）与生成式（Generative）之分，前者从知识库中检索答案，后者直接生成答案。这些技术的边界在于：摘要不是简单裁剪，问答不是关键词匹配。例如，仅取文章首尾句作为摘要，可能丢失中间的关键论证；而基于关键词匹配的问答，可能返回无关信息。</p>\n<p>从机制上看，摘要系统需要评估句子重要性。一种经典方法是TF-IDF（Term Frequency-Inverse Document Frequency），其公式为：\\( \\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)} \\)，其中\\( t \\)表示词项，\\( d \\)表示文档，\\( N \\)是文档总数，\\( \\text{TF} \\)是词频，\\( \\text{DF} \\)是包含该词的文档数。TF-IDF通过结合词频和逆文档频率，识别文档中的关键词汇。然而，高词频不等于高重要性——常见停用词（如“的”、“和”）可能得分高但无信息量，这需要通过停用词过滤或更高级的语义评分（如BERTScore）来修正。</p>\n<p>在工程实现中，构建摘要系统需关注数据流和模块边界。典型流程包括：文本预处理（分词、去除停用词）、特征提取（如TF-IDF向量化）、句子评分、排序和选择。复杂度敏感点在于句子评分算法——TF-IDF的时间复杂度为\\( O(n \\cdot m) \\)，其中\\( n \\)是文档数，\\( m \\)是词汇表大小，对于大规模文档可能成为瓶颈。延迟敏感点则在于实时应用，如新闻摘要生成，需要优化特征计算和排序步骤。</p>\n<p>常见误区包括认为“摘要就是删除不重要内容”。实际上，摘要需要评估句子重要性并重组，可能涉及语义理解。失败模式有：信息缺失（如忽略关键数据）、冗余（重复选取相似句子）、或不连贯（句子间逻辑断裂）。诊断方法包括人工评估、使用ROUGE（Recall-Oriented Understudy for Gisting Evaluation）指标对比参考摘要，或进行消融实验分析各模块贡献。例如，ROUGE-1基于unigram重叠率，公式为：\\( \\text{ROUGE-1} = \\frac{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}_{\\text{match}}(\\text{gram}_1)}{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \text{Count}(\\text{gram}_1)} \\)，其中Ref表示参考摘要，\\( \\text{Count}_{\\text{match}} \\)是匹配的unigram数。</p>\n<p>理解了摘要的基本原理和挑战，我们自然过渡到更核心的机制：如何精确评分句子，以及问答系统如何检索和生成答案？这需要深入算法内部，从直觉到数学推导。</p>\n<h3>核心机制：摘要如何评分句子，问答如何检索答案？</h3>\n<p>摘要系统的核心在于句子评分函数。除了TF-IDF，现代方法如BERTScore利用预训练语言模型计算语义相似度。对于问答系统，检索增强生成（Retrieval-Augmented Generation, RAG）结合了检索和生成两阶段：先检索相关文档段落，再基于检索结果生成答案。这种架构解决了纯生成模型可能产生幻觉（hallucination）或缺乏事实依据的问题。来源：RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020。</p>\n<p>从数学角度，RAG可以形式化为一个概率分解问题。给定问题\\( q \\)和文档集合\\( D \\)，目标是生成答案\\( a \\)。RAG将过程分解为检索和生成：\\( P(a|q) = \\sum_{d \\in D} P(d|q) \\cdot P(a|q,d) \\)，其中\\( P(d|q) \\)是检索概率（如基于BM25或密集检索），\\( P(a|q,d) \\)是生成概率（如使用GPT类模型）。这种分解允许系统利用外部知识，提高答案准确性。例如，对于问题“全球变暖的主要原因是什么？”，系统可能检索到相关段落提到“人类活动导致的温室气体排放”，然后生成简洁答案。</p>\n<p>工程实现要点包括检索模块和生成模块的集成。检索阶段常用BM25或基于BERT的密集检索，时间复杂度为\\( O(|D| \\cdot |q|) \\)，其中\\( |D| \\)是文档数，\\( |q| \\)是问题长度；生成阶段使用序列到序列模型，延迟受模型大小和生成长度影响。边界条件包括：当检索不到相关文档时，系统应返回“无法回答”或依赖生成模型的先验知识；对于开放域问答，文档集合可能极大，需要近似检索技术如FAISS（Facebook AI Similarity Search）来加速。</p>\n<p>常见误区是认为“问答系统总能给出精确答案”。实际上，受限于检索质量和模型理解，答案可能有误差或无法回答。失败模式包括：检索偏差（如文档过时或不全面）、生成幻觉（模型编造事实）、或语义误解（问题歧义）。诊断方法包括计算检索召回率（Recall@k）和生成准确性（如Exact Match, EM）。Exact Match公式为：\\( \\text{EM} = \\frac{1}{N} \\sum_{i=1}^{N} \\mathbb{I}(a_i = \\hat{a}_i) \\)，其中\\( a_i \\)是预测答案，\\( \\hat{a}_i \\)是参考答案，\\( \\mathbb{I} \\)是指示函数，\\( N \\)是样本数。</p>\n<p>掌握了这些机制，我们便有能力将原理落地。下一节将展示如何从零构建一个端到端系统，实现可复现的摘要和问答流程。</p>\n<h3>工程落地：使用公开数据构建端到端摘要与问答系统</h3>\n<p>构建端到端系统需要整合数据处理、模型训练和评估步骤，强调可复现性（Reproducibility）。我们使用公开数据集：CNN/Daily Mail用于摘要，SQuAD 2.0用于问答。这些数据集可通过Hugging Face Datasets库直接加载，避免本地文件依赖。目标是通过一个最小可复现实验，展示从数据到指标的完整流程。</p>\n<p>在数学层面，我们关注评估指标的计算。对于摘要，使用ROUGE-L（基于最长公共子序列），公式为：\\( \\text{ROUGE-L} = \\frac{(1+\\beta^2) \\cdot R_{\\text{lcs}} \\cdot P_{\\text{lcs}}}{R_{\\text{lcs}} + \\beta^2 \\cdot P_{\\text{lcs}}} \\)，其中\\( R_{\\text{lcs}} \\)是召回率，\\( P_{\\text{lcs}} \\)是精确率，\\( \\beta \\)是平衡参数（通常设为1.2）。对于问答，使用F1分数，基于预测和参考答案的词重叠：\\( F1 = \\frac{2 \\cdot P \\cdot R}{P + R} \\)，其中\\( P \\)是精确率，\\( R \\)是召回率。</p>\n<p>工程实现中，我们构建一个流水线（Pipeline），包括数据加载、预处理、模型推理和评估。关键要点是：使用随机种子（如random_state=42）确保数据分割可复现；对于摘要，采用轻量替代方案——先用TF-IDF实现抽取式摘要作为baseline，再可替换为BERT模型；对于问答，使用BM25检索和生成模型结合。复杂度敏感点在于模型推理时间，特别是生成式摘要或问答可能较慢；延迟敏感点包括检索速度和生成响应时间。</p>\n<p>常见误区是“工程实现只需关注模型精度”。实际上，还需考虑数据质量（如缺失值处理）、处理速度（实时应用要求）和系统可维护性（模块化设计）。失败模式包括：数据泄露（测试数据混入训练）、评估偏差（指标选择不当）、或环境依赖（包版本不匹配）。诊断方法包括：打印中间结果（如检索到的top-k文档）、进行错误分析（混淆矩阵）、和记录环境配置。</p>\n<p>以下是一个端到端最小可复现实验的代码示例，覆盖摘要和问答的关键概念：</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nfrom datasets import load_dataset\nimport random\n\n# 设置随机种子确保可复现性\nrandom.seed(42)\nnp.random.seed(42)\n\n# 加载数据集（摘要示例）\nprint(\"加载CNN/Daily Mail数据集...\")\ndataset = load_dataset(\"cnn_dailymail\", \"3.0.0\", split=\"train[:100]\")  # 取100条样本\nprint(f\"数据集shape: {len(dataset)}条样本\")\nprint(f\"字段结构: {dataset.column_names}\")\nprint(f\"样例head - 文章前200字符: {dataset[0]['article'][:200]}\")\nprint(f\"样例head - 摘要: {dataset[0]['highlights']}\")\n\n# 数据预处理：简单清洗\ndef preprocess(text):\n    return text.lower().replace(\"\\n\", \" \")\n\narticles = [preprocess(doc[\"article\"]) for doc in dataset]\nsummaries = [preprocess(doc[\"highlights\"]) for doc in dataset]\n\n# 使用TF-IDF实现抽取式摘要（轻量替代方案）\nvectorizer = TfidfVectorizer(stop_words='english', max_features=5000)\ntfidf_matrix = vectorizer.fit_transform(articles)\n\n# 句子分割（简单按句号分割）\ndef split_sentences(text):\n    return [s.strip() for s in text.split('.') if s.strip()]\n\nsentences_list = [split_sentences(art) for art in articles]\n\n# 计算每个句子的TF-IDF得分（取平均）\ndef score_sentences(sentences, vectorizer, doc_vector):\n    if not sentences:\n        return []\n    sent_vectors = vectorizer.transform(sentences)\n    scores = cosine_similarity(sent_vectors, doc_vector).flatten()\n    return scores\n\nsummary_results = []\nfor i, sentences in enumerate(sentences_list):\n    if len(sentences) == 0:\n        summary_results.append(\"\")\n        continue\n    doc_vector = tfidf_matrix[i:i+1]\n    scores = score_sentences(sentences, vectorizer, doc_vector)\n    # 选取top-3句子作为摘要\n    top_indices = np.argsort(scores)[-3:][::-1]\n    selected = [sentences[idx] for idx in top_indices]\n    summary_results.append('. '.join(selected) + '.')\n    if i == 0:  # 打印第一条样本的中间结果\n        print(f\"样本0的句子得分表（前5句）: {scores[:5]}\")\n        print(f\"样本0的top-3检索结果索引: {top_indices}\")\n        print(f\"样本0的生成摘要: {summary_results[0]}\")\n        print(f\"样本0的参考摘要: {summaries[0]}\")\n\n# 评估：计算ROUGE-1（简化版，基于unigram重叠）\ndef rouge_1(pred, ref):\n    pred_words = set(pred.split())\n    ref_words = set(ref.split())\n    if len(ref_words) == 0:\n        return 0.0\n    overlap = len(pred_words.intersection(ref_words))\n    return overlap / len(ref_words)\n\nrouge_scores = [rouge_1(pred, ref) for pred, ref in zip(summary_results, summaries)]\nprint(f\"摘要ROUGE-1平均分数: {np.mean(rouge_scores):.4f}\")\nprint(f\"关键包版本: transformers需安装，此处使用datasets {load_dataset.__version__ if hasattr(load_dataset, '__version__') else 'N/A'}\")</code></pre>\n<p>这个示例展示了从数据加载到评估的完整流程，打印了中间结果（如句子得分和检索索引）和指标（ROUGE-1）。对于问答部分，可类似加载SQuAD数据集，使用BM25检索和生成模型，计算F1分数。通过这样的实践，你将掌握构建文本摘要与问答系统的可迁移方法。</p>\n<p>narrative-intro: 在本课中，我们将深入文本摘要与问答系统的核心，从定义到机制，再到工程实现。无论你是内容运营者需要快速消化行业报告，还是科研人员处理文献综述，这些技术都能提供自动化解决方案。我们强调可复现性和数学严谨性，确保你能将原理转化为实际项目。</p>\n<p>narrative-outro: 通过本课的学习，你已经掌握了文本摘要与问答系统从理论到实践的全路径。从TF-IDF评分到RAG概率分解，再到端到端流水线构建，这些知识可应用于内容摘要、智能客服、文献检索等多种场景。尝试将这些方法迁移到你的工作中，例如使用公开数据集复现实验，或优化现有系统的评估指标。</p>",
+      "en": "<h3>From Information Overload to Intelligent Summarization: Why Do We Need Automated Text Processing?</h3>\n<p>In content operations and scientific research, handling massive text data is routine. A 5,000-word industry report, dozens of academic papers, or user feedback on social media all require quick extraction of core information. Traditional manual reading is not only time-consuming but also prone to subjective bias and missing key points. Text Summarization and Question Answering systems address this pain point by automating processing, transforming lengthy documents into concise summaries or directly answering user queries, significantly improving information processing efficiency. For content operators and researchers, the lack of executable paths in NLP application and ethics scenarios often leads to inefficient information handling. This course provides a complete solution from principles to practice.</p>\n<p>Text summarization is divided into two categories: Extractive Summarization and Abstractive Summarization. Extractive summarization selects important sentences directly from the original text to form a summary, keeping the sentences unchanged; abstractive summarization understands the original text and generates new sentences to express the core meaning, potentially altering wording. Similarly, question answering systems include Retrieval-based and Generative types, where the former retrieves answers from a knowledge base, and the latter generates answers directly. The boundaries of these technologies lie in: summarization is not simple truncation, and question answering is not keyword matching. For example, taking only the first and last sentences of an article as a summary may lose critical arguments in the middle; while keyword-based question answering may return irrelevant information.</p>\n<p>From a mechanistic perspective, summarization systems need to evaluate sentence importance. A classic method is TF-IDF (Term Frequency-Inverse Document Frequency), with the formula: \\( \\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)} \\), where \\( t \\) represents a term, \\( d \\) represents a document, \\( N \\) is the total number of documents, \\( \\text{TF} \\) is term frequency, and \\( \\text{DF} \\) is document frequency. TF-IDF identifies key terms in a document by combining term frequency and inverse document frequency. However, high term frequency does not equate to high importance—common stop words (e.g., \"the\", \"and\") may score high but carry little information, which requires correction through stop word filtering or more advanced semantic scoring (e.g., BERTScore).</p>\n<p>In engineering implementation, building a summarization system requires attention to data flow and module boundaries. A typical pipeline includes: text preprocessing (tokenization, stop word removal), feature extraction (e.g., TF-IDF vectorization), sentence scoring, sorting, and selection. The complexity-sensitive point lies in the sentence scoring algorithm—TF-IDF has a time complexity of \\( O(n \\cdot m) \\), where \\( n \\) is the number of documents and \\( m \\) is the vocabulary size, which may become a bottleneck for large-scale documents. Latency-sensitive points include real-time applications, such as news summarization generation, requiring optimization of feature computation and sorting steps.</p>\n<p>Common misconceptions include believing that \"summarization is just deleting unimportant content.\" In reality, summarization requires evaluating sentence importance and reorganization, potentially involving semantic understanding. Failure modes include: information loss (e.g., ignoring key data), redundancy (repetitively selecting similar sentences), or incoherence (logical breaks between sentences). Diagnostic methods include manual evaluation, using ROUGE (Recall-Oriented Understudy for Gisting Evaluation) metrics to compare with reference summaries, or conducting ablation experiments to analyze module contributions. For example, ROUGE-1 is based on unigram overlap, with the formula: \\( \\text{ROUGE-1} = \\frac{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}_{\\text{match}}(\\text{gram}_1)}{\\sum_{S \\in \\{\\text{Ref}\\}} \\sum_{\\text{gram}_1 \\in S} \\text{Count}(\\text{gram}_1)} \\), where Ref represents reference summaries, and \\( \\text{Count}_{\\text{match}} \\) is the number of matching unigrams.</p>\n<p>Understanding the basic principles and challenges of summarization naturally leads to more core mechanisms: how to precisely score sentences, and how question answering systems retrieve and generate answers? This requires delving into algorithm internals, from intuition to mathematical derivation.</p>\n<h3>Core Mechanisms: How Summarization Scores Sentences and How Question Answering Retrieves Answers</h3>\n<p>The core of summarization systems lies in sentence scoring functions. Beyond TF-IDF, modern methods like BERTScore use pre-trained language models to compute semantic similarity. For question answering systems, Retrieval-Augmented Generation (RAG) combines retrieval and generation in two stages: first retrieving relevant document passages, then generating answers based on the retrieval results. This architecture addresses issues such as hallucination or lack of factual basis in pure generative models. Source: RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks, 2020.</p>\n<p>From a mathematical perspective, RAG can be formalized as a probability decomposition problem. Given a question \\( q \\) and a document collection \\( D \\), the goal is to generate an answer \\( a \\). RAG decomposes the process into retrieval and generation: \\( P(a|q) = \\sum_{d \\in D} P(d|q) \\cdot P(a|q,d) \\), where \\( P(d|q) \\) is the retrieval probability (e.g., based on BM25 or dense retrieval), and \\( P(a|q,d) \\) is the generation probability (e.g., using GPT-like models). This decomposition allows the system to leverage external knowledge, improving answer accuracy. For example, for the question \"What are the main causes of global warming?\", the system might retrieve a relevant passage mentioning \"greenhouse gas emissions from human activities,\" then generate a concise answer.</p>\n<p>Engineering implementation points include integrating retrieval and generation modules. The retrieval stage commonly uses BM25 or BERT-based dense retrieval, with time complexity \\( O(|D| \\cdot |q|) \\), where \\( |D| \\) is the number of documents and \\( |q| \\) is the question length; the generation stage uses sequence-to-sequence models, with latency affected by model size and generation length. Boundary conditions include: when no relevant documents are retrieved, the system should return \"unanswerable\" or rely on the generative model's prior knowledge; for open-domain question answering, the document collection may be huge, requiring approximate retrieval techniques like FAISS (Facebook AI Similarity Search) for acceleration.</p>\n<p>A common misconception is that \"question answering systems always provide precise answers.\" In reality, limited by retrieval quality and model understanding, answers may have errors or be unanswerable. Failure modes include: retrieval bias (e.g., outdated or incomplete documents), generation hallucination (models fabricating facts), or semantic misunderstanding (ambiguous questions). Diagnostic methods include computing retrieval recall (Recall@k) and generation accuracy (e.g., Exact Match, EM). The Exact Match formula is: \\( \\text{EM} = \\frac{1}{N} \\sum_{i=1}^{N} \\mathbb{I}(a_i = \\hat{a}_i) \\), where \\( a_i \\) is the predicted answer, \\( \\hat{a}_i \\) is the reference answer, \\( \\mathbb{I} \\) is the indicator function, and \\( N \\) is the number of samples.</p>\n<p>Mastering these mechanisms enables us to implement the principles. The next section will demonstrate how to build an end-to-end system from scratch, achieving reproducible summarization and question answering pipelines.</p>\n<h3>Engineering Implementation: Building End-to-End Summarization and Question Answering Systems with Public Data</h3>\n<p>Building an end-to-end system requires integrating data processing, model training, and evaluation steps, emphasizing Reproducibility. We use public datasets: CNN/Daily Mail for summarization and SQuAD 2.0 for question answering. These datasets can be loaded directly via the Hugging Face Datasets library, avoiding local file dependencies. The goal is to demonstrate a complete workflow from data to metrics through a minimal reproducible experiment.</p>\n<p>Mathematically, we focus on computing evaluation metrics. For summarization, we use ROUGE-L (based on longest common subsequence), with the formula: \\( \\text{ROUGE-L} = \\frac{(1+\\beta^2) \\cdot R_{\\text{lcs}} \\cdot P_{\\text{lcs}}}{R_{\\text{lcs}} + \\beta^2 \\cdot P_{\\text{lcs}}} \\), where \\( R_{\\text{lcs}} \\) is recall, \\( P_{\\text{lcs}} \\) is precision, and \\( \\beta \\) is a balance parameter (usually set to 1.2). For question answering, we use the F1 score, based on word overlap between predicted and reference answers: \\( F1 = \\frac{2 \\cdot P \\cdot R}{P + R} \\), where \\( P \\) is precision and \\( R \\) is recall.</p>\n<p>In engineering implementation, we build a Pipeline including data loading, preprocessing, model inference, and evaluation. Key points are: using a random seed (e.g., random_state=42) to ensure reproducible data splitting; for summarization, adopting a lightweight alternative—first implementing extractive summarization with TF-IDF as a baseline, then potentially replacing it with BERT models; for question answering, combining BM25 retrieval with generative models. Complexity-sensitive points include model inference time, especially for generative summarization or question answering, which may be slow; latency-sensitive points include retrieval speed and generation response time.</p>\n<p>A common misconception is that \"engineering implementation only needs to focus on model accuracy.\" In reality, data quality (e.g., handling missing values), processing speed (requirements for real-time applications), and system maintainability (modular design) must also be considered. Failure modes include: data leakage (test data mixing into training), evaluation bias (improper metric selection), or environment dependency (package version mismatches). Diagnostic methods include: printing intermediate results (e.g., retrieved top-k documents), conducting error analysis (confusion matrices), and recording environment configurations.</p>\n<p>Below is a code example of an end-to-end minimal reproducible experiment, covering key concepts in summarization and question answering:</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nfrom datasets import load_dataset\nimport random\n\n# Set random seeds for reproducibility\nrandom.seed(42)\nnp.random.seed(42)\n\n# Load dataset (summarization example)\nprint(\"Loading CNN/Daily Mail dataset...\")\ndataset = load_dataset(\"cnn_dailymail\", \"3.0.0\", split=\"train[:100]\")  # Take 100 samples\nprint(f\"Dataset shape: {len(dataset)} samples\")\nprint(f\"Column structure: {dataset.column_names}\")\nprint(f\"Sample head - first 200 chars of article: {dataset[0]['article'][:200]}\")\nprint(f\"Sample head - summary: {dataset[0]['highlights']}\")\n\n# Data preprocessing: simple cleaning\ndef preprocess(text):\n    return text.lower().replace(\"\\n\", \" \")\n\narticles = [preprocess(doc[\"article\"]) for doc in dataset]\nsummaries = [preprocess(doc[\"highlights\"]) for doc in dataset]\n\n# Implement extractive summarization with TF-IDF (lightweight alternative)\nvectorizer = TfidfVectorizer(stop_words='english', max_features=5000)\ntfidf_matrix = vectorizer.fit_transform(articles)\n\n# Sentence splitting (simple split by period)\ndef split_sentences(text):\n    return [s.strip() for s in text.split('.') if s.strip()]\n\nsentences_list = [split_sentences(art) for art in articles]\n\n# Compute TF-IDF scores for each sentence (take average)\ndef score_sentences(sentences, vectorizer, doc_vector):\n    if not sentences:\n        return []\n    sent_vectors = vectorizer.transform(sentences)\n    scores = cosine_similarity(sent_vectors, doc_vector).flatten()\n    return scores\n\nsummary_results = []\nfor i, sentences in enumerate(sentences_list):\n    if len(sentences) == 0:\n        summary_results.append(\"\")\n        continue\n    doc_vector = tfidf_matrix[i:i+1]\n    scores = score_sentences(sentences, vectorizer, doc_vector)\n    # Select top-3 sentences as summary\n    top_indices = np.argsort(scores)[-3:][::-1]\n    selected = [sentences[idx] for idx in top_indices]\n    summary_results.append('. '.join(selected) + '.')\n    if i == 0:  # Print intermediate results for the first sample\n        print(f\"Sample 0 sentence score table (first 5 sentences): {scores[:5]}\")\n        print(f\"Sample 0 top-3 retrieval result indices: {top_indices}\")\n        print(f\"Sample 0 generated summary: {summary_results[0]}\")\n        print(f\"Sample 0 reference summary: {summaries[0]}\")\n\n# Evaluation: compute ROUGE-1 (simplified, based on unigram overlap)\ndef rouge_1(pred, ref):\n    pred_words = set(pred.split())\n    ref_words = set(ref.split())\n    if len(ref_words) == 0:\n        return 0.0\n    overlap = len(pred_words.intersection(ref_words))\n    return overlap / len(ref_words)\n\nrouge_scores = [rouge_1(pred, ref) for pred, ref in zip(summary_results, summaries)]\nprint(f\"Average summarization ROUGE-1 score: {np.mean(rouge_scores):.4f}\")\nprint(f\"Key package versions: transformers required, here using datasets {load_dataset.__version__ if hasattr(load_dataset, '__version__') else 'N/A'}\")</code></pre>\n<p>This example demonstrates a complete workflow from data loading to evaluation, printing intermediate results (e.g., sentence scores and retrieval indices) and metrics (ROUGE-1). For question answering, one could similarly load the SQuAD dataset, use BM25 retrieval and generative models, and compute F1 scores. Through such practice, you will master transferable methods for building text summarization and question answering systems.</p>\n<p>narrative-intro: In this lesson, we delve into the core of text summarization and question answering systems, from definitions to mechanisms, and then to engineering implementation. Whether you are a content operator needing to quickly digest industry reports or a researcher handling literature reviews, these technologies offer automated solutions. We emphasize reproducibility and mathematical rigor, ensuring you can translate principles into practical projects.</p>\n<p>narrative-outro: Through this lesson, you have mastered the full path from theory to practice in text summarization and question answering systems. From TF-IDF scoring to RAG probability decomposition, to building end-to-end pipelines, this knowledge can be applied to various scenarios such as content summarization, intelligent customer service, and literature retrieval. Try transferring these methods to your work, for example, by reproducing experiments with public datasets or optimizing evaluation metrics in existing systems.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：文本摘要与问答系统 · 结构总览 · 数据：课程大纲】在设计《文本摘要与问答系统》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 文本摘要与问答系统 · 结构总览 · Data: 课程大纲】When outlining \"文本摘要与问答系统\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：文本摘要与问答系统 · worked example · 数据：掌握抽取式与生成式摘要 数据/代码】在复现《文本摘要与问答系统》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 文本摘要与问答系统 · worked example · Data: 掌握抽取式与生成式摘要 数据/代码】While reproducing the worked example in \"文本摘要与问答系统\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：文本摘要与问答系统 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《文本摘要与问答系统》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 文本摘要与问答系统 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"文本摘要与问答系统\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：文本摘要与问答系统 · 参考资料 · 数据：课程引用文献】当引用文献支撑《文本摘要与问答系统》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 文本摘要与问答系统 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"文本摘要与问答系统\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（arXiv，2018）",
+          "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (arXiv, 2018)"
+        },
+        "url": "https://arxiv.org/abs/1810.04805"
+      },
+      {
+        "label": {
+          "zh": "RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks（arXiv，2020）",
+          "en": "RAG: Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (arXiv, 2020)"
+        },
+        "url": "https://arxiv.org/abs/2005.11401"
+      },
+      {
+        "label": {
+          "zh": "CNN/Daily Mail Dataset for Text Summarization（Hugging Face，2023）",
+          "en": "CNN/Daily Mail Dataset for Text Summarization (Hugging Face, 2023)"
+        },
+        "url": "https://huggingface.co/datasets/cnn_dailymail"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2025-12-25-summarization-zh.mp3"
+    },
+    "meta": {
+      "category": "NLP Applications & Ethics",
+      "level": "3. Natural Language Processing & Transformers",
+      "difficultyScore": 2,
+      "related": [
+        "Extractive Summary",
+        "QA Systems"
+      ],
+      "learningObjectives": [
+        "掌握抽取式与生成式摘要",
+        "理解问答系统的架构与应用"
+      ],
+      "personas": [
+        "内容运营",
+        "科研人员"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握文本摘要与问答系统可帮助团队在NLP应用与伦理上做出可复用的实践。",
+        "best_for": "适合内容运营、科研人员，需要快速吸收自然语言处理与Transformer主题。",
+        "visual_hint": "使用要点列表与流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "内容运营 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 内容运营、科研人员，帮助他们把 文本摘要与问答系统 应用于 NLP Applications & Ethics",
+        "prefersEnglish": false,
+        "industries": [
+          "内容运营",
+          "科研人员"
+        ],
+        "personas": [
+          "内容运营",
+          "科研人员"
+        ],
+        "pains": "在 NLP Applications & Ethics 场景缺乏 文本摘要与问答系统 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "3. Natural Language Processing & Transformers"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为内容运营，你每天处理大量文本。在应用文本摘要系统时，如何平衡抽取式摘要的准确性与生成式摘要的创造性，以确保内容既忠实原文又吸引读者？",
+          "action_hint": "思考你最近处理的文本类型，并尝试描述一个具体场景，说明不同摘要方法可能带来的效果差异。"
+        },
+        {
+          "lang": "zh",
+          "question": "科研人员常需从文献中快速获取关键信息。在设计问答系统时，你如何结合检索式问答的可靠性与生成式问答的灵活性，以提升研究效率并避免伦理风险？",
+          "action_hint": "回顾你最近的研究项目，设想一个问答系统的应用案例，并分析不同技术选择对信息准确性和伦理合规性的影响。"
+        }
+      ]
+    }
   }
 ]
