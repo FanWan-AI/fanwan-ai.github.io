@@ -466,6 +466,12 @@ async function renderAIRadar(containerId = 'ai-radar') {
   }
 
   async function loadBriefing(){
+    // Briefing paused strategically
+    briefingData = null;
+    briefingState = 'empty';
+    return;
+
+    /*
     briefingState = 'loading';
     if (briefingEl) briefingEl.dataset.state = 'loading';
     const ref = payload?.briefing || {};
@@ -500,6 +506,7 @@ async function renderAIRadar(containerId = 'ai-radar') {
       briefingData = null;
       briefingState = 'empty';
     }
+    */
   }
 
   function applySubtitle(){
