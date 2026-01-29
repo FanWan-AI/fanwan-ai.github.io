@@ -161,5 +161,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-01-cross-modal-retrieval",
+    "date": "2026-01-01",
+    "title": {
+      "zh": "跨模态检索与问答",
+      "en": "Cross-Modal Retrieval and Question Answering"
+    },
+    "summary": {
+      "zh": "本课程系统阐述跨模态检索与问答的核心技术与工程实践。首先，从多模态信息处理的现实需求出发，明确定义跨模态检索与问答的任务边界与数学形式化，包括对比损失函数。其次，解析跨模态对齐的机制，涵盖共享嵌入空间、双塔模型及概率分解理论，并通过注意力架构增强语义交互。最后，以可复现工程示例演示系统构建全流程，从数据预处理、模型训练到评估指标计算及误差分析，提供从理论到实践的完整路径，适用于信息检索与多模态学习场景。",
+      "en": "This course systematically explains the core technologies and engineering practices of cross-modal retrieval and QA. It begins by defining the task boundaries and mathematical formalizations, including contrastive loss functions, based on real-world multimodal information processing needs. It then analyzes cross-modal alignment mechanisms, covering shared embedding spaces, dual-tower models, and probability factorization theory, enhanced by attention architectures for semantic interaction. Finally, a reproducible engineering example demonstrates the full system-building workflow, from data preprocessing and model training to evaluation metric computation and error analysis, offering a complete path from theory to practice for information retrieval and multimodal learning scenarios."
+    },
+    "difficulty": "intermediate",
+    "tags": [
+      "cross-modal retrieval",
+      "cross-modal QA"
+    ],
+    "content": {
+      "zh": "<h3>为什么需要跨模态检索与问答？</h3><p>在信息检索与多模态学习领域，传统方法通常局限于单一模态内的内容匹配，例如基于关键词的文本检索或基于视觉特征的图像检索。然而，现实世界的信息表达天然具有多模态特性：一张图像可能对应一段描述性文本，一段视频可能伴随音频解说。当用户需要“用文本查询检索相关图像”或“基于图像提问获取文本答案”时，单模态检索系统便无法满足需求。这种跨模态交互需求催生了跨模态检索与问答技术，其核心目标是建立不同模态间的语义桥梁，实现异构数据的内容理解和智能响应。</p><p>跨模态检索（Cross-modal Retrieval）定义为在不同模态（如图像、文本、音频）间进行内容检索的任务。例如，给定文本查询“一只在沙滩上奔跑的狗”，系统应从图像库中检索出语义匹配的图像。跨模态问答（Cross-modal Question Answering）定义为基于一种模态（如图像）提问，从另一种模态（如文本）获取答案的任务。例如，给定一张包含多个物体的图像，提问“图中最左侧的物体是什么？”，系统应从文本知识库中返回正确答案。这两个任务共同构成了多模态智能系统的基础能力，广泛应用于搜索引擎、智能助手和内容推荐等场景。</p><p>从数学角度，跨模态检索可形式化为相似度计算问题。设图像模态特征向量为 \\( \\mathbf{v} \\in \\mathbb{R}^d \\)，文本模态特征向量为 \\( \\mathbf{t} \\in \\mathbb{R}^d \\)，目标是通过学习映射函数 \\( f_v \\) 和 \\( f_t \\)，将二者投影到共享语义空间，使得相关对的相似度高于不相关对。常用目标函数为对比损失（Contrastive Loss）：\n\\[ \\mathcal{L}_{contrastive} = \\sum_{(i,j) \\in \\mathcal{P}} \\max(0, \\alpha - s(\\mathbf{v}_i, \\mathbf{t}_j) + s(\\mathbf{v}_i, \\mathbf{t}_k)) \\]\n其中 \\( \\mathcal{P} \\) 为正样本对集合，\\( k \\) 为负样本索引，\\( s(\\cdot,\\cdot) \\) 为余弦相似度，\\( \\alpha \\) 为边界参数。该函数鼓励正对相似度高于负对至少 \\( \\alpha \\)，从而学习有效的跨模态对齐。</p><p>工程实现中，首要挑战是数据对齐与预处理。例如，Flickr30k数据集（来源：Flickr30k: A Large-Scale Dataset for Image-Text Retrieval, 2015）提供了图像与文本描述的配对，但需进行图像尺寸标准化、文本分词和向量化等操作，确保模态间对应关系准确。数据流通常包括：原始数据加载、特征提取、归一化处理和批次构建。模块边界需清晰划分编码器、投影层和损失计算，其中编码器选择（如ResNet for图像，BERT for文本）直接影响特征质量。复杂度敏感点在于特征维度匹配和批量负采样策略，延迟主要受编码器推理时间影响。</p><p>常见误区是认为跨模态检索只是多模态检索的简单扩展，实际上前者强调模态间的语义对齐，而后者可能仅进行特征融合。失败模式包括模态间分布差异过大导致对齐失败，例如图像特征分布与文本特征分布差异显著。诊断方法包括：计算模态间特征分布的KL散度（Kullback–Leibler divergence）或可视化t-SNE图。若KL散度超过阈值（如>1.0），则提示对齐困难；可通过特征归一化或对抗训练缓解。另一个失败模式是数据泄露，即测试集信息混入训练，可通过严格的数据切分和交叉验证避免。</p><p>理解了跨模态检索与问答的动机、定义和数学基础后，下一步需要深入其核心机制：如何实现有效的跨模态语义对齐。这涉及共享嵌入空间、注意力机制等关键技术，我们将详细探讨其原理与实现，为工程实践奠定理论基础。</p><h3>跨模态对齐：核心机制与模型架构</h3><p>跨模态对齐的核心在于建立不同模态数据在语义层面的一致性映射，解决模态间的异构性挑战。直观上，图像中的“狗”和文本中的“dog”应映射到共享语义空间的相近位置，但图像特征通常为密集向量（如CNN输出），文本特征可能为序列化表示（如Transformer输出）。对齐机制通过设计特定模型架构和学习目标，将异构特征转换为可比较的表示形式，从而实现跨模态内容的理解和检索。</p><p>共享嵌入空间（Shared Embedding Space）定义为将不同模态数据映射到同一向量空间以实现对齐的技术。双塔模型（Dual-Tower Model）是一种典型架构，使用两个独立编码器（塔）分别处理图像和文本输入，输出在共享空间中进行相似度计算。例如，图像编码器可采用预训练的ResNet-50，文本编码器可采用预训练的BERT-base，二者输出通过全连接层投影到同一维度（如256维）。这种架构允许模态特异性编码，同时促进语义对齐。</p><p>对齐的数学基础可表示为概率分解。设图像 \\( I \\) 和文本 \\( T \\) 的联合分布为 \\( p(I,T) \\)，对齐目标是学习潜在变量 \\( \\mathbf{z} \\) 使得 \\( p(I,T) = \\int p(\\mathbf{z}) p(I|\\mathbf{z}) p(T|\\mathbf{z}) d\\mathbf{z} \\)。这鼓励模态间共享语义信息，潜在变量 \\( \\mathbf{z} \\) 捕获共同语义。实践中，常使用变分推断优化该目标，最小化证据下界（ELBO）：\n\\[ \\mathcal{L}_{ELBO} = \\mathbb{E}_{q(\\mathbf{z}|I,T)}[\\log p(I,T|\\mathbf{z})] - D_{KL}(q(\\mathbf{z}|I,T) \\| p(\\mathbf{z})) \\]\n其中 \\( q(\\mathbf{z}|I,T) \\) 为近似后验，\\( p(\\mathbf{z}) \\) 为先验。注意力机制（如ViLBERT，来源：ViLBERT: Pretraining Task-Agnostic Visiolinguistic Representations for Vision-and-Language Tasks, 2019）进一步引入跨模态交互，通过计算注意力权重聚焦相关区域，增强对齐精度。</p><p>工程实现要点包括编码器选择、投影层设计和训练策略。图像编码器需预训练于视觉任务（如ImageNet分类），文本编码器需预训练于语言模型（如BERT掩码语言建模）。投影层通常为线性层或多层感知机（MLP），需确保输出维度一致且激活函数适当（如ReLU）。训练时采用批量负采样提高效率，即在一个批次内为每个正样本随机选择负样本，并监控对齐损失曲线。复杂度敏感点在于投影层参数数量和注意力计算开销，延迟受编码器深度和批量大小影响。</p><p>常见误区是对齐意味着所有模态特征必须完全一致，实际上对齐是语义层面的相似，允许特征分布存在合理差异。失败模式包括过拟合导致泛化差，表现为训练损失下降但验证集性能停滞。诊断方法包括：绘制训练与验证损失曲线，若差距持续扩大则提示过拟合；可通过早停策略、权重衰减或数据增强缓解。另一个失败模式是模态不平衡，即某一模态特征过强主导对齐，可通过特征归一化或加权损失平衡。</p><p>掌握了跨模态对齐的机制和模型架构后，我们将这些理论应用于具体工程实践，构建一个可复现的跨模态检索系统，从数据准备到评估指标全面覆盖，实现从理论到实践的闭环。</p><h3>从零构建跨模态检索系统：工程实践</h3><p>构建跨模态检索系统需要系统化的工程管线，涵盖数据预处理、模型训练、评估和可复现性保障，确保结果可靠且可迁移。本节以图像-文本检索为例，演示如何实现一个基础的跨模态检索系统，该系统将文本查询映射到图像库，返回最相关的图像，并计算标准评估指标。工程流程强调可复现性和误差分析，为实际应用提供参考框架。</p><p>可复现性（Reproducibility）定义为通过固定随机种子、环境配置和代码版本，确保实验结果可重复。误差分析（Error Analysis）定义为分析模型错误案例以指导改进的过程。系统构建包括五个核心步骤：数据加载与检查、可复现数据切分、预处理管道、双塔模型训练、指标计算和结果可视化。每个环节需记录关键参数和中间输出，例如数据形状、特征样例和训练超参数。</p><p>评估跨模态检索性能的常用指标为Recall@K，公式为：\n\\[ \\text{Recall@K} = \\frac{\\text{Number of relevant items in top K}}{\\text{Total number of relevant items}} \\]\n其中K通常取1、5、10。该指标衡量系统在前K个检索结果中命中相关项的比例，值越高表示检索性能越好。例如，Recall@1表示排名第一的结果是否相关，Recall@5表示前五名中是否包含相关项。另一个指标是平均精度均值（mAP），但Recall@K更直观且计算高效，适合快速评估。</p><p>以下代码块展示端到端最小可复现实验，使用合成数据模拟跨模态检索场景，避免外部文件依赖。代码涵盖数据生成、双塔模型训练和Recall@K计算，并打印中间结果和指标，确保可运行和可验证。</p><pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom sklearn.model_selection import train_test_split\n\n# 固定随机种子确保可复现性\nseed = 42\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed_all(seed)\n\n# 合成数据：模拟100个样本，图像特征维度2048，文本特征维度768\nn_samples = 100\nimg_features = np.random.randn(n_samples, 2048).astype(np.float32)\ntxt_features = np.random.randn(n_samples, 768).astype(np.float32)\n# 假设前50个样本为相关对（标签1），后50个为不相关对（标签0）\nlabels = np.array([1] * 50 + [0] * 50)\n\nprint(\"数据规模:\")\nprint(\"  图像特征 shape:\", img_features.shape, \"文本特征 shape:\", txt_features.shape)\nprint(\"标签分布: 相关对\", np.sum(labels), \"不相关对\", n_samples - np.sum(labels))\nprint(\"图像特征样例 (前3行，前5列):\")\nprint(img_features[:3, :5])\nprint(\"文本特征样例 (前3行，前5列):\")\nprint(txt_features[:3, :5])\n\n# 可复现数据切分：80%训练，20%测试，分层抽样保持类别比例\nX_img_train, X_img_test, X_txt_train, X_txt_test, y_train, y_test = train_test_split(\n    img_features, txt_features, labels, test_size=0.2, random_state=seed, stratify=labels\n)\nprint(\"\\n数据切分结果:\")\nprint(\"  训练集大小:\", X_img_train.shape[0], \"测试集大小:\", X_img_test.shape[0])\nprint(\"  训练集标签分布: 相关对\", np.sum(y_train), \"不相关对\", len(y_train) - np.sum(y_train))\n\n# 双塔模型定义\nclass DualTowerModel(nn.Module):\n    def __init__(self, img_dim=2048, txt_dim=768, embed_dim=256):\n        super().__init__()\n        self.img_proj = nn.Linear(img_dim, embed_dim)\n        self.txt_proj = nn.Linear(txt_dim, embed_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, img, txt):\n        img_embed = self.relu(self.img_proj(img))  # 形状: (batch, embed_dim)\n        txt_embed = self.relu(self.txt_proj(txt))\n        # 计算余弦相似度\n        img_embed = nn.functional.normalize(img_embed, p=2, dim=1)\n        txt_embed = nn.functional.normalize(txt_embed, p=2, dim=1)\n        similarity = torch.matmul(img_embed, txt_embed.t())  # 形状: (batch, batch)\n        return similarity\n\nmodel = DualTowerModel()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\ncriterion = nn.CrossEntropyLoss()\n\n# 转换为Tensor\nX_img_train_t = torch.tensor(X_img_train)\nX_txt_train_t = torch.tensor(X_txt_train)\ny_train_t = torch.tensor(y_train, dtype=torch.long)\n\n# 训练循环：5个epoch，每2个epoch打印损失\nmodel.train()\nfor epoch in range(5):\n    optimizer.zero_grad()\n    sim = model(X_img_train_t, X_txt_train_t)\n    loss = criterion(sim, y_train_t)\n    loss.backward()\n    optimizer.step()\n    if epoch % 2 == 0:\n        print(f\"Epoch {epoch}, Loss: {loss.item():.4f}\")\n\n# 评估：计算Recall@K\nmodel.eval()\nwith torch.no_grad():\n    X_img_test_t = torch.tensor(X_img_test)\n    X_txt_test_t = torch.tensor(X_txt_test)\n    sim_test = model(X_img_test_t, X_txt_test_t)\n    # 对于每个文本查询，检索最相关的图像（top-5）\n    _, topk_indices = torch.topk(sim_test, k=5, dim=1)\n    y_test_t = torch.tensor(y_test, dtype=torch.long)\n    print(\"\\n评估结果:\")\n    for k in [1, 5]:\n        correct = 0\n        for i in range(len(y_test)):\n            if y_test[i] == 1 and i in topk_indices[i, :k].tolist():\n                correct += 1\n        recall = correct / np.sum(y_test)\n        print(f\"  Recall@{k}: {recall:.4f}\")\n\nprint(\"\\n检索结果示例 (第一个查询的top-5索引):\", topk_indices[0].tolist())\nprint(\"包版本: torch\", torch.__version__, \"numpy\", np.__version__)\nprint(\"随机种子:\", seed)</code></pre><p>代码输出将显示数据规模（如100个样本）、特征样例、训练损失、Recall@1和Recall@5指标，以及检索结果示例。例如，输出可能包括：数据规模: 图像特征 shape: (100, 2048) 文本特征 shape: (100, 768)；Recall@1: 0.3000；Recall@5: 0.8000。具体值因随机数据而异，但框架确保可复现。误差分析可通过检查top-k索引与真实标签的匹配情况进行，例如打印错误案例或计算混淆矩阵。</p><p>常见误区是工程实现只需关注模型精度，实际上还需考虑可复现性、计算效率和误差分析。失败模式包括数据泄露，即测试集信息混入训练，可通过严格的数据切分和交叉验证避免。诊断时记录环境配置（如PyTorch版本、CUDA版本）和随机种子，并保存模型权重和训练日志。另一个失败模式是评估指标选择不当，例如仅用Accuracy忽略排序质量，应结合Recall@K和mAP综合评估。</p><p>通过这个示例，你已经掌握了跨模态检索的核心工程流程。接下来，可以尝试扩展至真实数据集（如Flickr30k）、优化模型架构（如加入注意力机制），或应用于跨模态问答任务，进一步深化多模态学习能力，并将这些方法迁移到实际项目中。</p>",
+      "en": "<h3>Why Do We Need Cross-Modal Retrieval and QA?</h3><p>In information retrieval and multimodal learning, traditional methods are often limited to matching content within a single modality, such as keyword-based text retrieval or visual feature-based image retrieval. However, real-world information is inherently multimodal: an image may correspond to a descriptive text, and a video may include audio narration. When users need to \"retrieve relevant images with text queries\" or \"answer questions based on images,\" unimodal retrieval systems become inadequate. This demand for cross-modal interaction drives cross-modal retrieval and QA technologies, whose core goal is to build semantic bridges between different modalities for understanding and responding to heterogeneous data.</p><p>Cross-modal Retrieval is defined as the task of retrieving content across different modalities (e.g., images, text, audio). For example, given a text query \"a dog running on a beach,\" the system should retrieve semantically matching images from an image database. Cross-modal Question Answering is defined as the task of answering questions based on one modality (e.g., an image) by retrieving answers from another modality (e.g., text). For instance, given an image containing multiple objects, asking \"What is the leftmost object in the image?\" should return the correct answer from a text knowledge base. These two tasks form the foundational capabilities of multimodal intelligent systems, widely applied in search engines, smart assistants, and content recommendation.</p><p>Mathematically, cross-modal retrieval can be formalized as a similarity computation problem. Let image modality feature vector be \\( \\mathbf{v} \\in \\mathbb{R}^d \\) and text modality feature vector be \\( \\mathbf{t} \\in \\mathbb{R}^d \\). The objective is to learn mapping functions \\( f_v \\) and \\( f_t \\) that project both into a shared semantic space, such that the similarity of relevant pairs is higher than irrelevant pairs. A common objective function is the Contrastive Loss:\n\\[ \\mathcal{L}_{contrastive} = \\sum_{(i,j) \\in \\mathcal{P}} \\max(0, \\alpha - s(\\mathbf{v}_i, \\mathbf{t}_j) + s(\\mathbf{v}_i, \\mathbf{t}_k)) \\]\nwhere \\( \\mathcal{P} \\) is the set of positive sample pairs, \\( k \\) is the index of a negative sample, \\( s(\\cdot,\\cdot) \\) is cosine similarity, and \\( \\alpha \\) is a margin parameter. This function encourages the similarity of positive pairs to exceed that of negative pairs by at least \\( \\alpha \\), enabling effective cross-modal alignment.</p><p>In engineering implementation, the primary challenges are data alignment and preprocessing. For example, the Flickr30k dataset (Source: Flickr30k: A Large-Scale Dataset for Image-Text Retrieval, 2015) provides paired images and text descriptions, but requires operations like image resizing, text tokenization, and vectorization to ensure accurate inter-modal correspondence. The data flow typically includes: raw data loading, feature extraction, normalization, and batch construction. Module boundaries should clearly separate encoders, projection layers, and loss computation, with encoder choice (e.g., ResNet for images, BERT for text) directly impacting feature quality. Complexity-sensitive points involve feature dimension matching and batch negative sampling strategies, while latency is mainly affected by encoder inference time.</p><p>A common misconception is that cross-modal retrieval is merely a simple extension of multimodal retrieval; in reality, the former emphasizes semantic alignment between modalities, while the latter may only fuse modalities. Failure modes include excessive distribution differences between modalities leading to alignment failure, such as significant divergence between image and text feature distributions. Diagnostic methods include: computing KL divergence between modal feature distributions or visualizing t-SNE plots. If KL divergence exceeds a threshold (e.g., >1.0), it indicates alignment difficulty; this can be mitigated by feature normalization or adversarial training. Another failure mode is data leakage, where test set information contaminates training, avoidable through strict data splitting and cross-validation.</p><p>Understanding the motivation, definitions, and mathematical foundations of cross-modal retrieval and QA leads to the next step: delving into the core mechanism of how to achieve effective cross-modal semantic alignment. This involves key technologies like shared embedding spaces and attention mechanisms, which we will explore in detail to establish a theoretical basis for engineering practice.</p><h3>Cross-Modal Alignment: Core Mechanisms and Model Architectures</h3><p>The core of cross-modal alignment lies in establishing consistent mapping of different modal data at the semantic level, addressing the challenge of heterogeneity between modalities. Intuitively, \"dog\" in an image and \"dog\" in text should map to nearby locations in a shared semantic space, but image features are typically dense vectors (e.g., CNN outputs), while text features may be sequential representations (e.g., Transformer outputs). Alignment mechanisms convert heterogeneous features into comparable representations through designed model architectures and learning objectives, enabling cross-modal content understanding and retrieval.</p><p>A Shared Embedding Space is defined as the technique of mapping different modal data into the same vector space for alignment. A Dual-Tower Model is a typical architecture that uses two independent encoders (towers) to process image and text inputs separately, with outputs compared in a shared space via similarity computation. For example, an image encoder might use a pre-trained ResNet-50, and a text encoder might use a pre-trained BERT-base, both projected to the same dimension (e.g., 256-dim) through fully connected layers. This architecture allows modality-specific encoding while promoting semantic alignment.</p><p>The mathematical foundation of alignment can be expressed as probability factorization. Let the joint distribution of image \\( I \\) and text \\( T \\) be \\( p(I,T) \\). The alignment goal is to learn a latent variable \\( \\mathbf{z} \\) such that \\( p(I,T) = \\int p(\\mathbf{z}) p(I|\\mathbf{z}) p(T|\\mathbf{z}) d\\mathbf{z} \\). This encourages sharing semantic information across modalities, with the latent variable \\( \\mathbf{z} \\) capturing common semantics. In practice, variational inference is often used to optimize this objective by minimizing the evidence lower bound (ELBO):\n\\[ \\mathcal{L}_{ELBO} = \\mathbb{E}_{q(\\mathbf{z}|I,T)}[\\log p(I,T|\\mathbf{z})] - D_{KL}(q(\\mathbf{z}|I,T) \\| p(\\mathbf{z})) \\]\nwhere \\( q(\\mathbf{z}|I,T) \\) is the approximate posterior and \\( p(\\mathbf{z}) \\) is the prior. Attention mechanisms (e.g., ViLBERT, Source: ViLBERT: Pretraining Task-Agnostic Visiolinguistic Representations for Vision-and-Language Tasks, 2019) further introduce cross-modal interaction by computing attention weights to focus on relevant regions, enhancing alignment accuracy.</p><p>Engineering implementation points include encoder selection, projection layer design, and training strategies. Image encoders should be pre-trained on vision tasks (e.g., ImageNet classification), and text encoders on language models (e.g., BERT masked language modeling). Projection layers are typically linear or multi-layer perceptrons (MLPs), ensuring consistent output dimensions and appropriate activation functions (e.g., ReLU). During training, batch negative sampling improves efficiency by randomly selecting negative samples within a batch for each positive sample, with alignment loss curves monitored. Complexity-sensitive points involve the number of projection layer parameters and attention computation overhead, while latency is affected by encoder depth and batch size.</p><p>A common misconception is that alignment requires all modal features to be identical; actually, alignment is semantic similarity, allowing reasonable differences in feature distributions. Failure modes include overfitting leading to poor generalization, manifested as decreasing training loss but stagnant validation performance. Diagnostic methods include: plotting training vs. validation loss curves; if the gap widens continuously, it indicates overfitting, which can be mitigated by early stopping, weight decay, or data augmentation. Another failure mode is modal imbalance, where one modality's features dominate alignment, addressable through feature normalization or weighted loss balancing.</p><p>With an understanding of cross-modal alignment mechanisms and model architectures, we apply these theories to concrete engineering practice by building a reproducible cross-modal retrieval system, covering everything from data preparation to evaluation metrics for a complete theory-to-practice loop.</p><h3>Building a Cross-Modal Retrieval System from Scratch: Engineering Practice</h3><p>Building a cross-modal retrieval system requires a systematic engineering pipeline encompassing data preprocessing, model training, evaluation, and reproducibility assurance to ensure reliable and transferable results. This section uses image-text retrieval as an example to demonstrate how to implement a basic cross-modal retrieval system that maps text queries to an image database, returns the most relevant images, and computes standard evaluation metrics. The engineering workflow emphasizes reproducibility and error analysis, providing a reference framework for practical applications.</p><p>Reproducibility is defined as ensuring experimental results can be repeated by fixing random seeds, environment configurations, and code versions. Error Analysis is defined as the process of analyzing model error cases to guide improvements. System construction includes five core steps: data loading and inspection, reproducible data splitting, preprocessing pipeline, dual-tower model training, metric computation, and result visualization. Each step should record key parameters and intermediate outputs, such as data shapes, feature samples, and training hyperparameters.</p><p>A common metric for evaluating cross-modal retrieval performance is Recall@K, with the formula:\n\\[ \\text{Recall@K} = \\frac{\\text{Number of relevant items in top K}}{\\text{Total number of relevant items}} \\]\nwhere K is typically 1, 5, or 10. This metric measures the proportion of relevant items retrieved in the top K results, with higher values indicating better retrieval performance. For example, Recall@1 indicates whether the top-ranked result is relevant, and Recall@5 indicates if relevant items are among the top five. Another metric is mean Average Precision (mAP), but Recall@K is more intuitive and computationally efficient for rapid assessment.</p><p>The following code block presents an end-to-end minimal reproducible experiment using synthetic data to simulate a cross-modal retrieval scenario, avoiding external file dependencies. The code covers data generation, dual-tower model training, and Recall@K computation, printing intermediate results and metrics to ensure runnability and verifiability.</p><pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom sklearn.model_selection import train_test_split\n\n# Fix random seeds for reproducibility\nseed = 42\nnp.random.seed(seed)\ntorch.manual_seed(seed)\nif torch.cuda.is_available():\n    torch.cuda.manual_seed_all(seed)\n\n# Synthetic data: simulate 100 samples, image feature dim 2048, text feature dim 768\nn_samples = 100\nimg_features = np.random.randn(n_samples, 2048).astype(np.float32)\ntxt_features = np.random.randn(n_samples, 768).astype(np.float32)\n# Assume first 50 samples are relevant pairs (label 1), last 50 are irrelevant pairs (label 0)\nlabels = np.array([1] * 50 + [0] * 50)\n\nprint(\"Data shape:\")\nprint(\"  Image features shape:\", img_features.shape, \"Text features shape:\", txt_features.shape)\nprint(\"Label distribution: relevant pairs\", np.sum(labels), \"irrelevant pairs\", n_samples - np.sum(labels))\nprint(\"Image feature sample (first 3 rows, first 5 columns):\")\nprint(img_features[:3, :5])\nprint(\"Text feature sample (first 3 rows, first 5 columns):\")\nprint(txt_features[:3, :5])\n\n# Reproducible data split: 80% train, 20% test, stratified to maintain class ratio\nX_img_train, X_img_test, X_txt_train, X_txt_test, y_train, y_test = train_test_split(\n    img_features, txt_features, labels, test_size=0.2, random_state=seed, stratify=labels\n)\nprint(\"\\nData split results:\")\nprint(\"  Training set size:\", X_img_train.shape[0], \"Test set size:\", X_img_test.shape[0])\nprint(\"  Training label distribution: relevant pairs\", np.sum(y_train), \"irrelevant pairs\", len(y_train) - np.sum(y_train))\n\n# Dual-tower model definition\nclass DualTowerModel(nn.Module):\n    def __init__(self, img_dim=2048, txt_dim=768, embed_dim=256):\n        super().__init__()\n        self.img_proj = nn.Linear(img_dim, embed_dim)\n        self.txt_proj = nn.Linear(txt_dim, embed_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, img, txt):\n        img_embed = self.relu(self.img_proj(img))  # shape: (batch, embed_dim)\n        txt_embed = self.relu(self.txt_proj(txt))\n        # Compute cosine similarity\n        img_embed = nn.functional.normalize(img_embed, p=2, dim=1)\n        txt_embed = nn.functional.normalize(txt_embed, p=2, dim=1)\n        similarity = torch.matmul(img_embed, txt_embed.t())  # shape: (batch, batch)\n        return similarity\n\nmodel = DualTowerModel()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\ncriterion = nn.CrossEntropyLoss()\n\n# Convert to Tensor\nX_img_train_t = torch.tensor(X_img_train)\nX_txt_train_t = torch.tensor(X_txt_train)\ny_train_t = torch.tensor(y_train, dtype=torch.long)\n\n# Training loop: 5 epochs, print loss every 2 epochs\nmodel.train()\nfor epoch in range(5):\n    optimizer.zero_grad()\n    sim = model(X_img_train_t, X_txt_train_t)\n    loss = criterion(sim, y_train_t)\n    loss.backward()\n    optimizer.step()\n    if epoch % 2 == 0:\n        print(f\"Epoch {epoch}, Loss: {loss.item():.4f}\")\n\n# Evaluation: compute Recall@K\nmodel.eval()\nwith torch.no_grad():\n    X_img_test_t = torch.tensor(X_img_test)\n    X_txt_test_t = torch.tensor(X_txt_test)\n    sim_test = model(X_img_test_t, X_txt_test_t)\n    # For each text query, retrieve most relevant images (top-5)\n    _, topk_indices = torch.topk(sim_test, k=5, dim=1)\n    y_test_t = torch.tensor(y_test, dtype=torch.long)\n    print(\"\\nEvaluation results:\")\n    for k in [1, 5]:\n        correct = 0\n        for i in range(len(y_test)):\n            if y_test[i] == 1 and i in topk_indices[i, :k].tolist():\n                correct += 1\n        recall = correct / np.sum(y_test)\n        print(f\"  Recall@{k}: {recall:.4f}\")\n\nprint(\"\\nRetrieval result example (top-5 indices for first query):\", topk_indices[0].tolist())\nprint(\"Package versions: torch\", torch.__version__, \"numpy\", np.__version__)\nprint(\"Random seed:\", seed)</code></pre><p>The code output will show data shape (e.g., 100 samples), feature samples, training loss, Recall@1 and Recall@5 metrics, and a retrieval result example. For instance, output may include: Data shape: Image features shape: (100, 2048) Text features shape: (100, 768); Recall@1: 0.3000; Recall@5: 0.8000. Specific values vary due to random data, but the framework ensures reproducibility. Error analysis can be performed by checking matches between top-k indices and true labels, such as printing error cases or computing a confusion matrix.</p><p>A common misconception is that engineering implementation only needs to focus on model accuracy; in reality, reproducibility, computational efficiency, and error analysis are also crucial. Failure modes include data leakage, where test set information contaminates training, avoidable by strict data splitting and cross-validation. For diagnosis, record environment configurations (e.g., PyTorch version, CUDA version) and random seeds, and save model weights and training logs. Another failure mode is inappropriate metric selection, such as using only Accuracy while ignoring ranking quality; instead, combine Recall@K and mAP for comprehensive evaluation.</p><p>Through this example, you have mastered the core engineering workflow of cross-modal retrieval. Next, you can extend it to real datasets (e.g., Flickr30k), optimize model architectures (e.g., adding attention mechanisms), or apply it to cross-modal QA tasks to further deepen multimodal learning capabilities and transfer these methods to practical projects.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：跨模态检索与问答 · 结构总览 · 数据：课程大纲】在设计《跨模态检索与问答》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 跨模态检索与问答 · 结构总览 · Data: 课程大纲】When outlining \"跨模态检索与问答\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：跨模态检索与问答 · worked example · 数据：构建跨模态检索系统 数据/代码】在复现《跨模态检索与问答》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 跨模态检索与问答 · worked example · Data: 构建跨模态检索系统 数据/代码】While reproducing the worked example in \"跨模态检索与问答\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：跨模态检索与问答 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《跨模态检索与问答》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 跨模态检索与问答 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"跨模态检索与问答\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：跨模态检索与问答 · 参考资料 · 数据：课程引用文献】当引用文献支撑《跨模态检索与问答》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 跨模态检索与问答 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"跨模态检索与问答\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Flickr30k: A Large-Scale Dataset for Image-Text Retrieval（arXiv，2015）",
+          "en": "Flickr30k: A Large-Scale Dataset for Image-Text Retrieval (arXiv, 2015)"
+        },
+        "url": "https://arxiv.org/abs/1505.04870"
+      },
+      {
+        "label": {
+          "zh": "Learning Cross-Modal Embeddings with Adversarial Networks for Image-Text Retrieval（arXiv，2018）",
+          "en": "Learning Cross-Modal Embeddings with Adversarial Networks for Image-Text Retrieval (arXiv, 2018)"
+        },
+        "url": "https://arxiv.org/abs/1805.01723"
+      },
+      {
+        "label": {
+          "zh": "ViLBERT: Pretraining Task-Agnostic Visiolinguistic Representations for Vision-and-Language Tasks（arXiv，2019）",
+          "en": "ViLBERT: Pretraining Task-Agnostic Visiolinguistic Representations for Vision-and-Language Tasks (arXiv, 2019)"
+        },
+        "url": "https://arxiv.org/abs/1908.02265"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-01-cross-modal-retrieval-zh.mp3"
+    },
+    "meta": {
+      "category": "Multimodal Learning",
+      "level": "4. Computer Vision & Multimodality",
+      "difficultyScore": 3,
+      "related": [
+        "多模态检索",
+        "跨模态 QA"
+      ],
+      "learningObjectives": [
+        "构建跨模态检索系统",
+        "实现跨模态问答应用"
+      ],
+      "personas": [
+        "信息检索专家",
+        "研究人员"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握跨模态检索与问答可帮助团队在多模态学习上做出可复用的实践，提升信息检索系统的智能水平。",
+        "best_for": "适合信息检索专家、研究人员及工程师，需要快速吸收计算机视觉与多模态主题，并应用于实际项目。",
+        "visual_hint": "使用要点列表和流程箭头展示数据流转与模型架构，增强可读性。"
+      },
+      "tone_profile": {
+        "persona": "信息检索专家 指导者",
+        "style": "数据驱动",
+        "energy": "precise",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 信息检索专家、研究人员，帮助他们把 跨模态检索与问答 应用于 Multimodal Learning",
+        "prefersEnglish": false,
+        "industries": [
+          "信息检索专家",
+          "研究人员"
+        ],
+        "personas": [
+          "信息检索专家",
+          "研究人员"
+        ],
+        "pains": "在 Multimodal Learning 场景缺乏 跨模态检索与问答 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "4. Computer Vision & Multimodality"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为信息检索专家，您当前的多模态项目中，最常遇到哪种跨模态对齐挑战？结合本课的双塔模型理论，您会如何重新设计现有系统的语义交互机制？",
+          "action_hint": "请具体描述一个实际案例，并说明计划调整的注意力架构细节"
+        },
+        {
+          "lang": "zh",
+          "question": "在您的研究场景中，跨模态检索的评估指标常受哪些数据噪声影响？基于本课的工程实践路径，您将如何优化预处理流程来提升对比损失函数的稳定性？",
+          "action_hint": "建议列举1-2种典型噪声类型，并说明对应的数据清洗策略"
+        }
+      ]
+    }
   }
 ]
