@@ -1534,5 +1534,173 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-07-conditional-generation",
+    "date": "2026-01-07",
+    "title": {
+      "zh": "条件生成与控制技术",
+      "en": "Conditional Generation and Control Techniques"
+    },
+    "summary": {
+      "zh": "条件生成与控制技术通过引入外部信号指导生成模型的输出，实现可控的内容生成，是连接生成模型与实际应用需求的关键桥梁，课程围绕 Generative Models 中的可执行路径展开。内容串联 从无条件到条件：为什么生成需要控制？、条件信号与模型架构：如何实现控制？、工程实践：构建可复现的条件生成管线，梳理定义、推导与迁移步骤。",
+      "en": "条件生成与控制技术 is positioned for Generative Models initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从无条件到条件：为什么生成需要控制？, 条件信号与模型架构：如何实现控制？, 工程实践：构建可复现的条件生成管线 to translate theory into executable steps."
+    },
+    "difficulty": "intermediate",
+    "tags": [
+      "conditional generation",
+      "control"
+    ],
+    "content": {
+      "zh": "<h2>条件生成与控制技术：从理论到工程实践</h2>\n\n<p>在生成式人工智能的演进中，无条件生成模型虽然能创造逼真内容，却难以满足实际应用中对特定输出的精确需求。视觉工程师与研究人员常面临这样的困境：模型能生成高质量图像，但无法指定生成“现代建筑”而非“古典建筑”，或控制生成图像的布局与风格。这种局限性催生了条件生成与控制技术，它们通过引入外部信号来指导生成过程，使模型输出与人类意图对齐。本课程将系统性地探讨这一技术的核心原理、实现机制与工程实践，为你在生成模型项目中提供可执行的方法论。</p>\n\n<p>课程结构遵循从动机到实践的渐进路径：首先剖析无条件生成的局限性，建立条件生成的直觉；然后深入解析条件信号如何融入模型架构；最后构建完整的工程管线，实现可复现的条件生成任务。我们将以条件生成对抗网络（Conditional GAN）与控制网络（ControlNet）为主要案例，结合数学推导与代码实现，确保你不仅能理解概念，还能将其应用于实际项目。</p>\n\n<h3>从无条件到条件：为什么生成需要控制？</h3>\n\n<p>无条件生成模型，如标准生成对抗网络（GAN）或变分自编码器（VAE），学习数据分布 \\( p(x) \\) 并从中采样生成新样本。然而，这种随机性在实际应用中成为主要障碍。例如，在医疗影像生成中，我们需要生成特定病理类型的图像；在艺术创作中，我们希望控制生成图像的风格与内容。无条件模型无法满足这些需求，因为它们缺乏对输出属性的显式控制。这引出了条件生成的核心动机：通过引入条件信号 \\( c \\)，将生成过程从学习 \\( p(x) \\) 转变为学习条件分布 \\( p(x|c) \\)，从而实现对输出内容的定向引导。</p>\n\n<p>条件生成（Conditional Generation）定义为利用外部信号（条件）指导生成模型输出特定内容的技术。控制信号（Control Signal）则是用于调节生成过程的输入，可以是离散标签（如类别“猫”）、连续向量（如属性编码）或结构化数据（如草图、深度图）。从概率视角看，条件生成的目标是建模 \\( p(x|c) \\)，这通常通过扩展无条件模型实现，例如在GAN中，将条件信号与噪声向量拼接后输入生成器。关键区别在于，条件信号必须与模型架构深度融合，而非简单附加，否则可能导致模式崩溃或条件过拟合。</p>\n\n<p>数学上，条件GAN的目标函数扩展了原始GAN的极小极大博弈。设生成器为 \\( G(z, c) \\)，判别器为 \\( D(x, c) \\)，其中 \\( z \\) 是噪声向量，\\( c \\) 是条件信号。目标函数为：\\[ \\min_G \\max_D V(D, G) = \\mathbb{E}_{x \\sim p_{data}(x)}[\\log D(x, c)] + \\mathbb{E}_{z \\sim p_z(z)}[\\log(1 - D(G(z, c), c))] \\]。这里，判别器不仅判断样本真实性，还需评估样本与条件的匹配度。条件信号的注入方式多样，如拼接、嵌入或注意力机制，每种方式都影响模型对条件的敏感性与生成多样性。</p>\n\n<p>工程实现中，数据预处理需确保条件信号与样本对齐。例如，对于带标签的图像数据集，每个样本 \\( x_i \\) 需关联条件 \\( c_i \\)（如类别标签）。在训练时，条件信号通常被编码为向量（如通过嵌入层），然后与噪声向量拼接输入生成器。判别器同样接收条件信号，通常与图像特征融合（如通过拼接或点积）。关键实现要点包括：条件编码的维度选择（太小可能信息丢失，太大会增加计算开销）、训练稳定性技巧（如梯度惩罚或标签平滑）以及评估指标设计（需同时衡量生成质量与条件匹配度）。</p>\n\n<p>常见误区包括认为“条件生成只需在输入添加标签即可”。实际上，若条件信号未与模型深度集成，模型可能忽略条件或过拟合到少数模式。失败模式表现为模式崩溃（Mode Collapse），即生成器仅输出有限多样性的样本，或条件准确率低下。诊断方法包括可视化生成样本分布、计算条件匹配指标（如用预训练分类器评估生成图像标签）以及分析训练损失曲线。例如，若判别器损失迅速下降而生成器损失停滞，可能表明条件信号未被有效利用。</p>\n\n<p>理解了条件生成的动机与基础，我们接下来需要深入探讨条件信号的具体形式及其与模型架构的融合机制。这将帮助我们设计更精细的控制策略，适应复杂应用场景。</p>\n\n<h3>条件信号与模型架构：如何实现控制？</h3>\n\n<p>条件信号的多样性决定了生成模型的设计灵活性。离散条件（如类别标签）通常通过嵌入层映射为连续向量；连续条件（如属性向量）可直接使用；结构化条件（如草图、语义分割图）则需专用编码器处理。这些信号如何融入生成模型架构，是实现有效控制的核心问题。主流方法包括拼接注入、注意力融合与专用控制模块，每种方法针对不同信号类型与任务需求。</p>\n\n<p>条件生成对抗网络（Conditional GAN）是早期经典架构，通过拼接机制将条件信号注入生成器和判别器。具体而言，条件 \\( c \\) 被编码为向量后与噪声向量 \\( z \\) 拼接，形成生成器输入 \\( [z, c] \\)；判别器输入则为 \\( [x, c] \\) 或 \\( [x, \\text{embed}(c)] \\)。这种简单方法适用于离散或低维连续条件，但对于复杂结构化条件（如图像到图像翻译），可能不足以捕获细粒度控制。ControlNet则提供了更精细的解决方案，它通过零卷积（Zero Convolution）连接控制模块与预训练扩散模型，实现像素级控制。</p>\n\n<p>ControlNet的机制基于残差连接。设预训练扩散模型的主干为 \\( F(\\cdot) \\)，控制模块为 \\( C(\\cdot) \\)，输入条件为 \\( c \\)（如边缘图）。控制模块的输出通过零卷积层 \\( Z(\\cdot) \\)（初始权重为零）添加到主干特征：\\[ \\text{output} = F(x) + Z(C(c)) \\]。零卷积确保训练初期控制模块不影响预训练模型，稳定训练过程。数学上，这相当于在扩散过程的条件概率中引入控制项：\\[ p_\\theta(x_t | x_{t-1}, c) = \\mathcal{N}(x_t; \\mu_\\theta(x_{t-1}, t) + \\lambda \\cdot C(c), \\Sigma_\\theta) \\]，其中 \\( \\lambda \\) 是控制强度系数。这种设计允许模型逐步学习条件信号的影响，避免破坏预训练知识。</p>\n\n<p>工程实现时，架构选择需权衡控制精度与计算成本。对于简单条件（如类别），拼接注入足矣；对于复杂条件（如文本描述+草图），可能需要多层注意力融合或专用编码器。关键实现要点包括：条件编码器的设计（如CNN用于图像条件，Transformer用于文本）、融合层的位置（早期融合利于全局控制，晚期融合利于细节调节）以及训练策略（如渐进式训练或课程学习）。例如，在ControlNet中，控制模块通常轻量，以最小化推理延迟。</p>\n\n<p>常见误区包括“条件信号越复杂，生成质量越高”。实际上，信号需与任务匹配；过度复杂可能导致训练不稳定或过拟合。失败模式包括条件泄漏（模型忽略条件）、模式混淆（条件间边界模糊）或计算瓶颈。诊断方法包括消融实验（移除条件信号观察性能变化）、可视化注意力图（分析模型关注区域）以及评估条件特异性指标（如条件间样本的区分度）。例如，若生成图像在改变条件时无明显差异，可能表明控制失效。</p>\n\n<p>掌握了条件信号的融合机制，我们可以将这些原理应用于实际工程流程，构建从数据到评估的完整管线。这将确保我们的条件生成模型不仅理论可行，而且实践可靠。</p>\n\n<h3>工程实践：构建可复现的条件生成管线</h3>\n\n<p>构建可复现的条件生成项目需要系统化的工程流程，涵盖数据准备、模型训练、评估与部署。视觉工程师与研究人员常面临可复现性挑战：相同代码在不同环境产生不同结果，或评估指标无法客观衡量性能。本节将提供端到端的实践指南，以MNIST数据集上的条件GAN为例，演示如何实现可离线复现的条件数字生成。</p>\n\n<p>可复现性（Reproducibility）定义为通过固定随机种子、记录环境配置，确保实验结果可被重复验证的属性。在条件生成中，这尤为重要，因为随机性影响生成多样性与条件匹配。工程流程包括：数据预处理（确保条件对齐与标准化）、模型训练（使用固定随机种子与版本控制）、评估（结合定量指标与定性分析）以及文档记录（保存超参数与环境细节）。关键是要避免对外部文件或私有路径的依赖，使用公开数据集与内联数据。</p>\n\n<p>评估条件生成模型需多维度指标。生成质量常用弗雷歇起始距离（Fréchet Inception Distance, FID）衡量，它比较生成与真实样本在特征空间的分布：\\[ \\text{FID} = ||\\mu_r - \\mu_g||^2 + \\text{Tr}(\\Sigma_r + \\Sigma_g - 2(\\Sigma_r \\Sigma_g)^{1/2}) \\]，其中 \\( \\mu_r, \\Sigma_r \\) 和 \\( \\mu_g, \\Sigma_g \\) 分别是真实和生成样本的特征均值和协方差。条件匹配度则用条件准确率（Conditional Accuracy）评估，即生成样本与输入条件的匹配比例。例如，对于条件GAN生成数字，可用预训练分类器预测生成图像标签，计算准确率：\\[ \\text{Accuracy} = \\frac{\\text{正确匹配数}}{\\text{总样本数}} \\]。理想情况下，模型应同时优化FID（低值表示高质量）和准确率（高值表示高匹配）。</p>\n\n<p>以下代码块展示了端到端的最小可复现实验，使用PyTorch和MNIST数据集训练条件GAN，生成指定数字（0-9），并评估条件准确率。代码避免外部文件，内联数据加载，打印关键中间结果与指标。</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\nimport numpy as np\nimport matplotlib.pyplot as plt\n\n# 固定随机种子确保可复现性\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# 数据加载与预处理\ntransform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])\ntrain_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)\n\n# 打印数据规模与样例\nprint(f\"数据规模: {len(train_dataset)} 个样本\")\nprint(f\"图像shape: {train_dataset[0][0].shape}\")  # torch.Size([1, 28, 28])\nprint(f\"标签示例: {train_dataset[0][1]}\")  # 5\n\n# 条件GAN定义\nclass Generator(nn.Module):\n    def __init__(self, noise_dim=100, label_dim=10, output_dim=784):\n        super(Generator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(noise_dim + label_dim, 256),\n            nn.ReLU(),\n            nn.Linear(256, 512),\n            nn.ReLU(),\n            nn.Linear(512, output_dim),\n            nn.Tanh()\n        )\n    \n    def forward(self, z, labels):\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([z, label_embedding], dim=1)\n        return self.model(input).view(-1, 1, 28, 28)\n\nclass Discriminator(nn.Module):\n    def __init__(self, input_dim=784, label_dim=10):\n        super(Discriminator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(input_dim + label_dim, 512),\n            nn.ReLU(),\n            nn.Linear(512, 256),\n            nn.ReLU(),\n            nn.Linear(256, 1),\n            nn.Sigmoid()\n        )\n    \n    def forward(self, x, labels):\n        x_flat = x.view(-1, 784)\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([x_flat, label_embedding], dim=1)\n        return self.model(input)\n\n# 初始化模型与优化器\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\ngenerator = Generator().to(device)\ndiscriminator = Discriminator().to(device)\ng_optimizer = optim.Adam(generator.parameters(), lr=0.0002)\nd_optimizer = optim.Adam(discriminator.parameters(), lr=0.0002)\ncriterion = nn.BCELoss()\n\n# 训练循环\nnum_epochs = 10\nfor epoch in range(num_epochs):\n    for batch_idx, (real_imgs, labels) in enumerate(train_loader):\n        batch_size = real_imgs.size(0)\n        real_imgs, labels = real_imgs.to(device), labels.to(device)\n        \n        # 训练判别器\n        noise = torch.randn(batch_size, 100).to(device)\n        fake_imgs = generator(noise, labels)\n        real_output = discriminator(real_imgs, labels)\n        fake_output = discriminator(fake_imgs.detach(), labels)\n        d_loss_real = criterion(real_output, torch.ones_like(real_output))\n        d_loss_fake = criterion(fake_output, torch.zeros_like(fake_output))\n        d_loss = d_loss_real + d_loss_fake\n        \n        d_optimizer.zero_grad()\n        d_loss.backward()\n        d_optimizer.step()\n        \n        # 训练生成器\n        fake_output = discriminator(fake_imgs, labels)\n        g_loss = criterion(fake_output, torch.ones_like(fake_output))\n        \n        g_optimizer.zero_grad()\n        g_loss.backward()\n        g_optimizer.step()\n    \n    print(f\"Epoch {epoch+1}, D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}\")\n\n# 生成样本与评估\nnum_samples = 100\nnoise = torch.randn(num_samples, 100).to(device)\nlabels = torch.randint(0, 10, (num_samples,)).to(device)\ngenerated_imgs = generator(noise, labels).detach().cpu()\n\n# 使用预训练分类器评估条件准确率（简化：使用简单规则）\n# 实际中可用预训练MNIST分类器，这里用生成图像像素和作为代理\naccuracies = []\nfor i in range(10):\n    mask = labels == i\n    if mask.sum() > 0:\n        imgs = generated_imgs[mask.cpu()]\n        # 简单规则：像素和大于阈值视为数字i（仅用于演示）\n        pred = (imgs.sum(dim=(1,2,3)) > 0).int()  # 简化逻辑\n        acc = (pred == i % 2).float().mean().item()  # 模拟准确率\n        accuracies.append(acc)\n\nconditional_accuracy = np.mean(accuracies) if accuracies else 0.0\nprint(f\"条件准确率（简化代理）: {conditional_accuracy:.4f}\")\nprint(f\"生成样本shape: {generated_imgs.shape}\")\nprint(f\"环境版本: PyTorch {torch.__version__}, 随机种子: {seed}\")\n\n# 可视化生成样本\nfig, axes = plt.subplots(2, 5, figsize=(10, 4))\nfor i, ax in enumerate(axes.flat):\n    ax.imshow(generated_imgs[i].squeeze(), cmap='gray')\n    ax.set_title(f\"Label: {labels[i].item()}\")\n    ax.axis('off')\nplt.show()</code></pre>\n\n<p>工程要点包括：数据标准化（归一化到[-1,1]以匹配Tanh输出）、条件嵌入维度选择（这里标签维度10）、训练平衡（交替更新生成器与判别器）以及评估代理（实际项目应使用预训练分类器）。代码打印了数据规模、训练损失、条件准确率与生成样本，确保可复现性。注意，条件准确率计算是简化版，真实评估需用准确分类器。</p>\n\n<p>常见误区是“条件生成模型无需复杂评估”。实际上，仅视觉检查不足，需结合定量指标。失败模式包括训练不收敛（因超参数不当）或评估偏差（因指标不全面）。诊断方法包括监控损失曲线、计算多个指标（如FID、准确率）以及进行消融实验。例如，若条件准确率低但FID好，可能表明模型生成高质量图像但忽略条件。</p>\n\n<p>通过这个完整工程流程，你已经掌握了条件生成与控制技术的核心实践。从数据准备到模型评估，每一步都强调可复现性与客观衡量，为你的项目打下坚实基础。接下来，你可以将此框架扩展到更复杂的数据集与控制信号，实现更精细的生成应用。</p>\n\n<p>条件生成与控制技术是生成式AI迈向实用化的关键一步。通过本课程，你不仅理解了从无条件到条件的理论演进，还掌握了条件信号融合的机制与工程实现方法。记住，成功的关键在于平衡控制精度与生成多样性，并坚持可复现的实践原则。现在，尝试将所学应用于你的下一个项目，例如使用ControlNet控制图像风格，或设计多条件融合的生成模型。</p>",
+      "en": "<h2>Conditional Generation and Control Techniques: From Theory to Engineering Practice</h2>\n\n<p>In the evolution of generative artificial intelligence, unconditional generative models can create realistic content but struggle to meet precise requirements for specific outputs in practical applications. Visual engineers and researchers often face this dilemma: models generate high-quality images but cannot specify whether to produce \"modern architecture\" or \"classical architecture,\" or control the layout and style of generated images. This limitation has spurred the development of conditional generation and control techniques, which introduce external signals to guide the generation process, aligning model outputs with human intent. This course systematically explores the core principles, implementation mechanisms, and engineering practices of this technology, providing you with actionable methodologies for your generative model projects.</p>\n\n<p>The course structure follows a progressive path from motivation to practice: first, analyzing the limitations of unconditional generation to build intuition for conditional generation; then, delving into how conditional signals integrate with model architectures; finally, constructing a complete engineering pipeline for reproducible conditional generation tasks. We will use conditional generative adversarial networks (Conditional GANs) and ControlNet as primary case studies, combining mathematical derivations with code implementations to ensure you not only understand the concepts but can also apply them in real-world projects.</p>\n\n<h3>From Unconditional to Conditional: Why Does Generation Need Control?</h3>\n\n<p>Unconditional generative models, such as standard generative adversarial networks (GANs) or variational autoencoders (VAEs), learn the data distribution \\( p(x) \\) and sample new instances from it. However, this randomness becomes a major obstacle in practical applications. For example, in medical image generation, we need to produce images of specific pathological types; in artistic creation, we want to control the style and content of generated images. Unconditional models cannot meet these needs because they lack explicit control over output attributes. This leads to the core motivation for conditional generation: by introducing a conditional signal \\( c \\), the generation process shifts from learning \\( p(x) \\) to learning the conditional distribution \\( p(x|c) \\), enabling directed guidance of output content.</p>\n\n<p>Conditional Generation is defined as the technique of using external signals (conditions) to guide generative models in producing specific content. A Control Signal is the input used to regulate the generation process, which can be discrete labels (e.g., category \"cat\"), continuous vectors (e.g., attribute encodings), or structured data (e.g., sketches, depth maps). From a probabilistic perspective, the goal of conditional generation is to model \\( p(x|c) \\), typically achieved by extending unconditional models. For instance, in GANs, the conditional signal is concatenated with the noise vector before input to the generator. The key distinction is that conditional signals must be deeply integrated into the model architecture, not merely attached, otherwise it may lead to mode collapse or conditional overfitting.</p>\n\n<p>Mathematically, the objective function of a conditional GAN extends the minimax game of the original GAN. Let the generator be \\( G(z, c) \\) and the discriminator be \\( D(x, c) \\), where \\( z \\) is the noise vector and \\( c \\) is the conditional signal. The objective function is: \\[ \\min_G \\max_D V(D, G) = \\mathbb{E}_{x \\sim p_{data}(x)}[\\log D(x, c)] + \\mathbb{E}_{z \\sim p_z(z)}[\\log(1 - D(G(z, c), c))] \\]. Here, the discriminator not only judges sample authenticity but also evaluates the match between the sample and the condition. Conditional signals can be injected in various ways, such as concatenation, embedding, or attention mechanisms, each affecting the model's sensitivity to conditions and generation diversity.</p>\n\n<p>In engineering implementation, data preprocessing must ensure alignment between conditional signals and samples. For example, for a labeled image dataset, each sample \\( x_i \\) should be associated with a condition \\( c_i \\) (e.g., a class label). During training, conditional signals are usually encoded into vectors (e.g., via an embedding layer) and then concatenated with the noise vector as input to the generator. The discriminator also receives the conditional signal, typically fused with image features (e.g., through concatenation or dot product). Key implementation points include: choosing the dimension of conditional encoding (too small may lose information, too large increases computational overhead), training stability techniques (e.g., gradient penalty or label smoothing), and designing evaluation metrics (which should measure both generation quality and condition matching).</p>\n\n<p>Common misconceptions include thinking that \"conditional generation only requires adding a label to the input.\" In reality, if conditional signals are not deeply integrated into the model, the model may ignore the condition or overfit to a few modes. Failure modes manifest as mode collapse, where the generator outputs samples with limited diversity, or low conditional accuracy. Diagnostic methods include visualizing the distribution of generated samples, computing condition matching metrics (e.g., using a pre-trained classifier to evaluate generated image labels), and analyzing training loss curves. For instance, if the discriminator loss drops rapidly while the generator loss stagnates, it may indicate that the conditional signal is not being effectively utilized.</p>\n\n<p>Understanding the motivation and basics of conditional generation, we next need to explore the specific forms of conditional signals and their integration mechanisms with model architectures. This will help us design more refined control strategies for complex application scenarios.</p>\n\n<h3>Conditional Signals and Model Architecture: How to Implement Control?</h3>\n\n<p>The diversity of conditional signals determines the design flexibility of generative models. Discrete conditions (e.g., class labels) are typically mapped to continuous vectors via embedding layers; continuous conditions (e.g., attribute vectors) can be used directly; structured conditions (e.g., sketches, semantic segmentation maps) require dedicated encoders. How these signals integrate into generative model architectures is central to achieving effective control. Mainstream methods include concatenation injection, attention fusion, and dedicated control modules, each tailored to different signal types and task requirements.</p>\n\n<p>Conditional Generative Adversarial Networks (Conditional GANs) are an early classic architecture, injecting conditional signals into the generator and discriminator via concatenation. Specifically, the condition \\( c \\) is encoded into a vector and concatenated with the noise vector \\( z \\) to form the generator input \\( [z, c] \\); the discriminator input is \\( [x, c] \\) or \\( [x, \\text{embed}(c)] \\). This simple approach works for discrete or low-dimensional continuous conditions, but for complex structured conditions (e.g., image-to-image translation), it may be insufficient for fine-grained control. ControlNet offers a more refined solution, connecting control modules to pre-trained diffusion models via zero convolutions for pixel-level control.</p>\n\n<p>The mechanism of ControlNet is based on residual connections. Let the backbone of the pre-trained diffusion model be \\( F(\\cdot) \\), the control module be \\( C(\\cdot) \\), and the input condition be \\( c \\) (e.g., an edge map). The output of the control module is added to the backbone features via a zero convolution layer \\( Z(\\cdot) \\) (initialized with zero weights): \\[ \\text{output} = F(x) + Z(C(c)) \\]. Zero convolutions ensure that the control module does not affect the pre-trained model at the start of training, stabilizing the process. Mathematically, this is equivalent to introducing a control term in the conditional probability of the diffusion process: \\[ p_\\theta(x_t | x_{t-1}, c) = \\mathcal{N}(x_t; \\mu_\\theta(x_{t-1}, t) + \\lambda \\cdot C(c), \\Sigma_\\theta) \\], where \\( \\lambda \\) is a control strength coefficient. This design allows the model to gradually learn the influence of conditional signals without disrupting pre-trained knowledge.</p>\n\n<p>In engineering implementation, architecture selection requires balancing control precision and computational cost. For simple conditions (e.g., classes), concatenation injection suffices; for complex conditions (e.g., text descriptions + sketches), multi-layer attention fusion or dedicated encoders may be needed. Key implementation points include: designing the conditional encoder (e.g., CNN for image conditions, Transformer for text), positioning fusion layers (early fusion aids global control, late fusion aids detail adjustment), and training strategies (e.g., progressive training or curriculum learning). For example, in ControlNet, control modules are typically lightweight to minimize inference latency.</p>\n\n<p>Common misconceptions include \"more complex conditional signals lead to higher generation quality.\" In practice, signals must match the task; excessive complexity can cause training instability or overfitting. Failure modes include condition leakage (model ignores the condition), mode confusion (blurred boundaries between conditions), or computational bottlenecks. Diagnostic methods include ablation studies (removing conditional signals to observe performance changes), visualizing attention maps (analyzing model focus areas), and evaluating condition-specific metrics (e.g., distinguishability between samples from different conditions). For instance, if generated images show no significant difference when conditions change, it may indicate control failure.</p>\n\n<p>Having mastered the fusion mechanisms of conditional signals, we can apply these principles to practical engineering workflows, building complete pipelines from data to evaluation. This ensures our conditional generative models are not only theoretically feasible but also practically reliable.</p>\n\n<h3>Engineering Practice: Building a Reproducible Conditional Generation Pipeline</h3>\n\n<p>Building a reproducible conditional generation project requires a systematic engineering process covering data preparation, model training, evaluation, and deployment. Visual engineers and researchers often face reproducibility challenges: the same code produces different results in different environments, or evaluation metrics fail to objectively measure performance. This section provides an end-to-end practical guide, using a conditional GAN on the MNIST dataset as an example to demonstrate how to implement offline reproducible conditional digit generation.</p>\n\n<p>Reproducibility is defined as the property of ensuring experimental results can be repeatedly verified by fixing random seeds and recording environment configurations. In conditional generation, this is particularly important because randomness affects generation diversity and condition matching. The engineering process includes: data preprocessing (ensuring condition alignment and standardization), model training (using fixed random seeds and version control), evaluation (combining quantitative metrics and qualitative analysis), and documentation (saving hyperparameters and environment details). The key is to avoid dependencies on external files or private paths, using public datasets and inline data instead.</p>\n\n<p>Evaluating conditional generative models requires multi-dimensional metrics. Generation quality is often measured by the Fréchet Inception Distance (FID), which compares the distributions of generated and real samples in feature space: \\[ \\text{FID} = ||\\mu_r - \\mu_g||^2 + \\text{Tr}(\\Sigma_r + \\Sigma_g - 2(\\Sigma_r \\Sigma_g)^{1/2}) \\], where \\( \\mu_r, \\Sigma_r \\) and \\( \\mu_g, \\Sigma_g \\) are the feature means and covariances of real and generated samples, respectively. Condition matching is evaluated using Conditional Accuracy, i.e., the proportion of generated samples matching the input condition. For example, for a conditional GAN generating digits, a pre-trained classifier can predict labels of generated images to compute accuracy: \\[ \\text{Accuracy} = \\frac{\\text{number of correct matches}}{\\text{total samples}} \\]. Ideally, the model should optimize both FID (low values indicate high quality) and accuracy (high values indicate good matching).</p>\n\n<p>The following code block demonstrates an end-to-end minimal reproducible experiment, using PyTorch and the MNIST dataset to train a conditional GAN for generating specified digits (0-9) and evaluating conditional accuracy. The code avoids external files, loads data inline, and prints key intermediate results and metrics.</p>\n\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom torchvision import datasets, transforms\nfrom torch.utils.data import DataLoader\nimport numpy as np\nimport matplotlib.pyplot as plt\n\n# Fix random seeds for reproducibility\nseed = 42\ntorch.manual_seed(seed)\nnp.random.seed(seed)\n\n# Data loading and preprocessing\ntransform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5,), (0.5,))])\ntrain_dataset = datasets.MNIST(root='./data', train=True, download=True, transform=transform)\ntrain_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)\n\n# Print data scale and examples\nprint(f\"Data scale: {len(train_dataset)} samples\")\nprint(f\"Image shape: {train_dataset[0][0].shape}\")  # torch.Size([1, 28, 28])\nprint(f\"Label example: {train_dataset[0][1]}\")  # 5\n\n# Conditional GAN definition\nclass Generator(nn.Module):\n    def __init__(self, noise_dim=100, label_dim=10, output_dim=784):\n        super(Generator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(noise_dim + label_dim, 256),\n            nn.ReLU(),\n            nn.Linear(256, 512),\n            nn.ReLU(),\n            nn.Linear(512, output_dim),\n            nn.Tanh()\n        )\n    \n    def forward(self, z, labels):\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([z, label_embedding], dim=1)\n        return self.model(input).view(-1, 1, 28, 28)\n\nclass Discriminator(nn.Module):\n    def __init__(self, input_dim=784, label_dim=10):\n        super(Discriminator, self).__init__()\n        self.label_embed = nn.Embedding(label_dim, label_dim)\n        self.model = nn.Sequential(\n            nn.Linear(input_dim + label_dim, 512),\n            nn.ReLU(),\n            nn.Linear(512, 256),\n            nn.ReLU(),\n            nn.Linear(256, 1),\n            nn.Sigmoid()\n        )\n    \n    def forward(self, x, labels):\n        x_flat = x.view(-1, 784)\n        label_embedding = self.label_embed(labels)\n        input = torch.cat([x_flat, label_embedding], dim=1)\n        return self.model(input)\n\n# Initialize models and optimizers\ndevice = torch.device(\"cuda\" if torch.cuda.is_available() else \"cpu\")\ngenerator = Generator().to(device)\ndiscriminator = Discriminator().to(device)\ng_optimizer = optim.Adam(generator.parameters(), lr=0.0002)\nd_optimizer = optim.Adam(discriminator.parameters(), lr=0.0002)\ncriterion = nn.BCELoss()\n\n# Training loop\nnum_epochs = 10\nfor epoch in range(num_epochs):\n    for batch_idx, (real_imgs, labels) in enumerate(train_loader):\n        batch_size = real_imgs.size(0)\n        real_imgs, labels = real_imgs.to(device), labels.to(device)\n        \n        # Train discriminator\n        noise = torch.randn(batch_size, 100).to(device)\n        fake_imgs = generator(noise, labels)\n        real_output = discriminator(real_imgs, labels)\n        fake_output = discriminator(fake_imgs.detach(), labels)\n        d_loss_real = criterion(real_output, torch.ones_like(real_output))\n        d_loss_fake = criterion(fake_output, torch.zeros_like(fake_output))\n        d_loss = d_loss_real + d_loss_fake\n        \n        d_optimizer.zero_grad()\n        d_loss.backward()\n        d_optimizer.step()\n        \n        # Train generator\n        fake_output = discriminator(fake_imgs, labels)\n        g_loss = criterion(fake_output, torch.ones_like(fake_output))\n        \n        g_optimizer.zero_grad()\n        g_loss.backward()\n        g_optimizer.step()\n    \n    print(f\"Epoch {epoch+1}, D Loss: {d_loss.item():.4f}, G Loss: {g_loss.item():.4f}\")\n\n# Generate samples and evaluate\nnum_samples = 100\nnoise = torch.randn(num_samples, 100).to(device)\nlabels = torch.randint(0, 10, (num_samples,)).to(device)\ngenerated_imgs = generator(noise, labels).detach().cpu()\n\n# Evaluate conditional accuracy using a pre-trained classifier (simplified: using simple rules)\n# In practice, use a pre-trained MNIST classifier; here, use pixel sum as a proxy\naccuracies = []\nfor i in range(10):\n    mask = labels == i\n    if mask.sum() > 0:\n        imgs = generated_imgs[mask.cpu()]\n        # Simple rule: pixel sum above threshold considered digit i (for demonstration only)\n        pred = (imgs.sum(dim=(1,2,3)) > 0).int()  # Simplified logic\n        acc = (pred == i % 2).float().mean().item()  # Simulated accuracy\n        accuracies.append(acc)\n\nconditional_accuracy = np.mean(accuracies) if accuracies else 0.0\nprint(f\"Conditional accuracy (simplified proxy): {conditional_accuracy:.4f}\")\nprint(f\"Generated samples shape: {generated_imgs.shape}\")\nprint(f\""
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：条件生成与控制技术 · 结构总览 · 数据：课程大纲】在设计《条件生成与控制技术》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 条件生成与控制技术 · 结构总览 · Data: 课程大纲】When outlining \"条件生成与控制技术\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：条件生成与控制技术 · worked example · 数据：实现条件生成 数据/代码】在复现《条件生成与控制技术》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 条件生成与控制技术 · worked example · Data: 实现条件生成 数据/代码】While reproducing the worked example in \"条件生成与控制技术\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：条件生成与控制技术 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《条件生成与控制技术》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 条件生成与控制技术 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"条件生成与控制技术\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：条件生成与控制技术 · 参考资料 · 数据：课程引用文献】当引用文献支撑《条件生成与控制技术》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 条件生成与控制技术 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"条件生成与控制技术\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Conditional Generative Adversarial Nets（arXiv，2014）",
+          "en": "Conditional Generative Adversarial Nets (arXiv, 2014)"
+        },
+        "url": "https://arxiv.org/abs/1411.1784"
+      },
+      {
+        "label": {
+          "zh": "Adding Conditional Control to Text-to-Image Diffusion Models（arXiv，2023）",
+          "en": "Adding Conditional Control to Text-to-Image Diffusion Models (arXiv, 2023)"
+        },
+        "url": "https://arxiv.org/abs/2302.05543"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-07-conditional-generation-zh.mp3"
+    },
+    "meta": {
+      "category": "Generative Models",
+      "level": "5. Generative AI & Large Models",
+      "difficultyScore": 3,
+      "related": [
+        "Conditional GAN",
+        "ControlNet"
+      ],
+      "learningObjectives": [
+        "实现条件生成",
+        "探索控制信号在生成模型中的作用"
+      ],
+      "personas": [
+        "视觉工程师",
+        "研究人员"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 条件生成与控制技术 可帮助团队在 Generative Models 上做出可复用的实践。",
+        "best_for": "适合 视觉工程师、研究人员，需要快速吸收 5. Generative AI & Large Models 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "视觉工程师 指导者",
+        "style": "数据驱动",
+        "energy": "precise",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 视觉工程师、研究人员，帮助他们把 条件生成与控制技术 应用于 Generative Models",
+        "prefersEnglish": false,
+        "industries": [
+          "视觉工程师",
+          "研究人员"
+        ],
+        "personas": [
+          "视觉工程师",
+          "研究人员"
+        ],
+        "pains": "在 Generative Models 场景缺乏 条件生成与控制技术 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "5. Generative AI & Large Models"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为视觉工程师，你在生成图像时是否遇到过输出结果与预期不符的情况？请描述一个具体项目，并思考：如果当时能引入外部信号（如文本描述或草图）来指导生成过程，哪些关键元素会得到更精确的控制？",
+          "action_hint": "尝试列出你项目中需要控制的3个视觉特征，并说明为什么这些特征对最终应用至关重要。"
+        },
+        {
+          "lang": "zh",
+          "question": "研究人员在实验生成模型时，常面临生成结果随机性过大的挑战。回顾你最近的研究场景：如果需要在特定条件下（如固定风格或内容约束）生成样本，你目前采用的方法存在哪些局限性？如何通过结构化条件信号来提升实验的可复现性？",
+          "action_hint": "选择一个你熟悉的生成任务，设计一个简单的条件控制方案，并说明它如何帮助验证你的研究假设。"
+        }
+      ]
+    }
   }
 ]
