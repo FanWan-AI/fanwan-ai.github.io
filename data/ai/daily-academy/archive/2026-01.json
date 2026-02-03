@@ -2052,5 +2052,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-09-prompting",
+    "date": "2026-01-09",
+    "title": {
+      "zh": "提示工程与指令调优",
+      "en": "Prompt Engineering and Instruction Tuning"
+    },
+    "summary": {
+      "zh": "本课程系统讲解提示工程与指令调优的核心原理与实践方法。首先从直觉层面分析提示设计如何影响大语言模型输出，明确提示工程（通过结构化输入引导模型）与指令调优（通过微调优化指令遵循）的定义与边界。接着深入机制，解析零样本、少样本、思维链等提示技术如何从概率角度引导模型推理路径。工程实践部分提供可复现的优化流程，包括模板设计、评估指标（如ROUGE、准确性公式）和迭代测试框架。最后通过指令调优实战，演示如何构建高质量指令数据集并微调模型，实现稳定的格式控制与任务适应。",
+      "en": "This course systematically explains the core principles and practical methods of prompt engineering and instruction tuning. It begins by analyzing how prompt design influences large language model output from an intuitive level, clarifying definitions and boundaries of prompt engineering (guiding models via structured input) and instruction tuning (optimizing instruction following via fine-tuning). It then delves into mechanisms, analyzing how prompting techniques like zero-shot, few-shot, and chain-of-thought guide model reasoning paths from a probabilistic perspective. The engineering practice section provides reproducible optimization workflows, including template design, evaluation metrics (e.g., ROUGE, accuracy formulas), and iterative testing frameworks. Finally, through instruction tuning practice, it demonstrates building high-quality instruction datasets and fine-tuning models for stable format control and task adaptation."
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "prompting",
+      "fine-tuning"
+    ],
+    "content": {
+      "zh": "<h3>从直觉到定义：为什么简单的提示调整能产生巨大差异</h3>\n<p>当产品经理或Prompt Engineer与大语言模型交互时，一个核心困惑是：为什么相同的模型在不同提示下输出质量差异显著？这并非模型能力不均，而是输入信号的结构化程度直接影响其推理路径。提示工程（Prompt Engineering）是通过系统化设计输入文本的结构、内容和格式来引导模型产生期望输出的方法论。其本质在于将模糊需求转化为机器可理解的指令序列，而非寻找“完美咒语”。从数学视角看，模型生成概率可分解为条件概率链：给定提示 \\(x\\)，模型生成响应 \\(y\\) 的概率为 \\(P(y|x) = \\prod_{t=1}^{T} P(y_t | y_{<t}, x)\\)，其中 \\(y_t\\) 是第 \\(t\\) 个词元。提示工程的目标是优化 \\(x\\) 以最大化期望输出的概率，即调整输入分布使模型注意力聚焦于相关模式。例如，添加具体约束（如“800字”“三个案例”）相当于在概率空间中引入先验，缩小采样范围。</p>\n<p>工程实现时，需遵循“定义-原型-评估”流程：首先明确任务边界（如生成产品文档），设计包含角色、任务、格式的提示模板，再通过A/B测试对比变体。关键敏感点包括提示长度与注意力分散的权衡——无关信息可能干扰模型，导致输出偏离主题。常见失败模式是过度指定，如嵌套过多条件使模型混淆优先级。诊断时，可分析错误案例的注意力分布，使用SHAP值或LIME解释模型为何忽略关键指令，并调整模板结构。一个典型误区是将提示工程视为一次性优化。实际上，它需要迭代测试：记录每次修改后的输出质量，使用评估指标如相关性得分 \\(S = \\frac{1}{N} \\sum_{i=1}^{N} r_i\\)，其中 \\(r_i\\) 是人工评分（1-5分）。通过控制变量（如固定模型版本和输入数据），可系统化提升提示效果。</p>\n<p>与提示工程互补的是指令调优（Instruction Tuning），即在预训练模型基础上使用指令-响应对微调，使模型更好地遵循人类指令。两者边界清晰：提示工程作用于推理时输入，指令调优改变模型参数。理解这一区别后，我们可深入机制层面，分析提示结构如何具体引导推理路径。</p>\n<h3>机制解析：提示结构如何引导模型推理路径</h3>\n<p>为什么添加“逐步思考”能让模型在复杂任务中表现提升？这涉及提示结构对模型内部注意力机制的引导。零样本提示（Zero-shot Prompting）直接给出任务描述，依赖模型已有知识泛化；少样本提示（Few-shot Prompting）提供示例，演示任务格式；思维链提示（Chain-of-Thought Prompting）要求展示推理步骤，显式激活模型的逻辑推理模块。从概率模型看，思维链提示将生成过程分解为中间步骤 \\(z\\)：\\(P(y|x) = \\sum_{z} P(y|z,x)P(z|x)\\)。通过提示强制模型先生成 \\(z\\)（如推理步骤），再基于 \\(z\\) 生成最终答案 \\(y\\)，这相当于在解码过程中插入归纳偏差，提升复杂任务的连贯性。研究表明，思维链提示能显著提升数学推理和常识问答性能（来源：Chain-of-Thought Prompting Elicits Reasoning in Large Language Models, 2022）。</p>\n<p>工程实践中，设计提示需平衡信息量与噪声。例如，少样本提示中示例质量比数量更重要：选择代表性高、格式一致的示例，避免矛盾或模糊样本。数据流上，提示模板应模块化，将固定指令与可变内容分离，便于批量测试。复杂度敏感点在于提示长度与计算开销的权衡——过长提示可能增加推理延迟。常见误区是认为“提示越长越好”。实际上，冗余信息可能稀释关键指令，导致模型注意力分散。失败模式包括示例不一致（如格式混用）或思维链步骤冗余（如过度分解简单任务）。诊断时，可检查模型中间输出是否遵循预期逻辑，或使用注意力可视化工具分析关键词权重。</p>\n<p>理解这些机制后，我们可将原理转化为可复现的工程流程，系统化优化提示设计。</p>\n<h3>工程实践：构建可复现的提示优化流程</h3>\n<p>如何系统化测试和优化提示？这需要建立从问题定义到评估的完整框架。首先，明确任务目标（如生成API文档摘要），设计提示模板（Prompt Template）——包含固定结构和可变占位符的框架，例如“总结{{文章}}的核心观点，突出三个关键参数”。模板设计需考虑角色设定、任务描述、格式约束和示例嵌入。评估环节需量化提示效果。常用指标包括相关性（人工评分）、准确性（与标准答案匹配度）和完整性（覆盖关键点）。例如，可定义准确性公式为 \\(\\text{Accuracy} = \\frac{\\text{正确预测数}}{\\text{总预测数}}\\)，或使用ROUGE-1评估文本重叠：\\(\\text{ROUGE-1} = \\frac{|\\text{unigrams}_{\\text{参考}} \\cap \\text{unigrams}_{\\text{生成}}|}{|\\text{unigrams}_{\\text{参考}}|}\\)。这些指标需与业务目标对齐（来源：ROUGE: A Package for Automatic Evaluation of Summaries, 2004）。</p>\n<p>实施时，采用迭代优化：创建多个模板变体，使用相同输入测试，记录评估得分。数据流上，可构建管道自动填充模板、调用模型、计算指标。关键敏感点是评估成本——人工评分耗时，可辅以自动指标（如BLEU、ROUGE）进行初步筛选。复杂度控制需注意模板变量数量，避免组合爆炸。常见误区包括“一次优化找到最佳提示”和“所有任务适用相同评估标准”。实际上，提示优化是持续过程，需随数据分布变化调整；不同任务需要定制化指标，如创意写作关注多样性，文档生成强调准确性。失败模式可能源于模板与模型能力不匹配（如要求超出模型知识范围）。诊断时，可分析错误案例，识别模式偏差。以下端到端示例演示提示工程实验流程，使用公开数据构建可复现实验：</p>\n<pre><code>import pandas as pd\nimport numpy as np\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# 内联构造示例数据集：API文档片段\napi_docs = [\n    \"API名称: getUserInfo, 功能: 获取用户基本信息, 参数: userId (string), 返回值: JSON包含name, email\",\n    \"API名称: updateOrder, 功能: 更新订单状态, 参数: orderId (int), status (string), 返回值: success (boolean)\",\n    \"API名称: searchProducts, 功能: 产品搜索, 参数: query (string), limit (int), 返回值: 产品列表 (array)\"\n]\n\n# 设计两个提示模板变体\ntemplate_a = \"总结以下API文档的核心功能：{{doc}}\"\ntemplate_b = \"以产品经理视角，提取API文档的关键字段：名称、功能、参数、返回值。文档：{{doc}}\"\n\n# 应用模板生成提示\nprompts_a = [template_a.replace(\"{{doc}}\", doc) for doc in api_docs]\nprompts_b = [template_b.replace(\"{{doc}}\", doc) for doc in api_docs]\n\nprint(\"数据集规模:\", len(api_docs))\nprint(\"API文档示例头两条:\")\nfor i in range(2):\n    print(f\"  {i+1}: {api_docs[i][:50]}...\")\nprint(\"\\n提示模板A示例:\", prompts_a[0])\nprint(\"提示模板B示例:\", prompts_b[0])\n\n# 模拟模型输出（实际中替换为真实模型调用）\n# 这里用简单规则生成摘要作为演示\ndef simulate_model(prompt):\n    if \"产品经理视角\" in prompt:\n        return \"API关键字段提取完成\"\n    else:\n        return \"API功能总结完成\"\n\noutputs_a = [simulate_model(p) for p in prompts_a]\noutputs_b = [simulate_model(p) for p in prompts_b]\n\n# 计算简单评估指标：模板B应更具体，假设人工评分更高\n# 使用模拟评分：模板A得2分，模板B得4分（1-5分）\nscores = {\"Template_A\": 2, \"Template_B\": 4}\nprint(\"\\n评估得分:\", scores)\nprint(\"指标公式: 人工评分均值 S = (1/N) * Σ score_i\")\nprint(\"当前得分计算: S_A = 2, S_B = 4\")\nprint(\"结论: 模板B更优，因包含具体角色和字段指令。\")</code></pre>\n<p>优化单个提示后，我们可进一步通过指令调优让模型整体适应业务语言，实现更稳定的输出控制。</p>\n<h3>指令调优实战：让模型学会你的语言</h3>\n<p>如何让模型始终以产品文档格式输出？这需要指令调优——使用指令数据集（Instruction Dataset）微调模型参数。指令数据集包含指令-响应对，例如指令“写产品需求文档”，响应为符合特定格式的示例。微调过程调整模型权重，使其在指令遵循分布上最大化似然：\\(\\mathcal{L}(\\theta) = \\sum_{(x,y) \\in D} \\log P_\\theta(y|x)\\)，其中 \\(\\theta\\) 是模型参数，\\(D\\) 是指令数据集。工程实现包括数据收集、清洗、格式标准化。高质量小规模数据集（如100-1000对）可能比大规模低质量数据更有效，关键在于示例一致性和覆盖度。微调参数（Fine-tuning Parameters）如学习率需谨慎设置，避免灾难性遗忘——模型丢失原有能力。常用策略是多任务学习或保留部分预训练数据。</p>\n<p>实施步骤：首先构建指令数据集，确保格式统一；然后配置训练参数（学习率 \\(\\eta\\)，批次大小 \\(B\\)）；接着微调模型，监控验证集损失；最后评估格式符合度，例如计算格式匹配率 \\(F = \\frac{\\text{符合格式的样本数}}{\\text{总样本数}}\\)。评估时需对比微调前后表现，使用独立测试集。常见误区包括“指令调优需要大量数据”和“调优后模型不会遗忘”。实际上，数据质量优先；微调可能改变模型行为，需通过评估检测退化。失败模式包括过拟合（模型机械复制示例）或格式漂移（输出逐渐偏离标准）。诊断时，可分析错误案例的注意力模式或使用探针分类器。以下代码块展示指令调优实施流程，使用轻量替代方案避免大模型下载：</p>\n<pre><code># 轻量替代：使用TF-IDF和规则模拟指令调优效果\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\n\n# 内构建指令数据集：产品需求文档示例\ninstructions = [\n    \"写一个登录功能的需求文档\",\n    \"写一个支付接口的需求文档\",\n    \"写一个用户画像更新的需求文档\"\n]\nresponses = [\n    \"需求文档格式：1. 功能描述 2. 输入参数 3. 输出结果 4. 错误处理。登录功能：...\",\n    \"需求文档格式：1. 功能描述 2. 输入参数 3. 输出结果 4. 错误处理。支付接口：...\",\n    \"需求文档格式：1. 功能描述 2. 输入参数 3. 输出结果 4. 错误处理。用户画像更新：...\"\n]\n\nprint(\"指令数据集规模:\", len(instructions))\nprint(\"示例指令-响应对:\")\nfor i in range(min(2, len(instructions))):\n    print(f\"  指令: {instructions[i]}\")\n    print(f\"  响应: {responses[i][:60]}...\")\n\n# 模拟微调：训练一个简单格式分类器（实际中替换为模型微调）\n# 使用TF-IDF向量化，检查响应是否包含格式关键词\nvectorizer = TfidfVectorizer()\nX = vectorizer.fit_transform(responses)\nformat_keywords = [\"功能描述\", \"输入参数\", \"输出结果\", \"错误处理\"]\nkeyword_vectors = vectorizer.transform(format_keywords)\n\n# 计算每个响应与格式关键词的相似度\nsimilarities = cosine_similarity(X, keyword_vectors)\nformat_scores = similarities.mean(axis=1)  # 平均相似度作为格式符合度\n\nprint(\"\\n格式符合度评估:\")\nfor i, score in enumerate(format_scores):\n    print(f\"  响应{i+1}格式符合度: {score:.3f}\")\nprint(\"指标公式: 格式符合度 F = 平均余弦相似度\")\nprint(\"阈值设定: F > 0.5 视为格式正确\")\ncorrect = sum(format_scores > 0.5)\nprint(f\"格式正确率: {correct}/{len(responses)} = {correct/len(responses):.1%}\")</code></pre>\n<p>通过提示工程和指令调优的系统化应用，产品经理和Prompt Engineer可构建稳定、高效的大语言模型工作流，将模糊需求转化为精确输出。</p>",
+      "en": "<h3>From Intuition to Definition: Why Simple Prompt Adjustments Create Significant Differences</h3>\n<p>When product managers or Prompt Engineers interact with large language models, a core puzzle arises: why does the same model produce vastly different output quality under varying prompts? This is not due to uneven model capabilities but rather the structured nature of input signals directly influencing reasoning paths. Prompt Engineering is the methodology of systematically designing the structure, content, and format of input text to guide models toward desired outputs. Its essence lies in transforming vague requirements into machine-understandable instruction sequences, not in searching for \"perfect incantations.\" From a mathematical perspective, model generation probability can be decomposed into a conditional probability chain: given a prompt \\(x\\), the probability of generating response \\(y\\) is \\(P(y|x) = \\prod_{t=1}^{T} P(y_t | y_{<t}, x)\\), where \\(y_t\\) is the \\(t\\)-th token. The goal of prompt engineering is to optimize \\(x\\) to maximize the probability of expected output, i.e., adjusting the input distribution to focus model attention on relevant patterns. For example, adding specific constraints (e.g., \"800 words,\" \"three cases\") introduces priors in probability space, narrowing the sampling range.</p>\n<p>In engineering implementation, follow a \"define-prototype-evaluate\" process: first clarify task boundaries (e.g., generating product documentation), design prompt templates including roles, tasks, and formats, then compare variants via A/B testing. Key sensitivity points include the trade-off between prompt length and attention dispersion—irrelevant information may distract the model, causing output deviation. A common failure mode is over-specification, such as nesting too many conditions that confuse model priority. For diagnosis, analyze error case attention distributions, using SHAP values or LIME to explain why the model ignores key instructions, and adjust template structures. A typical misconception is treating prompt engineering as a one-time optimization. In reality, it requires iterative testing: record output quality after each modification, using evaluation metrics like relevance score \\(S = \\frac{1}{N} \\sum_{i=1}^{N} r_i\\), where \\(r_i\\) is human rating (1-5 points). By controlling variables (e.g., fixed model version and input data), prompt effectiveness can be systematically improved.</p>\n<p>Complementary to prompt engineering is Instruction Tuning, which fine-tunes pre-trained models using instruction-response pairs to better follow human instructions. The boundary is clear: prompt engineering acts on inference-time input, while instruction tuning alters model parameters. Understanding this distinction, we can delve into mechanisms to analyze how prompt structures specifically guide reasoning paths.</p>\n<h3>Mechanism Analysis: How Prompt Structures Guide Model Reasoning Paths</h3>\n<p>Why does adding \"think step by step\" improve model performance on complex tasks? This involves how prompt structures guide the model's internal attention mechanisms. Zero-shot Prompting directly provides task descriptions, relying on the model's existing knowledge for generalization; Few-shot Prompting offers examples to demonstrate task format; Chain-of-Thought Prompting requires showing reasoning steps, explicitly activating the model's logical reasoning module. From a probabilistic model perspective, chain-of-thought prompting decomposes the generation process into intermediate steps \\(z\\): \\(P(y|x) = \\sum_{z} P(y|z,x)P(z|x)\\). By forcing the model to first generate \\(z\\) (e.g., reasoning steps) via prompting, then generate the final answer \\(y\\) based on \\(z\\), this inserts inductive bias into decoding, enhancing coherence in complex tasks. Research shows chain-of-thought prompting significantly improves mathematical reasoning and commonsense QA performance (Source: Chain-of-Thought Prompting Elicits Reasoning in Large Language Models, 2022).</p>\n<p>In engineering practice, designing prompts requires balancing information volume and noise. For example, in few-shot prompting, example quality matters more than quantity: select representative, consistently formatted examples, avoiding contradictory or ambiguous samples. In data flow, prompt templates should be modular, separating fixed instructions from variable content for batch testing. A complexity sensitivity point is the trade-off between prompt length and computational overhead—excessively long prompts may increase inference latency. A common misconception is that \"longer prompts are better.\" In reality, redundant information may dilute key instructions, causing model attention dispersion. Failure modes include inconsistent examples (e.g., mixed formats) or redundant chain-of-thought steps (e.g., over-decomposing simple tasks). For diagnosis, check whether intermediate outputs follow expected logic or use attention visualization tools to analyze keyword weights.</p>\n<p>Understanding these mechanisms allows translating principles into reproducible engineering workflows for systematic prompt design optimization.</p>\n<h3>Engineering Practice: Building Reproducible Prompt Optimization Workflows</h3>\n<p>How to systematically test and optimize prompts? This requires establishing a complete framework from problem definition to evaluation. First, clarify task objectives (e.g., generating API documentation summaries), design Prompt Templates—frameworks containing fixed structures and variable placeholders, such as \"Summarize the core points of {{article}}, highlighting three key parameters.\" Template design should consider role setting, task description, format constraints, and example embedding. The evaluation phase needs to quantify prompt effectiveness. Common metrics include relevance (human rating), accuracy (match with reference answers), and completeness (coverage of key points). For example, accuracy can be defined as \\(\\text{Accuracy} = \\frac{\\text{correct predictions}}{\\text{total predictions}}\\), or use ROUGE-1 to assess text overlap: \\(\\text{ROUGE-1} = \\frac{|\\text{unigrams}_{\\text{reference}} \\cap \\text{unigrams}_{\\text{generated}}|}{|\\text{unigrams}_{\\text{reference}}|}\\). These metrics must align with business goals (Source: ROUGE: A Package for Automatic Evaluation of Summaries, 2004).</p>\n<p>In implementation, adopt iterative optimization: create multiple template variants, test with identical inputs, record evaluation scores. In data flow, build pipelines to automatically fill templates, call models, compute metrics. A key sensitivity point is evaluation cost—human rating is time-consuming, supplemented by automatic metrics (e.g., BLEU, ROUGE) for initial screening. Complexity control requires attention to the number of template variables to avoid combinatorial explosion. Common misconceptions include \"finding the best prompt in one optimization\" and \"using the same evaluation standards for all tasks.\" In reality, prompt optimization is an ongoing process needing adjustments with data distribution changes; different tasks require customized metrics, e.g., creative writing focuses on diversity, document generation emphasizes accuracy. Failure modes may stem from template-model capability mismatch (e.g., requesting beyond model knowledge). For diagnosis, analyze error cases to identify pattern deviations. The following end-to-end example demonstrates a prompt engineering experimental workflow using public data for reproducible experiments:</p>\n<pre><code>import pandas as pd\nimport numpy as np\nfrom sklearn.feature_extraction.text import TfidfVectorizer\n\n# Inline construction of example dataset: API documentation snippets\napi_docs = [\n    \"API name: getUserInfo, function: get user basic info, parameters: userId (string), return: JSON with name, email\",\n    \"API name: updateOrder, function: update order status, parameters: orderId (int), status (string), return: success (boolean)\",\n    \"API name: searchProducts, function: product search, parameters: query (string), limit (int), return: product list (array)\"\n]\n\n# Design two prompt template variants\ntemplate_a = \"Summarize the core function of the following API documentation: {{doc}}\"\ntemplate_b = \"From a product manager perspective, extract key fields from API documentation: name, function, parameters, return. Document: {{doc}}\"\n\n# Apply templates to generate prompts\nprompts_a = [template_a.replace(\"{{doc}}\", doc) for doc in api_docs]\nprompts_b = [template_b.replace(\"{{doc}}\", doc) for doc in api_docs]\n\nprint(\"Dataset size:\", len(api_docs))\nprint(\"API documentation example first two:\")\nfor i in range(2):\n    print(f\"  {i+1}: {api_docs[i][:50]}...\")\nprint(\"\\nPrompt template A example:\", prompts_a[0])\nprint(\"Prompt template B example:\", prompts_b[0])\n\n# Simulate model output (replace with actual model call in practice)\n# Here use simple rule-based generation for demonstration\ndef simulate_model(prompt):\n    if \"product manager perspective\" in prompt:\n        return \"API key fields extraction completed\"\n    else:\n        return \"API function summary completed\"\n\noutputs_a = [simulate_model(p) for p in prompts_a]\noutputs_b = [simulate_model(p) for p in prompts_b]\n\n# Compute simple evaluation metrics: template B should be more specific, assume higher human rating\n# Use simulated ratings: template A scores 2, template B scores 4 (1-5 points)\nscores = {\"Template_A\": 2, \"Template_B\": 4}\nprint(\"\\nEvaluation scores:\", scores)\nprint(\"Metric formula: human rating mean S = (1/N) * Σ score_i\")\nprint(\"Current score calculation: S_A = 2, S_B = 4\")\nprint(\"Conclusion: template B is better due to specific role and field instructions.\")</code></pre>\n<p>After optimizing individual prompts, we can further adapt the model overall to business language via instruction tuning for more stable output control.</p>\n<h3>Instruction Tuning in Practice: Teaching the Model Your Language</h3>\n<p>How to make the model consistently output in product documentation format? This requires instruction tuning—fine-tuning model parameters using an Instruction Dataset. The instruction dataset contains instruction-response pairs, e.g., instruction \"write a product requirements document,\" response as an example conforming to specific format. The fine-tuning process adjusts model weights to maximize likelihood on instruction-following distribution: \\(\\mathcal{L}(\\theta) = \\sum_{(x,y) \\in D} \\log P_\\theta(y|x)\\), where \\(\\theta\\) are model parameters, \\(D\\) is the instruction dataset. Engineering implementation includes data collection, cleaning, format standardization. High-quality small-scale datasets (e.g., 100-1000 pairs) may be more effective than large-scale low-quality data, with key factors being example consistency and coverage. Fine-tuning Parameters such as learning rate require careful setting to avoid catastrophic forgetting—the model losing original capabilities. Common strategies include multi-task learning or retaining some pre-training data.</p>\n<p>Implementation steps: first build the instruction dataset ensuring format uniformity; then configure training parameters (learning rate \\(\\eta\\), batch size \\(B\\)); next fine-tune the model, monitoring validation loss; finally evaluate format compliance, e.g., calculate format match rate \\(F = \\frac{\\text{samples conforming to format}}{\\text{total samples}}\\). Evaluation should compare pre- and post-tuning performance using independent test sets. Common misconceptions include \"instruction tuning requires massive data\" and \"tuned models do not forget.\" In reality, data quality takes priority; fine-tuning may alter model behavior, requiring degradation detection via evaluation. Failure modes include overfitting (model mechanically copies examples) or format drift (output gradually deviates from standard). For diagnosis, analyze error case attention patterns or use probe classifiers. The following code block demonstrates instruction tuning implementation workflow using lightweight alternatives to avoid large model downloads:</p>\n<pre><code># Lightweight alternative: simulate instruction tuning effect using TF-IDF and rules\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\n\n# Inline construction of instruction dataset: product requirements document examples\ninstructions = [\n    \"Write a requirements document for login functionality\",\n    \"Write a requirements document for a payment interface\",\n    \"Write a requirements document for user profile update\"\n]\nresponses = [\n    \"Requirements document format: 1. Function description 2. Input parameters 3. Output results 4. Error handling. Login function: ...\",\n    \"Requirements document format: 1. Function description 2. Input parameters 3. Output results 4. Error handling. Payment interface: ...\",\n    \"Requirements document format: 1. Function description 2. Input parameters 3. Output results 4. Error handling. User profile update: ...\"\n]\n\nprint(\"Instruction dataset size:\", len(instructions))\nprint(\"Example instruction-response pairs:\")\nfor i in range(min(2, len(instructions))):\n    print(f\"  Instruction: {instructions[i]}\")\n    print(f\"  Response: {responses[i][:60]}...\")\n\n# Simulate fine-tuning: train a simple format classifier (replace with model fine-tuning in practice)\n# Use TF-IDF vectorization to check if responses contain format keywords\nvectorizer = TfidfVectorizer()\nX = vectorizer.fit_transform(responses)\nformat_keywords = [\"Function description\", \"Input parameters\", \"Output results\", \"Error handling\"]\nkeyword_vectors = vectorizer.transform(format_keywords)\n\n# Compute similarity between each response and format keywords\nsimilarities = cosine_similarity(X, keyword_vectors)\nformat_scores = similarities.mean(axis=1)  # Average similarity as format compliance\n\nprint(\"\\nFormat compliance evaluation:\")\nfor i, score in enumerate(format_scores):\n    print(f\"  Response {i+1} format compliance: {score:.3f}\")\nprint(\"Metric formula: format compliance F = average cosine similarity\")\nprint(\"Threshold setting: F > 0.5 considered format correct\")\ncorrect = sum(format_scores > 0.5)\nprint(f\"Format correctness rate: {correct}/{len(responses)} = {correct/len(responses):.1%}\")</code></pre>\n<p>Through systematic application of prompt engineering and instruction tuning, product managers and Prompt Engineers can build stable, efficient large language model workflows, transforming vague requirements into precise outputs.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：提示工程与指令调优 · 结构总览 · 数据：课程大纲】在设计《提示工程与指令调优》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 提示工程与指令调优 · 结构总览 · Data: 课程大纲】When outlining \"提示工程与指令调优\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：提示工程与指令调优 · worked example · 数据：掌握有效的提示设计方法 数据/代码】在复现《提示工程与指令调优》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 提示工程与指令调优 · worked example · Data: 掌握有效的提示设计方法 数据/代码】While reproducing the worked example in \"提示工程与指令调优\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：提示工程与指令调优 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《提示工程与指令调优》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 提示工程与指令调优 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"提示工程与指令调优\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：提示工程与指令调优 · 参考资料 · 数据：课程引用文献】当引用文献支撑《提示工程与指令调优》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 提示工程与指令调优 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"提示工程与指令调优\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models（arXiv，2022）",
+          "en": "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models (arXiv, 2022)"
+        },
+        "url": "https://arxiv.org/abs/2201.11903"
+      },
+      {
+        "label": {
+          "zh": "Prompt Engineering Guide（Prompting Guide，2023）",
+          "en": "Prompt Engineering Guide (Prompting Guide, 2023)"
+        },
+        "url": "https://www.promptingguide.ai/"
+      },
+      {
+        "label": {
+          "zh": "Finetuned Language Models Are Zero-Shot Learners（arXiv，2021）",
+          "en": "Finetuned Language Models Are Zero-Shot Learners (arXiv, 2021)"
+        },
+        "url": "https://arxiv.org/abs/2109.01652"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-09-prompting-zh.mp3"
+    },
+    "meta": {
+      "category": "Large Language Models & Prompting",
+      "level": "5. Generative AI & Large Models",
+      "difficultyScore": 2,
+      "related": [
+        "Prompt Engineering",
+        "Instruction Tuning"
+      ],
+      "learningObjectives": [
+        "掌握有效的提示设计方法",
+        "应用指令调优改善模型表现"
+      ],
+      "personas": [
+        "产品经理",
+        "Prompt Engineer"
+      ],
+      "contextual_notes": {
+        "why_now": "Mastering prompt engineering and instruction tuning now enables teams to establish reusable practices in large language models and prompting.",
+        "best_for": "Suitable for product managers and Prompt Engineers needing to quickly absorb generative AI and large model topics.",
+        "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+      },
+      "tone_profile": {
+        "persona": "产品经理 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 产品经理、Prompt Engineer，帮助他们把 提示工程与指令调优 应用于 Large Language Models & Prompting",
+        "prefersEnglish": false,
+        "industries": [
+          "产品经理",
+          "Prompt Engineer"
+        ],
+        "personas": [
+          "产品经理",
+          "Prompt Engineer"
+        ],
+        "pains": "在 Large Language Models & Prompting 场景缺乏 提示工程与指令调优 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "5. Generative AI & Large Models"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为产品经理，你曾如何设计产品需求文档来引导开发团队？现在面对大语言模型，你会如何将这种结构化引导思维转化为提示模板，以更精准地控制模型输出？",
+          "action_hint": "尝试将产品需求文档的要素（如用户故事、验收标准）映射到提示模板设计中"
+        },
+        {
+          "lang": "zh",
+          "question": "作为Prompt Engineer，你在日常工作中最常遇到哪些模型输出不稳定的情况？结合今天学习的提示工程与指令调优原理，你会如何设计系统化的测试流程来优化这些场景？",
+          "action_hint": "选择一个具体任务场景，思考如何通过迭代测试框架提升输出一致性"
+        }
+      ]
+    }
   }
 ]
