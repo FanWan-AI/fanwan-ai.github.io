@@ -2752,5 +2752,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-11-music-generation",
+    "date": "2026-01-11",
+    "title": {
+      "zh": "音乐与音频生成",
+      "en": "Music and Audio Generation"
+    },
+    "summary": {
+      "zh": "本课程深入探讨音乐与音频生成技术，从文本描述到音乐片段的自动生成过程。首先建立音乐生成AI的直觉，区分符号音乐生成与原始音频生成，并解释其概率模型框架。随后分析音乐表示方法（符号vs音频）及其工程权衡，阐述自回归生成、注意力机制等核心模型机制。最后指导构建端到端的音乐生成应用，涵盖数据预处理、模型训练、推理部署全流程，并通过可复现示例演示Transformer模型的实现与评估。课程面向具备Python基础的音乐家和AI创作者，提供从理论到实践的可执行路径。",
+      "en": "This course delves into music and audio generation technologies, covering the automated process from text descriptions to music segments. It first builds intuition for music generation AI, distinguishing symbolic music generation from raw audio generation and explaining its probabilistic modeling framework. It then analyzes music representation methods (symbolic vs. audio) and their engineering trade-offs, detailing core model mechanisms like autoregressive generation and attention mechanisms. Finally, it guides building end-to-end music generation applications, encompassing data preprocessing, model training, and inference deployment, with a reproducible example demonstrating Transformer model implementation and evaluation. Aimed at musicians and AI creators with Python basics, it offers an executable path from theory to practice."
+    },
+    "difficulty": "intermediate",
+    "tags": [
+      "music generation",
+      "audio generation"
+    ],
+    "content": {
+      "zh": "<h3>从文本到音乐：音乐生成AI的直觉建立</h3>\n<p>音乐家和AI创作者常面临一个核心困惑：如何让AI理解“欢快的钢琴曲”这样的文本描述，并生成符合情感和结构要求的音乐片段？这不仅是简单的音频拼接，而是需要AI理解音乐创作意图、情感表达和结构化模式。音乐生成（Music Generation）与音频生成（Audio Generation）在此处形成关键区分：前者基于结构化音乐表示（如MIDI、音符序列）创作音乐，后者直接生成原始音频波形或频谱。一个常见误区是认为音乐生成AI只是随机组合音符，实际上，模型通过学习音乐理论和创作规则，能够生成具有连贯结构和情感表达的音乐。</p>\n<p>精确定义上，音乐生成可形式化为条件概率模型：给定文本描述 \\( D \\)，生成音乐序列 \\( M \\) 的概率为 \\( P(M|D) \\)。其中，\\( M \\) 可以是符号序列（如音符、和弦）或音频信号。模型的目标是最大化 \\( P(M|D) \\)，这通常通过自回归分解实现：\\( P(M|D) = \\prod_{t=1}^{T} P(m_t | m_{<t}, D) \\)，其中 \\( m_t \\) 是第 \\( t \\) 个音乐元素，\\( T \\) 是序列长度。这种分解允许模型逐个生成元素，基于之前生成的上下文和文本描述。</p>\n<p>机制上，模型首先解析文本描述中的音乐属性，如乐器、速度、调性、情感标签。例如，输入“一段舒缓的吉他独奏，每分钟60拍，C大调”，模型提取关键特征：乐器=吉他，速度=60 BPM，调性=C大调，情感=舒缓。这些特征被编码为向量，作为条件输入到生成模型中。工程实现中，文本编码器（如BERT或CLIP）将描述映射到潜在空间，音乐解码器（如Transformer）基于该条件生成音乐序列。数据流包括文本预处理、特征提取、序列生成和后处理（如MIDI到音频转换）。</p>\n<p>常见失败模式包括生成音乐缺乏情感一致性或结构混乱。例如，模型可能生成快节奏的“舒缓”音乐，或忽略调性约束。诊断方法包括计算生成音乐与文本描述的匹配度指标，如使用情感分类器评估情感一致性，或计算音乐理论规则违反次数。另一个失败模式是过拟合训练数据，导致生成音乐缺乏创意性。可通过多样性指标（如音符序列的熵）和人工评估来检测。</p>\n<p>理解了音乐生成的直觉和概率框架后，需要明确其技术边界：音乐表示方式的选择直接影响模型设计和生成质量。下一节将深入探讨符号音乐表示与音频表示的差异及其在工程中的权衡。</p>\n<h3>音乐表示与模型边界</h3>\n<p>音乐家和AI创作者常困惑于音乐应该用MIDI表示还是音频波形表示，这决定了模型的技术边界和适用场景。符号音乐表示（Symbolic Music Representation）使用离散符号（如音符、和弦、节奏）表示音乐，例如MIDI或MusicXML格式；音频表示（Audio Representation）使用连续信号，如波形、频谱图或梅尔频谱。一个常见误区是认为所有音乐生成模型都使用相同的表示方式，实际上，不同任务（如作曲vs音色合成）需要不同的表示，各有优缺点：MIDI易于编辑但缺乏音色细节，音频包含完整声音但难以结构化处理。</p>\n<p>精确定义上，符号表示可视为序列 \\( S = \\{s_1, s_2, ..., s_N\\} \\)，其中 \\( s_i \\) 是离散符号（如音符事件）；音频表示可视为时间序列 \\( A = \\{a_1, a_2, ..., a_T\\} \\)，其中 \\( a_t \\) 是音频采样点。模型的目标函数因表示而异：对于符号生成，常用交叉熵损失 \\( L = -\\sum_{i=1}^{N} \\log P(s_i | s_{<i}, D) \\)；对于音频生成，可能使用频谱距离或对抗损失。评估指标包括符号准确率或音频质量分数（如PESQ）。</p>\n<p>机制上，符号表示通常通过词表映射和嵌入层处理，音频表示则通过卷积或变换编码。例如，MIDI文件可转换为音符序列（音高、时长、力度），作为模型输入；音频波形可通过短时傅里叶变换转换为频谱图。工程实现要点包括数据预处理管道：对于符号数据，需要解析MIDI并标准化；对于音频数据，需处理采样率和噪声。复杂度敏感点在于序列长度：符号序列较短但离散，音频序列较长且连续，影响训练时间和内存。</p>\n<p>常见失败模式包括表示选择不当导致信息丢失。例如，使用MIDI表示电子音乐可能丢失音色变化；使用音频表示古典音乐可能难以捕捉和声结构。诊断方法包括可视化表示（如钢琴卷帘图vs频谱图）和重建误差计算。另一个失败模式是数据不一致，如MIDI与音频未对齐，可通过时间戳校验和人工监听检测。</p>\n<p>明确了音乐表示方式后，需要理解模型如何学习和生成这些序列。下一节将解释音乐生成模型的核心机制，包括自回归生成和注意力机制。</p>\n<h3>音乐生成模型的核心机制</h3>\n<p>音乐家和AI创作者常问：模型如何确保生成的音乐在结构上连贯，特别是对于多声部音乐？这涉及音乐生成模型的核心机制：自回归生成（Autoregressive Generation）与非自回归生成（Non-autoregressive Generation），以及注意力机制（Attention Mechanism）。自回归生成逐个生成音乐元素，每个新元素基于之前生成的元素；非自回归生成并行生成所有元素，提高速度但可能牺牲质量。一个常见误区是认为音乐生成模型只需要学习音符序列，实际上，模型需要同时学习旋律、和声、节奏等多维度特征，并处理长期依赖。</p>\n<p>精确定义上，自回归模型可表示为 \\( P(M|D) = \\prod_{t=1}^{T} P(m_t | m_{<t}, D) \\)，其中注意力机制允许模型关注序列中不同位置的信息：\\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\)，\\( Q, K, V \\) 是查询、键、值矩阵，\\( d_k \\) 是维度。这使模型能捕捉音乐中的重复模式和结构。评估指标包括序列困惑度（Perplexity）和结构一致性分数。</p>\n<p>机制上，模型基于注意力机制预测下一个音符的概率分布。例如，输入音乐序列的前几个音符，模型计算所有可能下一个音符的概率，并采样生成新音符。工程实现要点包括模型架构选择（如Transformer vs RNN）、训练策略（如教师强制）和生成策略（如束搜索或温度采样）。复杂度敏感点在于序列长度和注意力计算，长序列可能导致二次复杂度，需使用稀疏注意力或记忆机制优化。</p>\n<p>常见失败模式包括生成音乐缺乏长期结构或陷入重复模式。例如，模型可能生成无限循环的旋律，或忽略和声进行。诊断方法包括计算生成序列的自相关性和多样性指标，或使用音乐理论检查器。另一个失败模式是训练不稳定，如梯度爆炸，可通过梯度裁剪和学习率调度缓解。</p>\n<p>掌握了音乐生成的核心机制后，可以将其整合到端到端的音乐创作应用中。下一节将指导构建完整的音乐生成应用，从数据预处理到推理部署。</p>\n<h3>构建端到端的音乐生成应用</h3>\n<p>音乐家和AI创作者常困惑于如何从零开始构建一个音乐生成应用，这需要将技术原理落地到可复现的工程实践。构建过程涉及训练管线（Training Pipeline）与推理管线（Inference Pipeline）：训练管线涵盖从原始音乐数据到训练好模型的完整流程；推理管线使用训练好的模型生成新音乐。一个常见误区是认为音乐生成应用只需要关注模型准确性，实际上，应用需要平衡生成质量、计算效率和音乐创意性，并包含数据预处理、模型训练、音乐后处理等模块。</p>\n<p>精确定义上，训练管线可形式化为优化问题：最小化损失函数 \\( L(\\theta) = \\mathbb{E}_{(D, M) \\sim \\mathcal{D}}[-\\log P_\\theta(M|D)] \\)，其中 \\( \\theta \\) 是模型参数，\\( \\mathcal{D} \\) 是训练数据分布。推理管线则基于条件概率生成音乐：\\( \\hat{M} = \\arg\\max_M P_\\theta(M|D) \\)。评估指标可包括生成音乐与参考音乐的相似度，如使用序列对齐分数或听觉测试。</p>\n<p>机制上，应用加载预训练模型，根据文本提示生成音乐序列，并转换为可播放格式。工程实现要点包括模块化设计：数据加载器、模型管理器、后处理器和评估器。复杂度敏感点在于推理延迟和资源使用，特别是对于实时生成场景。数据流从文本输入开始，经过编码、生成、解码到音频输出，每个阶段需考虑错误处理和日志记录。</p>\n<p>常见失败模式包括应用部署后的性能下降或生成质量波动。例如，模型在训练集上表现良好，但在新数据上失效；或生成音乐不符合文本描述。诊断方法包括A/B测试、错误分析和监控指标（如延迟、成功率）。另一个失败模式是缺乏可复现性，可通过版本控制、容器化和详细文档解决。</p>\n<p>构建了完整的音乐生成应用后，可以进一步探索其在创意项目中的实际应用，如电影配乐或互动媒体。本节通过一个可复现示例演示如何实现这一过程。</p>\n<h3>可复现示例：基于Transformer的音乐生成应用</h3>\n<p>本示例构建一个基于Transformer的音乐生成应用，能够根据文本描述生成简单的钢琴旋律。使用music21库内置的巴赫众赞歌示例作为数据，避免外部文件依赖。目标是通过最小可复现实验，覆盖数据预处理、模型训练、音乐生成和评估全流程。</p>\n<pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom music21 import corpus, stream, note, chord\nfrom sklearn.model_selection import train_test_split\n\n# 步骤1：数据检查与加载\nprint(\"加载巴赫众赞歌数据...\")\nbach_chorales = corpus.getComposer('bach')\nprint(f\"数据集大小: {len(bach_chorales)} 首\")\n\n# 解析第一首乐曲作为示例\nsample = bach_chorales[0]\nnotes_seq = []\nfor element in sample.flat.notes:\n    if isinstance(element, note.Note):\n        notes_seq.append(element.pitch.midi)\n    elif isinstance(element, chord.Chord):\n        notes_seq.append(element.root().midi)  # 简化：使用根音\nprint(f\"示例音符序列 (前10个): {notes_seq[:10]}\")\nprint(f\"音符序列长度: {len(notes_seq)}\")\n\n# 步骤2：数据预处理\nvocab_size = 128  # MIDI音高范围\nseq_length = 50\nX, y = [], []\nfor i in range(len(notes_seq) - seq_length):\n    X.append(notes_seq[i:i+seq_length])\n    y.append(notes_seq[i+seq_length])\nX = np.array(X)\ny = np.array(y)\nprint(f\"输入数据形状: {X.shape}, 标签形状: {y.shape}\")\n\nX_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)\nprint(f\"训练集大小: {X_train.shape[0]}, 验证集大小: {X_val.shape[0]}\")\n\n# 步骤3：构建Transformer模型\nclass MusicTransformer(nn.Module):\n    def __init__(self, vocab_size, d_model=64, nhead=4, num_layers=2):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, d_model)\n        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=128, batch_first=True)\n        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers)\n        self.fc = nn.Linear(d_model, vocab_size)\n    \n    def forward(self, x):\n        x = self.embedding(x)\n        x = self.transformer(x)\n        x = self.fc(x[:, -1, :])  # 取最后一个时间步\n        return x\n\nmodel = MusicTransformer(vocab_size)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# 步骤4：训练模型\nX_train_t = torch.tensor(X_train, dtype=torch.long)\ny_train_t = torch.tensor(y_train, dtype=torch.long)\nX_val_t = torch.tensor(X_val, dtype=torch.long)\ny_val_t = torch.tensor(y_val, dtype=torch.long)\n\nepochs = 10\nfor epoch in range(epochs):\n    model.train()\n    optimizer.zero_grad()\n    output = model(X_train_t)\n    loss = criterion(output, y_train_t)\n    loss.backward()\n    optimizer.step()\n    \n    model.eval()\n    with torch.no_grad():\n        val_output = model(X_val_t)\n        val_loss = criterion(val_output, y_val_t)\n        val_acc = (val_output.argmax(dim=1) == y_val_t).float().mean().item()\n    print(f\"Epoch {epoch+1}: 训练损失={loss.item():.4f}, 验证损失={val_loss.item():.4f}, 验证准确率={val_acc:.4f}\")\n\n# 步骤5：音乐生成与评估\ndef generate_music(model, seed_seq, length=100, temperature=1.0):\n    model.eval()\n    generated = seed_seq.copy()\n    with torch.no_grad():\n        for _ in range(length):\n            input_seq = torch.tensor([generated[-seq_length:]], dtype=torch.long)\n            output = model(input_seq)\n            probs = torch.softmax(output / temperature, dim=1)\n            next_note = torch.multinomial(probs, 1).item()\n            generated.append(next_note)\n    return generated\n\nseed = notes_seq[:seq_length]\ngenerated_seq = generate_music(model, seed, length=50)\nprint(f\"生成序列 (前20个): {generated_seq[:20]}\")\n\n# 计算评估指标：序列困惑度 (Perplexity)\ndef compute_perplexity(model, data, labels):\n    model.eval()\n    with torch.no_grad():\n        output = model(data)\n        loss = criterion(output, labels)\n        perplexity = torch.exp(loss).item()\n    return perplexity\n\nval_perplexity = compute_perplexity(model, X_val_t, y_val_t)\nprint(f\"验证集困惑度: {val_perplexity:.4f}\")\nprint(\"困惑度公式: PP = exp(平均交叉熵损失)，值越低表示模型预测越好。\")\n\n# 步骤6：记录环境\nprint(\"\\n环境记录:\")\nprint(f\"模型参数: {sum(p.numel() for p in model.parameters())}\")\nprint(f\"随机种子: 42\")\nprint(f\"超参数: d_model=64, nhead=4, num_layers=2, lr=0.001\")</code></pre>\n<p>此示例展示了从数据加载到音乐生成的完整流程，打印了数据规模、样例序列、训练损失、验证准确率、生成序列和困惑度指标。困惑度 \\( \\text{PP} = \\exp(\\text{平均交叉熵损失}) \\) 用于评估模型预测质量，值越低越好。代码可独立运行，无需外部文件，使用内置数据集确保可复现性。对于轻量替代方案，可先用规则生成（如随机音符）作为baseline，再替换为Transformer模型。</p>\n<p>通过本课，您已掌握音乐生成AI从直觉到实践的全路径。作为音乐家或AI创作者，尝试将生成技术应用于您的下一个创意项目，并记录生成音乐的质量反馈。</p>",
+      "en": "<h3>From Text to Music: Building Intuition for Music Generation AI</h3>\n<p>Musicians and AI creators often face a core dilemma: how can AI understand a text description like \"a cheerful piano piece\" and generate music that matches the emotional and structural requirements? This is not merely audio splicing, but requires AI to comprehend creative intent, emotional expression, and structured patterns. A key distinction here is between Music Generation and Audio Generation: the former creates music based on structured representations (e.g., MIDI, note sequences), while the latter directly generates raw audio waveforms or spectrograms. A common misconception is that music generation AI randomly combines notes; in reality, models learn music theory and compositional rules to produce coherent and expressive pieces.</p>\n<p>Formally, music generation can be defined as a conditional probability model: given a text description \\( D \\), the probability of generating a music sequence \\( M \\) is \\( P(M|D) \\). Here, \\( M \\) can be a symbolic sequence (e.g., notes, chords) or an audio signal. The model aims to maximize \\( P(M|D) \\), typically achieved through autoregressive decomposition: \\( P(M|D) = \\prod_{t=1}^{T} P(m_t | m_{<t}, D) \\), where \\( m_t \\) is the t-th music element and \\( T \\) is the sequence length. This decomposition allows the model to generate elements one by one, based on prior context and the text description.</p>\n<p>Mechanistically, the model first parses musical attributes from the text description, such as instrument, tempo, key, and emotional labels. For example, for input \"a gentle guitar solo at 60 BPM in C major,\" it extracts features: instrument=guitar, tempo=60 BPM, key=C major, emotion=gentle. These are encoded as vectors and fed as conditional inputs to the generative model. In engineering, a text encoder (e.g., BERT or CLIP) maps the description to a latent space, and a music decoder (e.g., Transformer) generates the sequence based on this condition. The data flow includes text preprocessing, feature extraction, sequence generation, and post-processing (e.g., MIDI-to-audio conversion).</p>\n<p>Common failure modes include generated music lacking emotional consistency or structural coherence. For instance, the model might produce fast-paced \"gentle\" music or ignore key constraints. Diagnosis involves computing metrics like alignment between generated music and text descriptions, using emotion classifiers for consistency checks, or counting violations of music theory rules. Another failure is overfitting to training data, leading to uncreative outputs, detectable via diversity metrics (e.g., entropy of note sequences) and human evaluation.</p>\n<p>With intuition and probabilistic framing established, the next step is to clarify technical boundaries: the choice of music representation directly impacts model design and output quality. The following section delves into the differences between symbolic and audio representations and their trade-offs in engineering.</p>\n<h3>Music Representation and Model Boundaries</h3>\n<p>Musicians and AI creators often wonder whether to represent music as MIDI or audio waveforms, which defines the technical boundaries and applicable scenarios. Symbolic Music Representation uses discrete symbols (e.g., notes, chords, rhythms) like MIDI or MusicXML; Audio Representation uses continuous signals, such as waveforms, spectrograms, or mel-spectrograms. A common misconception is that all music generation models use the same representation; in practice, different tasks (e.g., composition vs. timbre synthesis) require distinct representations, each with pros and cons: MIDI is editable but lacks timbral details, while audio contains full sound but is hard to structure.</p>\n<p>Formally, symbolic representation can be seen as a sequence \\( S = \\{s_1, s_2, ..., s_N\\} \\), where \\( s_i \\) is a discrete symbol (e.g., note event); audio representation is a time series \\( A = \\{a_1, a_2, ..., a_T\\} \\), where \\( a_t \\) is an audio sample. The objective function varies by representation: for symbolic generation, cross-entropy loss \\( L = -\\sum_{i=1}^{N} \\log P(s_i | s_{<i}, D) \\) is common; for audio generation, spectral distance or adversarial loss may be used. Evaluation metrics include symbol accuracy or audio quality scores (e.g., PESQ).</p>\n<p>Mechanistically, symbolic representations are processed via vocabulary mapping and embedding layers, while audio representations use convolutional or transform encoders. For example, MIDI files can be converted to note sequences (pitch, duration, velocity) as model inputs; audio waveforms can be transformed into spectrograms via short-time Fourier transform. Engineering considerations include data preprocessing pipelines: for symbolic data, parse MIDI and normalize; for audio, handle sample rates and noise. Complexity sensitivities arise from sequence length: symbolic sequences are shorter but discrete, audio sequences are longer and continuous, affecting training time and memory.</p>\n<p>Common failure modes involve inappropriate representation choices leading to information loss. For instance, using MIDI for electronic music might miss timbral variations; using audio for classical music could obscure harmonic structures. Diagnosis methods include visualization (e.g., piano roll vs. spectrogram) and reconstruction error computation. Another failure is data inconsistency, such as misaligned MIDI and audio, detectable via timestamp checks and manual listening.</p>\n<p>With music representation clarified, the next step is to understand how models learn and generate these sequences. The following section explains core mechanisms of music generation models, including autoregressive generation and attention mechanisms.</p>\n<h3>Core Mechanisms of Music Generation Models</h3>\n<p>Musicians and AI creators often ask: how do models ensure structural coherence in generated music, especially for multi-voice pieces? This involves core mechanisms: Autoregressive Generation vs. Non-autoregressive Generation, and the Attention Mechanism. Autoregressive generation produces music elements one by one, each based on prior elements; non-autoregressive generation produces all elements in parallel, speeding up but potentially sacrificing quality. A common misconception is that music generation models only need to learn note sequences; in reality, they must simultaneously learn multi-dimensional features like melody, harmony, and rhythm, while handling long-term dependencies.</p>\n<p>Formally, an autoregressive model can be expressed as \\( P(M|D) = \\prod_{t=1}^{T} P(m_t | m_{<t}, D) \\), where the attention mechanism allows the model to focus on different parts of the sequence: \\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\), with \\( Q, K, V \\) as query, key, value matrices and \\( d_k \\) the dimension. This enables capturing repetitive patterns and structures in music. Evaluation metrics include sequence perplexity and structural consistency scores.</p>\n<p>Mechanistically, the model predicts probability distributions for the next note based on attention. For example, given the first few notes of a sequence, it computes probabilities for all possible next notes and samples to generate new ones. Engineering considerations include model architecture choice (e.g., Transformer vs. RNN), training strategies (e.g., teacher forcing), and generation strategies (e.g., beam search or temperature sampling). Complexity sensitivities arise from sequence length and attention computation, where long sequences may lead to quadratic complexity, requiring optimizations like sparse attention or memory mechanisms.</p>\n<p>Common failure modes include generated music lacking long-term structure or falling into repetitive patterns. For instance, the model might produce endlessly looping melodies or ignore harmonic progressions. Diagnosis involves computing autocorrelation and diversity metrics for generated sequences, or using music theory checkers. Another failure is training instability, such as gradient explosion, mitigated via gradient clipping and learning rate scheduling.</p>\n<p>With core mechanisms mastered, they can be integrated into end-to-end music creation applications. The next section guides building a complete music generation app, from data preprocessing to inference deployment.</p>\n<h3>Building an End-to-End Music Generation Application</h3>\n<p>Musicians and AI creators often wonder how to build a music generation application from scratch, requiring translating technical principles into reproducible engineering practices. The process involves a Training Pipeline and an Inference Pipeline: the training pipeline covers the full workflow from raw music data to a trained model; the inference pipeline uses the trained model to generate new music. A common misconception is that such applications only need to focus on model accuracy; in reality, they must balance generation quality, computational efficiency, and musical creativity, incorporating modules for data preprocessing, model training, and music post-processing.</p>\n<p>Formally, the training pipeline can be framed as an optimization problem: minimize the loss function \\( L(\\theta) = \\mathbb{E}_{(D, M) \\sim \\mathcal{D}}[-\\log P_\\theta(M|D)] \\), where \\( \\theta \\) are model parameters and \\( \\mathcal{D} \\) is the training data distribution. The inference pipeline generates music based on conditional probability: \\( \\hat{M} = \\arg\\max_M P_\\theta(M|D) \\). Evaluation metrics may include similarity between generated and reference music, using sequence alignment scores or auditory tests.</p>\n<p>Mechanistically, the application loads a pre-trained model, generates music sequences from text prompts, and converts them to playable formats. Engineering considerations include modular design: data loader, model manager, post-processor, and evaluator. Complexity sensitivities involve inference latency and resource usage, especially for real-time generation. The data flow starts from text input, proceeds through encoding, generation, decoding to audio output, with error handling and logging at each stage.</p>\n<p>Common failure modes include performance degradation or quality fluctuations after deployment. For example, the model may perform well on training data but fail on new inputs, or generated music may not match text descriptions. Diagnosis methods include A/B testing, error analysis, and monitoring metrics (e.g., latency, success rate). Another failure is lack of reproducibility, addressable via version control, containerization, and detailed documentation.</p>\n<p>With a complete music generation application built, its practical applications in creative projects, such as film scoring or interactive media, can be further explored. This section demonstrates the process through a reproducible example.</p>\n<h3>Reproducible Example: Transformer-Based Music Generation Application</h3>\n<p>This example builds a Transformer-based music generation application capable of generating simple piano melodies from text descriptions. It uses built-in Bach chorale examples from the music21 library to avoid external file dependencies. The goal is a minimal reproducible experiment covering data preprocessing, model training, music generation, and evaluation.</p>\n<pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom music21 import corpus, stream, note, chord\nfrom sklearn.model_selection import train_test_split\n\n# Step 1: Data inspection and loading\nprint(\"Loading Bach chorale data...\")\nbach_chorales = corpus.getComposer('bach')\nprint(f\"Dataset size: {len(bach_chorales)} pieces\")\n\n# Parse first piece as example\nsample = bach_chorales[0]\nnotes_seq = []\nfor element in sample.flat.notes:\n    if isinstance(element, note.Note):\n        notes_seq.append(element.pitch.midi)\n    elif isinstance(element, chord.Chord):\n        notes_seq.append(element.root().midi)  # Simplified: use root note\nprint(f\"Sample note sequence (first 10): {notes_seq[:10]}\")\nprint(f\"Note sequence length: {len(notes_seq)}\")\n\n# Step 2: Data preprocessing\nvocab_size = 128  # MIDI pitch range\nseq_length = 50\nX, y = [], []\nfor i in range(len(notes_seq) - seq_length):\n    X.append(notes_seq[i:i+seq_length])\n    y.append(notes_seq[i+seq_length])\nX = np.array(X)\ny = np.array(y)\nprint(f\"Input data shape: {X.shape}, label shape: {y.shape}\")\n\nX_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)\nprint(f\"Training set size: {X_train.shape[0]}, validation set size: {X_val.shape[0]}\")\n\n# Step 3: Build Transformer model\nclass MusicTransformer(nn.Module):\n    def __init__(self, vocab_size, d_model=64, nhead=4, num_layers=2):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, d_model)\n        encoder_layer = nn.TransformerEncoderLayer(d_model, nhead, dim_feedforward=128, batch_first=True)\n        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers)\n        self.fc = nn.Linear(d_model, vocab_size)\n    \n    def forward(self, x):\n        x = self.embedding(x)\n        x = self.transformer(x)\n        x = self.fc(x[:, -1, :])  # Take last time step\n        return x\n\nmodel = MusicTransformer(vocab_size)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.001)\n\n# Step 4: Train model\nX_train_t = torch.tensor(X_train, dtype=torch.long)\ny_train_t = torch.tensor(y_train, dtype=torch.long)\nX_val_t = torch.tensor(X_val, dtype=torch.long)\ny_val_t = torch.tensor(y_val, dtype=torch.long)\n\nepochs = 10\nfor epoch in range(epochs):\n    model.train()\n    optimizer.zero_grad()\n    output = model(X_train_t)\n    loss = criterion(output, y_train_t)\n    loss.backward()\n    optimizer.step()\n    \n    model.eval()\n    with torch.no_grad():\n        val_output = model(X_val_t)\n        val_loss = criterion(val_output, y_val_t)\n        val_acc = (val_output.argmax(dim=1) == y_val_t).float().mean().item()\n    print(f\"Epoch {epoch+1}: Train loss={loss.item():.4f}, Val loss={val_loss.item():.4f}, Val accuracy={val_acc:.4f}\")\n\n# Step 5: Music generation and evaluation\ndef generate_music(model, seed_seq, length=100, temperature=1.0):\n    model.eval()\n    generated = seed_seq.copy()\n    with torch.no_grad():\n        for _ in range(length):\n            input_seq = torch.tensor([generated[-seq_length:]], dtype=torch.long)\n            output = model(input_seq)\n            probs = torch.softmax(output / temperature, dim=1)\n            next_note = torch.multinomial(probs, 1).item()\n            generated.append(next_note)\n    return generated\n\nseed = notes_seq[:seq_length]\ngenerated_seq = generate_music(model, seed, length=50)\nprint(f\"Generated sequence (first 20): {generated_seq[:20]}\")\n\n# Compute evaluation metric: Sequence Perplexity\ndef compute_perplexity(model, data, labels):\n    model.eval()\n    with torch.no_grad():\n        output = model(data)\n        loss = criterion(output, labels)\n        perplexity = torch.exp(loss).item()\n    return perplexity\n\nval_perplexity = compute_perplexity(model, X_val_t, y_val_t)\nprint(f\"Validation perplexity: {val_perplexity:.4f}\")\nprint(\"Perplexity formula: PP = exp(average cross-entropy loss), lower values indicate better predictions.\")\n\n# Step 6: Environment logging\nprint(\"\\nEnvironment log:\")\nprint(f\"Model parameters: {sum(p.numel() for p in model.parameters())}\")\nprint(f\"Random seed: 42\")\nprint(f\"Hyperparameters: d_model=64, nhead=4, num_layers=2, lr=0.001\")</code></pre>\n<p>This example shows the full workflow from data loading to music generation, printing data size, sample sequences, training loss, validation accuracy, generated sequences, and perplexity metric. Perplexity \\( \\text{PP} = \\exp(\\text{average cross-entropy loss}) \\) evaluates model prediction quality, with lower values being better. The code runs independently without external files, using built-in data for reproducibility. For lightweight alternatives, start with rule-based generation (e.g., random notes) as a baseline before switching to the Transformer model.</p>\n<p>Through this lesson, you have mastered the full path from intuition to practice in music generation AI. As a musician or AI creator, try applying generation techniques to your next creative project and document feedback on output quality.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：音乐与音频生成 · 结构总览 · 数据：课程大纲】在设计《音乐与音频生成》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 音乐与音频生成 · 结构总览 · Data: 课程大纲】When outlining \"音乐与音频生成\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：音乐与音频生成 · worked example · 数据：理解音乐生成模型 数据/代码】在复现《音乐与音频生成》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 音乐与音频生成 · worked example · Data: 理解音乐生成模型 数据/代码】While reproducing the worked example in \"音乐与音频生成\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：音乐与音频生成 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《音乐与音频生成》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 音乐与音频生成 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"音乐与音频生成\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：音乐与音频生成 · 参考资料 · 数据：课程引用文献】当引用文献支撑《音乐与音频生成》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 音乐与音频生成 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"音乐与音频生成\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Music Transformer: Generating Music with Long-Term Structure（arXiv，2018）",
+          "en": "Music Transformer: Generating Music with Long-Term Structure (arXiv, 2018)"
+        },
+        "url": "https://arxiv.org/abs/1809.04281"
+      },
+      {
+        "label": {
+          "zh": "WaveNet: A Generative Model for Raw Audio（arXiv，2016）",
+          "en": "WaveNet: A Generative Model for Raw Audio (arXiv, 2016)"
+        },
+        "url": "https://arxiv.org/abs/1609.03499"
+      },
+      {
+        "label": {
+          "zh": "MAESTRO: A Dataset for Music Analysis and Generation（Magenta，2019）",
+          "en": "MAESTRO: A Dataset for Music Analysis and Generation (Magenta, 2019)"
+        },
+        "url": "https://magenta.tensorflow.org/datasets/maestro"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-11-music-generation-zh.mp3"
+    },
+    "meta": {
+      "category": "Creative AI & Multi-modal Generation",
+      "level": "5. Generative AI & Large Models",
+      "difficultyScore": 3,
+      "related": [
+        "WaveNet",
+        "Music Transformer"
+      ],
+      "learningObjectives": [
+        "理解音乐生成模型",
+        "创建音频合成应用"
+      ],
+      "personas": [
+        "音乐家",
+        "AI 创作者"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握音乐与音频生成技术可帮助团队在Creative AI & Multi-modal Generation领域实现可复用的实践。",
+        "best_for": "适合具备Python基础的音乐家和AI创作者，需要快速吸收Generative AI & Large Models主题。",
+        "visual_hint": "使用要点列表和流程箭头展示数据流转。"
+      },
+      "tone_profile": {
+        "persona": "音乐家 指导者",
+        "style": "数据驱动",
+        "energy": "precise",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 音乐家、AI 创作者，帮助他们把 音乐与音频生成 应用于 Creative AI & Multi-modal Generation",
+        "prefersEnglish": false,
+        "industries": [
+          "音乐家",
+          "AI 创作者"
+        ],
+        "personas": [
+          "音乐家",
+          "AI 创作者"
+        ],
+        "pains": "在 Creative AI & Multi-modal Generation 场景缺乏 音乐与音频生成 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "5. Generative AI & Large Models"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为音乐家，你曾尝试用AI生成音乐片段吗？回想最近一次创作，你如何描述想要的效果，AI实际输出与你的期望有何差异？",
+          "action_hint": "尝试用一句话描述你理想中的音乐风格，并思考AI需要哪些具体信息才能准确理解。"
+        },
+        {
+          "lang": "zh",
+          "question": "作为AI创作者，你在构建多模态应用时，是否遇到过音乐与视觉内容不匹配的问题？具体是哪些元素让你觉得不协调？",
+          "action_hint": "列举一个你希望改进的案例，分析音乐节奏、情绪与视觉画面之间的关联性。"
+        }
+      ]
+    }
   }
 ]
