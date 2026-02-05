@@ -2577,5 +2577,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-11-rlhf",
+    "date": "2026-01-11",
+    "title": {
+      "zh": "安全评估与 RLHF",
+      "en": "Safety Assessment and RLHF"
+    },
+    "summary": {
+      "zh": "本课程系统讲解大语言模型的安全评估与人类反馈强化学习（RLHF）技术。首先明确安全评估与RLHF的核心定义与技术边界，解释安全评估如何系统检测模型风险，RLHF如何通过三阶段训练优化模型行为。随后深入分析RLHF的数学机制，包括奖励建模的概率公式和PPO算法的目标函数，以及安全性指标的量化方法。最后提供端到端的工程实践指南，涵盖数据准备、模型训练、评估管线构建等关键环节，并通过可复现代码演示完整实施流程。课程强调可复现性和工程严谨性，为安全研究员和伦理顾问提供可执行的技术路径。",
+      "en": "This course systematically explores safety evaluation and Reinforcement Learning from Human Feedback (RLHF) techniques for large language models. We first clarify core definitions and technical boundaries of safety evaluation and RLHF, explaining how safety evaluation systematically detects model risks and how RLHF optimizes model behavior through three-stage training. We then analyze the mathematical mechanisms of RLHF, including probability formulas for reward modeling and objective functions for PPO algorithms, along with quantification methods for safety metrics. Finally, we provide end-to-end engineering practice guidelines covering key aspects such as data preparation, model training, and evaluation pipeline construction, demonstrated through reproducible code showing complete implementation workflows. The course emphasizes reproducibility and engineering rigor, offering executable technical pathways for security researchers and ethics advisors."
+    },
+    "difficulty": "intermediate",
+    "tags": [
+      "safety evaluation",
+      "RLHF"
+    ],
+    "content": {
+      "zh": "<h2>安全评估与RLHF：构建大语言模型的安全防线</h2>\n\n<p>随着大语言模型在内容生成、对话系统等领域的广泛应用，模型安全性已成为技术部署的核心关切。本课程面向安全研究员和伦理顾问，系统讲解如何通过人类反馈强化学习（RLHF）技术进行安全性评估与防御设计。我们将从基础定义出发，深入训练机制与评估原理，最终提供可复现的工程实践路径，帮助您构建端到端的安全评估管线。</p>\n\n<h3>为什么需要安全评估与RLHF？</h3>\n\n<p>当大语言模型生成有害、偏见或不符合伦理的内容时，不仅可能引发社会风险，还会损害用户信任。这种“生成有害内容”的困惑源于模型在预训练阶段学习了互联网上的所有数据，包括不良信息。安全评估与RLHF正是为了解决这一核心问题而发展起来的技术体系。</p>\n\n<p>安全评估（Safety Evaluation）指系统性地测试和验证大语言模型生成内容的安全性，确保模型在各种输入场景下都能产生符合伦理标准的输出。RLHF（Reinforcement Learning from Human Feedback，人类反馈强化学习）则是通过人类反馈进行强化学习，优化模型行为的技术框架。这两个概念共同构成了大语言模型安全防御的双支柱：评估发现问题，RLHF解决问题。</p>\n\n<p>从数学角度看，安全评估的目标是量化模型生成有害内容的概率。设输入查询为x，模型生成输出y，有害内容检测函数为h(y)∈{0,1}（1表示有害），则模型的有害内容生成概率可表示为：\\(P_{harmful} = \\mathbb{E}_{x\\sim D}[h(f_\\theta(x))]\\)，其中f_θ为模型参数化函数，D为输入分布。这个概率需要被控制在可接受阈值以下。</p>\n\n<p>在工程实现中，安全评估需要构建自动化测试管线，包括测试用例生成、模型响应收集、安全性评分等模块。关键复杂度在于测试用例的覆盖度——过于简单的测试无法发现边缘情况，过于复杂的测试则可能产生误报。延迟敏感点在于实时评估场景，需要在模型响应生成后快速进行安全性判断。</p>\n\n<p>常见误区是将安全评估视为一次性测试。实际上，随着模型更新、数据分布变化和攻击手段演进，安全评估需要持续迭代。失败模式包括评估指标过拟合（在测试集上表现良好但实际部署失败）、评估偏差（测试用例不代表真实用户查询）等。诊断方法包括交叉验证、对抗性测试和人工审核抽样。</p>\n\n<p>理解了安全评估与RLHF的必要性，接下来需要明确它们的具体定义和技术边界，为后续的机制分析奠定基础。</p>\n\n<h3>RLHF与安全评估的技术定义</h3>\n\n<p>如何量化模型安全性？这需要精确的技术定义和指标体系。RLHF通常包含三个阶段：监督微调（SFT）、奖励建模（Reward Modeling）和强化学习（RL）。安全评估则依赖红队评测（Red Teaming）等方法来系统检测风险。</p>\n\n<p>奖励建模（Reward Modeling）是基于人类偏好数据训练奖励函数的过程。给定模型输出对(y₁, y₂)和人类偏好标签r∈{1,2}（表示y₁优于y₂或反之），奖励模型的目标是学习一个函数R_φ(y)，使得\\(P(r=1|y_1,y_2) = \\sigma(R_\\phi(y_1) - R_\\phi(y_2))\\)，其中σ为sigmoid函数。这个奖励函数将人类偏好转化为可优化的数值信号。</p>\n\n<p>红队评测（Red Teaming）是模拟攻击者测试模型安全性的评估方法。在数学上，可以形式化为对抗性优化问题：\\(\\max_{x\\in\\mathcal{X}} P_{harmful}(f_\\theta(x))\\)，其中mathcal{X}为允许的输入空间。红队通过生成尽可能触发有害响应的查询，来评估模型的脆弱性。</p>\n\n<p>工程实现中，奖励建模需要高质量的人类标注数据，标注一致性是关键挑战。数据流包括：原始对话收集→标注指南设计→多轮标注→一致性检查→奖励模型训练。模块边界需要清晰分离数据预处理、模型训练和评估验证。复杂度主要来自标注成本和质量控制。</p>\n\n<p>常见误区是认为RLHF能完全消除所有安全风险。实际上，RLHF只能降低已知风险，无法预见所有新型攻击。失败模式包括奖励黑客（reward hacking，模型找到奖励函数漏洞获得高分但实际行为不安全）、分布外泛化失败等。诊断方法包括奖励函数敏感性分析、生成样本多样性检查。</p>\n\n<p>技术定义清晰后，需要深入理解RLHF训练机制和安全评估的工作原理，掌握从理论到实践的关键转化点。</p>\n\n<h3>RLHF训练机制与安全评估原理</h3>\n\n<p>RLHF训练为什么需要三阶段协同？这源于强化学习中的信用分配问题。监督微调提供初始行为对齐，奖励建模建立偏好信号，强化学习进行策略优化。三阶段协同确保模型既能学习人类偏好，又能保持语言生成质量。</p>\n\n<p>在强化学习阶段，常用PPO算法（Proximal Policy Optimization，近端策略优化）。目标函数为：\\(L^{CLIP}(\\theta) = \\mathbb{E}_t[\\min(r_t(\\theta)\\hat{A}_t, \\text{clip}(r_t(\\theta), 1-\\epsilon, 1+\\epsilon)\\hat{A}_t)]\\)，其中r_t(θ)=π_θ(a_t|s_t)/π_θ_old(a_t|s_t)为策略比，\\(\\hat{A}_t\\)为优势估计，ϵ为裁剪参数。这个公式平衡了策略更新幅度与稳定性。</p>\n\n<p>安全性指标（Safety Metrics）需要量化模型的安全性能。除了有害内容率，还可以计算误拒率（False Rejection Rate）：\\(FRR = \\frac{\\text{安全内容被误判为有害数}}{\\text{总安全内容数}}\\)。理想的安全评估系统需要在有害内容检测率和误拒率之间取得平衡。</p>\n\n<p>工程实现要点包括：1）数据管道需要处理对话对的序列化；2）奖励模型训练需要负采样策略处理不平衡数据；3）PPO训练需要策略网络和价值网络的双网络架构；4）评估模块需要并行化处理大量测试用例。延迟敏感点在于强化学习中的环境交互步骤。</p>\n\n<p>常见误区是认为RLHF训练数据越多越好。实际上，数据质量比数量更重要，低质量标注会引入噪声甚至错误偏好。失败模式包括过拟合人类偏好（在训练数据上表现良好但泛化差）、模式崩溃（生成多样性下降）等。诊断方法包括学习曲线分析、生成样本人工评估、奖励分布检查。</p>\n\n<p>理解了训练机制和评估原理，最后需要将这些知识转化为可执行的工程实践，构建端到端的安全评估与RLHF管线。</p>\n\n<h3>工程实践：构建安全评估与RLHF管线</h3>\n\n<p>如何开始第一个RLHF项目？这需要端到端的工程实施流程，从数据准备到模型部署。可复现性（Reproducibility）是工程实践的核心原则，确保实验在不同环境和时间下能产生相同结果。</p>\n\n<p>评估管线（Evaluation Pipeline）的数学基础是假设检验。设原假设H₀为“模型更新未改善安全性”，备择假设H₁为“模型更新改善了安全性”。使用配对t检验比较更新前后模型在测试集上的安全性得分：\\(t = \\frac{\\bar{d}}{s_d/\\sqrt{n}}\\)，其中\\(\\bar{d}\\)为得分差异的均值，s_d为标准差，n为测试样本数。当p值小于显著性水平（如0.05）时拒绝原假设。</p>\n\n<p>以下端到端最小可复现实验使用合成数据演示RLHF训练流程：</p>\n\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport random\n\n# Set random seeds for reproducibility\nrandom.seed(42)\nnp.random.seed(42)\n\n# Generate synthetic dialogue data\nn_samples = 1000\nqueries = [f\"query_{i}\" for i in range(n_samples)]\nresponses_A = [f\"response_A_{i}\" for i in range(n_samples)]\nresponses_B = [f\"response_B_{i}\" for i in range(n_samples)]\n\n# Simulate human preferences: response_A is safer 70% of the time\npreferences = []\nfor i in range(n_samples):\n    if random.random() < 0.7:\n        preferences.append(0)  # 0 indicates response_A is preferred\n    else:\n        preferences.append(1)  # 1 indicates response_B is preferred\n\n# Create features: simple text length and keyword features\ndef extract_features(responses):\n    features = []\n    for resp in responses:\n        length = len(resp)\n        has_safe_word = 1 if \"safe\" in resp.lower() else 0\n        features.append([length, has_safe_word])\n    return np.array(features)\n\nfeatures_A = extract_features(responses_A)\nfeatures_B = extract_features(responses_B)\n\n# Compute preference feature differences\nfeature_diffs = features_A - features_B\n\nprint(\"Dataset Information:\")\nprint(f\"Sample count: {n_samples}\")\nprint(f\"Feature dimensions: {feature_diffs.shape[1]}\")\nprint(f\"Preference distribution - Prefer A: {preferences.count(0)}, Prefer B: {preferences.count(1)}\")\nprint(\"\\nFirst 5 samples' feature differences:\")\nprint(feature_diffs[:5])\n\n# Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(\n    feature_diffs, preferences, test_size=0.2, random_state=42, stratify=preferences\n)\n\nprint(f\"\\nTraining set size: {X_train.shape[0]}, Test set size: {X_test.shape[0]}\")\n\n# Train reward model (simplified logistic regression)\nreward_model = LogisticRegression(random_state=42)\nreward_model.fit(X_train, y_train)\n\n# Predict and evaluate\ny_pred = reward_model.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nconf_matrix = confusion_matrix(y_test, y_pred)\n\nprint(f\"\\nReward model test accuracy: {accuracy:.4f}\")\nprint(\"Confusion matrix:\")\nprint(conf_matrix)\n\n# Compute safety metrics: assume a simple safety detection function\ndef safety_score(response):\n    \"\"\"Compute response safety score (0-1, higher is safer)\"\"\"\n    score = 0.5  # baseline\n    if \"safe\" in response.lower():\n        score += 0.3\n    if len(response) > 10:\n        score += 0.2\n    return min(score, 1.0)\n\n# Simulate safety comparison before/after RLHF\noriginal_scores = [safety_score(r) for r in responses_A[:100]]\n# Assume after RLHF, model learns to generate safer responses\nimproved_responses = [r.replace(\"response\", \"safe_response\") for r in responses_A[:100]]\nimproved_scores = [safety_score(r) for r in improved_responses]\n\noriginal_avg = np.mean(original_scores)\nimproved_avg = np.mean(improved_scores)\nimprovement = (improved_avg - original_avg) / original_avg * 100\n\nprint(f\"\\nSafety metric comparison:\")\nprint(f\"Original model average safety score: {original_avg:.4f}\")\nprint(f\"Post-RLHF average safety score: {improved_avg:.4f}\")\nprint(f\"Safety improvement: {improvement:.2f}%\")\n\n# Record environment information\nprint(\"\\nExperiment environment:\")\nprint(\"Random seeds: 42\")\nprint(\"Dataset: Synthetic dialogue data (n=1000)\")\nprint(\"Reward model: LogisticRegression\")\nprint(\"Evaluation metrics: Accuracy, Safety score\")</code></pre>\n\n<p>工程实现要点包括：1）数据版本控制；2）实验配置管理；3）模型检查点保存；4）评估结果可视化。评估管线需要模块化设计，支持不同评估方法的插件式扩展。复杂度主要来自大规模数据处理的并行化和分布式训练。</p>\n\n<p>常见误区是忽略随机种子设置，导致结果不可复现。失败模式包括数据泄露（训练数据混入测试数据）、评估偏差（测试集不代表真实分布）、计算资源不足导致训练不充分等。诊断方法包括学习曲线监控、验证集早停、消融实验分析。</p>\n\n<p>掌握了完整的工程流程，现在可以开始构建自己的安全评估与RLHF系统，将理论知识转化为实际可部署的安全解决方案。</p>\n\n<p>通过本课程的学习，您已经掌握了安全评估与RLHF的核心概念、数学原理和工程实践。从定义理解到机制分析，再到可复现的代码实现，这条学习路径为您提供了系统性的方法框架。在实际工作中，建议从简单的评估指标开始，逐步构建完整的评估管线，并结合领域知识不断迭代优化。</p>",
+      "en": "<h2>Safety Evaluation and RLHF: Building Security Defenses for Large Language Models</h2>\n\n<p>As large language models become widely deployed in content generation, dialogue systems, and other applications, model safety has emerged as a critical concern. This course is designed for security researchers and ethics advisors, providing a systematic exploration of safety evaluation and defense design through Reinforcement Learning from Human Feedback (RLHF). We begin with foundational definitions, delve into training mechanisms and evaluation principles, and conclude with reproducible engineering practices to help you build end-to-end safety evaluation pipelines.</p>\n\n<h3>Why Safety Evaluation and RLHF Are Necessary</h3>\n\n<p>When large language models generate harmful, biased, or unethical content, they not only pose societal risks but also undermine user trust. This \"harmful content generation\" problem stems from models learning from all internet data during pretraining, including undesirable information. Safety evaluation and RLHF have evolved as technical frameworks to address this core challenge.</p>\n\n<p>Safety evaluation refers to the systematic testing and validation of content generated by large language models to ensure outputs align with ethical standards across diverse input scenarios. RLHF (Reinforcement Learning from Human Feedback) is a technical framework that optimizes model behavior through reinforcement learning guided by human feedback. Together, these concepts form the dual pillars of LLM security: evaluation identifies problems, RLHF addresses them.</p>\n\n<p>From a mathematical perspective, safety evaluation aims to quantify the probability of harmful content generation. Let input query be x, model-generated output be y, and harmful content detection function be h(y)∈{0,1} (1 indicates harmful). The probability of harmful content generation can be expressed as: \\(P_{harmful} = \\mathbb{E}_{x\\sim D}[h(f_\\theta(x))]\\), where f_θ is the parameterized model function and D is the input distribution. This probability must be controlled below an acceptable threshold.</p>\n\n<p>In engineering implementation, safety evaluation requires building automated testing pipelines including test case generation, model response collection, and safety scoring modules. The key complexity lies in test case coverage—overly simple tests miss edge cases, while overly complex tests may produce false positives. Latency-sensitive points occur in real-time evaluation scenarios where safety judgments must be made quickly after model response generation.</p>\n\n<p>A common misconception is treating safety evaluation as a one-time test. In reality, as models update, data distributions shift, and attack methods evolve, safety evaluation requires continuous iteration. Failure modes include metric overfitting (good performance on test sets but failure in deployment) and evaluation bias (test cases not representing real user queries). Diagnostic methods include cross-validation, adversarial testing, and manual audit sampling.</p>\n\n<p>Understanding the necessity of safety evaluation and RLHF sets the stage for clarifying their precise definitions and technical boundaries, which we explore next.</p>\n\n<h3>Technical Definitions of RLHF and Safety Evaluation</h3>\n\n<p>How do we quantify model safety? This requires precise technical definitions and metric systems. RLHF typically involves three stages: supervised fine-tuning (SFT), reward modeling, and reinforcement learning (RL). Safety evaluation relies on methods like red teaming to systematically detect risks.</p>\n\n<p>Reward modeling is the process of training reward functions based on human preference data. Given model output pairs (y₁, y₂) and human preference labels r∈{1,2} (indicating y₁ is preferred over y₂ or vice versa), the reward model aims to learn a function R_φ(y) such that \\(P(r=1|y_1,y_2) = \\sigma(R_\\phi(y_1) - R_\\phi(y_2))\\), where σ is the sigmoid function. This reward function transforms human preferences into optimizable numerical signals.</p>\n\n<p>Red teaming is an evaluation method that simulates attackers to test model safety. Mathematically, this can be formalized as an adversarial optimization problem: \\(\\max_{x\\in\\mathcal{X}} P_{harmful}(f_\\theta(x))\\), where \\(\\mathcal{X}\\) is the permissible input space. Red teams generate queries that maximally trigger harmful responses to assess model vulnerabilities.</p>\n\n<p>In engineering implementation, reward modeling requires high-quality human-annotated data, with annotation consistency being a key challenge. The data flow includes: raw dialogue collection → annotation guideline design → multi-round annotation → consistency checking → reward model training. Module boundaries must clearly separate data preprocessing, model training, and evaluation validation. Complexity primarily arises from annotation costs and quality control.</p>\n\n<p>A common misconception is that RLHF can completely eliminate all safety risks. In reality, RLHF only reduces known risks and cannot anticipate all novel attacks. Failure modes include reward hacking (models exploiting reward function loopholes to achieve high scores while behaving unsafely) and out-of-distribution generalization failures. Diagnostic methods include reward function sensitivity analysis and generated sample diversity checks.</p>\n\n<p>With clear technical definitions established, we now delve into the training mechanisms of RLHF and the working principles of safety evaluation to understand the key transition points from theory to practice.</p>\n\n<h3>RLHF Training Mechanisms and Safety Evaluation Principles</h3>\n\n<p>Why does RLHF training require three-stage coordination? This stems from credit assignment problems in reinforcement learning. Supervised fine-tuning provides initial behavior alignment, reward modeling establishes preference signals, and reinforcement learning optimizes policies. Three-stage coordination ensures models learn human preferences while maintaining language generation quality.</p>\n\n<p>In the reinforcement learning stage, PPO (Proximal Policy Optimization) is commonly used. The objective function is: \\(L^{CLIP}(\\theta) = \\mathbb{E}_t[\\min(r_t(\\theta)\\hat{A}_t, \\text{clip}(r_t(\\theta), 1-\\epsilon, 1+\\epsilon)\\hat{A}_t)]\\), where r_t(θ)=π_θ(a_t|s_t)/π_θ_old(a_t|s_t) is the policy ratio, \\(\\hat{A}_t\\) is the advantage estimate, and ϵ is the clipping parameter. This formula balances policy update magnitude with stability.</p>\n\n<p>Safety metrics need to quantify model safety performance. Beyond harmful content rate, we can compute false rejection rate (FRR): \\(FRR = \\frac{\\text{Number of safe content incorrectly flagged as harmful}}{\\text{Total safe content}}\\). An ideal safety evaluation system must balance harmful content detection rate with false rejection rate.</p>\n\n<p>Engineering implementation points include: 1) Data pipelines must handle dialogue pair serialization; 2) Reward model training requires negative sampling strategies for imbalanced data; 3) PPO training needs dual-network architecture with policy and value networks; 4) Evaluation modules require parallel processing of numerous test cases. Latency-sensitive points occur during environment interaction steps in reinforcement learning.</p>\n\n<p>A common misconception is that more RLHF training data is always better. In practice, data quality outweighs quantity, as low-quality annotations introduce noise or incorrect preferences. Failure modes include overfitting to human preferences (good performance on training data but poor generalization) and mode collapse (reduced generation diversity). Diagnostic methods include learning curve analysis, manual evaluation of generated samples, and reward distribution inspection.</p>\n\n<p>Understanding training mechanisms and evaluation principles prepares us to translate this knowledge into executable engineering practices for building end-to-end safety evaluation and RLHF pipelines.</p>\n\n<h3>Engineering Practice: Building Safety Evaluation and RLHF Pipelines</h3>\n\n<p>How do you start your first RLHF project? This requires end-to-end engineering implementation workflows from data preparation to model deployment. Reproducibility is the core principle of engineering practice, ensuring experiments produce identical results across different environments and time points.</p>\n\n<p>The mathematical foundation of evaluation pipelines is hypothesis testing. Let null hypothesis H₀ be \"model update does not improve safety\" and alternative hypothesis H₁ be \"model update improves safety.\" Use paired t-tests to compare safety scores before and after updates on test sets: \\(t = \\frac{\\bar{d}}{s_d/\\sqrt{n}}\\), where \\(\\bar{d}\\) is the mean score difference, s_d is the standard deviation, and n is the number of test samples. Reject H₀ when p-value is below significance level (e.g., 0.05).</p>\n\n<p>The following end-to-end minimal reproducible experiment uses synthetic data to demonstrate RLHF training workflow:</p>\n\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport random\n\n# Set random seeds for reproducibility\nrandom.seed(42)\nnp.random.seed(42)\n\n# Generate synthetic dialogue data\nn_samples = 1000\nqueries = [f\"query_{i}\" for i in range(n_samples)]\nresponses_A = [f\"response_A_{i}\" for i in range(n_samples)]\nresponses_B = [f\"response_B_{i}\" for i in range(n_samples)]\n\n# Simulate human preferences: response_A is safer 70% of the time\npreferences = []\nfor i in range(n_samples):\n    if random.random() < 0.7:\n        preferences.append(0)  # 0 indicates response_A is preferred\n    else:\n        preferences.append(1)  # 1 indicates response_B is preferred\n\n# Create features: simple text length and keyword features\ndef extract_features(responses):\n    features = []\n    for resp in responses:\n        length = len(resp)\n        has_safe_word = 1 if \"safe\" in resp.lower() else 0\n        features.append([length, has_safe_word])\n    return np.array(features)\n\nfeatures_A = extract_features(responses_A)\nfeatures_B = extract_features(responses_B)\n\n# Compute preference feature differences\nfeature_diffs = features_A - features_B\n\nprint(\"Dataset Information:\")\nprint(f\"Sample count: {n_samples}\")\nprint(f\"Feature dimensions: {feature_diffs.shape[1]}\")\nprint(f\"Preference distribution - Prefer A: {preferences.count(0)}, Prefer B: {preferences.count(1)}\")\nprint(\"\\nFirst 5 samples' feature differences:\")\nprint(feature_diffs[:5])\n\n# Split train-test sets\nX_train, X_test, y_train, y_test = train_test_split(\n    feature_diffs, preferences, test_size=0.2, random_state=42, stratify=preferences\n)\n\nprint(f\"\\nTraining set size: {X_train.shape[0]}, Test set size: {X_test.shape[0]}\")\n\n# Train reward model (simplified logistic regression)\nreward_model = LogisticRegression(random_state=42)\nreward_model.fit(X_train, y_train)\n\n# Predict and evaluate\ny_pred = reward_model.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nconf_matrix = confusion_matrix(y_test, y_pred)\n\nprint(f\"\\nReward model test accuracy: {accuracy:.4f}\")\nprint(\"Confusion matrix:\")\nprint(conf_matrix)\n\n# Compute safety metrics: assume a simple safety detection function\ndef safety_score(response):\n    \"\"\"Compute response safety score (0-1, higher is safer)\"\"\"\n    score = 0.5  # baseline\n    if \"safe\" in response.lower():\n        score += 0.3\n    if len(response) > 10:\n        score += 0.2\n    return min(score, 1.0)\n\n# Simulate safety comparison before/after RLHF\noriginal_scores = [safety_score(r) for r in responses_A[:100]]\n# Assume after RLHF, model learns to generate safer responses\nimproved_responses = [r.replace(\"response\", \"safe_response\") for r in responses_A[:100]]\nimproved_scores = [safety_score(r) for r in improved_responses]\n\noriginal_avg = np.mean(original_scores)\nimproved_avg = np.mean(improved_scores)\nimprovement = (improved_avg - original_avg) / original_avg * 100\n\nprint(f\"\\nSafety metric comparison:\")\nprint(f\"Original model average safety score: {original_avg:.4f}\")\nprint(f\"Post-RLHF average safety score: {improved_avg:.4f}\")\nprint(f\"Safety improvement: {improvement:.2f}%\")\n\n# Record environment information\nprint(\"\\nExperiment environment:\")\nprint(\"Random seeds: 42\")\nprint(\"Dataset: Synthetic dialogue data (n=1000)\")\nprint(\"Reward model: LogisticRegression\")\nprint(\"Evaluation metrics: Accuracy, Safety score\")</code></pre>\n\n<p>Engineering implementation points include: 1) Data version control; 2) Experiment configuration management; 3) Model checkpoint saving; 4) Evaluation result visualization. Evaluation pipelines require modular design supporting plugin-style extensions for different evaluation methods. Complexity primarily arises from parallelization of large-scale data processing and distributed training.</p>\n\n<p>A common misconception is neglecting random seed settings, leading to irreproducible results. Failure modes include data leakage (training data contaminating test data), evaluation bias (test sets not representing real distributions), and insufficient computational resources causing incomplete training. Diagnostic methods include learning curve monitoring, validation set early stopping, and ablation experiment analysis.</p>\n\n<p>With complete engineering workflows mastered, you can now begin building your own safety evaluation and RLHF systems, transforming theoretical knowledge into deployable security solutions.</p>\n\n<p>Through this course, you have gained understanding of core concepts, mathematical principles, and engineering practices for safety evaluation and RLHF. From definition comprehension to mechanism analysis, and finally to reproducible code implementation, this learning path provides a systematic methodological framework. In practical work, we recommend starting with simple evaluation metrics, gradually building complete evaluation pipelines, and continuously iterating optimizations with domain knowledge.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：安全评估与 RLHF · 结构总览 · 数据：课程大纲】在设计《安全评估与 RLHF》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 安全评估与 RLHF · 结构总览 · Data: 课程大纲】When outlining \"安全评估与 RLHF\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：安全评估与 RLHF · worked example · 数据：理解人类反馈强化学习 (RLHF) 数据/代码】在复现《安全评估与 RLHF》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 安全评估与 RLHF · worked example · Data: 理解人类反馈强化学习 (RLHF) 数据/代码】While reproducing the worked example in \"安全评估与 RLHF\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：安全评估与 RLHF · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《安全评估与 RLHF》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 安全评估与 RLHF · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"安全评估与 RLHF\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：安全评估与 RLHF · 参考资料 · 数据：课程引用文献】当引用文献支撑《安全评估与 RLHF》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 安全评估与 RLHF · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"安全评估与 RLHF\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Training language models to follow instructions with human feedback（OpenAI，2022）",
+          "en": "Training language models to follow instructions with human feedback (OpenAI, 2022)"
+        },
+        "url": "https://arxiv.org/abs/2203.02155"
+      },
+      {
+        "label": {
+          "zh": "Red Teaming Language Models with Language Models（Anthropic，2022）",
+          "en": "Red Teaming Language Models with Language Models (Anthropic, 2022)"
+        },
+        "url": "https://arxiv.org/abs/2202.03286"
+      },
+      {
+        "label": {
+          "zh": "The Alignment Handbook（Hugging Face，2023）",
+          "en": "The Alignment Handbook (Hugging Face, 2023)"
+        },
+        "url": "https://github.com/huggingface/alignment-handbook"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-11-rlhf-zh.mp3"
+    },
+    "meta": {
+      "category": "Large Language Models & Prompting",
+      "level": "5. Generative AI & Large Models",
+      "difficultyScore": 3,
+      "related": [
+        "奖励建模",
+        "红队评测"
+      ],
+      "learningObjectives": [
+        "理解人类反馈强化学习 (RLHF)",
+        "设计安全性评估与防御"
+      ],
+      "personas": [
+        "安全研究员",
+        "伦理顾问"
+      ],
+      "contextual_notes": {
+        "why_now": "Mastering safety evaluation and RLHF at this stage helps teams establish reusable practices in Large Language Models & Prompting.",
+        "best_for": "Suitable for security researchers and ethics advisors who need to quickly absorb topics in Generative AI & Large Models.",
+        "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+      },
+      "tone_profile": {
+        "persona": "安全研究员 指导者",
+        "style": "数据驱动",
+        "energy": "precise",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 安全研究员、伦理顾问，帮助他们把 安全评估与 RLHF 应用于 Large Language Models & Prompting",
+        "prefersEnglish": false,
+        "industries": [
+          "安全研究员",
+          "伦理顾问"
+        ],
+        "personas": [
+          "安全研究员",
+          "伦理顾问"
+        ],
+        "pains": "在 Large Language Models & Prompting 场景缺乏 安全评估与 RLHF 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "5. Generative AI & Large Models"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为安全研究员，你正在评估大语言模型的风险。回想最近一次项目，你是如何系统检测模型潜在危害的？具体使用了哪些量化指标来评估安全性？",
+          "action_hint": "尝试将RLHF的三阶段训练框架与你现有的评估流程结合，思考如何通过奖励建模优化检测到的风险点。"
+        },
+        {
+          "lang": "zh",
+          "question": "假设你是伦理顾问，需要为AI系统制定安全准则。在之前的伦理审查中，你遇到的最大挑战是什么？如何通过RLHF的PPO算法目标函数来量化这些伦理边界？",
+          "action_hint": "结合课程中的数学机制，设计一个可执行的评估管线，将伦理原则转化为可测量的安全指标。"
+        }
+      ]
+    }
   }
 ]
