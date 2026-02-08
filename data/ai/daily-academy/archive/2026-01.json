@@ -3606,5 +3606,180 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-14-q-learning-q",
+    "date": "2026-01-14",
+    "title": {
+      "zh": "Q-Learning 与深度 Q 网络",
+      "en": "Q-Learning and Deep Q-Networks"
+    },
+    "summary": {
+      "zh": "本课程系统讲解强化学习中的Q-Learning与深度Q网络（DQN）。首先分析表格型Q-Learning在高维状态下面临的维度灾难，引出DQN用神经网络近似Q函数的必要性。随后深入剖析DQN的双重稳定机制——经验回放与目标网络，解释其数学原理与工程实现要点。最后通过完整的代码实现，展示如何用DQN解决CartPole控制问题，包括环境交互、网络架构、训练循环与性能评估。课程强调从理论定义到可复现实践的连贯路径，为后续复杂强化学习应用奠定基础。",
+      "en": "This course systematically explains Q-Learning and Deep Q-Networks (DQN) in reinforcement learning. It begins by analyzing the curse of dimensionality faced by tabular Q-Learning in high-dimensional states, leading to the necessity of DQN's neural network approximation of Q-functions. It then delves into DQN's dual stabilization mechanisms—experience replay and target networks—explaining their mathematical principles and engineering implementation details. Finally, through a complete code implementation, it demonstrates how to solve the CartPole control problem with DQN, covering environment interaction, network architecture, training loops, and performance evaluation. The course emphasizes a coherent path from theoretical definitions to reproducible practice, laying groundwork for advanced reinforcement learning applications."
+    },
+    "difficulty": "intermediate",
+    "tags": [
+      "q-learning",
+      "dqn"
+    ],
+    "content": {
+      "zh": "<h3>从表格到神经网络：Q-Learning的维度灾难</h3>\n<p>在强化学习领域，Q-Learning作为经典的时序差分学习算法，通过维护一个Q值表格来记录每个状态-动作对的预期累积奖励。其核心更新规则基于贝尔曼最优方程：\\(Q(s_t, a_t) \\leftarrow Q(s_t, a_t) + \\alpha [r_{t+1} + \\gamma \\max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t)]\\)，其中\\(\\alpha\\)是学习率，\\(\\gamma\\)是折扣因子。这个公式直观地表示当前Q值向目标值（即时奖励加上下一状态最大Q值的折现）的调整。然而，当状态空间从离散低维扩展到连续高维时，表格方法面临根本性挑战。</p>\n<p>以Atari游戏为例，一帧210×160的RGB图像包含\\(256^{3 \\times 210 \\times 160}\\)种可能状态，远超出任何存储系统的容量。这种指数级增长被称为“维度灾难”，它使得表格型Q-Learning在复杂环境中完全不可行。此时，我们需要从离散的Q值表转向连续的Q函数近似，这正是深度Q网络（Deep Q-Network, DQN）的出发点。DQN用深度神经网络参数化Q函数，将状态作为输入，输出每个动作的Q值，从而实现对高维状态空间的泛化（来源：Playing Atari with Deep Reinforcement Learning, 2013）。</p>\n<p>从工程视角看，这种转变引入了新的设计边界：神经网络架构必须平衡表达能力和训练稳定性。一个典型的DQN网络包含卷积层处理图像特征，全连接层输出Q值。关键实现要点包括输入归一化（如将像素值缩放到[0,1]）、输出层维度匹配动作空间大小。复杂度敏感点在于前向传播的延迟，尤其是在实时控制场景中，需要优化网络深度和宽度以满足帧率要求。</p>\n<p>常见误区是认为DQN仅仅是Q-Learning的“深度化版本”，忽略了其内在的算法差异。实际上，直接使用神经网络拟合Q-Learning的TD目标会导致训练发散，因为连续样本之间的强相关性破坏了梯度更新的独立性。失败模式表现为Q值爆炸或振荡，智能体无法学习有效策略。诊断方法包括监控损失函数曲线和Q值分布：健康的训练应显示损失平稳下降，Q值范围逐渐收敛。</p>\n<p>理解维度灾难的数学本质后，我们自然过渡到下一个问题：如何设计稳定的训练机制来克服神经网络近似带来的挑战？这引出了DQN的两个核心创新——经验回放和目标网络。</p>\n<h3>DQN的双重稳定机制：经验回放与目标网络</h3>\n<p>深度Q网络的核心挑战在于如何让神经网络在非平稳环境中稳定学习Q函数。原始Q-Learning的在线更新假设样本独立同分布，但实际交互产生的状态转移序列具有强时序相关性，直接用于训练会导致梯度方差过大和灾难性遗忘。DQN通过引入经验回放（Experience Replay）和目标网络（Target Network）双重机制来解决这一问题（来源：Human-level control through deep reinforcement learning, 2015）。</p>\n<p>经验回放定义为一个固定容量的回放缓冲区\\(\\mathcal{D}\\)，存储智能体的经验元组\\((s_t, a_t, r_{t+1}, s_{t+1})\\)。训练时，随机采样一小批样本\\(\\{(s_i, a_i, r_i, s'_i)\\}_{i=1}^N\\)用于计算损失函数：\\(L(\\theta) = \\mathbb{E}_{(s,a,r,s') \\sim \\mathcal{D}}[(r + \\gamma \\max_{a'} Q_{\\text{target}}(s', a'; \\theta^-) - Q(s, a; \\theta))^2]\\)，其中\\(\\theta\\)是主网络参数，\\(\\theta^-\\)是目标网络参数。这个公式的关键在于目标网络提供了稳定的TD目标，减少了Q值估计的振荡。</p>\n<p>目标网络是主网络的定期复制品，每C步更新一次参数：\\(\\theta^- \\leftarrow \\theta\\)。这种延迟更新打破了目标值和当前估计之间的反馈循环，防止训练发散。从工程实现角度，需要维护两个相同的网络实例，并设计高效的参数复制逻辑。复杂度敏感点在于缓冲区大小和采样策略：过小的缓冲区会限制样本多样性，而过大的缓冲区会增加内存开销。实践中，通常使用循环队列实现，并优先采样TD误差较大的经验以提高学习效率。</p>\n<p>一个常见误区是将经验回放视为单纯的“加速技巧”，认为没有它也能训练。实际上，在连续高相关样本下，神经网络会过度拟合最近经验，导致策略退化。失败模式表现为智能体在局部最优策略中震荡，无法探索更优区域。诊断方法包括分析缓冲区样本的时序自相关性和检查目标网络更新频率是否匹配环境动态。</p>\n<p>掌握了稳定机制的理论基础后，我们可以将这些概念转化为具体的代码实现，构建一个完整的DQN系统来解决实际控制问题。</p>\n<h3>工程实现：用DQN解决CartPole控制问题</h3>\n<p>本节提供一个端到端的DQN实现，解决Gymnasium的CartPole-v1环境（来源：Gymnasium Documentation, 2023）。该环境要求智能体通过左右移动小车来保持杆子竖直，状态空间是4维连续向量（小车位置、速度、杆子角度、角速度），动作空间是2维离散（左移、右移）。成功标准是在连续100回合中平均奖励达到195以上。我们将按照环境交互、网络定义、经验回放、训练循环的顺序构建可复现流程。</p>\n<p>首先定义DQN网络架构：输入层接收4维状态，经过两个全连接隐藏层（128和64个神经元，使用ReLU激活），输出层输出2个动作的Q值。超参数设置包括学习率\\(\\alpha=0.001\\)，折扣因子\\(\\gamma=0.99\\)，探索率\\(\\epsilon\\)从1.0衰减到0.01，目标网络更新频率\\(C=100\\)步。损失函数采用均方误差：\\(L = \\frac{1}{N}\\sum_{i=1}^N (y_i - Q(s_i, a_i))^2\\)，其中目标值\\(y_i = r_i + \\gamma \\max_{a'} Q_{\\text{target}}(s'_i, a')\\)。</p>\n<p>经验回放缓冲区实现为固定容量的队列，支持添加经验和随机采样。关键工程要点包括使用NumPy数组高效存储，以及采样时确保批次数据形状一致。训练循环中，每个时间步智能体根据ε-贪婪策略选择动作：以概率\\(\\epsilon\\)随机探索，否则选择\\(\\arg\\max_a Q(s, a)\\)。每步后存储经验到缓冲区，当缓冲区足够满时，采样批次计算损失并反向传播更新主网络。</p>\n<p>为了评估性能，我们计算每100回合的平均奖励作为指标：\\(\\bar{R}_{100} = \\frac{1}{100}\\sum_{t=1}^{100} \\sum_{k=0}^{T_t} \\gamma^k r_{t,k}\\)，其中\\(T_t\\)是第t回合的步数。这个公式衡量智能体在折扣奖励下的长期表现。实现中需要跟踪每回合的累积奖励，并定期输出统计结果。常见失败模式包括奖励曲线停滞不前或剧烈波动，通常源于超参数设置不当或网络架构缺陷。诊断方法包括可视化Q值分布和检查探索率衰减曲线：例如，如果Q值分布过早收敛到狭窄范围，可能表明探索不足；如果奖励曲线剧烈波动，应检查目标网络更新频率是否过低。</p>\n<pre><code>import gymnasium as gym\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport random\nfrom collections import deque\nimport matplotlib.pyplot as plt\n\n# Environment initialization\nenv = gym.make('CartPole-v1')\nstate_dim = env.observation_space.shape[0]\naction_dim = env.action_space.n\nprint(f\"State space shape: {env.observation_space.shape}\")\nprint(f\"Action space size: {action_dim}\")\n\n# DQN network definition\nclass DQN(nn.Module):\n    def __init__(self, state_dim, action_dim):\n        super(DQN, self).__init__()\n        self.fc1 = nn.Linear(state_dim, 128)\n        self.fc2 = nn.Linear(128, 64)\n        self.fc3 = nn.Linear(64, action_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.relu(self.fc2(x))\n        return self.fc3(x)\n\n# Experience replay buffer\nclass ReplayBuffer:\n    def __init__(self, capacity):\n        self.buffer = deque(maxlen=capacity)\n    \n    def push(self, state, action, reward, next_state, done):\n        self.buffer.append((state, action, reward, next_state, done))\n    \n    def sample(self, batch_size):\n        batch = random.sample(self.buffer, batch_size)\n        states, actions, rewards, next_states, dones = zip(*batch)\n        return (np.array(states), np.array(actions), np.array(rewards),\n                np.array(next_states), np.array(dones))\n    \n    def __len__(self):\n        return len(self.buffer)\n\n# Hyperparameter settings\nlearning_rate = 0.001\ngamma = 0.99\nepsilon_start = 1.0\nepsilon_end = 0.01\nepsilon_decay = 0.995\nbatch_size = 64\nbuffer_capacity = 10000\ntarget_update_freq = 100\nnum_episodes = 500\n\n# Initialize networks and optimizer\npolicy_net = DQN(state_dim, action_dim)\ntarget_net = DQN(state_dim, action_dim)\ntarget_net.load_state_dict(policy_net.state_dict())\noptimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)\nbuffer = ReplayBuffer(buffer_capacity)\nepsilon = epsilon_start\n\n# Training loop\nrewards_history = []\nfor episode in range(num_episodes):\n    state, _ = env.reset()\n    total_reward = 0\n    done = False\n    \n    while not done:\n        # ε-greedy policy\n        if random.random() < epsilon:\n            action = env.action_space.sample()\n        else:\n            with torch.no_grad():\n                state_tensor = torch.FloatTensor(state).unsqueeze(0)\n                q_values = policy_net(state_tensor)\n                action = q_values.argmax().item()\n        \n        # Environment interaction\n        next_state, reward, terminated, truncated, _ = env.step(action)\n        done = terminated or truncated\n        buffer.push(state, action, reward, next_state, done)\n        state = next_state\n        total_reward += reward\n        \n        # Experience replay training\n        if len(buffer) >= batch_size:\n            states, actions, rewards, next_states, dones = buffer.sample(batch_size)\n            states = torch.FloatTensor(states)\n            actions = torch.LongTensor(actions).unsqueeze(1)\n            rewards = torch.FloatTensor(rewards).unsqueeze(1)\n            next_states = torch.FloatTensor(next_states)\n            dones = torch.FloatTensor(dones).unsqueeze(1)\n            \n            # Compute current Q-values\n            current_q = policy_net(states).gather(1, actions)\n            # Compute target Q-values\n            with torch.no_grad():\n                next_q = target_net(next_states).max(1, keepdim=True)[0]\n                target_q = rewards + gamma * next_q * (1 - dones)\n            \n            # Loss computation and backpropagation\n            loss = nn.MSELoss()(current_q, target_q)\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n        \n        # Target network update\n        if episode % target_update_freq == 0:\n            target_net.load_state_dict(policy_net.state_dict())\n    \n    # Exploration rate decay\n    epsilon = max(epsilon_end, epsilon * epsilon_decay)\n    rewards_history.append(total_reward)\n    \n    # Performance output every 100 episodes\n    if (episode + 1) % 100 == 0:\n        avg_reward = np.mean(rewards_history[-100:])\n        print(f\"Episode {episode+1}, Average reward over last 100 episodes: {avg_reward:.2f}, ε: {epsilon:.3f}\")\n        if avg_reward >= 195:\n            print(\"Success criterion met!\")\n            break\n\nenv.close()\n\n# Performance visualization\nplt.plot(rewards_history)\nplt.xlabel('Episode')\nplt.ylabel('Reward')\nplt.title('DQN Training Reward Curve')\nplt.show()\n\n# Compute final evaluation metric\nfinal_avg_reward = np.mean(rewards_history[-100:]) if len(rewards_history) >= 100 else np.mean(rewards_history)\nprint(f\"Final average reward over 100 episodes: {final_avg_reward:.2f}\")\nprint(f\"Total training episodes: {len(rewards_history)}\")\nprint(f\"Final exploration rate: {epsilon:.3f}\")</code></pre>\n<p>运行上述代码，预期输出包括状态空间形状Box(4,)、动作空间大小2、训练过程中每100回合的平均奖励（目标>195）、最终Q网络在测试环境中的表现。关键中间结果如缓冲区样本形状和损失值可在训练循环中添加打印语句查看。这个实现完整展示了DQN从理论到实践的转化，为后续更复杂的强化学习应用奠定了基础。</p>\n<p>通过本课程的学习，我们建立了从表格型Q-Learning到深度Q网络的完整认知框架。理解维度灾难的数学本质、掌握经验回放和目标网络的稳定机制、实现可复现的工程流程，这些能力将帮助你在更广泛的强化学习场景中设计有效解决方案。</p>",
+      "en": "<h3>From Tables to Neural Networks: The Curse of Dimensionality in Q-Learning</h3>\n<p>In reinforcement learning, Q-Learning is a classic temporal difference algorithm that maintains a Q-table to record the expected cumulative reward for each state-action pair. Its core update rule is based on the Bellman optimality equation: \\(Q(s_t, a_t) \\leftarrow Q(s_t, a_t) + \\alpha [r_{t+1} + \\gamma \\max_{a'} Q(s_{t+1}, a') - Q(s_t, a_t)]\\), where \\(\\alpha\\) is the learning rate and \\(\\gamma\\) is the discount factor. This formula intuitively adjusts the current Q-value toward the target value (immediate reward plus discounted maximum Q-value of the next state). However, when the state space expands from discrete low-dimensional to continuous high-dimensional, the tabular approach faces fundamental challenges.</p>\n<p>Consider Atari games as an example: a single 210×160 RGB frame contains \\(256^{3 \\times 210 \\times 160}\\) possible states, far exceeding the capacity of any storage system. This exponential growth is known as the \"curse of dimensionality,\" rendering tabular Q-Learning entirely infeasible in complex environments. At this point, we need to shift from discrete Q-tables to continuous Q-function approximation, which is precisely the motivation behind Deep Q-Networks (DQN). DQN parameterizes the Q-function using deep neural networks, taking states as input and outputting Q-values for each action, thereby enabling generalization to high-dimensional state spaces (Source: Playing Atari with Deep Reinforcement Learning, 2013).</p>\n<p>From an engineering perspective, this transition introduces new design boundaries: the neural network architecture must balance expressive power and training stability. A typical DQN network includes convolutional layers for image feature extraction and fully connected layers for Q-value output. Key implementation considerations involve input normalization (e.g., scaling pixel values to [0,1]) and matching the output layer dimension to the action space size. Complexity-sensitive aspects include forward propagation latency, particularly in real-time control scenarios where network depth and width must be optimized to meet frame rate requirements.</p>\n<p>A common misconception is viewing DQN merely as a \"deep version\" of Q-Learning, overlooking inherent algorithmic differences. In practice, directly fitting neural networks to Q-Learning's TD target leads to training divergence because strong correlations between consecutive samples undermine the independence of gradient updates. Failure modes manifest as exploding or oscillating Q-values, preventing the agent from learning effective policies. Diagnostic methods include monitoring loss function curves and Q-value distributions: healthy training should show steady loss decrease and convergent Q-value ranges.</p>\n<p>Understanding the mathematical essence of the curse of dimensionality naturally leads to the next question: how to design stable training mechanisms to overcome challenges introduced by neural network approximation? This brings us to DQN's two core innovations—experience replay and target networks.</p>\n<h3>DQN's Dual Stabilization Mechanisms: Experience Replay and Target Networks</h3>\n<p>The core challenge of Deep Q-Networks is enabling neural networks to stably learn Q-functions in non-stationary environments. Original Q-Learning's online updates assume independent and identically distributed samples, but actual interaction-generated state transition sequences exhibit strong temporal correlations, causing excessive gradient variance and catastrophic forgetting if used directly for training. DQN addresses this through dual mechanisms: experience replay and target networks (Source: Human-level control through deep reinforcement learning, 2015).</p>\n<p>Experience replay is defined as a fixed-capacity replay buffer \\(\\mathcal{D}\\) storing agent experience tuples \\((s_t, a_t, r_{t+1}, s_{t+1})\\). During training, a small batch of samples \\(\\{(s_i, a_i, r_i, s'_i)\\}_{i=1}^N\\) is randomly sampled to compute the loss function: \\(L(\\theta) = \\mathbb{E}_{(s,a,r,s') \\sim \\mathcal{D}}[(r + \\gamma \\max_{a'} Q_{\\text{target}}(s', a'; \\theta^-) - Q(s, a; \\theta))^2]\\), where \\(\\theta\\) are main network parameters and \\(\\theta^-\\) are target network parameters. The key to this formula is that the target network provides stable TD targets, reducing oscillations in Q-value estimates.</p>\n<p>The target network is a periodic copy of the main network, updating its parameters every C steps: \\(\\theta^- \\leftarrow \\theta\\). This delayed update breaks the feedback loop between target values and current estimates, preventing training divergence. From an engineering implementation perspective, maintaining two identical network instances and designing efficient parameter copying logic are essential. Complexity-sensitive aspects include buffer size and sampling strategy: too small a buffer limits sample diversity, while too large a buffer increases memory overhead. In practice, circular queues are commonly used, with prioritized sampling of experiences having high TD errors to improve learning efficiency.</p>\n<p>A common misconception is treating experience replay as merely an \"acceleration trick,\" believing training is possible without it. In reality, under continuous high-correlation samples, neural networks overfit recent experiences, leading to policy degradation. Failure modes manifest as agents oscillating in local optimal policies, unable to explore better regions. Diagnostic methods include analyzing temporal autocorrelation of buffer samples and checking whether target network update frequency matches environmental dynamics.</p>\n<p>With a theoretical foundation in stabilization mechanisms, we can translate these concepts into concrete code implementations, building a complete DQN system to solve practical control problems.</p>\n<h3>Engineering Implementation: Solving CartPole Control with DQN</h3>\n<p>This section provides an end-to-end DQN implementation for Gymnasium's CartPole-v1 environment (Source: Gymnasium Documentation, 2023). The environment requires the agent to keep a pole upright by moving a cart left or right, with a 4-dimensional continuous state space (cart position, velocity, pole angle, angular velocity) and a 2-dimensional discrete action space (move left, move right). Success is defined as achieving an average reward over 195 across 100 consecutive episodes. We will construct a reproducible pipeline following the sequence of environment interaction, network definition, experience replay, and training loop.</p>\n<p>First, define the DQN network architecture: the input layer receives 4-dimensional states, passes through two fully connected hidden layers (128 and 64 neurons with ReLU activation), and the output layer produces Q-values for two actions. Hyperparameter settings include learning rate \\(\\alpha=0.001\\), discount factor \\(\\gamma=0.99\\), exploration rate \\(\\epsilon\\) decaying from 1.0 to 0.01, and target network update frequency \\(C=100\\) steps. The loss function uses mean squared error: \\(L = \\frac{1}{N}\\sum_{i=1}^N (y_i - Q(s_i, a_i))^2\\), where target values \\(y_i = r_i + \\gamma \\max_{a'} Q_{\\text{target}}(s'_i, a')\\).</p>\n<p>The experience replay buffer is implemented as a fixed-capacity queue supporting experience addition and random sampling. Key engineering points include using NumPy arrays for efficient storage and ensuring consistent batch data shapes during sampling. In the training loop, at each timestep, the agent selects actions using an ε-greedy policy: explore randomly with probability \\(\\epsilon\\), otherwise choose \\(\\arg\\max_a Q(s, a)\\). After each step, store experiences in the buffer; when sufficiently full, sample batches to compute loss and backpropagate to update the main network.</p>\n<p>To evaluate performance, we compute the average reward per 100 episodes as the metric: \\(\\bar{R}_{100} = \\frac{1}{100}\\sum_{t=1}^{100} \\sum_{k=0}^{T_t} \\gamma^k r_{t,k}\\), where \\(T_t\\) is the number of steps in episode t. This formula measures the agent's long-term performance under discounted rewards. Implementation requires tracking cumulative rewards per episode and periodically outputting statistics. Common failure modes include stagnant or highly volatile reward curves, often due to improper hyperparameter settings or network architecture flaws. Diagnostic methods involve visualizing Q-value distributions and checking exploration rate decay curves: for instance, if Q-values converge too early to a narrow range, it may indicate insufficient exploration; if reward curves fluctuate wildly, verify that the target network update frequency is not too low.</p>\n<pre><code>import gymnasium as gym\nimport numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nimport random\nfrom collections import deque\nimport matplotlib.pyplot as plt\n\n# Environment initialization\nenv = gym.make('CartPole-v1')\nstate_dim = env.observation_space.shape[0]\naction_dim = env.action_space.n\nprint(f\"State space shape: {env.observation_space.shape}\")\nprint(f\"Action space size: {action_dim}\")\n\n# DQN network definition\nclass DQN(nn.Module):\n    def __init__(self, state_dim, action_dim):\n        super(DQN, self).__init__()\n        self.fc1 = nn.Linear(state_dim, 128)\n        self.fc2 = nn.Linear(128, 64)\n        self.fc3 = nn.Linear(64, action_dim)\n        self.relu = nn.ReLU()\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.relu(self.fc2(x))\n        return self.fc3(x)\n\n# Experience replay buffer\nclass ReplayBuffer:\n    def __init__(self, capacity):\n        self.buffer = deque(maxlen=capacity)\n    \n    def push(self, state, action, reward, next_state, done):\n        self.buffer.append((state, action, reward, next_state, done))\n    \n    def sample(self, batch_size):\n        batch = random.sample(self.buffer, batch_size)\n        states, actions, rewards, next_states, dones = zip(*batch)\n        return (np.array(states), np.array(actions), np.array(rewards),\n                np.array(next_states), np.array(dones))\n    \n    def __len__(self):\n        return len(self.buffer)\n\n# Hyperparameter settings\nlearning_rate = 0.001\ngamma = 0.99\nepsilon_start = 1.0\nepsilon_end = 0.01\nepsilon_decay = 0.995\nbatch_size = 64\nbuffer_capacity = 10000\ntarget_update_freq = 100\nnum_episodes = 500\n\n# Initialize networks and optimizer\npolicy_net = DQN(state_dim, action_dim)\ntarget_net = DQN(state_dim, action_dim)\ntarget_net.load_state_dict(policy_net.state_dict())\noptimizer = optim.Adam(policy_net.parameters(), lr=learning_rate)\nbuffer = ReplayBuffer(buffer_capacity)\nepsilon = epsilon_start\n\n# Training loop\nrewards_history = []\nfor episode in range(num_episodes):\n    state, _ = env.reset()\n    total_reward = 0\n    done = False\n    \n    while not done:\n        # ε-greedy policy\n        if random.random() < epsilon:\n            action = env.action_space.sample()\n        else:\n            with torch.no_grad():\n                state_tensor = torch.FloatTensor(state).unsqueeze(0)\n                q_values = policy_net(state_tensor)\n                action = q_values.argmax().item()\n        \n        # Environment interaction\n        next_state, reward, terminated, truncated, _ = env.step(action)\n        done = terminated or truncated\n        buffer.push(state, action, reward, next_state, done)\n        state = next_state\n        total_reward += reward\n        \n        # Experience replay training\n        if len(buffer) >= batch_size:\n            states, actions, rewards, next_states, dones = buffer.sample(batch_size)\n            states = torch.FloatTensor(states)\n            actions = torch.LongTensor(actions).unsqueeze(1)\n            rewards = torch.FloatTensor(rewards).unsqueeze(1)\n            next_states = torch.FloatTensor(next_states)\n            dones = torch.FloatTensor(dones).unsqueeze(1)\n            \n            # Compute current Q-values\n            current_q = policy_net(states).gather(1, actions)\n            # Compute target Q-values\n            with torch.no_grad():\n                next_q = target_net(next_states).max(1, keepdim=True)[0]\n                target_q = rewards + gamma * next_q * (1 - dones)\n            \n            # Loss computation and backpropagation\n            loss = nn.MSELoss()(current_q, target_q)\n            optimizer.zero_grad()\n            loss.backward()\n            optimizer.step()\n        \n        # Target network update\n        if episode % target_update_freq == 0:\n            target_net.load_state_dict(policy_net.state_dict())\n    \n    # Exploration rate decay\n    epsilon = max(epsilon_end, epsilon * epsilon_decay)\n    rewards_history.append(total_reward)\n    \n    # Performance output every 100 episodes\n    if (episode + 1) % 100 == 0:\n        avg_reward = np.mean(rewards_history[-100:])\n        print(f\"Episode {episode+1}, Average reward over last 100 episodes: {avg_reward:.2f}, ε: {epsilon:.3f}\")\n        if avg_reward >= 195:\n            print(\"Success criterion met!\")\n            break\n\nenv.close()\n\n# Performance visualization\nplt.plot(rewards_history)\nplt.xlabel('Episode')\nplt.ylabel('Reward')\nplt.title('DQN Training Reward Curve')\nplt.show()\n\n# Compute final evaluation metric\nfinal_avg_reward = np.mean(rewards_history[-100:]) if len(rewards_history) >= 100 else np.mean(rewards_history)\nprint(f\"Final average reward over 100 episodes: {final_avg_reward:.2f}\")\nprint(f\"Total training episodes: {len(rewards_history)}\")\nprint(f\"Final exploration rate: {epsilon:.3f}\")</code></pre>\n<p>Running the above code, expected outputs include state space shape Box(4,), action space size 2, average reward per 100 episodes during training (target >195), and final Q-network performance in test environments. Key intermediate results such as buffer sample shapes and loss values can be viewed by adding print statements in the training loop. This implementation fully demonstrates the translation of DQN from theory to practice, laying groundwork for more complex reinforcement learning applications.</p>\n<p>Through this course, we have established a complete cognitive framework from tabular Q-Learning to Deep Q-Networks. Understanding the mathematical essence of the curse of dimensionality, mastering stabilization mechanisms of experience replay and target networks, and implementing reproducible engineering pipelines—these capabilities will empower you to design effective solutions in broader reinforcement learning scenarios.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：Q-Learning 与深度 Q 网络 · 结构总览 · 数据：课程大纲】在设计《Q-Learning 与深度 Q 网络》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: Q-Learning 与深度 Q 网络 · 结构总览 · Data: 课程大纲】When outlining \"Q-Learning 与深度 Q 网络\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：Q-Learning 与深度 Q 网络 · worked example · 数据：掌握表格型 Q-Learning 和 DQN 的实现 数据/代码】在复现《Q-Learning 与深度 Q 网络》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: Q-Learning 与深度 Q 网络 · worked example · Data: 掌握表格型 Q-Learning 和 DQN 的实现 数据/代码】While reproducing the worked example in \"Q-Learning 与深度 Q 网络\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：Q-Learning 与深度 Q 网络 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Q-Learning 与深度 Q 网络》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: Q-Learning 与深度 Q 网络 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Q-Learning 与深度 Q 网络\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：Q-Learning 与深度 Q 网络 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Q-Learning 与深度 Q 网络》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: Q-Learning 与深度 Q 网络 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Q-Learning 与深度 Q 网络\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "Playing Atari with Deep Reinforcement Learning（arXiv，2013）",
+          "en": "Playing Atari with Deep Reinforcement Learning (arXiv, 2013)"
+        },
+        "url": "https://arxiv.org/abs/1312.5602"
+      },
+      {
+        "label": {
+          "zh": "Human-level control through deep reinforcement learning（Nature，2015）",
+          "en": "Human-level control through deep reinforcement learning (Nature, 2015)"
+        },
+        "url": "https://www.nature.com/articles/nature14236"
+      },
+      {
+        "label": {
+          "zh": "Gymnasium Documentation（Farama Foundation，2023）",
+          "en": "Gymnasium Documentation (Farama Foundation, 2023)"
+        },
+        "url": "https://gymnasium.farama.org/"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-14-q-learning-q-zh.mp3"
+    },
+    "meta": {
+      "category": "Reinforcement Learning Foundations",
+      "level": "6. Reinforcement Learning & Decision Making",
+      "difficultyScore": 3,
+      "related": [
+        "值迭代",
+        "Experience Replay"
+      ],
+      "learningObjectives": [
+        "掌握表格型 Q-Learning 和 DQN 的实现",
+        "理解经验回放和目标网络的作用"
+      ],
+      "personas": [
+        "学生",
+        "工程师"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 Q-Learning 与深度 Q 网络 可帮助团队在 Reinforcement Learning Foundations 上做出可复用的实践。",
+        "best_for": "适合 学生、工程师，需要快速吸收 6. Reinforcement Learning & Decision Making 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "学生 指导者",
+        "style": "数据驱动",
+        "energy": "precise",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 学生、工程师，帮助他们把 Q-Learning 与深度 Q 网络 应用于 Reinforcement Learning Foundations",
+        "prefersEnglish": false,
+        "industries": [
+          "学生",
+          "工程师"
+        ],
+        "personas": [
+          "学生",
+          "工程师"
+        ],
+        "pains": "在 Reinforcement Learning Foundations 场景缺乏 Q-Learning 与深度 Q 网络 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "6. Reinforcement Learning & Decision Making"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为工程师，你在处理高维状态空间时是否遇到过维度灾难？Q-Learning的表格方法如何限制了你的项目，而深度Q网络能提供什么新思路？",
+          "action_hint": "回顾一个具体项目，思考状态表示方式如何影响算法选择。"
+        },
+        {
+          "lang": "zh",
+          "question": "如果你是学生，在实现强化学习算法时，如何平衡理论理解与实践编码？DQN的经验回放和目标网络机制，对你的学习路径有什么启发？",
+          "action_hint": "联系课程中的代码实现，设想如何将这些机制应用到你的实验或作业中。"
+        }
+      ]
+    }
   }
 ]
