@@ -3949,5 +3949,173 @@
         }
       ]
     }
+  },
+  {
+    "id": "2026-01-15-environment-modeling",
+    "date": "2026-01-15",
+    "title": {
+      "zh": "环境建模与仿真",
+      "en": "Environmental Modeling and Simulation"
+    },
+    "summary": {
+      "zh": "本课程系统阐述环境建模与仿真在强化学习中的核心作用。首先，从真实世界实验的高成本与风险出发，阐明仿真环境作为可控、可重复试验场的必要性，并形式化定义环境建模（创建环境的数学表示）与仿真（基于模型运行虚拟实验）的概念。其次，深入解析状态空间、动作空间、转移函数与奖励函数等关键要素，从机制上区分模型基础与无模型方法在环境使用上的根本差异。最后，通过基于OpenAI Gym构建自定义网格环境的完整工程示例，展示从环境定义、算法训练到性能评估的可复现路径，为将强化学习应用于特定领域提供实践基础。",
+      "en": "This course systematically elaborates on the core role of environment modeling and simulation in reinforcement learning. It begins with the high costs and risks of real-world experimentation, clarifying the necessity of simulation environments as controlled, repeatable testbeds, and formally defines environment modeling (creating a mathematical representation of an environment) and simulation (running virtual experiments based on the model). It then delves into key elements like state space, action space, transition functions, and reward functions, mechanistically distinguishing the fundamental differences in environment usage between model-based and model-free methods. Finally, through a complete engineering example of building a custom grid environment based on OpenAI Gym, it demonstrates a reproducible path from environment definition and algorithm training to performance evaluation"
+    },
+    "difficulty": "beginner",
+    "tags": [
+      "environment modeling",
+      "simulation"
+    ],
+    "content": {
+      "zh": "<h3>从真实困境到虚拟试验场</h3><p>在强化学习的工程实践中，一个根本性挑战在于：如何在安全、可控且高效的条件下训练智能体。以机器人抓取任务为例，直接在物理世界中进行试错学习，不仅成本高昂、风险巨大，且数据收集速度缓慢，严重制约了算法的迭代与验证。这一现实困境构成了环境建模与仿真技术的核心驱动力。环境建模（Environment Modeling）并非简单的场景搭建，而是创建环境的数学或计算表示，旨在形式化地描述智能体与外界交互的动力学。仿真（Simulation）则是基于此模型运行虚拟实验的过程，生成状态转移序列和奖励信号，为学习算法提供数据。</p><p>从定义上看，环境建模通常形式化为马尔可夫决策过程（Markov Decision Process, MDP），其核心四元组为 \\( (\\mathcal{S}, \\mathcal{A}, \\mathcal{P}, \\mathcal{R}) \\)。其中，\\( \\mathcal{S} \\) 表示状态空间（State Space），是所有可能环境状态的集合；\\( \\mathcal{A} \\) 表示动作空间（Action Space），是智能体可执行动作的集合；\\( \\mathcal{P}(s'|s,a) \\) 是状态转移概率函数，定义了在状态 \\( s \\) 下执行动作 \\( a \\) 后转移到状态 \\( s' \\) 的概率；\\( \\mathcal{R}(s,a) \\) 是奖励函数，为状态-动作对提供标量反馈。仿真即依据 \\( \\mathcal{P} \\) 和 \\( \\mathcal{R} \\)，通过采样生成交互轨迹 \\( \\tau = (s_0, a_0, r_0, s_1, a_1, r_1, ...) \\)。</p><p>其机制与目标在于逼近真实世界的动力学，同时提供一个可加速、可重复的试验场。目标函数通常与强化学习算法一致，即最大化期望累积折扣奖励：\\( J(\\pi) = \\mathbb{E}_{\\tau \\sim \\pi} \\left[ \\sum_{t=0}^{\\infty} \\gamma^t R(s_t, a_t) \\right] \\)，其中 \\( \\pi \\) 是策略，\\( \\gamma \\in [0, 1] \\) 是折扣因子。仿真环境的质量直接影响该目标的优化效率。一个关键的评估指标是仿真保真度，常用均方误差（Mean Squared Error, MSE）衡量预测状态与真实状态的偏差：\\( \\text{MSE} = \\frac{1}{n} \\sum_{i=1}^{n} (s_i^{\\text{real}} - s_i^{\\text{sim}})^2 \\)，其中 \\( n \\) 为对比样本数。</p><p>工程实现时，需关注几个要点：首先是状态与动作空间的表示，需根据问题选择离散（如网格位置）或连续（如关节角度）空间，并确保其维度与算法兼容。其次是转移函数的实现，对于简单确定性环境可直接编码规则，对于复杂物理系统则需集成物理引擎（如PyBullet）或使用神经网络进行动力学拟合。奖励函数的设计需平衡稀疏性与可学习性，避免出现奖励黑客（Reward Hacking）。复杂度敏感点在于高维连续状态空间（如图像输入）的处理，可能引入计算延迟，需考虑状态编码或特征提取。</p><p>常见误区包括将仿真环境等同于游戏动画，或忽视“现实差距”（Reality Gap）——即仿真与真实世界间的系统性偏差。失败模式典型如“过拟合仿真”：智能体在仿真中表现优异，但在真实部署中失效。诊断时，可对比仿真与真实数据的分布差异，例如计算KL散度：\\( D_{KL}(P_{\\text{real}} \\| P_{\\text{sim}}) = \\sum_x P_{\\text{real}}(x) \\log \\frac{P_{\\text{real}}(x)}{P_{\\text{sim}}(x)} \\)，以量化分布偏移。实践中，可通过域随机化（Domain Randomization）或在仿真参数中加入噪声来提升模型的鲁棒性与泛化能力。</p><p>理解了仿真环境作为可控试验场的必要性及其形式化定义，我们自然需要深入其内部结构：状态、动作、转移与奖励这些核心要素如何具体工作，以及它们如何区分不同的学习方法？这引导我们进入下一节。</p><h3>解剖环境：状态、动作与转移</h3><p>当开发者尝试使用如OpenAI Gym这样的库创建自定义环境时，一个普遍的困惑在于如何正确地定义状态空间、动作空间、转移函数和奖励函数。这些元素不仅是环境建模的构件，更是区分模型基础（Model-Based）与无模型（Model-Free）强化学习范式的关键。状态空间 \\( \\mathcal{S} \\) 需要完备地刻画环境在任一时刻的信息，例如在自动驾驶仿真中，状态可能包含车辆的位置、速度、朝向以及周围障碍物的信息。动作空间 \\( \\mathcal{A} \\) 定义了智能体的操作范围，如方向盘转角、油门和刹车。</p><p>精确定义上，状态空间是所有可能环境配置的集合，可以是离散的（如棋盘上的格子）或连续的（如机器人的关节角度）。动作空间同理。转移函数 \\( \\mathcal{P}(s'|s,a) \\) 是环境动力学的核心，它描述了状态演变的概率规律。奖励函数 \\( \\mathcal{R}(s,a) \\) 则提供了学习信号，其设计直接影响策略收敛的方向与质量。</p><p>从机制上看，模型基础与无模型方法的根本差异在于对转移函数 \\( \\mathcal{P} \\) 的利用方式。模型基础方法，如动态规划（Dynamic Programming）或模型预测控制（Model Predictive Control），显式地使用或学习 \\( \\mathcal{P} \\) 来进行规划。其目标函数是在已知模型下的期望累积奖励最大化，并通过贝尔曼方程进行迭代求解：\\( V^{\\pi}(s) = \\mathbb{E}_{a \\sim \\pi(\\cdot|s)} \\left[ R(s,a) + \\gamma \\sum_{s'} \\mathcal{P}(s'|s,a) V^{\\pi}(s') \\right] \\)。而无模型方法，如Q-Learning或策略梯度（Policy Gradient），则不依赖显式的 \\( \\mathcal{P} \\)，直接从与环境的交互样本中学习价值函数或策略参数。</p><p>工程实现要点包括：使用Gym的`spaces.Box`或`spaces.Discrete`规范定义状态与动作空间；实现确定型或随机型转移逻辑；设计奖励函数时需考虑稀疏奖励问题，可引入塑形奖励（Reward Shaping）或课程学习（Curriculum Learning）。复杂度敏感点在于高维或部分可观测状态，可能需要引入状态估计或使用循环神经网络处理序列。延迟可能出现在复杂的物理仿真计算中。</p><p>常见误区是认为无模型方法“完全不需要模型”。实际上，无模型方法仍依赖于环境接口（即`step`函数）所隐含的“黑箱”模型来提供状态转移和奖励。失败模式包括因奖励函数设计不当导致的智能体行为偏离预期（奖励黑客），或因状态表示不充分导致的无法学习。诊断时，可可视化状态-动作轨迹，分析奖励分布，或进行消融实验以确定是模型误差还是算法问题。</p><p>掌握了环境的核心要素及其在不同范式中的角色，下一步便是将这些理论付诸实践：如何从零开始构建一个符合标准、可用于训练的自定义仿真环境？这引出了我们的动手实践环节。</p><h3>动手构建：从Gym模板到自定义环境</h3><p>对于希望将强化学习应用于特定领域的研究者或工程师，一个常见的起点是为自己的问题创建定制化的仿真环境。OpenAI Gym提供的标准化接口极大地简化了这一过程。其核心是`gym.Env`基类，要求子类实现几个关键方法：`reset()`用于初始化环境并返回初始状态；`step(action)`接收动作，执行一步仿真，返回下一个状态、奖励、终止标志和额外信息字典；`render()`（可选）用于可视化。</p><p>精确定义上，一个Gym环境是一个实现了上述接口的Python类，它封装了特定的MDP \\( (\\mathcal{S}, \\mathcal{A}, \\mathcal{P}, \\mathcal{R}) \\)。自定义环境不是要重新发明轮子或实现底层物理引擎，而是基于此模板，专注于定义与特定任务相关的状态表示、动作空间、转移规则和奖励逻辑。</p><p>其机制在于通过标准化接口，使环境与各种强化学习算法（如来自Stable-Baselines3的算法）能够无缝集成。算法通过调用`env.reset()`和`env.step(action)`与环境交互，收集经验数据。目标函数仍然是最大化累积奖励 \\( J(\\pi) \\)，但在此上下文中，环境提供了计算该期望所需的数据生成机制。</p><p>工程实现要点如下：首先，在`__init__`方法中正确定义`self.observation_space`和`self.action_space`。其次，在`reset`方法中初始化所有内部变量并返回初始状态。最关键的是`step`方法，它需要：1) 根据输入动作和当前状态，应用转移规则计算新状态；2) 根据新状态和/或动作计算奖励；3) 判断是否达到终止条件（如成功、失败或超时）；4) 返回四元组`(observation, reward, done, info)`。复杂度通常较低，但需注意随机种子的设置（通过`super().reset(seed=seed)`）以确保实验可复现性。</p><p>常见误区包括试图在环境类中实现过于复杂的物理仿真（应使用专用引擎），或忽略与标准算法的兼容性检查。失败模式表现为环境接口错误导致算法崩溃，或环境动力学有误导致智能体无法学到有效策略。诊断时，务必使用`gym`库的`check_env(env)`函数验证环境是否符合接口规范。此外，可以手动运行几个回合，检查状态转移和奖励是否符合预期。</p><p>下面是一个端到端的最小可复现示例，展示如何创建一个简单的网格世界环境，并使用DQN算法进行训练和评估。该示例完全自包含，无需外部数据文件。</p><pre><code>import gym\nfrom gym import spaces\nimport numpy as np\nfrom stable_baselines3 import DQN\nfrom stable_baselines3.common.env_checker import check_env\n\nclass CustomGridWorldEnv(gym.Env):\n    \"\"\"A custom 5x5 grid world environment.\"\"\"\n    metadata = {'render.modes': ['human']}\n\n    def __init__(self):\n        super(CustomGridWorldEnv, self).__init__()\n        self.grid_size = 5\n        self.start_pos = np.array([0, 0], dtype=np.int32)\n        self.goal_pos = np.array([4, 4], dtype=np.int32)\n        self.obstacle_pos = np.array([2, 2], dtype=np.int32)\n        self.agent_pos = self.start_pos.copy()\n        # Define action and observation space\n        self.action_space = spaces.Discrete(4)  # 0: up, 1: down, 2: left, 3: right\n        self.observation_space = spaces.Box(low=0, high=self.grid_size-1, shape=(2,), dtype=np.int32)\n        self.max_steps = 50\n        self.current_step = 0\n\n    def reset(self, seed=None, options=None):\n        super().reset(seed=seed)\n        self.agent_pos = self.start_pos.copy()\n        self.current_step = 0\n        return self.agent_pos, {}\n\n    def step(self, action):\n        self.current_step += 1\n        new_pos = self.agent_pos.copy()\n        # Action effects\n        if action == 0:   # up\n            new_pos[1] = min(new_pos[1] + 1, self.grid_size - 1)\n        elif action == 1: # down\n            new_pos[1] = max(new_pos[1] - 1, 0)\n        elif action == 2: # left\n            new_pos[0] = max(new_pos[0] - 1, 0)\n        elif action == 3: # right\n            new_pos[0] = min(new_pos[0] + 1, self.grid_size - 1)\n        # Check obstacle\n        if np.array_equal(new_pos, self.obstacle_pos):\n            new_pos = self.agent_pos.copy()  # Blocked by obstacle\n        # Update state\n        self.agent_pos = new_pos\n        # Calculate reward and done\n        if np.array_equal(self.agent_pos, self.goal_pos):\n            reward = 1.0\n            terminated = True\n        else:\n            reward = -0.01\n            terminated = False\n            # Additional penalty for hitting a wall (i.e., position didn't change and action was valid)\n            if np.array_equal(new_pos, self.agent_pos) and action in [0,1,2,3]:\n                reward = -0.1\n        truncated = (self.current_step >= self.max_steps)\n        done = terminated or truncated\n        info = {}\n        return self.agent_pos, reward, terminated, truncated, info\n\n    def render(self, mode='human'):\n        grid = np.full((self.grid_size, self.grid_size), '.')\n        grid[self.goal_pos[1], self.goal_pos[0]] = 'G'\n        grid[self.obstacle_pos[1], self.obstacle_pos[0]] = 'X'\n        grid[self.agent_pos[1], self.agent_pos[0]] = 'A'\n        for row in grid:\n            print(' '.join(row))\n        print()\n\n# --- 1. Create and validate environment ---\nenv = CustomGridWorldEnv()\ncheck_env(env)  # This will raise an error if the env does not comply with Gym API.\nprint(\"[环境验证] 环境接口检查通过。\")\nprint(f\"状态空间 (observation_space): {env.observation_space}\")  # 应输出: Box([0 0], [4 4], (2,), int32)\nprint(f\"动作空间 (action_space): {env.action_space}\")          # 应输出: Discrete(4)\nprint()\n\n# --- 2. Train an agent using DQN ---\nprint(\"[训练阶段] 开始使用DQN进行训练...\")\nmodel = DQN(\"MlpPolicy\", env, verbose=0, seed=42)\nmodel.learn(total_timesteps=10000)\nprint(\"训练完成。\")\nprint()\n\n# --- 3. Evaluate the trained agent ---\nprint(\"[评估阶段] 评估训练后的智能体...\")\nn_eval_episodes = 100\nsuccess_count = 0\ntotal_steps_list = []\n\nfor episode in range(n_eval_episodes):\n    obs, _ = env.reset()\n    done = False\n    steps = 0\n    while not done:\n        action, _states = model.predict(obs, deterministic=True)\n        obs, reward, terminated, truncated, info = env.step(action)\n        done = terminated or truncated\n        steps += 1\n    if terminated:  # Reached goal\n        success_count += 1\n    total_steps_list.append(steps)\n\n# Calculate metrics\nsuccess_rate = success_count / n_eval_episodes\naverage_steps = np.mean(total_steps_list)\nprint(f\"评估回合数: {n_eval_episodes}\")\nprint(f\"成功到达目标的回合数: {success_count}\")\nprint(f\"平均成功率 (Success Rate): {success_rate:.2%}\")  # 指标公式: SR = (成功回合数) / (总评估回合数)\nprint(f\"平均步数 (Average Steps): {average_steps:.2f}\")\nprint()\nprint(\"[环境状态示例] 初始状态:\", env.start_pos, \"目标状态:\", env.goal_pos)</code></pre><p>该代码块创建了一个5x5的网格世界，定义了状态空间为二维坐标（Box），动作空间为四个方向（Discrete）。它首先验证环境接口，然后使用Stable-Baselines3的DQN算法训练10000步，最后在100个评估回合中计算成功率和平均步数。成功率的计算公式为 \\( \\text{Success Rate} = \\frac{\\text{# successful episodes}}{\\text{# total evaluation episodes}} \\)，这是一个直观的策略性能评估指标。运行后将打印状态空间、动作空间、成功率和平均步数等关键结果。</p><p>常见误区是认为构建自定义环境极其复杂。实际上，如示例所示，对于许多问题，核心是正确定义状态、动作和奖励逻辑。若无法使用Stable-Baselines3等库，一个轻量替代方案是使用纯Python实现简单的Q-Learning算法作为Baseline，其代码量更小，依赖更少，同样可以验证环境的正确性。</p><p>通过这个从理论定义到代码实践的完整流程，我们展示了环境建模与仿真如何作为强化学习的基础设施，将抽象的问题形式化转化为可计算、可训练的实验平台。这不仅是算法研究的工具，更是连接虚拟学习与真实应用的关键桥梁。</p>",
+      "en": "<h3>From Real-World Dilemmas to Virtual Testbeds</h3><p>A fundamental challenge in the engineering practice of Reinforcement Learning (RL) is how to train agents under conditions that are safe, controllable, and efficient. Taking robotic grasping as an example, trial-and-error learning directly in the physical world is not only costly and high-risk but also slow in data collection, severely hindering algorithm iteration and validation. This practical dilemma forms the core driver for environment modeling and simulation technology. Environment Modeling is not merely scene construction; it is the creation of a mathematical or computational representation of an environment, aiming to formalize the dynamics of agent-world interaction. Simulation is the process of running virtual experiments based on this model, generating state transition sequences and reward signals to provide data for learning algorithms.</p><p>By definition, environment modeling is typically formalized as a Markov Decision Process (MDP), with its core quadruple \\( (\\mathcal{S}, \\mathcal{A}, \\mathcal{P}, \\mathcal{R}) \\). Here, \\( \\mathcal{S} \\) denotes the State Space, the set of all possible environment states; \\( \\mathcal{A} \\) denotes the Action Space, the set of executable actions for the agent; \\( \\mathcal{P}(s'|s,a) \\) is the state transition probability function, defining the probability of transitioning to state \\( s' \\) after taking action \\( a \\) in state \\( s \\); \\( \\mathcal{R}(s,a) \\) is the reward function, providing scalar feedback for state-action pairs. Simulation involves sampling interaction trajectories \\( \\tau = (s_0, a_0, r_0, s_1, a_1, r_1, ...) \\) according to \\( \\mathcal{P} \\) and \\( \\mathcal{R} \\).</p><p>Its mechanism and goal are to approximate real-world dynamics while providing an accelerated, repeatable testbed. The objective function typically aligns with RL algorithms: maximizing the expected cumulative discounted reward: \\( J(\\pi) = \\mathbb{E}_{\\tau \\sim \\pi} \\left[ \\sum_{t=0}^{\\infty} \\gamma^t R(s_t, a_t) \\right] \\), where \\( \\pi \\) is the policy and \\( \\gamma \\in [0, 1] \\) is the discount factor. The quality of the simulation environment directly impacts the optimization efficiency of this objective. A key evaluation metric is simulation fidelity, often measured by Mean Squared Error (MSE) between predicted and real states: \\( \\text{MSE} = \\frac{1}{n} \\sum_{i=1}^{n} (s_i^{\\text{real}} - s_i^{\\text{sim}})^2 \\), where \\( n \\) is the number of comparison samples.</p><p>In engineering implementation, several points require attention: First, the representation of state and action spaces must be chosen based on the problem—discrete (e.g., grid positions) or continuous (e.g., joint angles)—ensuring compatibility with algorithms. Second, the implementation of the transition function: for simple deterministic environments, rules can be directly encoded; for complex physical systems, integrating physics engines (e.g., PyBullet) or using neural networks for dynamics fitting may be necessary. Reward function design must balance sparsity and learnability to avoid reward hacking. Complexity sensitivity lies in handling high-dimensional continuous state spaces (e.g., image inputs), which may introduce computational latency, necessitating state encoding or feature extraction.</p><p>Common misconceptions include equating simulation environments with game animations or ignoring the \"Reality Gap\"—systematic deviations between simulation and the real world. A typical failure mode is \"overfitting to simulation\": an agent performs excellently in simulation but fails upon real-world deployment. For diagnosis, one can compare the distribution differences between simulation and real data, for example, by calculating the Kullback-Leibler divergence: \\( D_{KL}(P_{\\text{real}} \\| P_{\\text{sim}}) = \\sum_x P_{\\text{real}}(x) \\log \\frac{P_{\\text{real}}(x)}{P_{\\text{sim}}(x)} \\), to quantify distribution shift. In practice, robustness and generalization can be improved through domain randomization or adding noise to simulation parameters.</p><p>Understanding the necessity of simulation environments as controlled testbeds and their formal definitions naturally leads us to delve into their internal structure: how do core elements like states, actions, transitions, and rewards function specifically, and how do they differentiate learning approaches? This guides us to the next section.</p><h3>Dissecting Environments: States, Actions, and Transitions</h3><p>When developers attempt to create custom environments using libraries like OpenAI Gym, a common confusion is how to correctly define the state space, action space, transition function, and reward function. These elements are not only the building blocks of environment modeling but also key to distinguishing between Model-Based and Model-Free reinforcement learning paradigms. The state space \\( \\mathcal{S} \\) must comprehensively capture environmental information at any moment; for example, in an autonomous driving simulation, the state might include the vehicle's position, velocity, orientation, and information about surrounding obstacles. The action space \\( \\mathcal{A} \\) defines the range of agent operations, such as steering angle, throttle, and brake.</p><p>Precisely defined, the state space is the set of all possible environment configurations, which can be discrete (e.g., squares on a board) or continuous (e.g., robot joint angles). The action space follows similarly. The transition function \\( \\mathcal{P}(s'|s,a) \\) is the core of environment dynamics, describing the probabilistic laws of state evolution. The reward function \\( \\mathcal{R}(s,a) \\) provides the learning signal, and its design directly influences the direction and quality of policy convergence.</p><p>Mechanistically, the fundamental difference between model-based and model-free methods lies in how they utilize the transition function \\( \\mathcal{P} \\). Model-based methods, such as Dynamic Programming or Model Predictive Control, explicitly use or learn \\( \\mathcal{P} \\) for planning. Their objective function is to maximize expected cumulative reward given the model, solved iteratively via the Bellman equation: \\( V^{\\pi}(s) = \\mathbb{E}_{a \\sim \\pi(\\cdot|s)} \\left[ R(s,a) + \\gamma \\sum_{s'} \\mathcal{P}(s'|s,a) V^{\\pi}(s') \\right] \\). In contrast, model-free methods, like Q-Learning or Policy Gradient, do not rely on an explicit \\( \\mathcal{P} \\), learning value functions or policy parameters directly from interaction samples with the environment.</p><p>Engineering implementation points include: using Gym's `spaces.Box` or `spaces.Discrete` to standardize the definition of state and action spaces; implementing deterministic or stochastic transition logic; when designing reward functions, consider the sparse reward problem and potentially introduce reward shaping or curriculum learning. Complexity sensitivity arises with high-dimensional or partially observable states, which may require state estimation or the use of recurrent neural networks for sequence processing. Latency can occur in complex physics simulation computations.</p><p>A common misconception is that model-free methods \"completely avoid models.\" In reality, model-free methods still rely on the environment interface (i.e., the `step` function), which implies a \"black-box\" model to provide state transitions and rewards. Failure modes include agent behavior deviating from expectations due to poorly designed reward functions (reward hacking) or inability to learn due to insufficient state representation. For diagnosis, one can visualize state-action trajectories, analyze reward distributions, or conduct ablation studies to determine whether errors stem from the model or the algorithm.</p><p>Having grasped the core elements of an environment and their roles in different paradigms, the next step is to put this theory into practice: how to build a custom simulation environment from scratch that adheres to standards and can be used for training? This leads to our hands-on construction section.</p><h3>Hands-On Construction: From Gym Templates to Custom Environments</h3><p>For researchers or engineers aiming to apply reinforcement learning to specific domains, a common starting point is creating a tailored simulation environment for their problem. The standardized interface provided by OpenAI Gym greatly simplifies this process. Its core is the `gym.Env` base class, which requires subclasses to implement several key methods: `reset()` initializes the environment and returns the initial state; `step(action)` takes an action, performs one simulation step, and returns the next state, reward, termination flag, and additional info dictionary; `render()` (optional) is for visualization.</p><p>Precisely defined, a Gym environment is a Python class implementing the above interface, encapsulating a specific MDP \\( (\\mathcal{S}, \\mathcal{A}, \\mathcal{P}, \\mathcal{R}) \\). A custom environment is not about reinventing the wheel or implementing low-level physics engines but extending this template to focus on defining the state representation, action space, transition rules, and reward logic relevant to the specific task.</p><p>Its mechanism lies in the standardized interface, enabling seamless integration between the environment and various RL algorithms (e.g., from Stable-Baselines3). Algorithms interact with the environment by calling `env.reset()` and `env.step(action)` to collect experience data. The objective function remains maximizing cumulative reward \\( J(\\pi) \\), but in this context, the environment provides the data generation mechanism needed to compute that expectation.</p><p>Engineering implementation points are as follows: First, correctly define `self.observation_space` and `self.action_space` in the `__init__` method. Second, in the `reset` method, initialize all internal variables and return the initial state. Most crucially, the `step` method must: 1) Calculate the new state by applying transition rules based on the input action and current state; 2) Compute the reward based on the new state and/or action; 3) Determine if termination conditions are met (e.g., success, failure, or timeout); 4) Return the quadruple `(observation, reward, done, info)`. Complexity is typically low, but attention must be paid to setting random seeds (via `super().reset(seed=seed)`) to ensure experiment reproducibility.</p><p>Common misconceptions include attempting to implement overly complex physical simulation within the environment class (should use dedicated engines) or neglecting compatibility checks with standard algorithms. Failure modes manifest as environment interface errors causing algorithm crashes or incorrect environment dynamics preventing the agent from learning effective policies. For diagnosis, always use the `check_env(env)` function from the `gym` library to verify the environment complies with the interface specification. Additionally, manually run a few episodes to check if state transitions and rewards match expectations.</p><p>Below is an end-to-end minimal reproducible example demonstrating how to create a simple grid world environment and train/evaluate it using the DQN algorithm. This example is entirely self-contained, requiring no external data files.</p><pre><code>import gym\nfrom gym import spaces\nimport numpy as np\nfrom stable_baselines3 import DQN\nfrom stable_baselines3.common.env_checker import check_env\n\nclass CustomGridWorldEnv(gym.Env):\n    \"\"\"A custom 5x5 grid world environment.\"\"\"\n    metadata = {'render.modes': ['human']}\n\n    def __init__(self):\n        super(CustomGridWorldEnv, self).__init__()\n        self.grid_size = 5\n        self.start_pos = np.array([0, 0], dtype=np.int32)\n        self.goal_pos = np.array([4, 4], dtype=np.int32)\n        self.obstacle_pos = np.array([2, 2], dtype=np.int32)\n        self.agent_pos = self.start_pos.copy()\n        # Define action and observation space\n        self.action_space = spaces.Discrete(4)  # 0: up, 1: down, 2: left, 3: right\n        self.observation_space = spaces.Box(low=0, high=self.grid_size-1, shape=(2,), dtype=np.int32)\n        self.max_steps = 50\n        self.current_step = 0\n\n    def reset(self, seed=None, options=None):\n        super().reset(seed=seed)\n        self.agent_pos = self.start_pos.copy()\n        self.current_step = 0\n        return self.agent_pos, {}\n\n    def step(self, action):\n        self.current_step += 1\n        new_pos = self.agent_pos.copy()\n        # Action effects\n        if action == 0:   # up\n            new_pos[1] = min(new_pos[1] + 1, self.grid_size - 1)\n        elif action == 1: # down\n            new_pos[1] = max(new_pos[1] - 1, 0)\n        elif action == 2: # left\n            new_pos[0] = max(new_pos[0] - 1, 0)\n        elif action == 3: # right\n            new_pos[0] = min(new_pos[0] + 1, self.grid_size - 1)\n        # Check obstacle\n        if np.array_equal(new_pos, self.obstacle_pos):\n            new_pos = self.agent_pos.copy()  # Blocked by obstacle\n        # Update state\n        self.agent_pos = new_pos\n        # Calculate reward and done\n        if np.array_equal(self.agent_pos, self.goal_pos):\n            reward = 1.0\n            terminated = True\n        else:\n            reward = -0.01\n            terminated = False\n            # Additional penalty for hitting a wall (i.e., position didn't change and action was valid)\n            if np.array_equal(new_pos, self.agent_pos) and action in [0,1,2,3]:\n                reward = -0.1\n        truncated = (self.current_step >= self.max_steps)\n        done = terminated or truncated\n        info = {}\n        return self.agent_pos, reward, terminated, truncated, info\n\n    def render(self, mode='human'):\n        grid = np.full((self.grid_size, self.grid_size), '.')\n        grid[self.goal_pos[1], self.goal_pos[0]] = 'G'\n        grid[self.obstacle_pos[1], self.obstacle_pos[0]] = 'X'\n        grid[self.agent_pos[1], self.agent_pos[0]] = 'A'\n        for row in grid:\n            print(' '.join(row))\n        print()\n\n# --- 1. Create and validate environment ---\nenv = CustomGridWorldEnv()\ncheck_env(env)  # This will raise an error if the env does not comply with Gym API.\nprint(\"[Environment Validation] Environment interface check passed.\")\nprint(f\"State space (observation_space): {env.observation_space}\")  # Should output: Box([0 0], [4 4], (2,), int32)\nprint(f\"Action space (action_space): {env.action_space}\")          # Should output: Discrete(4)\nprint()\n\n# --- 2. Train an agent using DQN ---\nprint(\"[Training Phase] Starting training with DQN...\")\nmodel = DQN(\"MlpPolicy\", env, verbose=0, seed=42)\nmodel.learn(total_timesteps=10000)\nprint(\"Training completed.\")\nprint()\n\n# --- 3. Evaluate the trained agent ---\nprint(\"[Evaluation Phase] Evaluating the trained agent...\")\nn_eval_episodes = 100\nsuccess_count = 0\ntotal_steps_list = []\n\nfor episode in range(n_eval_episodes):\n    obs, _ = env.reset()\n    done = False\n    steps = 0\n    while not done:\n        action, _states = model.predict(obs, deterministic=True)\n        obs, reward, terminated, truncated, info = env.step(action)\n        done = terminated or truncated\n        steps += 1\n    if terminated:  # Reached goal\n        success_count += 1\n    total_steps_list.append(steps)\n\n# Calculate metrics\nsuccess_rate = success_count / n_eval_episodes\naverage_steps = np.mean(total_steps_list)\nprint(f\"Evaluation episodes: {n_eval_episodes}\")\nprint(f\"Episodes successfully reaching goal: {success_count}\")\nprint(f\"Average Success Rate: {success_rate:.2%}\")  # Metric formula: SR = (# successful episodes) / (# total evaluation episodes)\nprint(f\"Average Steps: {average_steps:.2f}\")\nprint()\nprint(\"[Environment State Example] Initial state:\", env.start_pos, \"Goal state:\", env.goal_pos)</code></pre><p>This code block creates a 5x5 grid world, defining the state space as 2D coordinates (Box) and the action space as four directions (Discrete). It first validates the environment interface, then trains for 10,000 steps using the DQN algorithm from Stable-Baselines3, and finally calculates the success rate and average steps over 100 evaluation episodes. The success rate formula is \\( \\text{Success Rate} = \\frac{\\text{# successful episodes}}{\\text{# total evaluation episodes}} \\), an intuitive metric for policy performance evaluation. Upon execution, it prints key results including state space, action space, success rate, and average steps.</p><p>A common misconception is that building custom environments is extremely complex. As the example shows, for many problems, the core lies in correctly defining state, action, and reward logic. If libraries like Stable-Baselines3 are unavailable, a lightweight alternative is implementing a simple Q-Learning algorithm in pure Python as a baseline, which has smaller code size and fewer dependencies, and can also verify environment correctness.</p><p>Through this complete workflow from theoretical definition to code practice, we have demonstrated how environment modeling and simulation serve as the foundational infrastructure for reinforcement learning, transforming abstract problem formalizations into computable, trainable experimental platforms. This is not only a tool for algorithm research but also a critical bridge connecting virtual learning with real-world applications.</p>"
+    },
+    "practice": [
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：环境建模与仿真 · 结构总览 · 数据：课程大纲】在设计《环境建模与仿真》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+          "en": "【Source: 环境建模与仿真 · 结构总览 · Data: 课程大纲】When outlining \"环境建模与仿真\", which sequence best helps readers progress from concepts to applications?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+          "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+        },
+        "options": [
+          "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+          "直接列公式 → 给出练习 → 最后再解释概念",
+          "只讲历史 → 只列参考文献 → 不展示示例",
+          "先贴代码 → 略过背景 → 简单总结"
+        ]
+      },
+      {
+        "type": "multi",
+        "question": {
+          "zh": "【来自：环境建模与仿真 · worked example · 数据：学习创建和使用仿真环境 数据/代码】在复现《环境建模与仿真》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+          "en": "【Source: 环境建模与仿真 · worked example · Data: 学习创建和使用仿真环境 数据/代码】While reproducing the worked example in \"环境建模与仿真\", which actions improve reproducibility? (Select all that apply)"
+        },
+        "answer": [
+          0,
+          2,
+          3
+        ],
+        "explain": {
+          "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+          "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+        },
+        "options": [
+          "列出输入数据字段与来源",
+          "仅口头描述处理步骤",
+          "逐行解释代码或公式逻辑",
+          "记录关键输出指标及其含义"
+        ]
+      },
+      {
+        "type": "input",
+        "question": {
+          "zh": "【来自：环境建模与仿真 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《环境建模与仿真》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+          "en": "【Source: 环境建模与仿真 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"环境建模与仿真\" into your context: outline the scenario, the reused steps, and the metric you would check."
+        },
+        "answer": "plan",
+        "explain": {
+          "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+          "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+        }
+      },
+      {
+        "type": "mcq",
+        "question": {
+          "zh": "【来自：环境建模与仿真 · 参考资料 · 数据：课程引用文献】当引用文献支撑《环境建模与仿真》中的观点时，以下哪一做法能强化可信度？",
+          "en": "【Source: 环境建模与仿真 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"环境建模与仿真\", which action strengthens credibility?"
+        },
+        "answer": 0,
+        "explain": {
+          "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+          "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+        },
+        "options": [
+          "指出文献的年份、作者/机构并提炼与本节的关系",
+          "只在文末集中列出所有链接，不在正文说明",
+          "引用尚未发表的私有数据但不给出处",
+          "用营销口吻概括文献而不提研究方法"
+        ]
+      }
+    ],
+    "references": [
+      {
+        "label": {
+          "zh": "OpenAI Gym: A Toolkit for Developing and Comparing Reinforcement Learning Algorithms（arXiv，2016）",
+          "en": "OpenAI Gym: A Toolkit for Developing and Comparing Reinforcement Learning Algorithms (arXiv, 2016)"
+        },
+        "url": "https://arxiv.org/abs/1606.01540"
+      },
+      {
+        "label": {
+          "zh": "Playing Atari with Deep Reinforcement Learning（arXiv，2013）",
+          "en": "Playing Atari with Deep Reinforcement Learning (arXiv, 2013)"
+        },
+        "url": "https://arxiv.org/abs/1312.5602"
+      }
+    ],
+    "audio": {
+      "zh": "/assets/audio/daily/2026-01-15-environment-modeling-zh.mp3"
+    },
+    "meta": {
+      "category": "Reinforcement Learning Foundations",
+      "level": "6. Reinforcement Learning & Decision Making",
+      "difficultyScore": 2,
+      "related": [
+        "Gym",
+        "模拟器"
+      ],
+      "learningObjectives": [
+        "学习创建和使用仿真环境",
+        "理解模型/无模型强化学习的差别"
+      ],
+      "personas": [
+        "开发者",
+        "机器人研究员"
+      ],
+      "contextual_notes": {
+        "why_now": "当前阶段掌握 环境建模与仿真 可帮助团队在 Reinforcement Learning Foundations 上做出可复用的实践。",
+        "best_for": "适合 开发者、机器人研究员，需要快速吸收 6. Reinforcement Learning & Decision Making 主题。",
+        "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+      },
+      "tone_profile": {
+        "persona": "开发者 指导者",
+        "style": "故事化",
+        "energy": "encouraging",
+        "call_to_action": "引导学习者写下一条可执行行动"
+      },
+      "learner_profile": {
+        "summary": "课程面向 开发者、机器人研究员，帮助他们把 环境建模与仿真 应用于 Reinforcement Learning Foundations",
+        "prefersEnglish": false,
+        "industries": [
+          "开发者",
+          "机器人研究员"
+        ],
+        "personas": [
+          "开发者",
+          "机器人研究员"
+        ],
+        "pains": "在 Reinforcement Learning Foundations 场景缺乏 环境建模与仿真 的可执行路径",
+        "preferredMetrics": [],
+        "maturity": "6. Reinforcement Learning & Decision Making"
+      },
+      "prompt_version": "2025-02-19",
+      "starter_questions": [
+        {
+          "lang": "zh",
+          "question": "作为开发者或机器人研究员，你在强化学习项目中是否曾因真实环境实验成本过高而受阻？请描述一个具体场景，并思考如何通过环境建模与仿真来设计更可控的试验方案。",
+          "action_hint": "尝试列出你项目中环境实验的主要成本点，并构思对应的仿真要素（如状态空间、奖励函数）。"
+        },
+        {
+          "lang": "zh",
+          "question": "回顾你最近的强化学习项目，在环境建模时更倾向于使用模型基础还是无模型方法？请分析这种选择如何影响你的算法设计、训练效率与最终性能。",
+          "action_hint": "对比两种方法在你项目中的适用性，考虑环境复杂度、数据可用性与计算资源等因素。"
+        }
+      ]
+    }
   }
 ]
