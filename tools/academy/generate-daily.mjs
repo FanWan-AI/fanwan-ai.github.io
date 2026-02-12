@@ -39,7 +39,7 @@ import {
 const root = process.cwd();
 const dryRun = process.argv.includes("--dry-run");
 const maxRetries = dryRun ? 0 : 2;
-const HISTORY_LIMIT = 45;
+const HISTORY_LIMIT = Infinity;
 const PRACTICE_TYPES = ["mcq", "multi", "input"];
 const DIFFICULTY_VALUES = ["beginner", "intermediate", "advanced"];
 const DIFFICULTY_MAP = {

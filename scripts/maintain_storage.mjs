@@ -30,11 +30,7 @@ const TARGETS = [
     path: path.join(root, 'data/ai/airadar/audio'),
     mode: 'subfolders-date' // Expects YYYY-MM-DD folder names
   },
-  {
-    name: 'Academy Assets Audio',
-    path: path.join(root, 'assets/audio/daily'),
-    mode: 'files-date' // Expects YYYY-MM-DD-*.mp3
-  }
+  // Keep academy audio assets; do not auto-delete generated lessons.
 ];
 
 async function getItems(dirPath) {
