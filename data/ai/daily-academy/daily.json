@@ -1,3 +1,192 @@
 {
-  
+  "generatedAt": "2026-02-12T02:53:48.175Z",
+  "lessons": [
+    {
+      "id": "2026-02-12-pythoncondajupytergit",
+      "date": "2026-02-12",
+      "title": {
+        "zh": "环境与工具：Python/Conda/Jupyter/Git 最小必备",
+        "en": "Environment and Tools: Minimum Essentials for Python/Conda/Jupyter/Git"
+      },
+      "summary": {
+        "zh": "本课程系统讲解Python、Conda、Jupyter和Git在数据科学项目中的核心作用。通过定义环境依赖、可复现性等关键概念，深入分析虚拟环境的隔离机制、Conda的依赖解析算法、Jupyter的交互式执行模型以及Git的版本控制图结构。课程包含完整的鸢尾花分类示例，展示从环境配置到代码提交的全流程，并计算准确率等评估指标。掌握这些工具能够确保项目在不同机器上的一致性和可复现性。",
+        "en": "This course systematically explains the core roles of Python, Conda, Jupyter, and Git in data science projects. By defining key concepts such as environment dependencies and reproducibility, it delves into the isolation mechanisms of virtual environments, Conda's dependency resolution algorithms, Jupyter's interactive execution model, and Git's version control graph structure. The course includes a complete Iris classification example, demonstrating the full workflow from environment setup to code commit, and computes evaluation metrics like accuracy. Mastering these tools ensures project consistency and reproducibility across different machines."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "python",
+        "conda",
+        "jupyter",
+        "git"
+      ],
+      "content": {
+        "zh": "<h2>环境与工具：Python/Conda/Jupyter/Git 最小必备</h2>\n\n<p>在数据科学与机器学习项目中，环境配置与工具链管理是确保工作可复现、可协作的工程基础。本讲义系统阐述Python、Conda、Jupyter与Git四个核心工具的定义、机制与工程实践，构建从环境隔离到版本控制的完整工作流。我们将遵循“定义→机制→工程实现→失败诊断”的深度路径，确保每个概念都有严谨的数学表述与可操作的实现要点。</p>\n\n<h3>环境依赖与可复现性：从数学形式到工程隔离</h3>\n\n<p>考虑一个典型场景：本地开发的Python脚本依赖pandas 1.5.0，在同事机器上因pandas 2.0而失败。这种“在我这里能跑”问题源于环境依赖不一致。环境依赖指项目运行所需的外部软件包及其特定版本，可复现性要求在不同时间或机器上获得相同结果。从形式化角度，设项目P在环境E中产生输出O，即O = f(P, E)。环境变化时，即使P不变，O也可能改变，这可用条件概率表示为P(O|P, E) ≠ P(O|P, E')，其中E和E'是不同的环境配置。因此，环境管理的目标是确保P(O|P, E) = P(O|P, E')对所有合理的E和E'成立。</p>\n\n<p>虚拟环境是解决该问题的核心机制，它创建隔离的Python运行环境，每个环境有独立的包安装目录。工程上，虚拟环境通过修改PATH和PYTHONPATH环境变量，将Python解释器与包指向特定目录。常见实现包括venv（Python内置）与Conda（跨平台）。复杂度敏感点在于环境激活可能影响系统路径，需注意shell配置。</p>\n\n<p>常见误区包括“安装Python即能运行所有代码”，实际还需匹配的库版本、操作系统与C库依赖。另一误区是“pip全局安装最方便”，这会导致包冲突。失败模式包括：版本不匹配引发API调用失败、依赖缺失导致ImportError、系统库冲突造成segmentation fault。诊断方法：检查Python版本（<code>python --version</code>）、列出已安装包（<code>pip list</code>或<code>conda list</code>）、分析错误堆栈中的版本信息。例如，若遇到<code>AttributeError: module 'pandas' has no attribute 'read_csv'</code>，可运行<code>pip show pandas</code>验证版本是否低于1.0。</p>\n\n<p>既然环境问题如此棘手，我们需要系统化工具管理“工具箱”。接下来，Conda将作为环境管家，提供更强大的依赖解决方案。</p>\n\n<h3>Conda：依赖解析算法与环境隔离机制</h3>\n\n<p>Conda是开源的包与环境管理系统，支持多语言包与环境隔离。相比pip，Conda能处理非Python依赖（如C库），在数据科学中尤为强大。核心功能包括环境创建、包安装、依赖解析与通道管理。从机制看，Conda使用SAT求解器进行依赖解析：给定包约束（如pandas>=1.5,<2.0），它寻找满足所有约束的版本组合。这可形式化为布尔可满足性问题：设变量x_i表示包i的某个版本，约束包括版本范围、依赖关系、冲突关系，目标是找到赋值使所有约束为真。Conda求解器最小化目标函数∑w_i·d(x_i, x_i')，其中d是版本距离，w_i是权重，从而选择“最优”包组合。</p>\n\n<p>工程实现要点：使用environment.yml文件定义环境，该YAML文件包含name、channels、dependencies等字段；通道是包存储库，如conda-forge提供最新包；环境激活通过修改shell路径实现。复杂度敏感点在于依赖解析可能耗时，尤其当包数量多或约束复杂时，可启用并行求解（<code>conda config --set solver libmamba</code>）。</p>\n\n<p>常见误区包括“Conda和pip二选一”，实际Conda可管理pip包，实践中常结合使用但优先Conda。另一误区是“Conda环境仅用于数据科学”，其实适用于任何Python项目。失败模式包括：通道配置错误导致包找不到、依赖冲突阻止环境创建、环境文件格式错误。诊断方法：检查通道优先级（<code>conda config --show channels</code>）、验证YAML语法（<code>conda env create --dry-run</code>）、查看详细日志（<code>conda env create --debug</code>）。例如，若环境创建失败，运行<code>conda clean --all</code>清除缓存后重试。</p>\n\n<p>环境就绪后，我们需要交互式工具编写与测试代码。Jupyter Notebook正为此设计，它将代码执行、文档编写与可视化融为一体。</p>\n\n<h3>Jupyter：交互式执行模型与内核机制</h3>\n\n<p>Jupyter Notebook是基于Web的交互式计算环境，支持代码、文本与可视化混合。它由单元格组成，每个单元格可以是代码或Markdown文本，代码单元格由内核执行。内核是与特定Python环境关联的后端进程，决定可用包与版本。从机制看，Jupyter使用ZeroMQ进行进程间通信：客户端通过HTTP与服务器通信，服务器通过ZeroMQ与内核通信。执行流程可建模为：用户输入代码c，内核K执行后产生输出o，即o = K(c)。内核状态S随时间变化，S_t+1 = g(S_t, c_t)，其中g是内核执行函数。这允许增量执行与状态保持，但需注意状态依赖可能导致非确定性。</p>\n\n<p>工程实现要点：启动Notebook服务器（<code>jupyter notebook</code>）、选择内核（与Conda环境关联）、在单元格中执行代码。延迟敏感点在于内核启动与大型输出渲染，可配置内存限制（<code>--NotebookApp.max_buffer_size</code>）。最佳实践包括线性执行单元格避免状态混乱、定期重启内核清理内存、使用Markdown记录分析过程。</p>\n\n<p>常见误区包括“Jupyter只适合数据分析”，其实也用于教学、原型开发、文档生成。另一误区是“Notebook中代码顺序不重要”，乱序执行可能导致变量覆盖与结果错误。失败模式包括：内核崩溃导致数据丢失、内存泄漏降低性能、版本控制困难（因输出嵌入Notebook）。诊断方法：检查内核状态（Kernel → Restart）、监控内存使用（<code>!ps aux | grep jupyter</code>）、使用nbconvert导出纯代码版本（<code>jupyter nbconvert --to python notebook.ipynb</code>）。例如，若单元格执行无响应，可尝试重启内核并检查日志（<code>jupyter notebook --debug</code>）。</p>\n\n<p>实验完成后，我们需要跟踪变化与协作。Git作为分布式版本控制系统，为项目提供时间旅行与协作基础设施。</p>\n\n<h3>Git：版本控制图结构与工作流实践</h3>\n\n<p>Git是分布式版本控制系统，用于跟踪文件变化与协作开发。核心概念包括仓库、提交、分支。提交是一次版本快照，包含变更信息、作者与唯一哈希；分支是独立发展线，用于并行开发。从机制看，Git使用有向无环图存储历史：每个提交是节点，边指向父提交。这可形式化为图G=(V,E)，其中V是提交集合，E是父子关系。Git使用SHA-1哈希标识提交，计算为H = SHA-1(commit_content)，确保唯一性。分支是指向提交的指针，HEAD指针指向当前工作目录对应的提交。</p>\n\n<p>工程实现要点：初始化仓库（<code>git init</code>）、添加文件到暂存区（<code>git add</code>）、提交变更（<code>git commit</code>）、推送到远程（<code>git push</code>）。复杂度敏感点在于合并冲突解决与大型文件处理，可使用Git LFS管理大文件。工作流通常包括创建功能分支、开发后合并到主分支、使用标签标记版本。</p>\n\n<p>常见误区包括“Git只适合大型团队”，其实个人项目也用Git备份与追踪变化。另一误区是“提交越频繁越好”，提交应有逻辑单元（如完成功能或修复bug）。失败模式包括：提交信息不清晰导致历史难理解、合并冲突未解决、误删分支或提交。诊断方法：使用<code>git log --oneline --graph</code>查看历史图谱、<code>git status</code>检查状态、<code>git diff HEAD~1</code>比较最近变更。例如，若合并冲突，运行<code>git diff --name-only --diff-filter=U</code>列出冲突文件，编辑后执行<code>git add</code>与<code>git commit</code>。</p>\n\n<p>掌握这些工具后，我们构建从环境到代码都清晰可复现的项目。下面通过完整示例展示如何串联这些工具。</p>\n\n<h3>综合示例：可复现鸢尾花分类项目</h3>\n\n<p>本示例构建完整机器学习项目，使用鸢尾花数据集进行分类，记录环境与版本。它覆盖环境配置、代码开发、结果记录与版本控制全流程，确保可复现性。我们将计算准确率作为评估指标，其公式为Accuracy = (TP + TN) / (TP + TN + FP + FN)，其中TP、TN、FP、FN分别表示真阳性、真阴性、假阳性、假阴性。对于多分类任务，可计算宏平均或微平均准确率，这里计算整体准确率。</p>\n\n<pre><code># 代码块#1：端到端最小可复现实验\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# 步骤1：数据检查\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"数据shape:\", X.shape)  # 输出: (150, 4)\nprint(\"特征名:\", iris.feature_names)  # 输出: ['sepal length (cm)', 'sepal width (cm)', 'petal length (cm)', 'petal width (cm)']\nprint(\"类别分布:\", np.bincount(y))  # 输出: [50 50 50]\n\n# 创建DataFrame查看样例\ndf = pd.DataFrame(X, columns=iris.feature_names)\ndf['target'] = y\nprint(\"数据前5行:\")\nprint(df.head())\n\n# 步骤2：可复现切分\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"训练集大小: {X_train.shape}, 测试集大小: {X_test.shape}\")  # 输出: (120, 4), (30, 4)\n\n# 步骤3：pipeline构建\npipeline = make_pipeline(\n    StandardScaler(),\n    LogisticRegression(random_state=42, max_iter=200)\n)\npipeline.fit(X_train, y_train)\n\n# 步骤4：指标与误差分析\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"模型准确率: {accuracy:.4f}\")  # 输出约: 0.9667\n\n# 计算混淆矩阵\ncm = confusion_matrix(y_test, y_pred)\nprint(\"混淆矩阵:\")\nprint(cm)  # 输出: [[10  0  0], [0  9  1], [0  0 10]]（示例）\n\n# 准确率公式验证\nprint(f\"准确率计算验证: {np.sum(y_pred == y_test)} / {len(y_test)} = {accuracy:.4f}\")\n\n# 步骤5：环境记录\nimport sys\nimport sklearn\nprint(f\"Python版本: {sys.version.split()[0]}\")  # 输出: 3.9.0\nprint(f\"scikit-learn版本: {sklearn.__version__}\")  # 输出: 1.3.0\n\n# 生成requirements.txt\nwith open('requirements.txt', 'w') as f:\n    f.write(f\"scikit-learn=={sklearn.__version__}\\n\")\n    f.write(\"pandas\\n\")\n    f.write(\"numpy\\n\")\nprint(\"已生成requirements.txt\")\n\n# Git初始化模拟\nprint(\"建议执行Git命令:\")\nprint(\"git init\")\nprint(\"git add .\")\nprint(\"git commit -m '初始提交: 鸢尾花分类项目'\")\n</code></pre>\n\n<p>此示例展示从数据加载到模型评估的完整流程，记录关键中间结果与评估指标。通过环境隔离（Conda环境）、交互式开发（Jupyter）、依赖管理（requirements.txt）与版本控制（Git），确保项目在任何机器上可复现相同结果。准确率作为分类任务常用指标，其计算验证了模型性能，公式中变量含义明确，便于迁移到其他项目。</p>\n\n<p>掌握Python/Conda/Jupyter/Git工具链，是建立可复现、可协作工作习惯的工程基础。建议立即创建Conda环境，按此流程实践小项目，将理论知识转化为工程能力。</p>",
+        "en": "<h2>Environment and Tools: Python/Conda/Jupyter/Git Minimal Essentials</h2>\n\n<p>In data science and machine learning projects, environment configuration and toolchain management form the engineering foundation for reproducible and collaborative work. This lecture systematically elaborates on the definitions, mechanisms, and engineering practices of four core tools: Python, Conda, Jupyter, and Git, constructing a complete workflow from environment isolation to version control. We will follow a deep path of \"definition → mechanism → engineering implementation → failure diagnosis,\" ensuring each concept has rigorous mathematical formulation and actionable implementation points.</p>\n\n<h3>Environment Dependencies and Reproducibility: From Mathematical Formalism to Engineering Isolation</h3>\n\n<p>Consider a typical scenario: a Python script developed locally depends on pandas 1.5.0 but fails on a colleague's machine due to pandas 2.0. This \"works on my machine\" issue stems from inconsistent environment dependencies. Environment dependencies refer to external software packages and their specific versions required for a project to run, while reproducibility demands obtaining identical results at different times or on different machines. Formally, let project P produce output O in environment E, i.e., O = f(P, E). When the environment changes, even if P remains unchanged, O may vary, which can be expressed using conditional probability as P(O|P, E) ≠ P(O|P, E'), where E and E' are different environment configurations. Thus, the goal of environment management is to ensure P(O|P, E) = P(O|P, E') for all reasonable E and E'.</p>\n\n<p>The core mechanism to address this is the virtual environment, which creates an isolated Python runtime environment where each environment has an independent package installation directory. In engineering, virtual environments modify the PATH and PYTHONPATH environment variables to point Python interpreters and packages to specific directories. Common implementations include venv (built into Python) and Conda (cross-platform). Complexity-sensitive aspects involve environment activation potentially affecting system paths, requiring attention to shell configuration.</p>\n\n<p>Common misconceptions include \"installing Python alone is sufficient to run all code,\" whereas matching library versions, operating systems, and C library dependencies are also necessary. Another misconception is that \"globally installing packages with pip is most convenient,\" which leads to package conflicts. Failure modes include: version mismatches triggering API call failures, missing dependencies causing ImportError, and system library conflicts resulting in segmentation faults. Diagnostic methods: check Python version (<code>python --version</code>), list installed packages (<code>pip list</code> or <code>conda list</code>), and analyze version information in error stack traces. For example, if encountering <code>AttributeError: module 'pandas' has no attribute 'read_csv'</code>, run <code>pip show pandas</code> to verify if the version is below 1.0.</p>\n\n<p>Given the complexity of environment issues, we need systematic tools to manage this \"toolbox.\" Next, Conda will serve as an environment steward, providing more robust dependency solutions.</p>\n\n<h3>Conda: Dependency Resolution Algorithms and Environment Isolation Mechanisms</h3>\n\n<p>Conda is an open-source package and environment management system that supports multi-language packages and environment isolation. Compared to pip, Conda can handle non-Python dependencies (e.g., C libraries), making it particularly powerful in data science. Core functionalities include environment creation, package installation, dependency resolution, and channel management. Mechanistically, Conda uses a SAT solver for dependency resolution: given package constraints (e.g., pandas>=1.5,<2.0), it finds a combination of versions that satisfies all constraints. This can be formalized as a Boolean satisfiability problem: let variable x_i represent a specific version of package i, with constraints including version ranges, dependencies, and conflicts; the goal is to find an assignment that makes all constraints true. Conda's solver minimizes the objective function ∑w_i·d(x_i, x_i'), where d is version distance and w_i are weights, thereby selecting the \"optimal\" package combination.</p>\n\n<p>Engineering implementation points: use an environment.yml file to define the environment, a YAML file containing fields like name, channels, and dependencies; channels are package repositories, such as conda-forge for the latest packages; environment activation is achieved by modifying shell paths. Complexity-sensitive aspects involve dependency resolution, which can be time-consuming, especially with many packages or complex constraints; parallel solving can be enabled (<code>conda config --set solver libmamba</code>).</p>\n\n<p>Common misconceptions include \"Conda and pip are mutually exclusive,\" whereas Conda can manage pip packages, and they are often used together with Conda prioritized. Another misconception is that \"Conda environments are only for data science,\" whereas they are suitable for any Python project. Failure modes include: misconfigured channels causing packages not to be found, dependency conflicts preventing environment creation, and malformed environment files. Diagnostic methods: check channel priorities (<code>conda config --show channels</code>), validate YAML syntax (<code>conda env create --dry-run</code>), and view detailed logs (<code>conda env create --debug</code>). For example, if environment creation fails, run <code>conda clean --all</code> to clear the cache and retry.</p>\n\n<p>With the environment ready, we need an interactive tool for writing and testing code. Jupyter Notebook is designed for this purpose, integrating code execution, documentation, and visualization.</p>\n\n<h3>Jupyter: Interactive Execution Model and Kernel Mechanisms</h3>\n\n<p>Jupyter Notebook is a web-based interactive computing environment that supports mixing code, text, and visualizations. It consists of cells, each of which can be code or Markdown text, with code cells executed by a kernel. The kernel is a backend process associated with a specific Python environment, determining available packages and versions. Mechanistically, Jupyter uses ZeroMQ for inter-process communication: the client communicates with the server via HTTP, and the server communicates with the kernel via ZeroMQ. The execution flow can be modeled as: user inputs code c, kernel K executes it to produce output o, i.e., o = K(c). Kernel state S evolves over time, S_t+1 = g(S_t, c_t), where g is the kernel execution function. This allows incremental execution and state persistence but requires attention to state dependencies that may cause non-determinism.</p>\n\n<p>Engineering implementation points: start the Notebook server (<code>jupyter notebook</code>), select a kernel (associated with a Conda environment), and execute code in cells. Latency-sensitive aspects involve kernel startup and rendering large outputs; memory limits can be configured (<code>--NotebookApp.max_buffer_size</code>). Best practices include executing cells linearly to avoid state confusion, periodically restarting the kernel to clear memory, and using Markdown to document the analysis process.</p>\n\n<p>Common misconceptions include \"Jupyter is only for data analysis,\" whereas it is also used for teaching, prototyping, and documentation generation. Another misconception is that \"code order in Notebooks is unimportant,\" but out-of-order execution can lead to variable overwrites and incorrect results. Failure modes include: kernel crashes causing data loss, memory leaks degrading performance, and version control difficulties (since outputs are embedded in the Notebook). Diagnostic methods: check kernel status (Kernel → Restart), monitor memory usage (<code>!ps aux | grep jupyter</code>), and use nbconvert to export a code-only version (<code>jupyter nbconvert --to python notebook.ipynb</code>). For example, if a cell execution is unresponsive, try restarting the kernel and checking logs (<code>jupyter notebook --debug</code>).</p>\n\n<p>After experimentation, we need to track changes and collaborate. Git, as a distributed version control system, provides the infrastructure for time-travel and collaboration in projects.</p>\n\n<h3>Git: Version Control Graph Structure and Workflow Practices</h3>\n\n<p>Git is a distributed version control system used to track file changes and facilitate collaborative development. Core concepts include repository, commit, and branch. A commit is a version snapshot containing change information, author details, and a unique hash; a branch is an independent line of development for parallel work. Mechanistically, Git uses a Directed Acyclic Graph to store history: each commit is a node, with edges pointing to parent commits. This can be formalized as a graph G=(V,E), where V is the set of commits and E represents parent-child relationships. Git uses SHA-1 hashes to identify commits, computed as H = SHA-1(commit_content), ensuring uniqueness. A branch is a pointer to a commit, and the HEAD pointer indicates the commit corresponding to the current working directory.</p>\n\n<p>Engineering implementation points: initialize a repository (<code>git init</code>), add files to the staging area (<code>git add</code>), commit changes (<code>git commit</code>), and push to remote (<code>git push</code>). Complexity-sensitive aspects involve merge conflict resolution and handling large files; Git LFS can be used for large files. Typical workflows include creating feature branches, merging into the main branch after development, and using tags to mark versions.</p>\n\n<p>Common misconceptions include \"Git is only for large teams,\" whereas individual projects also use Git for backup and change tracking. Another misconception is that \"more frequent commits are better,\" but commits should represent logical units (e.g., completing a feature or fixing a bug). Failure modes include: unclear commit messages making history hard to understand, unresolved merge conflicts, and accidental deletion of branches or commits. Diagnostic methods: use <code>git log --oneline --graph</code> to view the history graph, <code>git status</code> to check state, and <code>git diff HEAD~1</code> to compare recent changes. For example, if a merge conflict occurs, run <code>git diff --name-only --diff-filter=U</code> to list conflicting files, edit them, then execute <code>git add</code> and <code>git commit</code>.</p>\n\n<p>Mastering these tools enables building projects that are clear and reproducible from environment to code. The following comprehensive example demonstrates how to integrate these tools into a cohesive workflow.</p>\n\n<h3>Comprehensive Example: A Reproducible Iris Classification Project</h3>\n\n<p>This example builds a complete machine learning project using the Iris dataset for classification, while recording environment and version details. It covers the entire workflow from environment configuration and code development to result logging and version control, ensuring reproducibility. We will compute accuracy as the evaluation metric, defined as Accuracy = (TP + TN) / (TP + TN + FP + FN), where TP, TN, FP, FN denote true positives, true negatives, false positives, and false negatives, respectively. For multi-class tasks, macro or micro averaging can be computed; here we compute overall accuracy.</p>\n\n<pre><code># Code Block #1: End-to-End Minimal Reproducible Experiment\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# Step 1: Data Inspection\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"Data shape:\", X.shape)  # Output: (150, 4)\nprint(\"Feature names:\", iris.feature_names)  # Output: ['sepal length (cm)', 'sepal width (cm)', 'petal length (cm)', 'petal width (cm)']\nprint(\"Class distribution:\", np.bincount(y))  # Output: [50 50 50]\n\n# Create DataFrame for sample viewing\ndf = pd.DataFrame(X, columns=iris.feature_names)\ndf['target'] = y\nprint(\"First 5 rows of data:\")\nprint(df.head())\n\n# Step 2: Reproducible Splitting\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"Training set size: {X_train.shape}, Test set size: {X_test.shape}\")  # Output: (120, 4), (30, 4)\n\n# Step 3: Pipeline Construction\npipeline = make_pipeline(\n    StandardScaler(),\n    LogisticRegression(random_state=42, max_iter=200)\n)\npipeline.fit(X_train, y_train)\n\n# Step 4: Metrics and Error Analysis\ny_pred = pipeline.predict(X_test)\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"Model accuracy: {accuracy:.4f}\")  # Output approx: 0.9667\n\n# Compute confusion matrix\ncm = confusion_matrix(y_test, y_pred)\nprint(\"Confusion matrix:\")\nprint(cm)  # Output: [[10  0  0], [0  9  1], [0  0 10]] (example)\n\n# Accuracy formula verification\nprint(f\"Accuracy verification: {np.sum(y_pred == y_test)} / {len(y_test)} = {accuracy:.4f}\")\n\n# Step 5: Environment Recording\nimport sys\nimport sklearn\nprint(f\"Python version: {sys.version.split()[0]}\")  # Output: 3.9.0\nprint(f\"scikit-learn version: {sklearn.__version__}\")  # Output: 1.3.0\n\n# Generate requirements.txt\nwith open('requirements.txt', 'w') as f:\n    f.write(f\"scikit-learn=={sklearn.__version__}\\n\")\n    f.write(\"pandas\\n\")\n    f.write(\"numpy\\n\")\nprint(\"Generated requirements.txt\")\n\n# Git initialization simulation\nprint(\"Recommended Git commands:\")\nprint(\"git init\")\nprint(\"git add .\")\nprint(\"git commit -m 'Initial commit: Iris classification project'\")\n</code></pre>\n\n<p>This example demonstrates a complete workflow from data loading to model evaluation, logging key intermediate results and evaluation metrics. Through environment isolation (Conda environments), interactive development (Jupyter), dependency management (requirements.txt), and version control (Git), the project ensures reproducible results on any machine. Accuracy, as a common metric for classification tasks, validates model performance, with clear variable definitions in the formula, facilitating transfer to other projects.</p>\n\n<p>Mastering the Python/Conda/Jupyter/Git toolchain is foundational for establishing reproducible and collaborative work habits in engineering. We recommend immediately creating a Conda environment and practicing a small project following this workflow, transforming theoretical knowledge into engineering capability.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：环境与工具：Python/Conda/Jupyter/Git 最小必备 · 结构总览 · 数据：课程大纲】在设计《环境与工具：Python/Conda/Jupyter/Git 最小必备》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 环境与工具：Python/Conda/Jupyter/Git 最小必备 · 结构总览 · Data: 课程大纲】When outlining \"环境与工具：Python/Conda/Jupyter/Git 最小必备\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：环境与工具：Python/Conda/Jupyter/Git 最小必备 · worked example · 数据：完成本地/云端开发环境搭建 数据/代码】在复现《环境与工具：Python/Conda/Jupyter/Git 最小必备》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 环境与工具：Python/Conda/Jupyter/Git 最小必备 · worked example · Data: 完成本地/云端开发环境搭建 数据/代码】While reproducing the worked example in \"环境与工具：Python/Conda/Jupyter/Git 最小必备\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：环境与工具：Python/Conda/Jupyter/Git 最小必备 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《环境与工具：Python/Conda/Jupyter/Git 最小必备》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 环境与工具：Python/Conda/Jupyter/Git 最小必备 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"环境与工具：Python/Conda/Jupyter/Git 最小必备\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：环境与工具：Python/Conda/Jupyter/Git 最小必备 · 参考资料 · 数据：课程引用文献】当引用文献支撑《环境与工具：Python/Conda/Jupyter/Git 最小必备》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 环境与工具：Python/Conda/Jupyter/Git 最小必备 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"环境与工具：Python/Conda/Jupyter/Git 最小必备\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Conda Documentation（Anaconda, Inc.，2023）",
+            "en": "Conda Documentation (Anaconda, Inc., 2023)"
+          },
+          "url": "https://docs.conda.io/en/latest/"
+        },
+        {
+          "label": {
+            "zh": "Jupyter Documentation（Project Jupyter，2023）",
+            "en": "Jupyter Documentation (Project Jupyter, 2023)"
+          },
+          "url": "https://docs.jupyter.org/en/latest/"
+        },
+        {
+          "label": {
+            "zh": "Git - Documentation（Git，2023）",
+            "en": "Git - Documentation (Git, 2023)"
+          },
+          "url": "https://git-scm.com/doc"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（scikit-learn developers，2023）",
+            "en": "Scikit-learn: Machine Learning in Python (scikit-learn developers, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-12-pythoncondajupytergit-zh.mp3"
+      },
+      "meta": {
+        "category": "学习方法与工具准备",
+        "level": "0. 课程导航与方法论",
+        "difficultyScore": 1,
+        "related": [
+          "Python 数据处理：NumPy/Pandas 最小必备",
+          "版本控制与协作：Git flow"
+        ],
+        "learningObjectives": [
+          "完成本地/云端开发环境搭建",
+          "掌握项目初始化与依赖管理"
+        ],
+        "personas": [
+          "初级程序员",
+          "学生",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握Python/Conda/Jupyter/Git工具链可帮助团队在开发流程中实现可复现的实践，提升项目协作效率。",
+          "best_for": "适合初级程序员、学生和工程师，需要快速建立环境管理与版本控制的基础知识。",
+          "visual_hint": "使用流程图展示环境配置到代码提交的完整工作流，配合代码块与公式突出关键步骤。"
+        },
+        "tone_profile": {
+          "persona": "初级程序员 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 初级程序员、学生、工程师，帮助他们把 环境与工具：Python/Conda/Jupyter/Git 最小必备 应用于 学习方法与工具准备",
+          "prefersEnglish": false,
+          "industries": [
+            "初级程序员",
+            "学生",
+            "工程师"
+          ],
+          "personas": [
+            "初级程序员",
+            "学生",
+            "工程师"
+          ],
+          "pains": "在 学习方法与工具准备 场景缺乏 环境与工具：Python/Conda/Jupyter/Git 最小必备 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "0. 课程导航与方法论"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学初学者，你曾因环境配置问题导致代码无法运行吗？回想最近一次项目，Python包版本冲突或缺少依赖如何影响你的工作流程？",
+            "action_hint": "尝试描述具体场景，并思考Conda虚拟环境如何解决这类问题。"
+          },
+          {
+            "lang": "zh",
+            "question": "在团队协作中，你如何确保他人能复现你的分析结果？当前使用哪些方法管理代码版本和环境配置，存在哪些可改进之处？",
+            "action_hint": "结合Git提交记录和Conda环境文件，设想一个完整的可复现工作流程。"
+          }
+        ]
+      }
+    }
+  ]
 }
