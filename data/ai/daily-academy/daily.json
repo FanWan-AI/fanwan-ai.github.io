@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-02-18T14:10:30.471Z",
+  "generatedAt": "2026-02-19T02:32:07.515Z",
   "lessons": [
+    {
+      "id": "2026-02-19-seed",
+      "date": "2026-02-19",
+      "title": {
+        "zh": "复现实验管理：seed、环境锁定与日志规范",
+        "en": "Reproducible Experiment Management: Seed, Environment Locking, and Logging Standards"
+      },
+      "summary": {
+        "zh": "本课程系统探讨实验复现管理的核心要素：随机种子、环境锁定与日志规范。通过概率建模分析复现性的数学本质，揭示随机性来源与环境依赖对结果一致性的影响。课程详细阐述如何构建可复现管线，从数据加载到模型评估实现全流程确定性控制。示例代码演示了基于鸢尾花数据集的端到端实践，涵盖种子设置、依赖版本记录与结构化日志输出。掌握这些工程化方法，能够显著提升数据分析项目的可信度与协作效率。",
+        "en": "This course systematically explores the core elements of experimental reproducibility management: random seeds, environment locking, and logging standards. Through probabilistic modeling, it analyzes the mathematical essence of reproducibility, revealing how randomness sources and environmental dependencies affect result consistency. The course details how to build reproducible pipelines, achieving deterministic control from data loading to model evaluation. Example code demonstrates an end-to-end practice using the Iris dataset, covering seed setting, dependency version recording, and structured log output. Mastering these engineering methods significantly enhances the credibility and collaboration efficiency of data analysis projects."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "reproducibility",
+        "logging"
+      ],
+      "content": {
+        "zh": "<h3>当结果无法重现：一个数据分析师的深夜困惑</h3>\n<p>深夜，你收到同事的消息：“我按你的代码重新跑了一遍，准确率从97%掉到了92%，怎么回事？” 这不是个例。在数据科学和机器学习项目中，实验复现失败已成为信任危机和协作障碍的主要源头。复现性（Reproducibility）指在相同输入、代码和环境条件下，重复实验得到一致结果的能力。它不等同于确定性，而是通过控制可变因素（如随机种子、库版本）来逼近确定性。忽视复现性会导致项目延期、结论不可信，甚至科学欺诈指控（来源：Reproducibility in Machine Learning, 2020）。</p>\n<p>要理解复现性的数学本质，我们需从概率角度建模。设实验输出Y是输入X、代码C、环境E和随机性R的函数：Y = f(X, C, E, R)。复现性要求在不同时间t₁和t₂，当X、C、E固定时，R的分布一致，即P(Y|X,C,E)稳定。随机性R通常来自伪随机数生成器（PRNG），其状态由种子s初始化：R = PRNG(s)。若s未固定，即使X、C、E相同，Y也会波动。例如，数据切分函数train_test_split默认使用系统时间作为种子，导致每次运行产生不同的训练/测试集。</p>\n<p>工程实现中，复现性的第一个要点是识别所有随机性来源。常见来源包括：数据切分（如scikit-learn的shuffle）、模型初始化（如神经网络权重）、数据增强（如随机旋转）、dropout等。每个来源都需显式设置种子。在Python中，这涉及多个库的全局种子设置：random.seed(42)、np.random.seed(42)、torch.manual_seed(42)等。但仅设种子不够，因为环境E（库版本、操作系统）变化也会改变f的行为。</p>\n<p>常见误区是认为“只要代码相同，结果就一定相同”。实际上，库版本更新可能改变算法默认参数或PRNG实现。例如，scikit-learn 0.24将LogisticRegression的solver默认值从'liblinear'改为'lbfgs'，影响收敛性和结果。失败模式包括：结果漂移（如准确率±5%）、完全不同的分类边界、训练崩溃。诊断时，应检查：1) 所有随机种子是否一致；2) 依赖版本是否匹配；3) 日志是否记录了关键参数。</p>\n<p>复现性不是可选的“锦上添花”，而是数据科学工作流的基石。它确保你的分析能被他人验证、项目能持续演进。当你开始一个新实验时，第一个问题不应是“用什么模型”，而是“如何让这个过程三个月后还能复现”。既然随机性是复现的头号敌人，如何驯服它？这需要更系统的工具链。</p>\n\n<h3>驯服随机性：seed、环境与日志的三位一体</h3>\n<p>设置了random_state=42，但换台电脑后结果依然不同——这是因为忽略了环境锁定（Environment Locking）。环境锁定指通过文件（如requirements.txt、environment.yml）精确记录所有依赖库的版本，避免版本冲突。它与随机种子（Random Seed）和日志规范（Logging Standards）构成保障复现性的三位一体。只设种子不锁环境，如同固定菜谱但换了灶具，味道仍会变。在工程中，这三者共同定义了一个可复现实验的元组：(代码, 种子, 环境, 日志)。</p>\n<p>从机制看，环境锁定解决了函数f中E的变化问题。设库L有版本v₁和v₂，其算法实现可能满足f_v₁(X) ≠ f_v₂(X)。例如，numpy 1.19和1.20的随机数生成器改进改变了分布尾部的行为。环境锁定的目标是最小化版本差异风险，数学上可表述为：给定代码库C，选择依赖集合D = {(L₁, v₁), (L₂, v₂), ...}，使得对于所有运行环境，安装D后f的行为一致。这通常通过哈希锁（如pipenv的Pipfile.lock）或容器化（Docker）实现。</p>\n<p>工程实现要点包括：1) 使用requirements.txt记录精确版本（如pandas==2.0.0）；2) 使用虚拟环境（venv/conda）隔离项目；3) 在日志中记录环境快照（如pip freeze输出）。对于团队协作，还需考虑操作系统和硬件差异，但库版本是主要矛盾。复杂度敏感点在于依赖冲突（如包A需要numpy<1.20，包B需要numpy>=1.21），此时需使用依赖解析工具或统一升级。</p>\n<p>常见误区是“用最新版本的库总能得到更好结果”。实际上，新版库可能引入bug或行为变更，破坏复现性。例如，pandas 2.0将默认索引类型从int64改为RangeIndex，影响某些合并操作。失败模式包括：运行时错误、静默的行为改变（如精度损失）、性能下降。诊断时，比较pip list输出与原始环境，并使用日志回放关键步骤的输出。</p>\n<p>日志规范是复现性的“时间胶囊”。它不仅是print语句的集合，而是结构化记录关键参数、数据转换和决策点。例如，记录数据加载时的样本数、缺失值处理策略、模型超参数等。有了种子、环境和日志，我们具备了构建可复现管线的所有要素。但如何将这些原则嵌入日常的数据处理流程？这需要从临时脚本转向工程化管线。</p>\n\n<h3>从数据到指标：可复现管线的工程化实践</h3>\n<p>三个月后回顾实验，你无法确定当时用了哪些预处理步骤——这是因为缺乏可复现管线（Reproducible Pipeline）。可复现管线将数据处理、模型训练和评估步骤封装为可重复执行的代码流程，并记录所有关键参数。它不同于普通流水线，必须包含版本控制、环境管理和审计日志（Audit Log）。一个最小可复现管线可形式化为：输入数据X → 预处理P(θ_p) → 模型训练M(θ_m) → 评估E(θ_e) → 输出指标Y，其中θ表示所有参数（包括随机种子）。</p>\n<p>管线的评估指标必须可计算且可复现。以分类任务为例，准确率（Accuracy）定义为正确预测数除以总数：\\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\]，其中TP、TN、FP、FN分别表示真阳性、真阴性、假阳性、假阴性。在多类场景中，常使用宏平均F1分数：\\[ F1_{\\text{macro}} = \\frac{1}{C} \\sum_{i=1}^{C} \\frac{2 \\cdot \\text{precision}_i \\cdot \\text{recall}_i}{\\text{precision}_i + \\text{recall}_i} \\]，其中C为类别数。这些指标应在日志中与混淆矩阵一起记录。</p>\n<p>工程实现要点包括：1) 使用pipeline对象（如scikit-learn的Pipeline）封装步骤；2) 将随机种子作为超参数传递；3) 生成包含时间戳、环境信息和关键指标的日志文件。数据流应避免隐式状态，所有转换都应是确定性的。复杂度敏感点在于大数据场景下的内存管理和分布式执行，但核心原则不变。以下是一个端到端示例，使用鸢尾花数据集构建可复现分类管线。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport logging\nimport sys\nimport importlib.metadata\n\n# 1. 设置全局种子\nSEED = 42\nnp.random.seed(SEED)\n\n# 2. 数据加载与检查\niris = load_iris()\nX, y = iris.data, iris.target\nprint(f\"Data shape: {X.shape}\")  # (150, 4)\nprint(f\"Class counts: {np.bincount(y)}\")  # [50, 50, 50]\nprint(\"First 3 samples:\\n\", X[:3])\n\n# 3. 可复现切分\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=SEED, stratify=y\n)\nprint(f\"Train size: {X_train.shape[0]}, Test size: {X_test.shape[0]}\")\n\n# 4. 构建管线\npipeline = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=SEED))\n])\npipeline.fit(X_train, y_train)\ny_pred = pipeline.predict(X_test)\n\n# 5. 计算指标\naccuracy = accuracy_score(y_test, y_pred)\ncm = confusion_matrix(y_test, y_pred)\nprint(f\"Accuracy: {accuracy:.2f}\")\nprint(\"Confusion matrix:\\n\", cm)\n\n# 6. 记录环境与日志\nlogging.basicConfig(level=logging.INFO, stream=sys.stdout)\nlogging.info(f\"Random seed: {SEED}\")\nlogging.info(f\"sklearn version: {importlib.metadata.version('scikit-learn')}\")\nlogging.info(f\"pandas version: {importlib.metadata.version('pandas')}\")\nlogging.info(f\"Accuracy: {accuracy}\")\nlogging.info(f\"Confusion matrix: {cm.tolist()}\")</code></pre>\n<p>常见误区是“日志越多越好，把所有print语句都留下”。实际上，无结构的日志难以检索。应规范记录关键步骤、参数和异常。失败模式包括：日志丢失关键参数、格式不一致、未记录环境信息。诊断时，检查日志是否包含足够信息以完全复现实验。通过上述管线，我们实现了从数据到指标的可审计流程。掌握了基础管线后，下一步可探索如何集成版本控制（如Git）和实验追踪工具（如MLflow）以提升团队协作效率。</p>\n<p>复现性管理不是一次性任务，而是持续实践。它要求我们在每个实验开始时思考：种子设了吗？环境锁了吗？日志规范了吗？当你将这些原则内化，你将不仅能复现自己的结果，还能为团队贡献可信任的分析模板。最终，复现性提升的是科学严谨性和工程效率，让数据工作从艺术走向工程。</p>",
+        "en": "<h3>When Results Can't Be Reproduced: A Data Analyst's Late-Night Confusion</h3>\n<p>Late at night, you receive a message from a colleague: “I reran your code, but accuracy dropped from 97% to 92%. What happened?” This is not an isolated incident. In data science and machine learning projects, failure to reproduce experiments has become a major source of trust crises and collaboration barriers. Reproducibility refers to the ability to obtain consistent results when repeating an experiment under identical input, code, and environmental conditions. It is not equivalent to determinism but approximates it by controlling variable factors such as random seeds and library versions. Neglecting reproducibility can lead to project delays, unreliable conclusions, and even allegations of scientific fraud (Source: Reproducibility in Machine Learning, 2020).</p>\n<p>To understand the mathematical essence of reproducibility, we need to model it from a probabilistic perspective. Let the experimental output Y be a function of input X, code C, environment E, and randomness R: Y = f(X, C, E, R). Reproducibility requires that at different times t₁ and t₂, when X, C, and E are fixed, the distribution of R remains consistent, i.e., P(Y|X,C,E) is stable. Randomness R typically originates from a pseudo-random number generator (PRNG), whose state is initialized by a seed s: R = PRNG(s). If s is not fixed, Y will fluctuate even with identical X, C, and E. For example, the data splitting function train_test_split uses system time as the default seed, resulting in different training/test sets each run.</p>\n<p>In engineering implementation, the first key to reproducibility is identifying all sources of randomness. Common sources include: data splitting (e.g., shuffle in scikit-learn), model initialization (e.g., neural network weights), data augmentation (e.g., random rotation), dropout, etc. Each source must have its seed explicitly set. In Python, this involves global seed settings across multiple libraries: random.seed(42), np.random.seed(42), torch.manual_seed(42), etc. However, setting seeds alone is insufficient because changes in environment E (library versions, operating system) can alter the behavior of f.</p>\n<p>A common misconception is that “if the code is the same, the results must be the same.” In reality, library version updates may change default algorithm parameters or PRNG implementations. For instance, scikit-learn 0.24 changed the default solver for LogisticRegression from 'liblinear' to 'lbfgs', affecting convergence and results. Failure modes include: result drift (e.g., accuracy ±5%), completely different classification boundaries, training crashes. For diagnosis, check: 1) whether all random seeds are consistent; 2) whether dependency versions match; 3) whether logs record critical parameters.</p>\n<p>Reproducibility is not an optional “nice-to-have” but a cornerstone of data science workflows. It ensures your analysis can be verified by others and projects can evolve sustainably. When starting a new experiment, the first question should not be “which model to use” but “how to make this process reproducible three months later.” Since randomness is the primary enemy of reproducibility, how do we tame it? This requires a more systematic toolchain.</p>\n\n<h3>Taming Randomness: The Trinity of Seed, Environment, and Logging</h3>\n<p>You set random_state=42, but results still differ on another computer—this is because environment locking was overlooked. Environment locking refers to precisely recording all dependency library versions via files such as requirements.txt or environment.yml to avoid version conflicts. Together with random seed and logging standards, it forms the trinity that ensures reproducibility. Setting only the seed without locking the environment is like fixing a recipe but changing the stove; the flavor will still vary. In engineering, these three define a tuple for a reproducible experiment: (code, seed, environment, log).</p>\n<p>Mechanistically, environment locking addresses changes in E within function f. Suppose library L has versions v₁ and v₂; its algorithm implementation may satisfy f_v₁(X) ≠ f_v₂(X). For example, improvements in numpy 1.19 and 1.20’s random number generator altered behavior in distribution tails. The goal of environment locking is to minimize version discrepancy risk, mathematically formulated as: given a codebase C, select a dependency set D = {(L₁, v₁), (L₂, v₂), ...} such that f behaves consistently across all runtime environments after installing D. This is typically achieved via hash locking (e.g., pipenv’s Pipfile.lock) or containerization (Docker).</p>\n<p>Key engineering implementation points include: 1) using requirements.txt to record exact versions (e.g., pandas==2.0.0); 2) using virtual environments (venv/conda) for project isolation; 3) logging environment snapshots (e.g., pip freeze output). For team collaboration, operating system and hardware differences should also be considered, but library versions are the main concern. Complexity-sensitive points involve dependency conflicts (e.g., package A requires numpy<1.20, package B requires numpy>=1.21), necessitating dependency resolution tools or unified upgrades.</p>\n<p>A common misconception is that “using the latest library version always yields better results.” In practice, new versions may introduce bugs or behavioral changes that break reproducibility. For instance, pandas 2.0 changed the default index type from int64 to RangeIndex, affecting certain merge operations. Failure modes include: runtime errors, silent behavioral changes (e.g., precision loss), performance degradation. For diagnosis, compare pip list output with the original environment and use logs to replay outputs of key steps.</p>\n<p>Logging standards are the “time capsule” of reproducibility. They are not just collections of print statements but structured records of critical parameters, data transformations, and decision points. For example, log sample counts during data loading, missing value handling strategies, model hyperparameters, etc. With seeds, environment, and logs, we have all elements to build reproducible pipelines. But how do we embed these principles into daily data processing workflows? This requires shifting from ad-hoc scripts to engineered pipelines.</p>\n\n<h3>From Data to Metrics: Engineering Practices for Reproducible Pipelines</h3>\n<p>Three months later, you cannot determine which preprocessing steps were used—this is due to the lack of a reproducible pipeline. A reproducible pipeline encapsulates data processing, model training, and evaluation steps into a repeatable code flow, recording all critical parameters. Unlike ordinary pipelines, it must include version control, environment management, and audit logs. A minimal reproducible pipeline can be formalized as: input data X → preprocessing P(θ_p) → model training M(θ_m) → evaluation E(θ_e) → output metrics Y, where θ denotes all parameters (including random seeds).</p>\n<p>Pipeline evaluation metrics must be computable and reproducible. For classification tasks, accuracy is defined as the number of correct predictions divided by the total: \\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\], where TP, TN, FP, FN denote true positives, true negatives, false positives, and false negatives, respectively. In multiclass scenarios, macro-averaged F1 score is often used: \\[ F1_{\\text{macro}} = \\frac{1}{C} \\sum_{i=1}^{C} \\frac{2 \\cdot \\text{precision}_i \\cdot \\text{recall}_i}{\\text{precision}_i + \\text{recall}_i} \\], where C is the number of classes. These metrics should be logged alongside confusion matrices.</p>\n<p>Key engineering implementation points include: 1) using pipeline objects (e.g., scikit-learn’s Pipeline) to encapsulate steps; 2) passing random seeds as hyperparameters; 3) generating log files with timestamps, environment information, and key metrics. Data flows should avoid implicit states; all transformations should be deterministic. Complexity-sensitive points involve memory management and distributed execution in big data scenarios, but core principles remain unchanged. Below is an end-to-end example building a reproducible classification pipeline using the Iris dataset.</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport logging\nimport sys\nimport importlib.metadata\n\n# 1. Set global seed\nSEED = 42\nnp.random.seed(SEED)\n\n# 2. Data loading and inspection\niris = load_iris()\nX, y = iris.data, iris.target\nprint(f\"Data shape: {X.shape}\")  # (150, 4)\nprint(f\"Class counts: {np.bincount(y)}\")  # [50, 50, 50]\nprint(\"First 3 samples:\\n\", X[:3])\n\n# 3. Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=SEED, stratify=y\n)\nprint(f\"Train size: {X_train.shape[0]}, Test size: {X_test.shape[0]}\")\n\n# 4. Build pipeline\npipeline = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=SEED))\n])\npipeline.fit(X_train, y_train)\ny_pred = pipeline.predict(X_test)\n\n# 5. Compute metrics\naccuracy = accuracy_score(y_test, y_pred)\ncm = confusion_matrix(y_test, y_pred)\nprint(f\"Accuracy: {accuracy:.2f}\")\nprint(\"Confusion matrix:\\n\", cm)\n\n# 6. Log environment and results\nlogging.basicConfig(level=logging.INFO, stream=sys.stdout)\nlogging.info(f\"Random seed: {SEED}\")\nlogging.info(f\"sklearn version: {importlib.metadata.version('scikit-learn')}\")\nlogging.info(f\"pandas version: {importlib.metadata.version('pandas')}\")\nlogging.info(f\"Accuracy: {accuracy}\")\nlogging.info(f\"Confusion matrix: {cm.tolist()}\")</code></pre>\n<p>A common misconception is that “more logs are better; keep all print statements.” In reality, unstructured logs are difficult to retrieve. Logs should standardize critical steps, parameters, and exceptions. Failure modes include: logs missing key parameters, inconsistent formats, unrecorded environment information. For diagnosis, check whether logs contain sufficient information to fully reproduce the experiment. Through the above pipeline, we achieve an auditable process from data to metrics. After mastering basic pipelines, the next step is to explore integrating version control (e.g., Git) and experiment tracking tools (e.g., MLflow) to enhance team collaboration efficiency.</p>\n<p>Reproducibility management is not a one-time task but a continuous practice. It requires us to ask at the start of each experiment: Is the seed set? Is the environment locked? Are logs standardized? When you internalize these principles, you will not only reproduce your own results but also contribute trustworthy analysis templates to your team. Ultimately, reproducibility enhances scientific rigor and engineering efficiency, transforming data work from art to engineering.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：复现实验管理：seed、环境锁定与日志规范 · 结构总览 · 数据：课程大纲】在设计《复现实验管理：seed、环境锁定与日志规范》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 复现实验管理：seed、环境锁定与日志规范 · 结构总览 · Data: 课程大纲】When outlining \"复现实验管理：seed、环境锁定与日志规范\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：复现实验管理：seed、环境锁定与日志规范 · worked example · 数据：掌握把原始数据变成可训练数据的标准流程 数据/代码】在复现《复现实验管理：seed、环境锁定与日志规范》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 复现实验管理：seed、环境锁定与日志规范 · worked example · Data: 掌握把原始数据变成可训练数据的标准流程 数据/代码】While reproducing the worked example in \"复现实验管理：seed、环境锁定与日志规范\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：复现实验管理：seed、环境锁定与日志规范 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《复现实验管理：seed、环境锁定与日志规范》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 复现实验管理：seed、环境锁定与日志规范 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"复现实验管理：seed、环境锁定与日志规范\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：复现实验管理：seed、环境锁定与日志规范 · 参考资料 · 数据：课程引用文献】当引用文献支撑《复现实验管理：seed、环境锁定与日志规范》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 复现实验管理：seed、环境锁定与日志规范 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"复现实验管理：seed、环境锁定与日志规范\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Reproducibility in Machine Learning（Proceedings of the National Academy of Sciences，2020）",
+            "en": "Reproducibility in Machine Learning (Proceedings of the National Academy of Sciences, 2020)"
+          },
+          "url": "https://www.pnas.org/doi/10.1073/pnas.1900126116"
+        },
+        {
+          "label": {
+            "zh": "Best Practices for Scientific Computing（PLOS Biology，2014）",
+            "en": "Best Practices for Scientific Computing (PLOS Biology, 2014)"
+          },
+          "url": "https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1001745"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Journal of Machine Learning Research，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (Journal of Machine Learning Research, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-19-seed-zh.mp3"
+      },
+      "meta": {
+        "category": "数据处理与可复现",
+        "level": "2. Python 与数据工程",
+        "difficultyScore": 2,
+        "related": [
+          "实验追踪：MLflow/W&B 思路与模板",
+          "训练复现清单：从数据到指标的审计表"
+        ],
+        "learningObjectives": [
+          "掌握把原始数据变成可训练数据的标准流程",
+          "能产出一份可复用的数据处理/质量检查模板"
+        ],
+        "personas": [
+          "数据分析师",
+          "工程师",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握复现实验管理可帮助团队在数据处理与可复现上做出可复用的实践。",
+          "best_for": "适合数据分析师、工程师、研究人员，需要快速吸收Python与数据工程主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据分析师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据分析师、工程师、研究人员，帮助他们把 复现实验管理：seed、环境锁定与日志规范 应用于 数据处理与可复现",
+          "prefersEnglish": false,
+          "industries": [
+            "数据分析师",
+            "工程师",
+            "研究人员"
+          ],
+          "personas": [
+            "数据分析师",
+            "工程师",
+            "研究人员"
+          ],
+          "pains": "在 数据处理与可复现 场景缺乏 复现实验管理：seed、环境锁定与日志规范 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "2. Python 与数据工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您最近的数据分析项目中，是否遇到过因随机种子未设置导致相同代码产生不同结果的情况？请描述具体场景，并思考如何通过系统化种子管理来确保每次运行的一致性。",
+            "action_hint": "尝试回顾一个具体项目，列出所有涉及随机性的环节（如数据分割、模型初始化），设计种子设置方案。"
+          },
+          {
+            "lang": "zh",
+            "question": "当您需要与同事复现三个月前的实验时，环境依赖版本差异可能带来哪些挑战？请结合您的项目经验，说明如何通过环境锁定机制避免“在我机器上能运行”的问题。",
+            "action_hint": "检查当前项目的依赖管理方式，思考如何建立从开发到部署的环境一致性保障流程。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-18-privacy",
       "date": "2026-02-18",
