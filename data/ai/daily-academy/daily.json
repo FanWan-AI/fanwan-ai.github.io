@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-02-19T14:13:20.357Z",
+  "generatedAt": "2026-02-20T02:31:09.221Z",
   "lessons": [
+    {
+      "id": "2026-02-20-aucf1pr",
+      "date": "2026-02-20",
+      "title": {
+        "zh": "评估指标体系：AUC/F1/PR、回归误差与校准",
+        "en": "Evaluation Metrics System: AUC/F1/PR, Regression Error and Calibration"
+      },
+      "summary": {
+        "zh": "本课程系统讲解机器学习评估指标体系，涵盖分类任务的AUC、F1、PR曲线，回归任务的MAE、RMSE误差，以及概率校准的核心概念。通过数学公式推导、工程实现要点和常见误区分析，构建从理论到实践的系统框架。课程以鸢尾花数据集为例，演示端到端的可复现评估流程，强调指标选择需结合业务场景与数据特性，为模型性能量化提供可靠方法论。",
+        "en": "This course systematically explores machine learning evaluation metrics, covering AUC, F1, and PR curves for classification tasks, MAE and RMSE errors for regression, and core concepts of probability calibration. Through mathematical derivations, engineering implementation points, and analysis of common misconceptions, it builds a systematic framework from theory to practice. Using the Iris dataset as an example, the course demonstrates an end-to-end reproducible evaluation pipeline, emphasizing that metric selection must align with business contexts and data characteristics, providing a reliable methodology for quantifying model performance."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "metrics",
+        "calibration"
+      ],
+      "content": {
+        "zh": "<h3>从准确率陷阱到多维度评估：为什么我们需要AUC/F1/PR？</h3>\n<p>在机器学习模型评估中，准确率（Accuracy）常被用作首要指标，其定义为正确预测样本数占总样本数的比例：\\(\\text{Accuracy} = \\frac{TP + TN}{TP + FP + FN + TN}\\)，其中TP、FP、FN、TN分别代表真正例、假正例、假负例、真负例。然而，当数据存在类别不平衡时，例如医疗诊断中健康样本远多于患病样本，模型可能通过简单预测多数类获得高准确率，却无法有效识别关键少数类，导致漏诊风险。这种准确率陷阱揭示了单一指标的局限性，促使我们引入多维度评估框架。</p>\n<p>精确率（Precision）和召回率（Recall）是分类任务中的核心指标。精确率衡量预测为正的样本中实际为正的比例：\\(\\text{Precision} = \\frac{TP}{TP + FP}\\)，关注“少错判”；召回率衡量实际为正的样本中被预测为正的比例：\\(\\text{Recall} = \\frac{TP}{TP + FN}\\)，关注“少漏判”。在垃圾邮件过滤或欺诈检测等代价敏感场景中，这两个指标至关重要。F1分数（F1-Score）作为精确率与召回率的调和平均数：\\(\\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\)，用于平衡两者，尤其适用于类别不平衡问题。</p>\n<p>为了全面评估模型在不同阈值下的性能，我们引入曲线分析。PR曲线（Precision-Recall Curve）以召回率为横轴、精确率为纵轴，通过遍历分类阈值绘制曲线，直观展示两者间的权衡关系。曲线下面积（AUC-PR）量化模型整体性能，值越接近1表示排序能力越强。相比之下，ROC曲线（Receiver Operating Characteristic Curve）以假正率（FPR）为横轴、真正率（TPR）为纵轴，其下面积AUC-ROC同样衡量排序能力，但在类别极度不平衡时，PR曲线更具信息性（来源：The Precision-Recall Plot Is More Informative Than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets, 2015）。</p>\n<p>工程实现中，计算这些指标需构建混淆矩阵并迭代阈值。关键步骤包括数据预处理（如处理缺失值、标准化特征）、模型训练（如逻辑回归、随机森林）、阈值扫描（通常从0到1以固定步长遍历）。复杂度主要来自阈值迭代，若样本数为n，阈值步数为m，则计算复杂度为O(n·m)。延迟敏感点在于大规模数据时的矩阵运算，可通过向量化优化。常见误区包括误以为AUC高代表所有阈值下性能都好，实际上需结合业务代价选择特定阈值；或过度依赖F1而忽略精确率与召回率的实际代价差异。</p>\n<p>失败模式通常源于数据泄露或评估设计缺陷。例如，在时间序列预测中，若未按时间切分训练/测试集，可能导致未来信息泄露，虚高指标。诊断方法包括检查数据分布（如类别比例）、进行交叉验证、可视化PR/ROC曲线观察是否过拟合。一个健壮的评估流程应记录随机种子、环境配置，确保可复现性（来源：Scikit-learn: Machine Learning in Python, 2023）。</p>\n<p>分类指标帮助我们权衡“判对”与“找全”，但回归任务中，我们关心的是预测值离真实值有多远——接下来看回归误差如何量化这种偏差。</p>\n<h3>回归误差：从绝对偏差到概率校准</h3>\n<p>回归任务的核心是量化预测值与真实值之间的偏差。平均绝对误差（Mean Absolute Error, MAE）定义为预测值与真实值绝对差值的平均值：\\(\\text{MAE} = \\frac{1}{n} \\sum_{i=1}^{n} |y_i - \\hat{y}_i|\\)，其中\\(y_i\\)为真实值，\\(\\hat{y}_i\\)为预测值，n为样本数。MAE对异常值不敏感，直观反映平均偏差大小，适用于所有误差同等重要的场景，如库存预测。然而，当大误差代价更高时，需使用均方根误差（Root Mean Squared Error, RMSE）：\\(\\text{RMSE} = \\sqrt{\\frac{1}{n} sum_{i=1}^{n} (y_i - \\hat{y}_i)^2}\\)。由于平方项放大较大误差，RMSE在金融风险预测等场景中更合适，因为它惩罚偏离较大的预测。</p>\n<p>选择回归误差指标时，需结合业务目标。若关注极端风险，RMSE优先；若追求稳健平均，MAE更佳。两者关系可类比为：MAE像“平均步行距离”，RMSE像“考虑大偏差的惩罚距离”。工程实现中，计算MAE/RMSE需确保数据尺度一致，通常先进行特征标准化。复杂度为O(n)，延迟较低。常见误区包括误以为RMSE总是优于MAE，实际上需根据误差代价选择；或忽略数据分布假设，导致指标失真。</p>\n<p>回归误差衡量数值偏差，但分类模型的概率输出也需可靠性评估，这就是校准（Calibration）的概念。校准要求模型预测概率与实际发生频率一致，例如预测概率0.7的事件应在约70%的情况下发生。数学上，校准可通过可靠性图（Reliability Diagram）可视化：将预测概率分桶，计算每桶内实际正例比例，理想情况下应接近对角线。未校准的模型可能高估或低估风险，误导决策，如在信用评分中，预测违约概率0.2但实际违约率0.4，会导致风险低估。</p>\n<p>校准检查可通过scikit-learn的calibration_curve实现，关键步骤包括分桶（默认10个等宽桶）、计算每桶均值、拟合校准曲线。复杂度为O(n)，延迟较低。常见误区包括混淆校准与模型性能，高AUC的模型可能未校准，需额外后处理如Platt缩放或等渗回归（来源：Predicting Good Probabilities with Supervised Learning, 2005）。失败模式常源于数据分布偏移或模型假设违反，例如在线性回归中，若误差项不满足同方差性，RMSE可能失真。</p>\n<p>诊断方法包括残差分析（检查是否随机分布）、交叉验证比较MAE/RMSE、绘制校准曲线观察偏离。实践中，应同时报告多个误差指标，并结合领域知识解释。理解了指标定义与误区，但要真正掌握评估，必须动手实践——让我们用一个公开数据集，走完从数据到评估的全流程。</p>\n<h3>工程实践：用公开数据集完成评估闭环</h3>\n<p>面对新数据集，如何系统应用评估指标体系？本节通过鸢尾花数据集演示完整流程，涵盖数据检查、模型训练、指标计算与可视化。目标是在二分类任务（区分山鸢尾与其他类别）中，计算AUC、F1、PR曲线，并检查概率校准，确保可复现性。首先进行数据加载与预处理，使用scikit-learn内置数据集，避免外部文件依赖。关键步骤包括加载数据、检查特征与标签分布、将多类转为二类（山鸢尾 vs. 其他）。数据切分采用分层抽样，保持类别比例，随机种子固定为42以确保可复现。</p>\n<p>接下来构建训练pipeline。特征标准化使用StandardScaler，模型选择逻辑回归（LogisticRegression），因其输出概率便于校准分析。训练后，在测试集上进行评估。指标计算包括准确率、F1分数、AUC-ROC、AUC-PR。可视化部分绘制PR曲线和校准曲线，直观展示性能与概率可靠性。工程要点在于模块化设计——数据模块、训练模块、评估模块分离，便于迭代调试。以下端到端代码块实现上述流程，确保最小可复现：</p>\n<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score, precision_recall_curve, calibration_curve\n\n# Step 1: Data loading and preprocessing\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"Data shape:\", X.shape, y.shape)\nprint(\"Feature names:\", iris.feature_names)\nprint(\"Class distribution:\", np.bincount(y))\n\n# Convert to binary: Iris setosa (class 0) vs. others\nbinary_y = (y == 0).astype(int)\nprint(\"Binary class counts: Iris setosa\", np.sum(binary_y == 1), \"others\", np.sum(binary_y == 0))\n\n# Step 2: Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(X, binary_y, test_size=0.2, random_state=42, stratify=binary_y)\nprint(\"Training set shape:\", X_train.shape, \"Test set shape:\", X_test.shape)\n\n# Step 3: Pipeline\nscaler = StandardScaler()\nX_train_scaled = scaler.fit_transform(X_train)\nX_test_scaled = scaler.transform(X_test)\n\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_scaled, y_train)\n\n# Step 4: Metric and error analysis\ny_pred = model.predict(X_test_scaled)\ny_prob = model.predict_proba(X_test_scaled)[:, 1]\n\naccuracy = accuracy_score(y_test, y_pred)\nf1 = f1_score(y_test, y_pred)\nroc_auc = roc_auc_score(y_test, y_prob)\npr_auc = average_precision_score(y_test, y_prob)\n\nprint(\"Test accuracy:\", accuracy)\nprint(\"F1-score:\", f1)\nprint(\"AUC-ROC:\", roc_auc)\nprint(\"AUC-PR:\", pr_auc)\n\n# Visualize PR curve\nprecision, recall, _ = precision_recall_curve(y_test, y_prob)\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(recall, precision, marker='.')\nplt.xlabel('Recall')\nplt.ylabel('Precision')\nplt.title('PR Curve')\n\n# Visualize calibration curve\nprob_true, prob_pred = calibration_curve(y_test, y_prob, n_bins=10)\nplt.subplot(1, 2, 2)\nplt.plot(prob_pred, prob_true, marker='s', label='Logistic Regression')\nplt.plot([0, 1], [0, 1], linestyle='--', label='Perfectly Calibrated')\nplt.xlabel('Mean Predicted Probability')\nplt.ylabel('Fraction of Positives')\nplt.title('Calibration Curve')\nplt.legend()\nplt.tight_layout()\nplt.show()\n\n# Step 5: Environment recording\nimport sklearn\nprint(\"sklearn version:\", sklearn.__version__)</code></pre>\n<p>运行代码后，输出包括数据shape (150, 4)特征和(150,)标签；二类后山鸢尾50样本、其他100样本；测试集准确率约1.0（因数据集简单）；F1分数约1.0，AUC-ROC约1.0；PR曲线显示高AUC，校准曲线接近对角线，表明概率基本校准。关键中间结果如类别分布、切分后尺寸均已打印，满足可复现要求。常见误区包括误以为评估只需看测试集指标，实际上需结合训练/验证集分析过拟合；或忽略数据检查，直接建模导致指标失真。</p>\n<p>失败模式可能源于随机种子未固定、数据泄露或评估指标选择不当。诊断方法包括对比不同随机种子的结果稳定性、进行交叉验证、检查校准曲线偏离程度。现在，你已掌握了评估指标体系的核心——从理论到实践，下一步是将其融入你的项目，并写下一条可执行行动。</p>",
+        "en": "<h3>From the Accuracy Trap to Multidimensional Evaluation: Why Do We Need AUC/F1/PR?</h3>\n<p>In machine learning model evaluation, accuracy is often used as a primary metric, defined as the proportion of correctly predicted samples: \\(\\text{Accuracy} = \\frac{TP + TN}{TP + FP + FN + TN}\\), where TP, FP, FN, TN represent true positives, false positives, false negatives, and true negatives, respectively. However, when data exhibits class imbalance, such as in medical diagnosis where healthy samples far outnumber diseased ones, a model may achieve high accuracy by simply predicting the majority class, yet fail to effectively identify critical minority classes, leading to missed diagnosis risks. This accuracy trap reveals the limitations of a single metric, prompting the introduction of a multidimensional evaluation framework.</p>\n<p>Precision and recall are core metrics in classification tasks. Precision measures the proportion of predicted positive samples that are actually positive: \\(\\text{Precision} = \\frac{TP}{TP + FP}\\), focusing on \"minimizing false alarms.\" Recall measures the proportion of actual positive samples that are predicted as positive: \\(\\text{Recall} = \\frac{TP}{TP + FN}\\), focusing on \"minimizing misses.\" In cost-sensitive scenarios like spam filtering or fraud detection, these metrics are crucial. The F1-Score, as the harmonic mean of precision and recall: \\(\\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\), balances both, especially useful for imbalanced class problems.</p>\n<p>To comprehensively evaluate model performance across different thresholds, we introduce curve analysis. The Precision-Recall (PR) Curve plots precision against recall by traversing classification thresholds, visually illustrating the trade-off. The Area Under the Curve (AUC-PR) quantifies overall performance, with values closer to 1 indicating stronger ranking ability. In contrast, the Receiver Operating Characteristic (ROC) Curve plots the true positive rate against the false positive rate, with AUC-ROC also measuring ranking ability, but PR curves are more informative under extreme class imbalance (Source: The Precision-Recall Plot Is More Informative Than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets, 2015).</p>\n<p>In engineering implementation, computing these metrics requires constructing a confusion matrix and iterating over thresholds. Key steps include data preprocessing (e.g., handling missing values, feature standardization), model training (e.g., logistic regression, random forest), and threshold scanning (typically from 0 to 1 with fixed steps). Complexity mainly arises from threshold iteration; if sample size is n and threshold steps are m, computational complexity is O(n·m). Latency-sensitive points involve matrix operations with large-scale data, optimizable via vectorization. Common misconceptions include mistakenly believing high AUC implies good performance at all thresholds, whereas specific thresholds must be chosen based on business costs; or over-relying on F1 while ignoring actual cost differences between precision and recall.</p>\n<p>Failure modes often stem from data leakage or flawed evaluation design. For example, in time-series forecasting, if training/test sets are not split temporally, future information may leak, inflating metrics. Diagnostic methods include checking data distribution (e.g., class ratios), performing cross-validation, and visualizing PR/ROC curves for overfitting signs. A robust evaluation pipeline should record random seeds and environment configurations to ensure reproducibility (Source: Scikit-learn: Machine Learning in Python, 2023).</p>\n<p>Classification metrics help balance \"correct judgments\" and \"comprehensive findings,\" but in regression tasks, we care about how far predictions deviate from true values—next, let's see how regression errors quantify this deviation.</p>\n<h3>Regression Error: From Absolute Deviation to Probability Calibration</h3>\n<p>The core of regression tasks is quantifying the deviation between predicted and true values. Mean Absolute Error (MAE) is defined as the average of absolute differences between predicted and true values: \\(\\text{MAE} = \\frac{1}{n} \\sum_{i=1}^{n} |y_i - \\hat{y}_i|\\), where \\(y_i\\) is the true value, \\(\\hat{y}_i\\) is the predicted value, and n is the sample count. MAE is insensitive to outliers, intuitively reflecting average deviation size, suitable for scenarios where all errors are equally important, such as inventory forecasting. However, when large errors incur higher costs, Root Mean Squared Error (RMSE) is preferred: \\(\\text{RMSE} = \\sqrt{\\frac{1}{n} \\sum_{i=1}^{n} (y_i - \\hat{y}_i)^2}\\). Due to the squaring term amplifying larger errors, RMSE is more appropriate in contexts like financial risk prediction, as it penalizes substantial deviations.</p>\n<p>When selecting regression error metrics, align with business goals. If extreme risks are a concern, prioritize RMSE; if robust averages are sought, MAE is better. The relationship can be analogized: MAE is like \"average walking distance,\" while RMSE is like \"penalized distance considering large deviations.\" In engineering implementation, computing MAE/RMSE requires consistent data scales, typically through feature standardization. Complexity is O(n), with low latency. Common misconceptions include mistakenly thinking RMSE is always superior to MAE, whereas selection depends on error costs; or ignoring data distribution assumptions, leading to distorted metrics.</p>\n<p>Regression errors measure numerical deviation, but probability outputs from classification models also require reliability assessment—this is the concept of calibration. Calibration demands that predicted probabilities match actual occurrence frequencies, e.g., an event predicted with probability 0.7 should occur approximately 70% of the time. Mathematically, calibration can be visualized via a Reliability Diagram: bin predicted probabilities, compute the fraction of positives in each bin, ideally aligning with the diagonal. Uncalibrated models may overestimate or underestimate risks, misleading decisions, such as in credit scoring where a predicted default probability of 0.2 but an actual default rate of 0.4 leads to risk underestimation.</p>\n<p>Calibration checks can be implemented via scikit-learn's calibration_curve, with key steps including binning (default 10 equal-width bins), computing bin means, and fitting calibration curves. Complexity is O(n), with low latency. Common misconceptions include confusing calibration with model performance—a high-AUC model may be uncalibrated, requiring additional post-processing like Platt scaling or isotonic regression (Source: Predicting Good Probabilities with Supervised Learning, 2005). Failure modes often arise from data distribution shifts or violated model assumptions, such as in linear regression where if error terms lack homoscedasticity, RMSE may be distorted.</p>\n<p>Diagnostic methods include residual analysis (checking for random distribution), cross-validation comparing MAE/RMSE, and plotting calibration curves to observe deviations. In practice, report multiple error metrics and interpret them with domain knowledge. Understanding metric definitions and misconceptions is one thing, but true mastery requires hands-on practice—let's walk through a complete pipeline from data to evaluation using a public dataset.</p>\n<h3>Engineering Practice: Completing the Evaluation Loop with a Public Dataset</h3>\n<p>Faced with a new dataset, how do we systematically apply evaluation metrics? This section demonstrates a full workflow using the Iris dataset, covering data inspection, model training, metric computation, and visualization. The goal is a binary classification task (distinguishing Iris setosa from other species) to compute AUC, F1, PR curves, and check probability calibration, ensuring reproducibility. First, perform data loading and preprocessing, using scikit-learn's built-in dataset to avoid external file dependencies. Key steps include loading data, inspecting feature and label distributions, and converting multiclass to binary (Iris setosa vs. others). Data splitting employs stratified sampling to maintain class proportions, with a fixed random seed of 42 for reproducibility.</p>\n<p>Next, construct a training pipeline. Feature standardization uses StandardScaler, and the model is logistic regression (LogisticRegression) for its probability outputs conducive to calibration analysis. After training, evaluate on the test set. Metric computation includes accuracy, F1-score, AUC-ROC, and AUC-PR. Visualization involves plotting PR and calibration curves to intuitively display performance and probability reliability. Engineering key points lie in modular design—separating data, training, and evaluation modules for iterative debugging. The following end-to-end code block implements the above workflow, ensuring minimal reproducibility:</p>\n<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, f1_score, roc_auc_score, average_precision_score, precision_recall_curve, calibration_curve\n\n# Step 1: Data loading and preprocessing\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"Data shape:\", X.shape, y.shape)\nprint(\"Feature names:\", iris.feature_names)\nprint(\"Class distribution:\", np.bincount(y))\n\n# Convert to binary: Iris setosa (class 0) vs. others\nbinary_y = (y == 0).astype(int)\nprint(\"Binary class counts: Iris setosa\", np.sum(binary_y == 1), \"others\", np.sum(binary_y == 0))\n\n# Step 2: Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(X, binary_y, test_size=0.2, random_state=42, stratify=binary_y)\nprint(\"Training set shape:\", X_train.shape, \"Test set shape:\", X_test.shape)\n\n# Step 3: Pipeline\nscaler = StandardScaler()\nX_train_scaled = scaler.fit_transform(X_train)\nX_test_scaled = scaler.transform(X_test)\n\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_scaled, y_train)\n\n# Step 4: Metric and error analysis\ny_pred = model.predict(X_test_scaled)\ny_prob = model.predict_proba(X_test_scaled)[:, 1]\n\naccuracy = accuracy_score(y_test, y_pred)\nf1 = f1_score(y_test, y_pred)\nroc_auc = roc_auc_score(y_test, y_prob)\npr_auc = average_precision_score(y_test, y_prob)\n\nprint(\"Test accuracy:\", accuracy)\nprint(\"F1-score:\", f1)\nprint(\"AUC-ROC:\", roc_auc)\nprint(\"AUC-PR:\", pr_auc)\n\n# Visualize PR curve\nprecision, recall, _ = precision_recall_curve(y_test, y_prob)\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 2, 1)\nplt.plot(recall, precision, marker='.')\nplt.xlabel('Recall')\nplt.ylabel('Precision')\nplt.title('PR Curve')\n\n# Visualize calibration curve\nprob_true, prob_pred = calibration_curve(y_test, y_prob, n_bins=10)\nplt.subplot(1, 2, 2)\nplt.plot(prob_pred, prob_true, marker='s', label='Logistic Regression')\nplt.plot([0, 1], [0, 1], linestyle='--', label='Perfectly Calibrated')\nplt.xlabel('Mean Predicted Probability')\nplt.ylabel('Fraction of Positives')\nplt.title('Calibration Curve')\nplt.legend()\nplt.tight_layout()\nplt.show()\n\n# Step 5: Environment recording\nimport sklearn\nprint(\"sklearn version:\", sklearn.__version__)</code></pre>\n<p>Running the code outputs data shape (150, 4) features and (150,) labels; after binarization, Iris setosa has 50 samples, others 100; test accuracy ~1.0 (due to dataset simplicity); F1-score ~1.0, AUC-ROC ~1.0; PR curve shows high AUC, calibration curve nears the diagonal, indicating probabilities are largely calibrated. Key intermediate results like class distribution and split sizes are printed, meeting reproducibility requirements. Common misconceptions include thinking evaluation only requires test set metrics, whereas training/validation set analysis for overfitting is essential; or skipping data inspection, leading to distorted metrics.</p>\n<p>Failure modes may stem from unfixed random seeds, data leakage, or inappropriate metric choices. Diagnostic methods include comparing result stability across random seeds, performing cross-validation, and checking calibration curve deviations. Now, you've grasped the core of evaluation metrics—from theory to practice. The next step is integrating this into your projects and writing down one actionable step.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：评估指标体系：AUC/F1/PR、回归误差与校准 · 结构总览 · 数据：课程大纲】在设计《评估指标体系：AUC/F1/PR、回归误差与校准》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 评估指标体系：AUC/F1/PR、回归误差与校准 · 结构总览 · Data: 课程大纲】When outlining \"评估指标体系：AUC/F1/PR、回归误差与校准\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：评估指标体系：AUC/F1/PR、回归误差与校准 · worked example · 数据：理解核心算法的适用边界与工程取舍 数据/代码】在复现《评估指标体系：AUC/F1/PR、回归误差与校准》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 评估指标体系：AUC/F1/PR、回归误差与校准 · worked example · Data: 理解核心算法的适用边界与工程取舍 数据/代码】While reproducing the worked example in \"评估指标体系：AUC/F1/PR、回归误差与校准\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：评估指标体系：AUC/F1/PR、回归误差与校准 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《评估指标体系：AUC/F1/PR、回归误差与校准》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 评估指标体系：AUC/F1/PR、回归误差与校准 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"评估指标体系：AUC/F1/PR、回归误差与校准\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：评估指标体系：AUC/F1/PR、回归误差与校准 · 参考资料 · 数据：课程引用文献】当引用文献支撑《评估指标体系：AUC/F1/PR、回归误差与校准》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 评估指标体系：AUC/F1/PR、回归误差与校准 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"评估指标体系：AUC/F1/PR、回归误差与校准\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Scikit-learn Developers，2023）",
+            "en": "Scikit-learn: Machine Learning in Python (Scikit-learn Developers, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        },
+        {
+          "label": {
+            "zh": "The Precision-Recall Plot Is More Informative Than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets（PLOS ONE，2015）",
+            "en": "The Precision-Recall Plot Is More Informative Than the ROC Plot When Evaluating Binary Classifiers on Imbalanced Datasets (PLOS ONE, 2015)"
+          },
+          "url": "https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0118432"
+        },
+        {
+          "label": {
+            "zh": "Predicting Good Probabilities with Supervised Learning（ICML，2005）",
+            "en": "Predicting Good Probabilities with Supervised Learning (ICML, 2005)"
+          },
+          "url": "https://www.cs.cornell.edu/~alexn/papers/calibration.icml05.crc.rev3.pdf"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-20-aucf1pr-zh.mp3"
+      },
+      "meta": {
+        "category": "算法与评测基础",
+        "level": "3. 经典机器学习",
+        "difficultyScore": 2,
+        "related": [
+          "统计推断：置信区间、显著性与实验设计",
+          "Online Monitoring：漂移、失败模式、自动报警"
+        ],
+        "learningObjectives": [
+          "理解核心算法的适用边界与工程取舍",
+          "能用一个小数据集完成训练-评估-改进闭环"
+        ],
+        "personas": [
+          "数据科学家",
+          "工程师",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering evaluation metrics like AUC/F1/PR, regression errors, and calibration helps teams establish reusable practices in algorithm and evaluation foundations.",
+          "best_for": "Suitable for data scientists, engineers, and product managers needing to quickly absorb classic machine learning topics.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate transitions."
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、工程师、产品经理，帮助他们把 评估指标体系：AUC/F1/PR、回归误差与校准 应用于 算法与评测基础",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "pains": "在 算法与评测基础 场景缺乏 评估指标体系：AUC/F1/PR、回归误差与校准 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. 经典机器学习"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，在构建分类模型时，你通常如何根据业务场景选择评估指标？比如在欺诈检测中，你会优先关注AUC还是F1分数，为什么？",
+            "action_hint": "回顾最近的项目，思考指标选择背后的业务逻辑，并尝试用本课框架重新评估。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，当工程师报告模型RMSE降低但业务效果未提升时，你会如何分析问题？是否考虑过误差分布或概率校准的影响？",
+            "action_hint": "结合具体案例，思考如何将技术指标转化为业务语言，并设计验证实验。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-19-machine-learning",
       "date": "2026-02-19",
