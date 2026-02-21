@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-02-21T02:38:53.918Z",
+  "generatedAt": "2026-02-21T14:00:39.673Z",
   "lessons": [
+    {
+      "id": "2026-02-21-rfgbdtxgboost",
+      "date": "2026-02-21",
+      "title": {
+        "zh": "树模型：RF/GBDT/XGBoost 的工程优势",
+        "en": "Tree Models: Engineering Advantages of RF/GBDT/XGBoost"
+      },
+      "summary": {
+        "zh": "本课程系统解析树模型（随机森林、梯度提升树、XGBoost）在工程实践中的核心优势。首先阐述决策树如何通过特征空间分割处理非线性关系，对比其与线性模型的适用边界。随后深入集成学习机制，分析Bagging与Boosting对偏差-方差权衡的影响，并推导XGBoost的正则化目标函数。最后演示端到端的可复现流水线，使用鸢尾花数据集完成训练-评估闭环，强调混淆矩阵分析与环境锁定。课程提供3个数学公式与可执行代码，为工业级机器学习部署奠定方法论基础。",
+        "en": "This course systematically analyzes the core engineering advantages of tree models (Random Forest, Gradient Boosting Decision Trees, XGBoost). It first explains how decision trees handle nonlinear relationships through feature space partitioning, comparing their applicability boundaries with linear models. Then it delves into ensemble learning mechanisms, analyzing the impact of Bagging and Boosting on bias-variance tradeoff, and derives XGBoost's regularized objective function. Finally, it demonstrates an end-to-end reproducible pipeline using the Iris dataset to complete a training-evaluation loop, emphasizing confusion matrix analysis and environment locking. The course provides three mathematical formulas and executable code, establishing a methodological foundation for industrial machine learning deployment."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "xgboost",
+        "tree models"
+      ],
+      "content": {
+        "zh": "<h3>从线性到树：当特征边界不再笔直</h3>\n<p>在监督学习任务中，线性模型假设特征与目标变量之间存在恒定斜率关系，这一假设在现实数据中常被违反。例如，在广告点击率预测中，用户年龄与点击率的关系呈现非线性模式：20-30岁区间点击率快速上升，而50-60岁区间则趋于平缓。这种非线性关系源于特征交互——多个特征共同影响目标变量的复杂模式，如“年龄与收入”对购买意愿的联合效应。决策树通过递归分割特征空间来捕捉此类局部模式，每个分割点对应一个特征阈值，最终叶节点给出预测值。这种结构天然支持非线性建模，无需像线性模型那样依赖特征工程来显式构造交互项。</p>\n<p>决策树的数学表达可视为分段常数函数。给定特征向量 \\(\\mathbf{x} \\in \\mathbb{R}^d\\)，树将输入空间划分为 \\(M\\) 个互斥区域 \\(R_1, R_2, \\dots, R_M\\)，每个区域对应一个常数预测值 \\(c_m\\)。模型输出为：\\[ f(\\mathbf{x}) = \\sum_{m=1}^{M} c_m \\cdot \\mathbb{I}(\\mathbf{x} \\in R_m) \\] 其中 \\(\\mathbb{I}(\\cdot)\\) 是指示函数。训练过程通过递归选择分割点来最小化不纯度指标。对于分类问题，常用基尼不纯度：\\[ \\text{Gini}(t) = 1 - \\sum_{i=1}^{C} p(i|t)^2 \\] 其中 \\(p(i|t)\\) 是节点 \\(t\\) 中类别 \\(i\\) 的比例，\\(C\\) 是类别总数。算法在每一步选择使不纯度下降最大的特征阈值，直到满足停止条件（如最大深度、最小样本数）。</p>\n<p>工程实现时，决策树的核心是高效的分割点搜索。scikit-learn的DecisionTreeClassifier采用CART算法，时间复杂度为 \\(O(n \\cdot d \\cdot \\log n)\\)，其中 \\(n\\) 是样本数，\\(d\\) 是特征数。关键优化包括预排序特征值以加速阈值评估，以及使用并行计算处理大型数据集。然而，单棵树容易“记住”训练数据中的噪声，导致过拟合——在训练集上表现优异，但测试集上泛化能力差。这种现象在特征维度高而样本量少时尤为明显，例如文本分类中的高维稀疏特征。</p>\n<p>常见误区包括认为“树模型天生比神经网络简单”。实际上，深度树或大规模集成可能比浅层神经网络更复杂，需权衡训练成本与解释性。另一个误区是忽略特征缩放的影响：虽然决策树对特征尺度不敏感，但集成方法如XGBoost可能受益于标准化。失败模式包括数据泄露——在预处理时使用整个数据集计算统计量，导致测试集信息污染。诊断方法是检查学习曲线：随着树深度增加，训练误差持续下降，但验证误差先降后升，表明过拟合发生。</p>\n<p>单棵树的不稳定性催生了集成学习的思想。随机森林通过让多棵树投票，开始了集成学习的第一课。</p>\n<h3>集成策略：投票、提升与正则化的博弈</h3>\n<p>实践中常遇到一个困惑：为什么增加树的数量，有时准确率反而下降？这引出了集成学习的核心——偏差-方差权衡。高偏差导致欠拟合（模型过于简单），高方差导致过拟合（模型过于复杂）。随机森林采用Bagging策略：从原始数据有放回抽样生成多个Bootstrap样本，并行训练多棵决策树，预测时对结果取众数（分类）或均值（回归）。例如，从150条样本中抽样生成3个120条的Bootstrap样本，训练3棵树后综合预测。Bagging的数学基础是降低方差：假设有 \\(B\\) 棵独立同分布的树，每棵树的方差为 \\(\\sigma^2\\)，则集成的方差为 \\(\\sigma^2 / B\\)。</p>\n<p>梯度提升树采用Boosting策略：串行训练一系列树，每棵树拟合前一棵树的残差。第 \\(t\\) 轮的预测为：\\[ F_t(\\mathbf{x}) = F_{t-1}(\\mathbf{x}) + \\eta \\cdot h_t(\\mathbf{x}) \\] 其中 \\(\\eta\\) 是学习率，\\(h_t\\) 是第 \\(t\\) 棵基学习器。Boosting通过逐步修正错误来减少偏差，但容易过拟合。XGBoost在GBDT基础上引入了正则化项来控制模型复杂度，其目标函数为：\\[ \\mathcal{L}(\\phi) = \\sum_{i=1}^{n} l(y_i, \\hat{y}_i) + \\sum_{k=1}^{K} \\Omega(f_k) \\] 其中 \\(\\Omega(f) = \\gamma T + \\frac{1}{2} \\lambda \\|w\\|^2\\)，\\(T\\) 是叶节点数，\\(w\\) 是叶节点权重，\\(\\gamma\\) 和 \\(\\lambda\\) 是超参数（来源：XGBoost: A Scalable Tree Boosting System, 2016）。</p>\n<p>工程实现时，XGBoost的并行优化在特征维度高时优势明显。算法在分裂节点时预排序特征值，并利用直方图近似加速，时间复杂度可降至 \\(O(n \\cdot \\log d)\\)。但对于小数据集（如仅几百条样本），这种开销可能超过收益。关键配置包括学习率（通常0.01-0.3）、树深度（3-10）、子采样比例（0.5-1.0）。失败模式包括未经正则化的GBDT快速过拟合：设置学习率 \\(\\eta=1.0\\) 且树深度无限制时，模型可能在10轮内就完全记忆训练数据。</p>\n<p>常见误区是认为“XGBoost总是比GBDT快”。实际上，在特征数少于100的小型数据集上，传统GBDT的实现可能更轻量。另一个误区是忽略类别不平衡，导致模型偏向多数类。可通过调整样本权重或使用平衡准确率指标：\\[ \\text{Balanced Accuracy} = \\frac{1}{C} \\sum_{i=1}^{C} \\frac{TP_i}{TP_i + FN_i} \\] 其中 \\(TP_i\\) 和 \\(FN_i\\) 分别是类别 \\(i\\) 的真阳性与假阴性。诊断时需检查混淆矩阵中各类别的召回率是否均衡。</p>\n<p>理解机制后，我们用一个真实数据集，将理论转化为可运行的pipeline。</p>\n<h3>工程流水线：从数据到可复现模型</h3>\n<p>机器学习工程师常遇到一个具体问题：同一份代码两次运行结果不同，如何锁定随机性？这引出了可复现性的核心要求——通过记录所有随机因素与环境配置，确保实验可被精确重复的能力。解决方案包括固定随机种子、记录依赖版本、标准化数据切分。例如，在数据分割时使用train_test_split并设置random_state=42，同时指定分层抽样stratify=y以保持类别比例。评估模型性能时，准确率 alone 可能产生误导。混淆矩阵提供了更细致的视角，显示预测类别与实际类别的对应关系。对于多分类问题，混淆矩阵 \\(C\\) 是一个 \\(K \\times K\\) 矩阵，其中 \\(C_{ij}\\) 表示真实类别为 \\(i\\) 但预测为 \\(j\\) 的样本数。</p>\n<p>基于混淆矩阵可计算宏平均F1分数，该指标对类别不平衡更敏感：\\[ \\text{Macro-F1} = \\frac{1}{K} \\sum_{i=1}^{K} \\frac{2 \\cdot P_i \\cdot R_i}{P_i + R_i} \\] 其中 \\(P_i = TP_i / (TP_i + FP_i)\\) 是类别 \\(i\\) 的精确率，\\(R_i = TP_i / (TP_i + FN_i)\\) 是召回率。以下端到端示例使用鸢尾花数据集训练XGBoost分类器，演示可复现流程：</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.metrics import accuracy_score, confusion_matrix, f1_score\nimport xgboost as xgb\nimport sys\n\n# 步骤1：数据检查\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"数据形状:\", X.shape)  # 输出: (150, 4)\nprint(\"特征名:\", iris.feature_names)\nprint(\"类别分布:\", np.bincount(y))  # 输出: [50 50 50]\nprint(\"前5行数据:\\n\", X[:5])  # 显示样例\n\n# 步骤2：可复现切分\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y)\nprint(\"训练集大小:\", X_train.shape[0], \"测试集大小:\", X_test.shape[0])\n\n# 步骤3：pipeline\nscaler = StandardScaler()\nX_train_scaled = scaler.fit_transform(X_train)\nX_test_scaled = scaler.transform(X_test)\n\nmodel = xgb.XGBClassifier(\n    n_estimators=100,\n    max_depth=3,\n    learning_rate=0.1,\n    random_state=42,\n    eval_metric='mlogloss'\n)\nmodel.fit(X_train_scaled, y_train,\n          eval_set=[(X_test_scaled, y_test)],\n          verbose=False)\n\n# 步骤4：指标与误差分析\ny_pred = model.predict(X_test_scaled)\nacc = accuracy_score(y_test, y_pred)\nprint(\"测试集准确率:\", acc)  # 输出约0.97\ncm = confusion_matrix(y_test, y_pred)\nprint(\"混淆矩阵:\\n\", cm)\n# 典型输出:\n# [[10  0  0]\n#  [ 0  9  1]\n#  [ 0  0 10]]\n# 计算宏平均F1分数\nmacro_f1 = f1_score(y_test, y_pred, average='macro')\nprint(\"宏平均F1分数:\", macro_f1)  # 输出约0.9667\n\n# 步骤5：记录环境\nprint(\"Python版本:\", sys.version.split()[0])\nprint(\"sklearn版本:\", sklearn.__version__)\nprint(\"xgboost版本:\", xgb.__version__)\nprint(\"随机种子: 42\")</code></pre>\n<p>代码执行后输出数据形状、类别计数、测试集准确率约0.97，以及混淆矩阵。矩阵显示少数误分类（如versicolor与virginica混淆），这与鸢尾花数据集中这两类特征重叠的已知特性一致。注意设置random_state=42不能解决所有随机性——在并行计算中还需控制线程数（如设置n_jobs=1）。常见误区是认为“测试集准确率高代表模型可上线”。实际上，需检查混淆矩阵中的特定错误类型（如假阳性成本），并与业务指标对齐。例如在医疗诊断中，将健康误判为患病（假阳性）与将患病误判为健康（假阴性）的成本截然不同。</p>\n<p>完成这次训练后，你将拥有一个可版本化的模型快照，为后续监控数据漂移打下基础。</p>",
+        "en": "<h3>From Linear to Trees: When Feature Boundaries Are Not Straight</h3>\n<p>In supervised learning tasks, linear models assume a constant slope relationship between features and the target variable, an assumption often violated in real-world data. For example, in advertising click-through rate prediction, the relationship between user age and click rate exhibits nonlinear patterns: rapid increase in the 20-30 age range, but plateauing in the 50-60 range. This nonlinearity stems from feature interaction—complex patterns where multiple features jointly influence the target variable, such as the combined effect of \"age and income\" on purchase intention. Decision trees capture such local patterns by recursively partitioning the feature space, where each split point corresponds to a feature threshold, and leaf nodes finally provide predictions. This structure naturally supports nonlinear modeling without requiring explicit construction of interaction terms through feature engineering, unlike linear models.</p>\n<p>Mathematically, a decision tree can be expressed as a piecewise constant function. Given a feature vector \\(\\mathbf{x} \\in \\mathbb{R}^d\\), the tree partitions the input space into \\(M\\) mutually exclusive regions \\(R_1, R_2, \\dots, R_M\\), each associated with a constant prediction value \\(c_m\\). The model output is: \\[ f(\\mathbf{x}) = \\sum_{m=1}^{M} c_m \\cdot \\mathbb{I}(\\mathbf{x} \\in R_m) \\] where \\(\\mathbb{I}(\\cdot)\\) is the indicator function. The training process recursively selects split points to minimize impurity metrics. For classification problems, Gini impurity is commonly used: \\[ \\text{Gini}(t) = 1 - \\sum_{i=1}^{C} p(i|t)^2 \\] where \\(p(i|t)\\) is the proportion of class \\(i\\) at node \\(t\\), and \\(C\\) is the total number of classes. The algorithm at each step chooses the feature threshold that maximizes impurity reduction, until stopping conditions are met (e.g., maximum depth, minimum samples).</p>\n<p>In engineering implementation, the core of a decision tree is efficient split point search. scikit-learn's DecisionTreeClassifier employs the CART algorithm with time complexity \\(O(n \\cdot d \\cdot \\log n)\\), where \\(n\\) is the number of samples and \\(d\\) is the number of features. Key optimizations include pre-sorting feature values to accelerate threshold evaluation and using parallel computing for large datasets. However, a single tree tends to \"memorize\" noise in the training data, leading to overfitting—excellent performance on the training set but poor generalization on the test set. This phenomenon is particularly pronounced when feature dimensionality is high and sample size is small, such as high-dimensional sparse features in text classification.</p>\n<p>Common misconceptions include the belief that \"tree models are inherently simpler than neural networks.\" In reality, deep trees or large ensembles can be more complex than shallow neural networks, requiring a trade-off between training cost and interpretability. Another misconception is ignoring the impact of feature scaling: while decision trees are insensitive to feature scales, ensemble methods like XGBoost may benefit from standardization. Failure modes include data leakage—using the entire dataset to compute statistics during preprocessing, contaminating test set information. Diagnosis involves checking the learning curve: as tree depth increases, training error continues to decrease, but validation error first decreases then rises, indicating overfitting.</p>\n<p>The instability of a single tree gives rise to the idea of ensemble learning. Random Forest begins the first lesson of ensemble learning by having multiple trees vote.</p>\n<h3>Ensemble Strategies: The Game of Voting, Boosting, and Regularization</h3>\n<p>A common confusion in practice is: why does increasing the number of trees sometimes decrease accuracy? This leads to the core of ensemble learning—the bias-variance tradeoff. High bias causes underfitting (model too simple), high variance causes overfitting (model too complex). Random Forest employs Bagging strategy: generate multiple Bootstrap samples by sampling with replacement from the original data, train multiple decision trees in parallel, and take the majority vote (classification) or average (regression) for prediction. For example, sample three Bootstrap samples of 120 instances from 150 total samples, train three trees, and combine predictions. The mathematical basis of Bagging is variance reduction: assuming \\(B\\) independent and identically distributed trees, each with variance \\(\\sigma^2\\), the ensemble variance is \\(\\sigma^2 / B\\).</p>\n<p>Gradient Boosting Decision Trees use Boosting strategy: train a series of trees sequentially, where each tree fits the residuals of the previous one. The prediction at round \\(t\\) is: \\[ F_t(\\mathbf{x}) = F_{t-1}(\\mathbf{x}) + \\eta \\cdot h_t(\\mathbf{x}) \\] where \\(\\eta\\) is the learning rate, and \\(h_t\\) is the base learner at round \\(t\\). Boosting reduces bias by gradually correcting errors but is prone to overfitting. XGBoost introduces regularization terms on top of GBDT to control model complexity, with the objective function: \\[ \\mathcal{L}(\\phi) = \\sum_{i=1}^{n} l(y_i, \\hat{y}_i) + \\sum_{k=1}^{K} \\Omega(f_k) \\] where \\(\\Omega(f) = \\gamma T + \\frac{1}{2} \\lambda \\|w\\|^2\\), \\(T\\) is the number of leaf nodes, \\(w\\) are leaf weights, and \\(\\gamma\\) and \\(\\lambda\\) are hyperparameters (Source: XGBoost: A Scalable Tree Boosting System, 2016).</p>\n<p>In engineering implementation, XGBoost's parallel optimization shows significant advantages when feature dimensionality is high. The algorithm pre-sorts feature values at split nodes and uses histogram approximation for acceleration, reducing time complexity to \\(O(n \\cdot \\log d)\\). However, for small datasets (e.g., only a few hundred samples), this overhead may outweigh benefits. Key configurations include learning rate (typically 0.01-0.3), tree depth (3-10), and subsampling ratio (0.5-1.0). Failure modes include unregularized GBDT quickly overfitting: with learning rate \\(\\eta=1.0\\) and unlimited tree depth, the model may completely memorize training data within 10 rounds.</p>\n<p>A common misconception is that \"XGBoost is always faster than GBDT.\" Actually, on small datasets with fewer than 100 features, traditional GBDT implementations may be lighter. Another misconception is ignoring class imbalance, causing the model to bias toward the majority class. This can be addressed by adjusting sample weights or using the balanced accuracy metric: \\[ \\text{Balanced Accuracy} = \\frac{1}{C} \n\\sum_{i=1}^{C} \\frac{TP_i}{TP_i + FN_i} \\] where \\(TP_i\\) and \\(FN_i\\) are true positives and false negatives for class \\(i\\), respectively. Diagnosis involves checking whether recall is balanced across classes in the confusion matrix.</p>\n<p>After understanding the mechanisms, we transform theory into a runnable pipeline with a real dataset.</p>\n<h3>Engineering Pipeline: From Data to Reproducible Model</h3>\n<p>Machine learning engineers often encounter a specific problem: the same code produces different results in two runs—how to lock randomness? This leads to the core requirement of reproducibility—the ability to ensure experiments can be precisely repeated by recording all random factors and environment configurations. Solutions include fixing random seeds, recording dependency versions, and standardizing data splits. For example, use train_test_split with random_state=42 for data splitting, and specify stratified sampling stratify=y to maintain class proportions. When evaluating model performance, accuracy alone can be misleading. The confusion matrix provides a more detailed view, showing the correspondence between predicted and actual classes. For multiclass problems, the confusion matrix \\(C\\) is a \\(K \\times K\\) matrix, where \\(C_{ij}\\) indicates the number of samples with true class \\(i\\) but predicted as \\(j\\).</p>\n<p>Based on the confusion matrix, the macro-average F1 score can be calculated, which is more sensitive to class imbalance: \\[ \\text{Macro-F1} = \\frac{1}{K} \\sum_{i=1}^{K} \\frac{2 \\cdot P_i \\cdot R_i}{P_i + R_i} \\] where \\(P_i = TP_i / (TP_i + FP_i)\\) is precision for class \\(i\\), and \\(R_i = TP_i / (TP_i + FN_i)\\) is recall. The following end-to-end example trains an XGBoost classifier on the Iris dataset, demonstrating a reproducible workflow:</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.metrics import accuracy_score, confusion_matrix, f1_score\nimport xgboost as xgb\nimport sys\n\n# Step 1: Data inspection\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"Data shape:\", X.shape)  # Output: (150, 4)\nprint(\"Feature names:\", iris.feature_names)\nprint(\"Class distribution:\", np.bincount(y))  # Output: [50 50 50]\nprint(\"First 5 rows:\\n\", X[:5])  # Display sample\n\n# Step 2: Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y)\nprint(\"Training set size:\", X_train.shape[0], \"Test set size:\", X_test.shape[0])\n\n# Step 3: Pipeline\nscaler = StandardScaler()\nX_train_scaled = scaler.fit_transform(X_train)\nX_test_scaled = scaler.transform(X_test)\n\nmodel = xgb.XGBClassifier(\n    n_estimators=100,\n    max_depth=3,\n    learning_rate=0.1,\n    random_state=42,\n    eval_metric='mlogloss'\n)\nmodel.fit(X_train_scaled, y_train,\n          eval_set=[(X_test_scaled, y_test)],\n          verbose=False)\n\n# Step 4: Metrics and error analysis\ny_pred = model.predict(X_test_scaled)\nacc = accuracy_score(y_test, y_pred)\nprint(\"Test accuracy:\", acc)  # Output approx. 0.97\ncm = confusion_matrix(y_test, y_pred)\nprint(\"Confusion matrix:\\n\", cm)\n# Typical output:\n# [[10  0  0]\n#  [ 0  9  1]\n#  [ 0  0 10]]\n# Calculate macro-average F1 score\nmacro_f1 = f1_score(y_test, y_pred, average='macro')\nprint(\"Macro-average F1 score:\", macro_f1)  # Output approx. 0.9667\n\n# Step 5: Environment recording\nprint(\"Python version:\", sys.version.split()[0])\nprint(\"sklearn version:\", sklearn.__version__)\nprint(\"xgboost version:\", xgb.__version__)\nprint(\"Random seed: 42\")</code></pre>\n<p>After execution, the code outputs data shape, class counts, test accuracy around 0.97, and a confusion matrix. The matrix shows a few misclassifications (e.g., confusion between versicolor and virginica), consistent with the known characteristic of feature overlap between these two classes in the Iris dataset. Note that setting random_state=42 does not solve all randomness—in parallel computing, thread count must also be controlled (e.g., set n_jobs=1). A common misconception is that \"high test accuracy means the model is ready for deployment.\" In reality, specific error types in the confusion matrix (e.g., false positive cost) must be checked and aligned with business metrics. For example, in medical diagnosis, the cost of misclassifying healthy as diseased (false positive) versus diseased as healthy (false negative) is drastically different.</p>\n<p>After completing this training, you will have a versioned model snapshot, laying the foundation for subsequent data drift monitoring.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：树模型：RF/GBDT/XGBoost 的工程优势 · 结构总览 · 数据：课程大纲】在设计《树模型：RF/GBDT/XGBoost 的工程优势》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 树模型：RF/GBDT/XGBoost 的工程优势 · 结构总览 · Data: 课程大纲】When outlining \"树模型：RF/GBDT/XGBoost 的工程优势\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：树模型：RF/GBDT/XGBoost 的工程优势 · worked example · 数据：理解核心算法的适用边界与工程取舍 数据/代码】在复现《树模型：RF/GBDT/XGBoost 的工程优势》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 树模型：RF/GBDT/XGBoost 的工程优势 · worked example · Data: 理解核心算法的适用边界与工程取舍 数据/代码】While reproducing the worked example in \"树模型：RF/GBDT/XGBoost 的工程优势\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：树模型：RF/GBDT/XGBoost 的工程优势 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《树模型：RF/GBDT/XGBoost 的工程优势》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 树模型：RF/GBDT/XGBoost 的工程优势 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"树模型：RF/GBDT/XGBoost 的工程优势\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：树模型：RF/GBDT/XGBoost 的工程优势 · 参考资料 · 数据：课程引用文献】当引用文献支撑《树模型：RF/GBDT/XGBoost 的工程优势》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 树模型：RF/GBDT/XGBoost 的工程优势 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"树模型：RF/GBDT/XGBoost 的工程优势\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "XGBoost: A Scalable Tree Boosting System（arXiv，2016）",
+            "en": "XGBoost: A Scalable Tree Boosting System (arXiv, 2016)"
+          },
+          "url": "https://arxiv.org/abs/1603.02754"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（JMLR，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (JMLR, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        },
+        {
+          "label": {
+            "zh": "The Elements of Statistical Learning（Springer，2009）",
+            "en": "The Elements of Statistical Learning (Springer, 2009)"
+          },
+          "url": "https://hastie.su.domains/ElemStatLearn/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-21-rfgbdtxgboost-zh.mp3"
+      },
+      "meta": {
+        "category": "算法与评测基础",
+        "level": "3. 经典机器学习",
+        "difficultyScore": 2,
+        "related": [
+          "制造质检：缺陷检测 + 误报成本控制",
+          "数据漂移监控：输入/输出/性能漂移"
+        ],
+        "learningObjectives": [
+          "理解核心算法的适用边界与工程取舍",
+          "能用一个小数据集完成训练-评估-改进闭环"
+        ],
+        "personas": [
+          "数据科学家",
+          "工程师",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握树模型（RF/GBDT/XGBoost）的工程优势可帮助团队在算法与评测基础上做出可复用的实践。",
+          "best_for": "适合数据科学家、工程师、产品经理，需要快速吸收经典机器学习主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、工程师、产品经理，帮助他们把 树模型：RF/GBDT/XGBoost 的工程优势 应用于 算法与评测基础",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "pains": "在 算法与评测基础 场景缺乏 树模型：RF/GBDT/XGBoost 的工程优势 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. 经典机器学习"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，你在处理非线性数据时，如何评估决策树与线性模型的适用边界？结合你最近的项目，哪些特征的分割方式最能体现树模型的工程优势？",
+            "action_hint": "尝试回顾一个具体数据集，画出特征空间分割示意图，并对比线性回归的拟合效果。"
+          },
+          {
+            "lang": "zh",
+            "question": "在产品迭代中，你如何利用Bagging与Boosting的偏差-方差权衡来优化模型性能？请描述一个实际场景，说明集成学习机制如何提升预测稳定性与准确度。",
+            "action_hint": "选择一个历史A/B测试案例，模拟随机森林与梯度提升树的参数调整过程，记录模型误差变化。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-21-lrsvm",
       "date": "2026-02-21",
