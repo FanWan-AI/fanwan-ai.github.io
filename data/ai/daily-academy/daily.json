@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-02-21T14:00:39.673Z",
+  "generatedAt": "2026-02-22T02:33:46.100Z",
   "lessons": [
+    {
+      "id": "2026-02-22-kmeansgmmpca",
+      "date": "2026-02-22",
+      "title": {
+        "zh": "无监督学习：KMeans/GMM/PCA 的使用场景",
+        "en": "Unsupervised Learning: Use Cases for KMeans/GMM/PCA"
+      },
+      "summary": {
+        "zh": "本讲义系统探讨无监督学习中KMeans、GMM和PCA的核心概念与应用场景。从数据探索的动机出发，详细阐述各算法的数学定义、工作机制及工程实现要点。通过可复现的Iris数据集示例，演示了从预处理、降维、聚类到评估的完整流程，强调算法边界与常见误区。内容涵盖目标函数、概率建模及评估指标公式，为数据科学家和工程师提供实践指导。",
+        "en": "This lecture systematically explores the core concepts and application scenarios of KMeans, GMM, and PCA in unsupervised learning. Starting from the motivation for data exploration, it details the mathematical definitions, working mechanisms, and engineering implementation points of each algorithm. Through a reproducible Iris dataset example, it demonstrates the complete workflow from preprocessing, dimensionality reduction, clustering to evaluation, emphasizing algorithm boundaries and common pitfalls. The content covers objective functions, probabilistic modeling, and evaluation metric formulas, providing practical guidance for data scientists and engineers."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "clustering",
+        "pca"
+      ],
+      "content": {
+        "zh": "<h3>从混乱到结构：无监督学习的直觉与动机</h3>\n<p>在数据科学实践中，我们常常面对大量未标注的数据。想象一下，你手头有一份客户数据集，包含年龄和消费金额等特征，但没有明确的分类标签。如何从中发现潜在的模式或群体？这正是无监督学习（Unsupervised Learning）的核心价值所在。与监督学习（Supervised Learning）依赖标签进行预测不同，无监督学习旨在从数据本身挖掘内在结构，为后续分析提供洞察。在算法与评测基础中，这通常涉及两大任务：聚类（Clustering）和降维（Dimensionality Reduction）。聚类将数据点分组到不同的簇中，使得同一簇内的点相似，不同簇的点相异；而降维则减少数据的特征数量，同时保留尽可能多的信息，以简化模型或可视化。</p>\n<p>精确定义是理解算法的第一步。无监督学习指从无标签数据中学习数据的内在结构或分布，其目标不是预测，而是探索。聚类和降维是其主要分支：聚类如KMeans和GMM（高斯混合模型 Gaussian Mixture Model）用于发现数据中的自然分组；降维如PCA（主成分分析 Principal Component Analysis）用于压缩特征空间。一个常见误区是认为无监督学习可以完全替代监督学习，但实际上，两者互补：无监督学习用于数据探索和预处理，监督学习用于基于标签的预测，在工程中常结合使用（来源：The Elements of Statistical Learning, 2009）。</p>\n<p>从机制上看，无监督学习通过优化目标函数来实现结构提取。例如，聚类算法通常最小化簇内距离或最大化簇间差异，而降维算法则最大化保留的信息量。数学上，这可以形式化为优化问题，我们将在后续章节深入。在工程实现中，关键要点包括数据预处理（如标准化）、算法选择（基于数据分布假设）和评估（使用无监督指标如轮廓系数）。复杂度方面，KMeans和PCA通常为O(n*k*d)，适合中等规模数据，而GMM可能更计算密集。</p>\n<p>常见误区包括将聚类误认为分类，或认为降维总能提升模型性能。失败模式可能源于数据不满足算法假设，如KMeans对非球形簇失效。诊断时，可通过可视化（如散点图）和指标计算（如轮廓系数）来检查结果有效性。例如，在一个客户数据集中，应用KMeans可能将客户分成“高消费年轻群体”、“低消费老年群体”等簇，但如果数据分布复杂，可能需要GMM等更灵活的方法。</p>\n<p>理解了无监督学习的动机和基本概念，我们接下来需要深入每个算法的数学定义和边界条件，以做出明智的技术选择。这不仅是理论上的深化，更是工程实践中避免常见陷阱的关键一步。</p>\n\n<h3>定义与边界：KMeans、GMM、PCA的核心假设</h3>\n<p>KMeans、GMM和PCA是无监督学习中的经典工具，各有其明确的数学模型和适用场景。KMeans是一种硬聚类算法，通过迭代优化将数据划分为K个簇，最小化簇内点到质心的平方距离。其目标函数为：\\[ J = \\sum_{i=1}^{K} \\sum_{x \\in C_i} \\|x - \\mu_i\\|^2 \\]，其中\\(C_i\\)是第i个簇，\\(\\mu_i\\)是其质心。KMeans假设簇是凸形、大小相似且方差均匀，这在现实数据中可能不成立，导致对非球形簇的切分错误（来源：Pattern Recognition and Machine Learning, 2006）。</p>\n<p>GMM则采用概率建模，用多个高斯分布的加权和来拟合数据分布，允许软分配（即一个点可以属于多个簇的概率）。其概率密度函数为：\\[ p(x) = \\sum_{k=1}^{K} \\pi_k \\mathcal{N}(x | \\mu_k, \\Sigma_k) \\]，其中\\(\\pi_k\\)是混合权重，\\(\\mathcal{N}\\)是高斯分布。GMM的边界更宽松，能处理重叠簇和非球形结构，但可能过拟合或收敛到局部最优。PCA是一种线性降维方法，通过正交变换找到数据方差最大的方向（主成分）。其目标是最小化重构误差或最大化投影方差，数学上基于特征值分解：\\[ \\text{maximize } \\text{Var}(Xw) \\text{ subject to } \\|w\\|=1 \\]，其中\\(X\\)是数据矩阵，\\(w\\)是投影向量。</p>\n<p>在工程实现中，KMeans需指定簇数K，常用肘部法则（Elbow Method）选择；GMM需初始化参数，常用EM算法（Expectation-Maximization Algorithm）估计；PCA需标准化数据以避免尺度影响。复杂度上，KMeans为O(n*k*d*t)，GMM为O(n*k*d^2*t)，PCA为O(n*d^2)，其中n为样本数，d为特征数，t为迭代次数。对于高维数据，PCA可显著减少计算负担。</p>\n<p>常见误区包括认为PCA能处理非线性关系，但实际上它是线性方法，对于非线性结构可能失效，需考虑t-SNE或UMAP等替代方案。失败模式可能源于数据不满足高斯假设（对GMM）或特征相关性低（对PCA）。诊断时，可检查解释方差比（对PCA）或似然函数（对GMM），以评估模型拟合度。</p>\n<p>掌握了这些定义，我们接下来探索算法背后的工作机制，理解为什么它们在某些情况下成功或失败。这种机制层面的理解，是优化算法参数和诊断问题的基石。</p>\n\n<h3>机制与误区：算法如何工作及常见陷阱</h3>\n<p>KMeans的工作机制基于迭代优化：初始化K个质心，然后交替执行分配步骤（将每个点分配到最近质心）和更新步骤（重新计算质心），直到收敛。其目标函数最小化簇内平方误差，但可能陷入局部最优，依赖初始质心选择。数学上，这通过Lloyd算法实现，复杂度为O(n*k*d*t)。一个关键误区是认为KMeans总是收敛到全局最优，实际上常用多次随机初始化来缓解此问题（来源：Scikit-learn: Machine Learning in Python, 2023）。</p>\n<p>GMM使用EM算法进行参数估计：E步计算后验概率（即点属于各高斯成分的概率），M步更新参数（均值、协方差和权重）以最大化似然函数。其概率分解为：\\[ \\log p(X|\\theta) = \\sum_{i=1}^{n} \\log \\sum_{k=1}^{K} \\pi_k \\mathcal{N}(x_i | \\mu_k, \\Sigma_k) \\]。GMM的“软聚类”允许不确定性建模，但可能过拟合，特别是当成分数K过大时。与KMeans的“硬聚类”相比，GMM更灵活但计算成本更高。</p>\n<p>PCA的机制基于线性代数：通过计算协方差矩阵的特征值和特征向量，选择前k个最大特征值对应的特征向量作为主成分，实现降维。其推导可视为求解特征值问题：\\[ \\Sigma v = \\lambda v \\]，其中\\(\\Sigma\\)是协方差矩阵。PCA保留的方差比例为累计解释方差（Cumulative Explained Variance），常用阈值如95%来选择维度。误区包括认为降维后数据可直接用于聚类，但PCA可能丢失聚类所需的结构信息，需结合业务判断。</p>\n<p>在工程实现中，KMeans对初始值敏感，建议使用k-means++初始化；GMM需注意协方差矩阵的类型（如full或diag）；PCA前必须标准化数据。失败模式示例：KMeans在环形数据上失效，GMM在噪声数据中可能拟合无关成分，PCA对异常值敏感。诊断工具包括轮廓系数（Silhouette Score）评估聚类效果，公式为：\\[ s(i) = \\frac{b(i) - a(i)}{\\max\\{a(i), b(i)\\}} \\]，其中\\(a(i)\\)是点i到同簇其他点的平均距离，\\(b(i)\\)是到最近其他簇的最小平均距离。</p>\n<p>理解了这些机制，我们可以将它们应用到实际工程中，通过完整流程从数据到评估。接下来，我们将通过一个具体示例，展示如何将这些理论转化为可执行的代码。</p>\n\n<h3>工程实践：从数据到评估的完整流程</h3>\n<p>在实际项目中，无监督学习的应用涉及端到端的流程：从数据加载、预处理、模型训练到评估和可视化。我们以Iris数据集为例，演示KMeans、GMM和PCA的集成使用。首先，加载数据并检查基本属性：Iris包含150个样本和4个特征（花萼长度、花萼宽度、花瓣长度、花瓣宽度），无缺失值。预处理包括标准化，以确保PCA和聚类算法不受尺度影响。</p>\n<p>接下来，应用PCA进行降维。通过计算解释方差比，我们选择保留2个主成分，以可视化数据。然后，分别使用KMeans和GMM进行聚类。对于KMeans，使用肘部法则选择最佳簇数K：绘制簇内平方和随K变化的曲线，选择拐点。对于GMM，使用BIC（贝叶斯信息准则）选择成分数。评估指标采用轮廓系数，衡量聚类效果。</p>\n<p>以下是一个最小可复现实验的代码块，覆盖关键概念：</p>\n<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import load_iris\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.decomposition import PCA\nfrom sklearn.cluster import KMeans\nfrom sklearn.mixture import GaussianMixture\nfrom sklearn.metrics import silhouette_score\n\n# 步骤1：数据加载与检查\ndata = load_iris()\nX = data.data\ny = data.target\nprint(\"数据形状:\", X.shape)\nprint(\"特征名称:\", data.feature_names)\nprint(\"前5个样本:\\n\", X[:5])\n\n# 步骤2：预处理\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# 步骤3：PCA降维\npca = PCA(n_components=2, random_state=42)\nX_pca = pca.fit_transform(X_scaled)\nexplained_variance = pca.explained_variance_ratio_\nprint(\"PCA解释方差比:\", explained_variance)\nprint(\"累计解释方差:\", np.cumsum(explained_variance))\n\n# 步骤4：KMeans聚类（使用肘部法则选择K）\ninertias = []\nK_range = range(1, 11)\nfor k in K_range:\n    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)\n    kmeans.fit(X_scaled)\n    inertias.append(kmeans.inertia_)\nplt.plot(K_range, inertias, marker='o')\nplt.xlabel('簇数 K')\nplt.ylabel('簇内平方和')\nplt.title('肘部法则')\nplt.show()\n# 选择K=3基于拐点\nkmeans = KMeans(n_clusters=3, random_state=42, n_init=10)\nkmeans_labels = kmeans.fit_predict(X_scaled)\nkmeans_score = silhouette_score(X_scaled, kmeans_labels)\nprint(\"KMeans轮廓系数:\", kmeans_score)\n\n# 步骤5：GMM聚类\ngmm = GaussianMixture(n_components=3, random_state=42)\ngmm_labels = gmm.fit_predict(X_scaled)\ngmm_score = silhouette_score(X_scaled, gmm_labels)\nprint(\"GMM轮廓系数:\", gmm_score)\n\n# 步骤6：可视化\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 3, 1)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=y, cmap='viridis')\nplt.title('PCA降维（真实标签）')\nplt.subplot(1, 3, 2)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=kmeans_labels, cmap='viridis')\nplt.title('KMeans聚类结果')\nplt.subplot(1, 3, 3)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=gmm_labels, cmap='viridis')\nplt.title('GMM聚类结果')\nplt.show()\n\n# 步骤7：环境记录\nimport sklearn\nprint(\"scikit-learn版本:\", sklearn.__version__)\nprint(\"numpy版本:\", np.__version__)\nprint(\"随机种子: 42\")</code></pre>\n<p>输出包括数据形状（150, 4）、特征名称、PCA解释方差比（例如[0.73, 0.23]）、KMeans和GMM的轮廓系数（值接近1表示聚类好），以及可视化散点图。轮廓系数公式如前所述，用于评估聚类效果。注意，由于无真实标签，我们使用无监督指标；在业务中，还需结合领域知识验证。</p>\n<p>常见误区包括直接使用PCA降维后的数据进行聚类而不检查信息保留，或忽略预处理步骤。失败模式可能源于数据不满足算法假设，如非球形簇导致KMeans性能下降。诊断时，可比较不同算法的轮廓系数，并可视化结果以直观检查。</p>\n<p>通过这个实践，你已经掌握了无监督学习从理论到应用的全过程。接下来，可以尝试将这些方法迁移到自己的项目中，探索更复杂的数据集和算法。</p>\n\n<p>在算法与评测基础中，无监督学习如KMeans、GMM和PCA提供了处理未标注数据的强大工具。本讲义从直觉动机出发，深入定义、机制和工程实践，强调了适用边界和常见陷阱。通过可复现的示例，你学会了如何从数据加载到评估的完整流程，为实际应用打下基础。记住，技术选择应基于数据特性和业务目标，不断实验和验证是提升技能的关键。</p>",
+        "en": "<h3>From Chaos to Structure: Intuition and Motivation of Unsupervised Learning</h3>\n<p>In data science practice, we often encounter large amounts of unlabeled data. Imagine you have a customer dataset with features like age and spending amount, but no explicit classification labels. How can you discover underlying patterns or groups? This is the core value of unsupervised learning. Unlike supervised learning, which relies on labels for prediction, unsupervised learning aims to uncover intrinsic structures from the data itself, providing insights for subsequent analysis. In algorithm and evaluation fundamentals, this typically involves two main tasks: clustering and dimensionality reduction. Clustering groups data points into different clusters so that points within the same cluster are similar, while points in different clusters are dissimilar; dimensionality reduction reduces the number of features while preserving as much information as possible, to simplify models or enable visualization.</p>\n<p>Precise definitions are the first step to understanding algorithms. Unsupervised learning refers to learning the intrinsic structure or distribution from unlabeled data, with the goal of exploration rather than prediction. Clustering and dimensionality reduction are its main branches: clustering methods like KMeans and GMM are used to discover natural groupings in data; dimensionality reduction methods like PCA compress the feature space. A common misconception is that unsupervised learning can completely replace supervised learning, but in reality, they are complementary: unsupervised learning is for data exploration and preprocessing, while supervised learning is for label-based prediction, often used together in engineering (Source: The Elements of Statistical Learning, 2009).</p>\n<p>From a mechanistic perspective, unsupervised learning extracts structure by optimizing objective functions. For example, clustering algorithms typically minimize within-cluster distances or maximize between-cluster differences, while dimensionality reduction algorithms maximize retained information. Mathematically, this can be formalized as an optimization problem, which we will delve into in later sections. In engineering implementation, key points include data preprocessing (e.g., standardization), algorithm selection (based on data distribution assumptions), and evaluation (using unsupervised metrics like silhouette score). In terms of complexity, KMeans and PCA are usually O(n*k*d), suitable for medium-scale data, while GMM can be more computationally intensive.</p>\n<p>Common misconceptions include mistaking clustering for classification, or assuming that dimensionality reduction always improves model performance. Failure modes may arise when data does not meet algorithm assumptions, such as KMeans failing on non-spherical clusters. For diagnosis, visualization (e.g., scatter plots) and metric calculation (e.g., silhouette score) can be used to check result validity. For instance, in a customer dataset, applying KMeans might divide customers into clusters like \"high-spending young group\" or \"low-spending elderly group,\" but if the data distribution is complex, more flexible methods like GMM may be needed.</p>\n<p>Understanding the motivation and basic concepts of unsupervised learning, we next need to delve into the mathematical definitions and boundary conditions of each algorithm to make informed technical choices. This is not only a theoretical deepening but also a critical step to avoid common pitfalls in engineering practice.</p>\n\n<h3>Definitions and Boundaries: Core Assumptions of KMeans, GMM, and PCA</h3>\n<p>KMeans, GMM, and PCA are classic tools in unsupervised learning, each with clear mathematical models and applicable scenarios. KMeans is a hard clustering algorithm that partitions data into K clusters through iterative optimization, minimizing the squared distance from points to cluster centroids. Its objective function is: \\[ J = \\sum_{i=1}^{K} \\sum_{x \\in C_i} \\|x - \\mu_i\\|^2 \\], where \\(C_i\\) is the i-th cluster and \\(\\mu_i\\) is its centroid. KMeans assumes clusters are convex, similar in size, and have uniform variance, which may not hold in real-world data, leading to incorrect partitioning of non-spherical clusters (Source: Pattern Recognition and Machine Learning, 2006).</p>\n<p>GMM employs probabilistic modeling, fitting data distribution as a weighted sum of multiple Gaussian distributions, allowing soft assignments (i.e., a point can have probabilities of belonging to multiple clusters). Its probability density function is: \\[ p(x) = \\sum_{k=1}^{K} \\pi_k \\mathcal{N}(x | \\mu_k, \\Sigma_k) \\], where \\(\\pi_k\\) is the mixture weight and \\(\\mathcal{N}\\) is the Gaussian distribution. GMM has looser boundaries, capable of handling overlapping clusters and non-spherical structures, but may overfit or converge to local optima. PCA is a linear dimensionality reduction method that finds directions of maximum variance (principal components) through orthogonal transformation. Its goal is to minimize reconstruction error or maximize projected variance, mathematically based on eigenvalue decomposition: \\[ \\text{maximize } \\text{Var}(Xw) \\text{ subject to } \\|w\\|=1 \\], where \\(X\\) is the data matrix and \\(w\\) is the projection vector.</p>\n<p>In engineering implementation, KMeans requires specifying the number of clusters K, often selected using the elbow method; GMM needs parameter initialization, typically estimated via the EM algorithm; PCA requires data standardization to avoid scale effects. In terms of complexity, KMeans is O(n*k*d*t), GMM is O(n*k*d^2*t), and PCA is O(n*d^2), where n is the number of samples, d is the number of features, and t is the number of iterations. For high-dimensional data, PCA can significantly reduce computational burden.</p>\n<p>Common misconceptions include believing PCA can handle nonlinear relationships, but it is a linear method and may fail for nonlinear structures, requiring alternatives like t-SNE or UMAP. Failure modes may arise from data not meeting Gaussian assumptions (for GMM) or low feature correlation (for PCA). For diagnosis, check explained variance ratio (for PCA) or likelihood function (for GMM) to assess model fit.</p>\n<p>With these definitions in hand, we next explore the working mechanisms behind the algorithms to understand why they succeed or fail in certain situations. This mechanistic understanding is the foundation for optimizing algorithm parameters and diagnosing issues.</p>\n\n<h3>Mechanisms and Pitfalls: How Algorithms Work and Common Traps</h3>\n<p>The mechanism of KMeans is based on iterative optimization: initialize K centroids, then alternately perform assignment steps (assign each point to the nearest centroid) and update steps (recompute centroids) until convergence. Its objective function minimizes within-cluster squared error, but it may get stuck in local optima, depending on initial centroid selection. Mathematically, this is implemented via Lloyd's algorithm, with complexity O(n*k*d*t). A key misconception is that KMeans always converges to a global optimum; in practice, multiple random initializations are commonly used to mitigate this issue (Source: Scikit-learn: Machine Learning in Python, 2023).</p>\n<p>GMM uses the EM algorithm for parameter estimation: E-step computes posterior probabilities (i.e., probabilities of points belonging to each Gaussian component), M-step updates parameters (means, covariances, and weights) to maximize the likelihood function. Its probability decomposition is: \\[ \\log p(X|\\theta) = \\sum_{i=1}^{n} \\log \\sum_{k=1}^{K} \\pi_k \\mathcal{N}(x_i | \\mu_k, \\Sigma_k) \\]. GMM's \"soft clustering\" allows uncertainty modeling but may overfit, especially when the number of components K is too large. Compared to KMeans' \"hard clustering,\" GMM is more flexible but computationally more expensive.</p>\n<p>The mechanism of PCA is based on linear algebra: by computing eigenvalues and eigenvectors of the covariance matrix, select the eigenvectors corresponding to the top k largest eigenvalues as principal components for dimensionality reduction. Its derivation can be viewed as solving an eigenvalue problem: \\[ \\Sigma v = \\lambda v \\], where \\(\\Sigma\\) is the covariance matrix. The variance retained by PCA is the cumulative explained variance, often used with thresholds like 95% to select dimensions. A misconception is that reduced-dimensionality data can be directly used for clustering, but PCA may lose structural information needed for clustering, requiring combined with business judgment.</p>\n<p>In engineering implementation, KMeans is sensitive to initial values, recommending k-means++ initialization; GMM requires attention to covariance matrix type (e.g., full or diag); PCA must have standardized data beforehand. Failure mode examples: KMeans fails on ring-shaped data, GMM may fit irrelevant components in noisy data, PCA is sensitive to outliers. Diagnostic tools include silhouette score to evaluate clustering effectiveness, with formula: \\[ s(i) = \\frac{b(i) - a(i)}{\\max\\{a(i), b(i)\\}} \\], where \\(a(i)\\) is the average distance from point i to other points in the same cluster, and \\(b(i)\\) is the minimum average distance to points in the nearest other cluster.</p>\n<p>Understanding these mechanisms, we can apply them to practical engineering through a complete workflow from data to evaluation. Next, we will demonstrate how to translate this theory into executable code with a concrete example.</p>\n\n<h3>Engineering Practice: Complete Workflow from Data to Evaluation</h3>\n<p>In real-world projects, applying unsupervised learning involves an end-to-end workflow: from data loading, preprocessing, model training, to evaluation and visualization. We demonstrate the integrated use of KMeans, GMM, and PCA using the Iris dataset as an example. First, load the data and check basic properties: Iris contains 150 samples and 4 features (sepal length, sepal width, petal length, petal width), with no missing values. Preprocessing includes standardization to ensure PCA and clustering algorithms are not affected by scale.</p>\n<p>Next, apply PCA for dimensionality reduction. By calculating the explained variance ratio, we choose to retain 2 principal components for data visualization. Then, use KMeans and GMM separately for clustering. For KMeans, use the elbow method to select the optimal number of clusters K: plot the within-cluster sum of squares against K and choose the elbow point. For GMM, use BIC (Bayesian Information Criterion) to select the number of components. The evaluation metric is the silhouette score, measuring clustering effectiveness.</p>\n<p>Here is a minimal reproducible experiment code block covering key concepts:</p>\n<pre><code>import numpy as np\nimport matplotlib.pyplot as plt\nfrom sklearn.datasets import load_iris\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.decomposition import PCA\nfrom sklearn.cluster import KMeans\nfrom sklearn.mixture import GaussianMixture\nfrom sklearn.metrics import silhouette_score\n\n# Step 1: Data loading and inspection\ndata = load_iris()\nX = data.data\ny = data.target\nprint(\"Data shape:\", X.shape)\nprint(\"Feature names:\", data.feature_names)\nprint(\"First 5 samples:\\n\", X[:5])\n\n# Step 2: Preprocessing\nscaler = StandardScaler()\nX_scaled = scaler.fit_transform(X)\n\n# Step 3: PCA dimensionality reduction\npca = PCA(n_components=2, random_state=42)\nX_pca = pca.fit_transform(X_scaled)\nexplained_variance = pca.explained_variance_ratio_\nprint(\"PCA explained variance ratio:\", explained_variance)\nprint(\"Cumulative explained variance:\", np.cumsum(explained_variance))\n\n# Step 4: KMeans clustering (using elbow method to select K)\ninertias = []\nK_range = range(1, 11)\nfor k in K_range:\n    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)\n    kmeans.fit(X_scaled)\n    inertias.append(kmeans.inertia_)\nplt.plot(K_range, inertias, marker='o')\nplt.xlabel('Number of clusters K')\nplt.ylabel('Within-cluster sum of squares')\nplt.title('Elbow Method')\nplt.show()\n# Select K=3 based on elbow point\nkmeans = KMeans(n_clusters=3, random_state=42, n_init=10)\nkmeans_labels = kmeans.fit_predict(X_scaled)\nkmeans_score = silhouette_score(X_scaled, kmeans_labels)\nprint(\"KMeans silhouette score:\", kmeans_score)\n\n# Step 5: GMM clustering\ngmm = GaussianMixture(n_components=3, random_state=42)\ngmm_labels = gmm.fit_predict(X_scaled)\ngmm_score = silhouette_score(X_scaled, gmm_labels)\nprint(\"GMM silhouette score:\", gmm_score)\n\n# Step 6: Visualization\nplt.figure(figsize=(12, 4))\nplt.subplot(1, 3, 1)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=y, cmap='viridis')\nplt.title('PCA Dimensionality Reduction (True Labels)')\nplt.subplot(1, 3, 2)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=kmeans_labels, cmap='viridis')\nplt.title('KMeans Clustering Results')\nplt.subplot(1, 3, 3)\nplt.scatter(X_pca[:, 0], X_pca[:, 1], c=gmm_labels, cmap='viridis')\nplt.title('GMM Clustering Results')\nplt.show()\n\n# Step 7: Environment recording\nimport sklearn\nprint(\"scikit-learn version:\", sklearn.__version__)\nprint(\"numpy version:\", np.__version__)\nprint(\"Random seed: 42\")</code></pre>\n<p>Outputs include data shape (150, 4), feature names, PCA explained variance ratio (e.g., [0.73, 0.23]), KMeans and GMM silhouette scores (values close to 1 indicate good clustering), and visualized scatter plots. The silhouette score formula is as mentioned earlier, used to evaluate clustering effectiveness. Note that without true labels, we use unsupervised metrics; in business contexts, domain knowledge validation is also needed.</p>\n<p>Common misconceptions include directly using PCA-reduced data for clustering without checking information retention, or neglecting preprocessing steps. Failure modes may arise from data not meeting algorithm assumptions, such as non-spherical clusters causing poor KMeans performance. For diagnosis, compare silhouette scores of different algorithms and visualize results for intuitive inspection.</p>\n<p>Through this practice, you have mastered the full process of unsupervised learning from theory to application. Next, try migrating these methods to your own projects, exploring more complex datasets and algorithms.</p>\n\n<p>In algorithm and evaluation fundamentals, unsupervised learning tools like KMeans, GMM, and PCA provide powerful means to handle unlabeled data. This lecture starts from intuitive motivation, delves into definitions, mechanisms, and engineering practice, emphasizing applicable boundaries and common pitfalls. Through a reproducible example, you learned how to implement a complete workflow from data loading to evaluation, laying a foundation for practical applications. Remember, technical choices should be based on data characteristics and business goals, with continuous experimentation and validation being key to skill enhancement.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：无监督学习：KMeans/GMM/PCA 的使用场景 · 结构总览 · 数据：课程大纲】在设计《无监督学习：KMeans/GMM/PCA 的使用场景》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 无监督学习：KMeans/GMM/PCA 的使用场景 · 结构总览 · Data: 课程大纲】When outlining \"无监督学习：KMeans/GMM/PCA 的使用场景\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：无监督学习：KMeans/GMM/PCA 的使用场景 · worked example · 数据：理解核心算法的适用边界与工程取舍 数据/代码】在复现《无监督学习：KMeans/GMM/PCA 的使用场景》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 无监督学习：KMeans/GMM/PCA 的使用场景 · worked example · Data: 理解核心算法的适用边界与工程取舍 数据/代码】While reproducing the worked example in \"无监督学习：KMeans/GMM/PCA 的使用场景\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：无监督学习：KMeans/GMM/PCA 的使用场景 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《无监督学习：KMeans/GMM/PCA 的使用场景》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 无监督学习：KMeans/GMM/PCA 的使用场景 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"无监督学习：KMeans/GMM/PCA 的使用场景\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：无监督学习：KMeans/GMM/PCA 的使用场景 · 参考资料 · 数据：课程引用文献】当引用文献支撑《无监督学习：KMeans/GMM/PCA 的使用场景》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 无监督学习：KMeans/GMM/PCA 的使用场景 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"无监督学习：KMeans/GMM/PCA 的使用场景\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Scikit-learn Developers，2023）",
+            "en": "Scikit-learn: Machine Learning in Python (Scikit-learn Developers, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        },
+        {
+          "label": {
+            "zh": "Pattern Recognition and Machine Learning（Springer，2006）",
+            "en": "Pattern Recognition and Machine Learning (Springer, 2006)"
+          },
+          "url": "https://www.microsoft.com/en-us/research/people/cmbishop/"
+        },
+        {
+          "label": {
+            "zh": "The Elements of Statistical Learning（Springer，2009）",
+            "en": "The Elements of Statistical Learning (Springer, 2009)"
+          },
+          "url": "https://hastie.su.domains/ElemStatLearn/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-22-kmeansgmmpca-zh.mp3"
+      },
+      "meta": {
+        "category": "算法与评测基础",
+        "level": "3. 经典机器学习",
+        "difficultyScore": 2,
+        "related": [
+          "表示学习：对比学习（SimCLR 思路）",
+          "多模态对齐：CLIP 思路"
+        ],
+        "learningObjectives": [
+          "理解核心算法的适用边界与工程取舍",
+          "能用一个小数据集完成训练-评估-改进闭环"
+        ],
+        "personas": [
+          "数据科学家",
+          "工程师",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering unsupervised learning scenarios for KMeans, GMM, and PCA at this stage helps teams establish reusable practices in algorithm and evaluation fundamentals.",
+          "best_for": "Suitable for data scientists, engineers, and product managers who need to quickly absorb the topic of classic machine learning.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate the process."
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、工程师、产品经理，帮助他们把 无监督学习：KMeans/GMM/PCA 的使用场景 应用于 算法与评测基础",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "pains": "在 算法与评测基础 场景缺乏 无监督学习：KMeans/GMM/PCA 的使用场景 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. 经典机器学习"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，在探索新数据集时，你如何判断应该使用KMeans进行客户分群，还是用PCA先降维再分析？请描述你的决策依据和具体步骤。",
+            "action_hint": "思考数据特征、业务目标与算法特性的匹配关系"
+          },
+          {
+            "lang": "zh",
+            "question": "当产品经理需要评估用户行为模式时，GMM和KMeans哪种方法能更好地处理重叠的聚类场景？请结合具体业务场景说明选择理由。",
+            "action_hint": "考虑数据分布特点和模型对不确定性的表达能力"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-21-rfgbdtxgboost",
       "date": "2026-02-21",
