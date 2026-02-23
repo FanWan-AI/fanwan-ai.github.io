@@ -1,6 +1,183 @@
 {
-  "generatedAt": "2026-02-22T14:03:16.367Z",
+  "generatedAt": "2026-02-23T02:33:25.785Z",
   "lessons": [
+    {
+      "id": "2026-02-23-recommender-systems",
+      "date": "2026-02-23",
+      "title": {
+        "zh": "推荐系统基础：召回/排序与离线评测",
+        "en": "Fundamentals of Recommendation Systems: Recall/Ranking and Offline Evaluation"
+      },
+      "summary": {
+        "zh": "推荐系统通过召回与排序的两阶段架构，从海量候选中高效筛选个性化内容。本课深入解析协同过滤、矩阵分解等核心算法的数学原理，包括目标函数如正则化矩阵分解和交叉熵损失。离线评测部分涵盖准确率、召回率及F1-score等指标公式，强调数据切分方法与常见陷阱。通过端到端代码示例，展示从数据生成到模型评估的可复现流程，帮助学习者建立可迁移的算法迭代闭环。",
+        "en": "Recommender systems employ a two-stage architecture of candidate generation and ranking to efficiently filter personalized content from vast candidate pools. This lesson delves into the mathematical principles of core algorithms like collaborative filtering and matrix factorization, including objective functions such as regularized matrix factorization and cross-entropy loss. The offline evaluation section covers metric formulas like precision, recall, and F1-score, emphasizing data splitting methods and common pitfalls. An end-to-end code example demonstrates a reproducible pipeline from data generation to model evaluation, enabling learners to establish a transferable algorithm iteration loop."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "recommender systems"
+      ],
+      "content": {
+        "zh": "<h3>从百万商品到十款推荐：为什么需要召回与排序？</h3>\n<p>在推荐系统的工程实践中，核心挑战在于如何从海量候选物品中高效筛选出个性化内容。以电商平台为例，商品库规模常达百万级，而用户每次访问仅需展示十款推荐。若直接使用复杂模型对全量商品逐一打分，计算延迟将远超用户可容忍的毫秒级响应时间。这种效率瓶颈催生了召回（Candidate Generation）与排序（Ranking）的两阶段架构，其本质是在计算资源与推荐精度间寻求工程最优解。</p>\n<p>召回阶段负责从全量物品库中快速筛选出数百个相关候选。其设计目标是覆盖度与效率：算法需尽可能覆盖潜在相关物品，同时保持亚秒级响应。数学上，常用基于物品的协同过滤（Item-based Collaborative Filtering），通过余弦相似度衡量物品间关联：\\(\\text{sim}(i,j) = \\frac{\\mathbf{v}_i \\cdot \\mathbf{v}_j}{\\|\\mathbf{v}_i\\| \\|\\mathbf{v}_j\\|}\\)，其中\\(\\mathbf{v}_i\\)和\\(\\mathbf{v}_j\\)为物品的交互向量（如用户评分）。工程实现中，常结合近似最近邻搜索（Approximate Nearest Neighbor Search）加速查询，将时间复杂度从\\(O(N^2)\\)降至\\(O(N \\log N)\\)。</p>\n<p>排序阶段则对召回结果进行精细打分与排序，输出最终推荐列表。该阶段侧重精度与个性化，允许使用计算密集的模型，如逻辑回归（Logistic Regression）或梯度提升树（Gradient Boosting Trees）。排序模型的目标函数常为最小化预测误差，例如逻辑回归采用交叉熵损失：\\(\\mathcal{L} = -\\sum_{(u,i) \\in \\mathcal{D}} \\left[ y_{ui} \\log(\\hat{y}_{ui}) + (1-y_{ui}) \\log(1-\\hat{y}_{ui}) \\right]\\)，其中\\(y_{ui}\\)为真实交互标签（如点击为1，未点击为0），\\(\\hat{y}_{ui}\\)为模型预测的概率。工程上，排序模块需处理特征工程、在线推理与延迟优化，通常部署为微服务，响应时间控制在50-200毫秒。</p>\n<p>一个常见误区是试图将召回与排序合并为单一模型。全量排序的计算复杂度为\\(O(N \\cdot M)\\)（N为用户数，M为物品数），在百万级物品库中不可行。两阶段架构是必要的工程折衷：召回通过高效算法缩小候选集，排序则投入更多计算资源提升质量。失败模式包括召回覆盖率不足导致相关物品从未进入排序，或排序模型过拟合训练数据。诊断时，可分析召回结果的多样性指标（如覆盖率Coverage = \\(\\frac{|\\text{Recommended items}|}{|\\text{Total items}|}\\)）和排序模型的校准曲线（预测概率与真实频率的匹配度）。</p>\n<p>理解了架构分工，接下来我们深入探讨具体算法的原理与实现。</p>\n<h3>算法工具箱：协同过滤、矩阵分解与树模型</h3>\n<p>面对大规模用户-物品交互数据，算法选型需平衡精度、效率与可解释性。协同过滤（Collaborative Filtering）基于“相似用户喜欢相似物品”的假设，分为基于用户（User-based CF）和基于物品（Item-based CF）两类。以物品协同过滤为例，预测用户u对物品i的评分公式为：\\(\\hat{r}_{ui} = \\frac{\\sum_{j \\in \\mathcal{N}(i)} \\text{sim}(i,j) \\cdot r_{uj}}{\\sum_{j \\in \\mathcal{N}(i)} |\\text{sim}(i,j)|}\\)，其中\\(\\mathcal{N}(i)\\)是物品i的最近邻集合，\\(r_{uj}\\)为用户u对物品j的已知评分。该算法直观易实现，但受冷启动问题制约——新用户或新物品缺乏交互历史。</p>\n<p>矩阵分解（Matrix Factorization）通过低维隐向量分解应对数据稀疏性。其目标函数最小化评分预测误差与正则化项：\\(\\min_{\\mathbf{P},\\mathbf{Q}} \\sum_{(u,i) \\in \\mathcal{K}} (r_{ui} - \\mathbf{p}_u^\\top \\mathbf{q}_i)^2 + \\lambda (\\|\\mathbf{P}\\|_F^2 + \\|\\mathbf{Q}\\|_F^2)\\)，其中\\(\\mathbf{p}_u\\)和\\(\\mathbf{q}_i\\)为用户和物品的K维隐向量，\\(\\mathcal{K}\\)为已知交互集合，\\(\\lambda\\)控制正则化强度。交替最小二乘法（Alternating Least Squares）通过固定一组变量优化另一组来求解。矩阵分解能有效捕捉潜在特征，但可解释性差，且隐向量维度K需调参。</p>\n<p>树模型如梯度提升决策树（Gradient Boosting Decision Trees）在排序阶段表现优异，因其能自动建模非线性特征交互。预测为多个弱学习器的加和：\\(\\hat{y} = \\sum_{k=1}^{K} f_k(\\mathbf{x})\\)，其中\\(f_k\\)为第k棵决策树。工程中，特征常包括用户画像、物品属性及历史交互统计。算法选型时，需评估数据规模、特征类型与延迟要求：协同过滤适合中小规模数据，矩阵分解适用于稀疏场景，树模型提供高精度但计算成本较高。</p>\n<p>一个常见误区是认为矩阵分解总优于协同过滤。实际上，矩阵分解在稀疏数据上泛化更好，但协同过滤更易解释和部署。失败模式包括隐向量维度选择不当导致欠拟合（训练损失高）或过拟合（验证损失突增），或树模型特征重要性失衡。诊断时，可绘制训练集与验证集损失曲线：若两者差距持续扩大，可能过拟合；还可分析隐向量的奇异值分布——若值迅速衰减，可能欠拟合。</p>\n<p>掌握了算法原理，如何客观评估性能以指导迭代？这需要建立严谨的离线评测体系。</p>\n<h3>离线评测：指标、切分与陷阱</h3>\n<p>离线评测为推荐算法提供可重复的性能基准，是算法迭代的基础。核心指标包括准确率（Precision）和召回率（Recall），针对Top-K推荐定义如下：\\(\\text{Precision}@K = \\frac{|\\text{Relevant items in top-K}|}{K}\\)，衡量推荐列表的精度；\\(\\text{Recall}@K = \\frac{|\\text{Relevant items in top-K}|}{|\\text{All relevant items}|}\\)，衡量相关物品的覆盖度。为平衡两者，常使用F1-score：\\(\\text{F1}@K = 2 \\cdot \\frac{\\text{Precision}@K \\cdot \\text{Recall}@K}{\\text{Precision}@K + \\text{Recall}@K}\\)。该公式源自混淆矩阵：设TP为真正例（推荐且相关），FP为假正例（推荐但不相关），FN为假反例（相关但未推荐），则Precision = TP/(TP+FP)，Recall = TP/(TP+FN)，F1为调和平均。</p>\n<p>数据切分方法直接影响评测可靠性。随机切分简单但可能忽略时间序列；按时间切分更贴近线上场景，训练集使用早期数据，测试集使用后期数据。工程中需确保可复现性，如固定随机种子（random_state=42）。特征工程须避免特征穿越（Data Leakage）——测试集信息泄露至训练集，例如使用未来统计特征。</p>\n<p>离线评测存在多个陷阱。一是指标高估：离线指标如准确率可能因测试集静态而虚高，但线上用户行为动态变化导致效果下降。二是数据分布偏移：训练集与测试集分布不一致，模型泛化差。三是评估片面：仅关注单一指标可能忽略多样性或新颖性。诊断时，可进行交叉验证或计算指标置信区间。失败模式包括过拟合测试集或忽略业务指标（如点击率CTR）。</p>\n<p>一个常见误区是认为离线指标高则上线效果必佳。实际上，离线评测是必要条件非充分条件，需结合在线A/B测试验证。诊断过拟合时，可观察模型在验证集上的表现早停或添加正则化。</p>\n<p>理论需落地实践，接下来我们通过端到端示例实现可复现的评测闭环。</p>\n<h3>端到端实践：从数据到可复现评测</h3>\n<p>本节在模拟数据集上实现矩阵分解的召回与排序，并进行离线评测，确保代码可独立运行。我们使用内联DataFrame避免外部文件依赖，并打印关键中间结果验证流程。</p>\n<pre><code>import pandas as pd\nimport numpy as np\nfrom sklearn.model_selection import train_test_split\n\n# 生成模拟交互数据，替代MovieLens以避免外部依赖\nnp.random.seed(42)\ndata = pd.DataFrame({\n    'user_id': np.random.randint(0, 100, 1000),\n    'item_id': np.random.randint(0, 50, 1000),\n    'rating': np.random.randint(1, 6, 1000),\n    'timestamp': np.random.randint(0, 10000, 1000)\n})\nprint(\"数据规模:\", data.shape)\nprint(\"前5行:\\n\", data.head())\nprint(\"用户数:\", data['user_id'].nunique())\nprint(\"物品数:\", data['item_id'].nunique())\n\n# 按时间切分，模拟真实数据流\ndata_sorted = data.sort_values('timestamp')\ntrain_size = int(0.8 * len(data_sorted))\ntrain_data = data_sorted.iloc[:train_size]\ntest_data = data_sorted.iloc[train_size:]\nprint(\"训练集大小:\", train_data.shape, \"测试集大小:\", test_data.shape)\n\n# 矩阵分解实现（交替最小二乘法）\ndef matrix_factorization(R, K=5, steps=10, alpha=0.01, beta=0.02):\n    n_users, n_items = R.shape\n    P = np.random.randn(n_users, K)\n    Q = np.random.randn(n_items, K)\n    for step in range(steps):\n        for i in range(n_users):\n            for j in range(n_items):\n                if R[i, j] > 0:\n                    eij = R[i, j] - np.dot(P[i, :], Q[j, :].T)\n                    P[i, :] += alpha * (2 * eij * Q[j, :] - beta * P[i, :])\n                    Q[j, :] += alpha * (2 * eij * P[i, :] - beta * Q[j, :])\n    return P, Q\n\n# 构建训练评分矩阵\nuser_ids = data['user_id'].unique()\nitem_ids = data['item_id'].unique()\nuser_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}\nitem_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}\nR_train = np.zeros((len(user_ids), len(item_ids)))\nfor _, row in train_data.iterrows():\n    R_train[user_to_idx[row['user_id']], item_to_idx[row['item_id']]] = row['rating']\n\nP, Q = matrix_factorization(R_train, K=5, steps=5)\npredictions = np.dot(P, Q.T)\nprint(\"预测矩阵形状:\", predictions.shape)\nprint(\"示例预测（用户0-2，物品0-2）:\\n\", predictions[:3, :3])\n\n# 评估：计算F1@5\n# 定义评分>=4为相关物品\ntest_relevant = test_data[test_data['rating'] >= 4]\ntop_k = 5\nf1_scores = []\nfor uid in test_data['user_id'].unique()[:10]:  # 示例评估前10用户\n    user_idx = user_to_idx[uid]\n    pred_scores = predictions[user_idx, :]\n    top_items = np.argsort(pred_scores)[-top_k:]\n    relevant_items = set(test_relevant[test_relevant['user_id'] == uid]['item_id'])\n    recommended_items = set([item_ids[i] for i in top_items])\n    tp = len(relevant_items & recommended_items)\n    fp = top_k - tp\n    fn = len(relevant_items) - tp\n    precision = tp / (tp + fp) if (tp + fp) > 0 else 0\n    recall = tp / (tp + fn) if (tp + fn) > 0 else 0\n    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0\n    f1_scores.append(f1)\nmean_f1 = np.mean(f1_scores)\nprint(f\"F1@{top_k}: {mean_f1:.4f}\")\n\n# 记录环境版本确保可复现\nimport sys\nprint(\"Python版本:\", sys.version[:6])\nprint(\"NumPy版本:\", np.__version__)\nprint(\"Pandas版本:\", pd.__version__)</code></pre>\n<p>代码展示了从数据生成到评测的完整流程。输出包括数据规模、预测矩阵示例及F1@5指标。关键设计点：使用内联数据避免外部依赖；按时间切分模拟真实场景；实现F1-score计算，公式为\\(\\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\)，基于混淆矩阵推导。可复现性通过固定随机种子和记录版本保障。失败模式如隐向量维度不当可通过交叉验证调参诊断。</p>\n<p>此基础闭环可迁移至业务数据，启动推荐系统的原型构建。</p>",
+        "en": "<h3>From Millions of Items to Ten Recommendations: Why Candidate Generation and Ranking?</h3>\n<p>In recommender system engineering, a core challenge is efficiently filtering personalized content from vast item catalogs. For example, e-commerce platforms often have millions of products, yet only ten recommendations need to be displayed per user visit. If a complex model directly scores every item, computational latency would far exceed the millisecond response times users tolerate. This efficiency bottleneck drives the two-stage architecture of candidate generation and ranking, which seeks an engineering optimum between computational resources and recommendation accuracy.</p>\n<p>The candidate generation stage rapidly filters hundreds of relevant candidates from the entire item catalog. Its design goals are coverage and efficiency: algorithms must cover potentially relevant items while maintaining sub-second responses. Mathematically, item-based collaborative filtering is common, using cosine similarity to measure item associations: \\(\\text{sim}(i,j) = \\frac{\\mathbf{v}_i \\cdot \\mathbf{v}_j}{\\|\\mathbf{v}_i\\| \\|\\mathbf{v}_j\\|}\\), where \\(\\mathbf{v}_i\\) and \\(\\mathbf{v}_j\\) are item interaction vectors (e.g., user ratings). In engineering, approximate nearest neighbor search is often combined to accelerate queries, reducing time complexity from \\(O(N^2)\\) to \\(O(N \\log N)\\).</p>\n<p>The ranking stage then scores and orders candidate results to produce the final recommendation list. This phase emphasizes precision and personalization, allowing computationally intensive models like logistic regression or gradient boosting trees. The objective function for ranking models typically minimizes prediction error; for instance, logistic regression uses cross-entropy loss: \\(\\mathcal{L} = -\\sum_{(u,i) \\in \\mathcal{D}} \\left[ y_{ui} \\log(\\hat{y}_{ui}) + (1-y_{ui}) \\log(1-\\hat{y}_{ui}) \\right]\\), where \\(y_{ui}\\) is the true interaction label (e.g., 1 for click, 0 for no click) and \\(\\hat{y}_{ui}\\) is the predicted probability. Engineering-wise, the ranking module handles feature engineering, online inference, and latency optimization, usually deployed as a microservice with response times of 50-200 milliseconds.</p>\n<p>A common misconception is attempting to merge candidate generation and ranking into a single model. Full-scale ranking has computational complexity \\(O(N \\cdot M)\\) (N users, M items), which is infeasible for million-item catalogs. The two-stage architecture is a necessary engineering trade-off: candidate generation reduces the candidate set with efficient algorithms, while ranking allocates more computational resources to improve quality. Failure modes include insufficient coverage in candidate generation, where relevant items never reach ranking, or overfitting in ranking models. Diagnosis involves analyzing diversity metrics (e.g., Coverage = \\(\\frac{|\\text{Recommended items}|}{|\\text{Total items}|}\\)) and calibration curves (matching predicted probabilities to actual frequencies).</p>\n<p>Understanding this architectural division, let's delve into the principles and implementations of specific algorithms.</p>\n<h3>Algorithm Toolkit: Collaborative Filtering, Matrix Factorization, and Tree Models</h3>\n<p>Faced with large-scale user-item interaction data, algorithm selection must balance accuracy, efficiency, and interpretability. Collaborative filtering is based on the assumption that similar users like similar items, divided into user-based and item-based types. For item-based CF, the predicted rating for user u on item i is: \\(\\hat{r}_{ui} = \\frac{\\sum_{j \\in \\mathcal{N}(i)} \\text{sim}(i,j) \\cdot r_{uj}}{\\sum_{j \\in \\mathcal{N}(i)} |\\text{sim}(i,j)|}\\), where \\(\\mathcal{N}(i)\\) is the set of nearest neighbors for item i, and \\(r_{uj}\\) is user u's known rating for item j. This algorithm is intuitive and easy to implement but suffers from cold-start issues—new users or items lack interaction history.</p>\n<p>Matrix factorization addresses data sparsity through low-dimensional latent vector decomposition. Its objective function minimizes rating prediction error with regularization: \\(\\min_{\\mathbf{P},\\mathbf{Q}} \\sum_{(u,i) \\in \\mathcal{K}} (r_{ui} - \\mathbf{p}_u^\\top \\mathbf{q}_i)^2 + \\lambda (\\|\\mathbf{P}\\|_F^2 + \\|\\mathbf{Q}\\|_F^2)\\), where \\(\\mathbf{p}_u\\) and \\(\\mathbf{q}_i\\) are K-dimensional latent vectors for users and items, \\(\\mathcal{K}\\) is the set of known interactions, and \\(\\lambda\\) controls regularization strength. Alternating least squares solves by fixing one set of variables while optimizing the other. Matrix factorization effectively captures latent features but has poor interpretability, and latent dimension K requires tuning.</p>\n<p>Tree models like gradient boosting decision trees excel in ranking due to their ability to automatically model nonlinear feature interactions. Predictions are an additive combination of weak learners: \\(\\hat{y} = \\sum_{k=1}^{K} f_k(\\mathbf{x})\\), where \\(f_k\\) is the k-th decision tree. In engineering, features typically include user profiles, item attributes, and historical interaction statistics. Algorithm selection depends on data scale, feature types, and latency requirements: collaborative filtering suits small to medium datasets, matrix factorization is ideal for sparse scenarios, and tree models offer high precision at higher computational cost.</p>\n<p>A common misconception is that matrix factorization always outperforms collaborative filtering. In practice, matrix factorization generalizes better on sparse data, but collaborative filtering is easier to interpret and deploy. Failure modes include improper latent vector dimensions leading to underfitting (high training loss) or overfitting (sudden increase in validation loss), or imbalanced feature importance in tree models. Diagnosis involves plotting training and validation loss curves: if the gap widens consistently, overfitting may occur; also, analyze singular value distributions of latent vectors—rapid decay may indicate underfitting.</p>\n<p>With algorithm principles mastered, how do we objectively evaluate performance to guide iteration? This requires establishing a rigorous offline evaluation framework.</p>\n<h3>Offline Evaluation: Metrics, Splitting, and Pitfalls</h3>\n<p>Offline evaluation provides repeatable performance benchmarks for recommender algorithms, forming the foundation for iteration. Core metrics include precision and recall, defined for top-K recommendations as: \\(\\text{Precision}@K = \\frac{|\\text{Relevant items in top-K}|}{K}\\), measuring recommendation list accuracy; \\(\\text{Recall}@K = \\frac{|\\text{Relevant items in top-K}|}{|\\text{All relevant items}|}\\), measuring coverage of relevant items. To balance both, F1-score is often used: \\(\\text{F1}@K = 2 \\cdot \\frac{\\text{Precision}@K \\cdot \\text{Recall}@K}{\\text{Precision}@K + \\text{Recall}@K}\\). This formula derives from the confusion matrix: let TP be true positives (recommended and relevant), FP be false positives (recommended but irrelevant), FN be false negatives (relevant but not recommended), then Precision = TP/(TP+FP), Recall = TP/(TP+FN), and F1 is their harmonic mean.</p>\n<p>Data splitting methods directly impact evaluation reliability. Random splitting is simple but may ignore temporal sequences; time-based splitting better mimics online scenarios, using earlier data for training and later data for testing. Engineering must ensure reproducibility, e.g., by fixing random seeds (random_state=42). Feature engineering should avoid data leakage—test set information leaking into the training set, such as using future statistical features.</p>\n<p>Offline evaluation has several pitfalls. One is metric overestimation: offline metrics like precision may be inflated due to static test sets, but online user behavior changes can reduce effectiveness. Another is data distribution shift: inconsistencies between training and test sets harm model generalization. A third is narrow evaluation: focusing solely on a single metric may overlook diversity or novelty. Diagnosis can involve cross-validation or computing metric confidence intervals. Failure modes include overfitting to the test set or ignoring business metrics (e.g., click-through rate).</p>\n<p>A common misconception is that high offline metrics guarantee good online performance. In reality, offline evaluation is necessary but not sufficient; it must be combined with online A/B testing for validation. To diagnose overfitting, observe model performance on validation sets for early stopping or add regularization.</p>\n<p>Theory must be grounded in practice; next, we implement a reproducible evaluation loop through an end-to-end example.</p>\n<h3>End-to-End Practice: From Data to Reproducible Evaluation</h3>\n<p>This section implements matrix factorization-based candidate generation and ranking on a simulated dataset, conducting offline evaluation with standalone code. We use inline DataFrames to avoid external file dependencies and print key intermediate results to verify the workflow.</p>\n<pre><code>import pandas as pd\nimport numpy as np\nfrom sklearn.model_selection import train_test_split\n\n# Generate simulated interaction data, replacing MovieLens to avoid external dependencies\nnp.random.seed(42)\ndata = pd.DataFrame({\n    'user_id': np.random.randint(0, 100, 1000),\n    'item_id': np.random.randint(0, 50, 1000),\n    'rating': np.random.randint(1, 6, 1000),\n    'timestamp': np.random.randint(0, 10000, 1000)\n})\nprint(\"Data shape:\", data.shape)\nprint(\"First 5 rows:\\n\", data.head())\nprint(\"Number of users:\", data['user_id'].nunique())\nprint(\"Number of items:\", data['item_id'].nunique())\n\n# Split by time to simulate real data flow\ndata_sorted = data.sort_values('timestamp')\ntrain_size = int(0.8 * len(data_sorted))\ntrain_data = data_sorted.iloc[:train_size]\ntest_data = data_sorted.iloc[train_size:]\nprint(\"Training set size:\", train_data.shape, \"Test set size:\", test_data.shape)\n\n# Matrix factorization implementation (alternating least squares)\ndef matrix_factorization(R, K=5, steps=10, alpha=0.01, beta=0.02):\n    n_users, n_items = R.shape\n    P = np.random.randn(n_users, K)\n    Q = np.random.randn(n_items, K)\n    for step in range(steps):\n        for i in range(n_users):\n            for j in range(n_items):\n                if R[i, j] > 0:\n                    eij = R[i, j] - np.dot(P[i, :], Q[j, :].T)\n                    P[i, :] += alpha * (2 * eij * Q[j, :] - beta * P[i, :])\n                    Q[j, :] += alpha * (2 * eij * P[i, :] - beta * Q[j, :])\n    return P, Q\n\n# Build training rating matrix\nuser_ids = data['user_id'].unique()\nitem_ids = data['item_id'].unique()\nuser_to_idx = {uid: idx for idx, uid in enumerate(user_ids)}\nitem_to_idx = {iid: idx for idx, iid in enumerate(item_ids)}\nR_train = np.zeros((len(user_ids), len(item_ids)))\nfor _, row in train_data.iterrows():\n    R_train[user_to_idx[row['user_id']], item_to_idx[row['item_id']]] = row['rating']\n\nP, Q = matrix_factorization(R_train, K=5, steps=5)\npredictions = np.dot(P, Q.T)\nprint(\"Prediction matrix shape:\", predictions.shape)\nprint(\"Example predictions (users 0-2, items 0-2):\\n\", predictions[:3, :3])\n\n# Evaluation: compute F1@5\n# Define ratings >=4 as relevant items\ntest_relevant = test_data[test_data['rating'] >= 4]\ntop_k = 5\nf1_scores = []\nfor uid in test_data['user_id'].unique()[:10]:  # Evaluate first 10 users as example\n    user_idx = user_to_idx[uid]\n    pred_scores = predictions[user_idx, :]\n    top_items = np.argsort(pred_scores)[-top_k:]\n    relevant_items = set(test_relevant[test_relevant['user_id'] == uid]['item_id'])\n    recommended_items = set([item_ids[i] for i in top_items])\n    tp = len(relevant_items & recommended_items)\n    fp = top_k - tp\n    fn = len(relevant_items) - tp\n    precision = tp / (tp + fp) if (tp + fp) > 0 else 0\n    recall = tp / (tp + fn) if (tp + fn) > 0 else 0\n    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0\n    f1_scores.append(f1)\nmean_f1 = np.mean(f1_scores)\nprint(f\"F1@{top_k}: {mean_f1:.4f}\")\n\n# Record environment versions for reproducibility\nimport sys\nprint(\"Python version:\", sys.version[:6])\nprint(\"NumPy version:\", np.__version__)\nprint(\"Pandas version:\", pd.__version__)</code></pre>\n<p>The code demonstrates a complete pipeline from data generation to evaluation. Outputs include data shape, prediction matrix examples, and the F1@5 metric. Key design points: use inline data to avoid external dependencies; split by time to simulate real scenarios; implement F1-score calculation, with formula \\(\\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\) derived from the confusion matrix. Reproducibility is ensured by fixing random seeds and logging versions. Failure modes like improper latent dimensions can be diagnosed via cross-validation tuning.</p>\n<p>This foundational loop can be transferred to business data to initiate prototype construction of recommender systems.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：推荐系统基础：召回/排序与离线评测 · 结构总览 · 数据：课程大纲】在设计《推荐系统基础：召回/排序与离线评测》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 推荐系统基础：召回/排序与离线评测 · 结构总览 · Data: 课程大纲】When outlining \"推荐系统基础：召回/排序与离线评测\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：推荐系统基础：召回/排序与离线评测 · worked example · 数据：理解核心算法的适用边界与工程取舍 数据/代码】在复现《推荐系统基础：召回/排序与离线评测》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 推荐系统基础：召回/排序与离线评测 · worked example · Data: 理解核心算法的适用边界与工程取舍 数据/代码】While reproducing the worked example in \"推荐系统基础：召回/排序与离线评测\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：推荐系统基础：召回/排序与离线评测 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《推荐系统基础：召回/排序与离线评测》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 推荐系统基础：召回/排序与离线评测 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"推荐系统基础：召回/排序与离线评测\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：推荐系统基础：召回/排序与离线评测 · 参考资料 · 数据：课程引用文献】当引用文献支撑《推荐系统基础：召回/排序与离线评测》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 推荐系统基础：召回/排序与离线评测 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"推荐系统基础：召回/排序与离线评测\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Matrix Factorization Techniques for Recommender Systems（IEEE Computer，2009）",
+            "en": "Matrix Factorization Techniques for Recommender Systems (IEEE Computer, 2009)"
+          },
+          "url": "https://ieeexplore.ieee.org/document/5197422"
+        },
+        {
+          "label": {
+            "zh": "Collaborative Filtering for Implicit Feedback Datasets（IEEE，2008）",
+            "en": "Collaborative Filtering for Implicit Feedback Datasets (IEEE, 2008)"
+          },
+          "url": "https://ieeexplore.ieee.org/document/4781121"
+        },
+        {
+          "label": {
+            "zh": "Evaluating Recommendation Systems（ACM，2010）",
+            "en": "Evaluating Recommendation Systems (ACM, 2010)"
+          },
+          "url": "https://dl.acm.org/doi/10.1145/1864708.1864721"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-23-recommender-systems-zh.mp3"
+      },
+      "meta": {
+        "category": "算法与评测基础",
+        "level": "3. 经典机器学习",
+        "difficultyScore": 2,
+        "related": [
+          "零售：推荐系统 + 促销因果评估",
+          "上线前检查表：从 PoC 到 Production"
+        ],
+        "learningObjectives": [
+          "理解核心算法的适用边界与工程取舍",
+          "能用一个小数据集完成训练-评估-改进闭环"
+        ],
+        "personas": [
+          "数据科学家",
+          "工程师",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering the fundamentals of recommender systems enables teams to build reusable practices in algorithm evaluation and implementation.",
+          "best_for": "Suitable for data scientists, engineers, and product managers needing to quickly absorb classical machine learning topics.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、工程师、产品经理，帮助他们把 推荐系统基础：召回/排序与离线评测 应用于 算法与评测基础",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "pains": "在 算法与评测基础 场景缺乏 推荐系统基础：召回/排序与离线评测 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. 经典机器学习"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为产品经理，你正在设计一个新闻推荐模块。在召回阶段，你会如何平衡热门新闻与个性化内容的比例？请描述你的决策依据和预期效果。",
+            "action_hint": "思考协同过滤算法如何捕捉用户兴趣，以及矩阵分解如何平衡流行度与个性化。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，你需要评估一个电商推荐模型。如果准确率很高但召回率较低，这可能反映模型或数据集的哪些问题？你会如何调整数据切分策略来验证？",
+            "action_hint": "结合F1-score的公式，分析指标间的权衡关系，并考虑离线评测中常见的数据泄露陷阱。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-22-isolationforestoneclasssvm",
       "date": "2026-02-22",
