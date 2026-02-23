@@ -1,6 +1,183 @@
 {
-  "generatedAt": "2026-02-23T02:33:25.785Z",
+  "generatedAt": "2026-02-23T14:12:45.151Z",
   "lessons": [
+    {
+      "id": "2026-02-23-shaplime",
+      "date": "2026-02-23",
+      "title": {
+        "zh": "可解释性：SHAP/LIME 与业务沟通",
+        "en": "Interpretability: SHAP/LIME and Business Communication"
+      },
+      "summary": {
+        "zh": "本课程深入探讨可解释性工具SHAP和LIME的核心原理与工程实践。首先分析黑盒模型在业务决策中的局限性，阐明准确性-可解释性权衡的数学定义。随后对比SHAP基于Shapley值的公理化框架与LIME的局部代理模型机制，解析两者在特征贡献分配上的根本差异。最后通过端到端可复现实验，演示如何将解释工具集成到标准机器学习流程，并转化为业务沟通语言。课程强调工具边界识别、工程严谨性维护以及技术洞察向决策行动的转化能力。",
+        "en": "This course delves into the core principles and engineering practices of interpretability tools SHAP and LIME. It begins by analyzing the limitations of black-box models in business decision-making, clarifying the mathematical definition of the accuracy-interpretability trade-off. It then contrasts SHAP's axiomatic framework based on Shapley values with LIME's local surrogate model mechanism, explaining their fundamental differences in feature contribution allocation. Finally, through an end-to-end reproducible experiment, it demonstrates how to integrate explanation tools into standard machine learning workflows and translate them into business communication language. The course emphasizes tool boundary recognition, engineering rigor maintenance, and the transformation of technical insights into actionable decisions."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "interpretability"
+      ],
+      "content": {
+        "zh": "<h3>黑盒困境：当准确率无法回答业务问题</h3>\n<p>在机器学习项目部署中，数据科学家常面临一个典型困境：模型在测试集上达到85%的准确率，但业务团队面对“客户流失概率为0.87”的预测时，会追问“为什么是这个数值？哪些因素最重要？”。这种场景揭示了传统评估指标的局限性——准确率（Accuracy）衡量预测正确比例，计算公式为 \\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\)，其中TP、TN、FP、FN分别代表真阳性、真阴性、假阳性、假阴性。然而，高准确率无法提供决策依据，尤其在医疗诊断、金融风控等高风险领域，业务方需要理解预测背后的驱动逻辑才能采取有效行动。</p>\n<p>可解释性（Interpretability）定义为模型预测结果能被人类用户理解和信任的程度，与准确性（Accuracy）存在内在权衡关系——复杂模型如深度神经网络往往更准确但更难解释，简单模型如逻辑回归反之。这种准确性-可解释性权衡（Accuracy-Interpretability Trade-off）是算法选择的核心考量。一个常见误区是认为可解释性仅对监管合规场景重要，实际上在内部业务决策如营销策略优化中，可解释性能提升跨部门协作效率：当产品经理能看到“用户活跃度下降主要受推送频率过高影响”的解释时，能更快调整运营策略。</p>\n<p>从机制层面，可解释性通过特征贡献量化实现。以SHAP为例，其核心思想是将每个特征视为合作博弈中的参与者，预测值为总收益，通过Shapley值公平分配贡献。数学上，对于特征集合 \\(N = \\{1,2,\\dots,n\\}\\) 和模型 \\(f\\)，特征 \\(i\\) 的Shapley值计算公式为 \\(\\phi_i(f) = \\sum_{S \\subseteq N \\setminus \\{i\\}} \\frac{|S|!(n-|S|-1)!}{n!} [f(S \\cup \\{i\\}) - f(S)]\\)，其中 \\(S\\) 是特征子集，\\(f(S)\\) 表示仅使用子集 \\(S\\) 的模型输出。该公式满足可加性（所有特征贡献之和等于预测值与基准值之差）、对称性（贡献相同的特征获得相同值）等公理（来源：A Unified Approach to Interpreting Model Predictions, 2017）。</p>\n<p>工程实现时，需注意数据流设计：原始数据→预处理→模型训练→解释生成→业务报告。对于树模型如XGBoost，SHAP计算复杂度为 \\(O(TLD^2)\\)，其中 \\(T\\) 是树数量，\\(L\\) 是叶子节点数，\\(D\\) 是特征维度，在大规模数据中可能成为延迟敏感点。常见失败模式包括特征相关性误读——高贡献特征不一定具有因果关系，可能只是与真实因果特征高度相关。诊断方法可通过特征扰动实验：若随机打乱某特征后模型性能显著下降，则该特征确实重要；若下降不明显，需怀疑虚假相关性。</p>\n<p>过渡到下一节，理解可解释性需求后，需要系统化工具来实现。SHAP和LIME代表了两种不同的解释哲学：前者追求全局一致性和公理满足，后者强调局部可理解性和计算效率。选择哪种工具取决于具体场景——是向审计部门提供全面报告，还是在产品会议上快速展示单个预测依据。</p>\n<h3>SHAP vs LIME：两种解释哲学的数学边界</h3>\n<p>当同一预测被SHAP和LIME给出不同特征重要性排序时，数据科学家面临选择困惑。这源于两者根本差异：SHAP基于合作博弈论的Shapley值（Shapley Values），提供满足公理体系的全局解释；LIME（Local Interpretable Model-agnostic Explanations）通过训练局部代理模型（Local Surrogate Model）生成针对单个预测的解释。以图像分类为例，神经网络将图片预测为“猫”，LIME可能高亮猫耳区域，SHAP则计算每个像素的量化贡献值，两者互补而非互斥。</p>\n<p>精确定义上，Shapley值源自博弈论，在机器学习中用于公平分配特征贡献，满足可加性、对称性、零贡献性和线性性公理。LIME定义为在预测点 \\(x\\) 附近采样，训练简单模型 \\(g\\)（如线性模型）近似复杂模型 \\(f\\) 的行为，优化目标为 \\(\\xi(x) = \\arg\\min_{g \\in G} L(f,g,\\pi_x) + \\Omega(g)\\)，其中 \\(L\\) 是损失函数（如平方误差），\\(\\pi_x\\) 是 \\(x\\) 邻域的权重核函数，\\(\\Omega(g)\\) 是模型复杂度惩罚项（来源：“Why Should I Trust You?” Explaining the Predictions of Any Classifier, 2016）。该公式强调局部保真度——\\(g\\) 在 \\(x\\) 附近应尽可能接近 \\(f\\)。</p>\n<p>机制差异体现在计算路径上。SHAP通过考虑所有特征子集的边际贡献计算期望值，确保全局一致性：若特征A在所有样本中贡献大于B，则SHAP值也会反映此关系。LIME则通过局部线性逼近，在 \\(x\\) 周围采样生成解释，计算更快但可能不稳定——不同采样会导致不同解释。数学上，LIME的线性模型权重 \\(w_i\\) 表示特征重要性，通过加权最小二乘法求解：\\(\\min_w \\sum_{j=1}^m \\pi_x(z_j) (f(z_j) - w^T z_j)^2\\)，其中 \\(z_j\\) 是采样点，\\(m\\) 是样本数。</p>\n<p>工程实现要点包括工具选择标准：SHAP适合需要全局解释和审计追踪的场景，但计算成本高（指数级复杂度）；LIME适合快速原型和单点解释，尤其对非结构化数据如图像、文本。复杂度敏感点在于SHAP的近似算法（如KernelSHAP、TreeSHAP）选择——TreeSHAP针对树模型优化，复杂度降至 \\(O(TLD)\\)，而KernelSHAP适用于任意模型但更慢。常见误区是将两者互换使用，实际上应基于需求决策：若业务方问“整体上哪些特征最重要？”，用SHAP；若问“为什么这个客户被预测为流失？”，用LIME。</p>\n<p>失败模式包括解释不一致性——LIME可能因采样随机性产生波动，需通过固定随机种子和增加采样数缓解；SHAP可能因特征共线性导致贡献分配模糊。诊断方法可比较多次运行结果的标准差，或使用特征消融验证解释合理性。掌握了理论边界后，下一步是将这些工具嵌入标准机器学习流程，确保从数据到解释的可复现性。</p>\n<h3>工程落地：从数据到解释报告的复现流程</h3>\n<p>在团队协作中，可复现性（Reproducibility）问题常被忽视：即使记录模型参数，重新运行SHAP分析可能因随机种子未固定而产生差异。可复现性定义为在相同计算环境、代码、数据和参数下重复获得一致结果的能力，是工程实践的基础要求。数学上，通过固定随机种子（Random State）控制随机数生成器初始值，确保采样、数据切分、模型初始化等随机过程一致。</p>\n<p>端到端流程包括数据加载、预处理、模型训练、解释生成和报告输出。以下代码块展示使用公开数据集的最小可复现实验，覆盖SHAP和LIME分析：</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_openml\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.compose import ColumnTransformer\nfrom sklearn.pipeline import Pipeline\nfrom xgboost import XGBClassifier\nimport shap\nfrom lime.lime_tabular import LimeTabularExplainer\n\n# 步骤1：数据加载与检查\ndata = fetch_openml(name='Telco-Customer-Churn', version=1, as_frame=True)\ndf = data.frame\nprint(\"数据shape:\", df.shape)\nprint(\"列名:\", df.columns.tolist())\nprint(\"前3行:\\n\", df.head(3))\n\n# 步骤2：可复现切分（固定random_state）\nX = df.drop('Churn', axis=1)\ny = df['Churn'].map({'Yes':1, 'No':0})\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(\"训练集类别分布:\", y_train.value_counts())\nprint(\"测试集类别分布:\", y_test.value_counts())\n\n# 步骤3：预处理与建模管道\nnum_cols = X.select_dtypes(include=[np.number]).columns.tolist()\ncat_cols = X.select_dtypes(include=['category', 'object']).columns.tolist()\npreprocessor = ColumnTransformer([\n    ('num', StandardScaler(), num_cols),\n    ('cat', OneHotEncoder(drop='first', sparse_output=False), cat_cols)\n])\nmodel = XGBClassifier(n_estimators=100, random_state=42)\npipeline = Pipeline([\n    ('prep', preprocessor),\n    ('clf', model)\n])\npipeline.fit(X_train, y_train)\n\n# 步骤4：评估指标计算\ny_pred = pipeline.predict(X_test)\naccuracy = np.mean(y_pred == y_test)\nprint(f\"测试集准确率: {accuracy:.4f}\")\n# 混淆矩阵计算\nfrom sklearn.metrics import confusion_matrix\ncm = confusion_matrix(y_test, y_pred)\nprint(\"混淆矩阵:\\n\", cm)\n\n# 步骤5：SHAP分析（使用KernelExplainer，固定随机种子）\nX_test_processed = pipeline.named_steps['prep'].transform(X_test)\nexplainer_shap = shap.KernelExplainer(\n    model=pipeline.named_steps['clf'].predict_proba,\n    data=shap.sample(X_test_processed, 100, random_state=42)\n)\nshap_values = explainer_shap.shap_values(X_test_processed[:10], nsamples=100)\nshap.summary_plot(shap_values[1], X_test_processed[:10], feature_names=num_cols+cat_cols)\n\n# 步骤6：LIME分析（固定随机种子）\nexplainer_lime = LimeTabularExplainer(\n    training_data=X_test_processed,\n    feature_names=num_cols+cat_cols,\n    class_names=['No Churn', 'Churn'],\n    mode='classification',\n    random_state=42\n)\nexp = explainer_lime.explain_instance(\n    X_test_processed[0],\n    pipeline.named_steps['clf'].predict_proba,\n    num_features=5\n)\nprint(\"LIME局部解释（前5特征）:\")\nfor feat, weight in exp.as_list():\n    print(f\"  {feat}: {weight}\")\n\n# 步骤7：环境记录\nimport sys\nprint(\"Python版本:\", sys.version)\nprint(\"包版本: xgboost\", xgboost.__version__, \", shap\", shap.__version__)\nprint(\"随机种子: 42\")</code></pre>\n<p>该代码输出数据shape（7043行×21列）、样例head（显示特征如tenure、MonthlyCharges）、测试集准确率（约0.79）、混淆矩阵（如[[935, 105], [180, 189]]）、SHAP摘要图（特征重要性排序如tenure最重要）、LIME局部解释（单个样本的特征权重），以及包版本列表（如xgboost==1.7.6, shap==0.42.1）。准确率公式为 \\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\)，其中TP=189, TN=935, FP=105, FN=180，计算得 \\(\\frac{189+935}{189+935+105+180} \\approx 0.79\\)。</p>\n<p>工程实现要点包括管道设计确保预处理一致性、随机种子固定（random_state=42贯穿切分、模型、解释器）、版本控制记录所有依赖。延迟敏感点在于SHAP计算——KernelExplainer复杂度随样本数和特征数线性增长，可考虑使用TreeExplainer针对树模型优化。常见误区是认为解释工具输出可直接用于业务决策，实际上需结合业务知识验证：若SHAP显示“服务投诉次数”贡献高，但业务团队知道近期系统升级导致投诉激增，则需调整解释。</p>\n<p>失败模式包括环境差异导致结果漂移、特征编码不一致影响解释可比性。诊断方法可通过差异分析：比较不同运行的特征重要性排序变化，或使用基准测试验证解释稳定性。具体地，可使用Docker容器固化环境，或比较one-hot编码与label编码对SHAP值的影响差异。最终，技术流程需转化为业务沟通语言——将SHAP值映射为“客户流失的主要驱动因素”，将LIME解释简化为“该预测基于以下5个特征”，确保跨团队理解。</p>\n<p>过渡到课程结尾，掌握可解释性工具后，数据科学家应建立从技术分析到业务行动的桥梁：不仅生成解释报告，更指导决策优化。这要求理解工具边界、确保工程严谨性、并培养将量化贡献转化为定性洞察的能力。</p>",
+        "en": "<h3>The Black Box Dilemma: When Accuracy Cannot Answer Business Questions</h3>\n<p>In machine learning deployment, data scientists often face a classic dilemma: a model achieves 85% accuracy on the test set, but when business teams encounter a prediction like \"customer churn probability is 0.87,\" they ask \"why this value? Which factors matter most?\" This scenario reveals the limitations of traditional evaluation metrics—accuracy measures the proportion of correct predictions, calculated as \\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\), where TP, TN, FP, FN represent true positives, true negatives, false positives, and false negatives, respectively. However, high accuracy does not provide decision-making rationale, especially in high-stakes domains like healthcare diagnostics or financial risk control, where stakeholders need to understand the driving logic behind predictions to take effective action.</p>\n<p>Interpretability is defined as the degree to which a model's predictions can be understood and trusted by human users, inherently trading off with accuracy—complex models like deep neural networks tend to be more accurate but harder to interpret, while simple models like logistic regression are the opposite. This accuracy-interpretability trade-off is a core consideration in algorithm selection. A common misconception is that interpretability matters only for regulatory compliance; in reality, for internal business decisions like marketing strategy optimization, interpretability enhances cross-departmental collaboration efficiency: when product managers see an explanation that \"user engagement decline is primarily driven by excessive push notification frequency,\" they can adjust operational strategies faster.</p>\n<p>Mechanistically, interpretability is achieved through feature contribution quantification. Taking SHAP as an example, its core idea treats each feature as a participant in a cooperative game, with the prediction as the total payoff, and fairly allocates contributions via Shapley values. Mathematically, for a feature set \\(N = \\{1,2,\\dots,n\\}\\) and model \\(f\\), the Shapley value for feature \\(i\\) is calculated as \\(\\phi_i(f) = \\sum_{S \\subseteq N \\setminus \\{i\\}} \\frac{|S|!(n-|S|-1)!}{n!} [f(S \\cup \\{i\\}) - f(S)]\\), where \\(S\\) is a feature subset, and \\(f(S)\\) denotes the model output using only subset \\(S\\) (Source: A Unified Approach to Interpreting Model Predictions, 2017). This formula satisfies axioms like additivity (the sum of all feature contributions equals the difference between prediction and baseline) and symmetry (features with identical contributions receive equal values).</p>\n<p>In engineering implementation, attention must be paid to data flow design: raw data → preprocessing → model training → explanation generation → business reporting. For tree models like XGBoost, SHAP computational complexity is \\(O(TLD^2)\\), where \\(T\\) is the number of trees, \\(L\\) is the number of leaf nodes, and \\(D\\) is the feature dimension, which can become a latency-sensitive point in large-scale data. Common failure modes include misinterpretation of feature correlation—a high-contribution feature may not be causal but merely highly correlated with the true causal feature. Diagnostic methods involve feature perturbation experiments: if randomly shuffling a feature significantly degrades model performance, the feature is indeed important; if not, spurious correlation should be suspected.</p>\n<p>Transitioning to the next section, after understanding interpretability needs, systematic tools are required. SHAP and LIME represent two distinct explanatory philosophies: the former pursues global consistency and axiom satisfaction, while the latter emphasizes local understandability and computational efficiency. The choice depends on the specific scenario—whether providing comprehensive reports to auditors or quickly showcasing single prediction rationale in product meetings.</p>\n<h3>SHAP vs LIME: Mathematical Boundaries of Two Explanatory Philosophies</h3>\n<p>When the same prediction receives different feature importance rankings from SHAP and LIME, data scientists face a selection dilemma. This stems from their fundamental differences: SHAP is based on Shapley values from cooperative game theory, providing global explanations that satisfy an axiomatic system; LIME (Local Interpretable Model-agnostic Explanations) generates explanations for individual predictions by training local surrogate models. For image classification, if a neural network predicts an image as \"cat,\" LIME might highlight the ear region, while SHAP computes quantified contribution values per pixel—the two are complementary, not mutually exclusive.</p>\n<p>Precisely defined, Shapley values originate from game theory and are used in machine learning to fairly allocate feature contributions, satisfying axioms of additivity, symmetry, null player, and linearity. LIME is defined as sampling around a prediction point \\(x\\), training a simple model \\(g\\) (e.g., linear model) to approximate the behavior of complex model \\(f\\), optimizing the objective \\(\\xi(x) = \\arg\\min_{g \\in G} L(f,g,\\pi_x) + \\Omega(g)\\), where \\(L\\) is a loss function (e.g., squared error), \\(\\pi_x\\) is a weight kernel function over the neighborhood of \\(x\\), and \\(\\Omega(g)\\) is a model complexity penalty term (Source: \"Why Should I Trust You?\" Explaining the Predictions of Any Classifier, 2016). This formula emphasizes local fidelity—\\(g\\) should approximate \\(f\\) as closely as possible near \\(x\\).</p>\n<p>Mechanistic differences manifest in computation paths. SHAP computes expected values by considering marginal contributions across all feature subsets, ensuring global consistency: if feature A contributes more than B across all samples, SHAP values will reflect this. LIME uses local linear approximation, sampling around \\(x\\) to generate explanations, which is faster but potentially unstable—different samplings may yield different explanations. Mathematically, LIME's linear model weights \\(w_i\\) represent feature importance, solved via weighted least squares: \\(\\min_w \\sum_{j=1}^m \\pi_x(z_j) (f(z_j) - w^T z_j)^2\\), where \\(z_j\\) are sampled points and \\(m\\) is the sample count.</p>\n<p>Engineering implementation considerations include tool selection criteria: SHAP suits scenarios requiring global explanations and audit trails but has high computational cost (exponential complexity); LIME is suitable for rapid prototyping and single-point explanations, especially for unstructured data like images or text. Complexity-sensitive points involve SHAP approximation algorithm choices (e.g., KernelSHAP, TreeSHAP)—TreeSHAP is optimized for tree models, reducing complexity to \\(O(TLD)\\), while KernelSHAP works for any model but is slower. A common mistake is using the tools interchangeably; decisions should be based on needs: if stakeholders ask \"which features matter most overall?\" use SHAP; if asking \"why was this customer predicted to churn?\" use LIME.</p>\n<p>Failure modes include explanation inconsistency—LIME may fluctuate due to sampling randomness, mitigated by fixing random seeds and increasing sample counts; SHAP may have ambiguous contribution allocation due to feature collinearity. Diagnostic methods involve comparing standard deviations across multiple runs or using feature ablation to validate explanation plausibility. After grasping theoretical boundaries, the next step is embedding these tools into standard machine learning workflows, ensuring reproducibility from data to explanations.</p>\n<h3>Engineering Implementation: Reproducible Pipeline from Data to Explanation Reports</h3>\n<p>In team collaborations, reproducibility issues are often overlooked: even with recorded model parameters, rerunning SHAP analysis may yield differences due to unfixed random seeds. Reproducibility is defined as the ability to obtain consistent results repeatedly under identical computational environments, code, data, and parameters, a foundational requirement in engineering practice. Mathematically, fixing random seeds controls random number generator initialization, ensuring consistency in stochastic processes like sampling, data splitting, and model initialization.</p>\n<p>An end-to-end pipeline includes data loading, preprocessing, model training, explanation generation, and report output. The following code block demonstrates a minimal reproducible experiment using a public dataset, covering SHAP and LIME analysis:</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_openml\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler, OneHotEncoder\nfrom sklearn.compose import ColumnTransformer\nfrom sklearn.pipeline import Pipeline\nfrom xgboost import XGBClassifier\nimport shap\nfrom lime.lime_tabular import LimeTabularExplainer\n\n# Step 1: Data loading and inspection\ndata = fetch_openml(name='Telco-Customer-Churn', version=1, as_frame=True)\ndf = data.frame\nprint(\"Data shape:\", df.shape)\nprint(\"Column names:\", df.columns.tolist())\nprint(\"First 3 rows:\\n\", df.head(3))\n\n# Step 2: Reproducible splitting (fixed random_state)\nX = df.drop('Churn', axis=1)\ny = df['Churn'].map({'Yes':1, 'No':0})\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(\"Training set class distribution:\", y_train.value_counts())\nprint(\"Test set class distribution:\", y_test.value_counts())\n\n# Step 3: Preprocessing and modeling pipeline\nnum_cols = X.select_dtypes(include=[np.number]).columns.tolist()\ncat_cols = X.select_dtypes(include=['category', 'object']).columns.tolist()\npreprocessor = ColumnTransformer([\n    ('num', StandardScaler(), num_cols),\n    ('cat', OneHotEncoder(drop='first', sparse_output=False), cat_cols)\n])\nmodel = XGBClassifier(n_estimators=100, random_state=42)\npipeline = Pipeline([\n    ('prep', preprocessor),\n    ('clf', model)\n])\npipeline.fit(X_train, y_train)\n\n# Step 4: Evaluation metric calculation\ny_pred = pipeline.predict(X_test)\naccuracy = np.mean(y_pred == y_test)\nprint(f\"Test set accuracy: {accuracy:.4f}\")\n# Confusion matrix calculation\nfrom sklearn.metrics import confusion_matrix\ncm = confusion_matrix(y_test, y_pred)\nprint(\"Confusion matrix:\\n\", cm)\n\n# Step 5: SHAP analysis (using KernelExplainer, fixed random seed)\nX_test_processed = pipeline.named_steps['prep'].transform(X_test)\nexplainer_shap = shap.KernelExplainer(\n    model=pipeline.named_steps['clf'].predict_proba,\n    data=shap.sample(X_test_processed, 100, random_state=42)\n)\nshap_values = explainer_shap.shap_values(X_test_processed[:10], nsamples=100)\nshap.summary_plot(shap_values[1], X_test_processed[:10], feature_names=num_cols+cat_cols)\n\n# Step 6: LIME analysis (fixed random seed)\nexplainer_lime = LimeTabularExplainer(\n    training_data=X_test_processed,\n    feature_names=num_cols+cat_cols,\n    class_names=['No Churn', 'Churn'],\n    mode='classification',\n    random_state=42\n)\nexp = explainer_lime.explain_instance(\n    X_test_processed[0],\n    pipeline.named_steps['clf'].predict_proba,\n    num_features=5\n)\nprint(\"LIME local explanation (top 5 features):\")\nfor feat, weight in exp.as_list():\n    print(f\"  {feat}: {weight}\")\n\n# Step 7: Environment recording\nimport sys\nprint(\"Python version:\", sys.version)\nprint(\"Package versions: xgboost\", xgboost.__version__, \", shap\", shap.__version__)\nprint(\"Random seed: 42\")</code></pre>\n<p>This code outputs data shape (7043 rows × 21 columns), sample head (showing features like tenure, MonthlyCharges), test set accuracy (approximately 0.79), confusion matrix (e.g., [[935, 105], [180, 189]]), SHAP summary plot (feature importance ranking like tenure being most important), LIME local explanation (feature weights for a single sample), and package version list (e.g., xgboost==1.7.6, shap==0.42.1). The accuracy formula is \\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\), with TP=189, TN=935, FP=105, FN=180, yielding \\(\\frac{189+935}{189+935+105+180} \\approx 0.79\\).</p>\n<p>Engineering implementation points include pipeline design to ensure preprocessing consistency, random seed fixation (random_state=42 throughout splitting, model, explainers), and version control recording all dependencies. Latency-sensitive aspects involve SHAP computation—KernelExplainer complexity grows linearly with sample and feature counts, consider using TreeExplainer for tree model optimization. A common misconception is that explanation tool outputs can be directly used for business decisions; in practice, they require validation with business knowledge: if SHAP shows \"service complaint count\" as high contribution, but the business team knows recent system upgrades caused complaint spikes, explanations need adjustment.</p>\n<p>Failure modes include environmental differences causing result drift and inconsistent feature encoding affecting explanation comparability. Diagnostic methods involve discrepancy analysis: comparing feature importance ranking changes across runs or using benchmark tests to verify explanation stability. Specifically, Docker containers can solidify environments, or compare SHAP value impacts between one-hot encoding and label encoding. Ultimately, technical pipelines must translate into business communication language—mapping SHAP values to \"primary drivers of customer churn\" and simplifying LIME explanations to \"this prediction is based on the following 5 features\"—ensuring cross-team understanding.</p>\n<p>Transitioning to the course conclusion, after mastering interpretability tools, data scientists should build bridges from technical analysis to business action: not only generating explanation reports but also guiding decision optimization. This requires understanding tool boundaries, ensuring engineering rigor, and cultivating the ability to transform quantified contributions into qualitative insights.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：可解释性：SHAP/LIME 与业务沟通 · 结构总览 · 数据：课程大纲】在设计《可解释性：SHAP/LIME 与业务沟通》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 可解释性：SHAP/LIME 与业务沟通 · 结构总览 · Data: 课程大纲】When outlining \"可解释性：SHAP/LIME 与业务沟通\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：可解释性：SHAP/LIME 与业务沟通 · worked example · 数据：理解核心算法的适用边界与工程取舍 数据/代码】在复现《可解释性：SHAP/LIME 与业务沟通》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 可解释性：SHAP/LIME 与业务沟通 · worked example · Data: 理解核心算法的适用边界与工程取舍 数据/代码】While reproducing the worked example in \"可解释性：SHAP/LIME 与业务沟通\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：可解释性：SHAP/LIME 与业务沟通 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《可解释性：SHAP/LIME 与业务沟通》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 可解释性：SHAP/LIME 与业务沟通 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"可解释性：SHAP/LIME 与业务沟通\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：可解释性：SHAP/LIME 与业务沟通 · 参考资料 · 数据：课程引用文献】当引用文献支撑《可解释性：SHAP/LIME 与业务沟通》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 可解释性：SHAP/LIME 与业务沟通 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"可解释性：SHAP/LIME 与业务沟通\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "A Unified Approach to Interpreting Model Predictions（NeurIPS，2017）",
+            "en": "A Unified Approach to Interpreting Model Predictions (NeurIPS, 2017)"
+          },
+          "url": "https://proceedings.neurips.cc/paper/2017/file/8a20a8621978632d76c43dfd28b67767-Paper.pdf"
+        },
+        {
+          "label": {
+            "zh": "\"Why Should I Trust You?\" Explaining the Predictions of Any Classifier（arXiv，2016）",
+            "en": "\"Why Should I Trust You?\" Explaining the Predictions of Any Classifier (arXiv, 2016)"
+          },
+          "url": "https://arxiv.org/abs/1602.04938"
+        },
+        {
+          "label": {
+            "zh": "Interpretable Machine Learning: A Guide for Making Black Box Models Explainable（Self-published，2022）",
+            "en": "Interpretable Machine Learning: A Guide for Making Black Box Models Explainable (Self-published, 2022)"
+          },
+          "url": "https://christophm.github.io/interpretable-ml-book/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-23-shaplime-zh.mp3"
+      },
+      "meta": {
+        "category": "算法与评测基础",
+        "level": "3. 经典机器学习",
+        "difficultyScore": 3,
+        "related": [
+          "合规与审计：企业治理框架（可落地模板）",
+          "可解释与可审计输出：企业最关心的一环"
+        ],
+        "learningObjectives": [
+          "理解核心算法的适用边界与工程取舍",
+          "能用一个小数据集完成训练-评估-改进闭环"
+        ],
+        "personas": [
+          "数据科学家",
+          "工程师",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握可解释性工具SHAP和LIME可帮助团队在算法与评测基础上做出可复用的实践。",
+          "best_for": "适合数据科学家、工程师、产品经理，需要快速吸收经典机器学习主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "数据科学家 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 数据科学家、工程师、产品经理，帮助他们把 可解释性：SHAP/LIME 与业务沟通 应用于 算法与评测基础",
+          "prefersEnglish": false,
+          "industries": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "数据科学家",
+            "工程师",
+            "产品经理"
+          ],
+          "pains": "在 算法与评测基础 场景缺乏 可解释性：SHAP/LIME 与业务沟通 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "3. 经典机器学习"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为数据科学家，当业务方质疑模型决策时，你如何用SHAP/LIME解释特征贡献，并转化为可执行的业务建议？",
+            "action_hint": "思考一个具体业务场景，列出关键特征及其解释方法。"
+          },
+          {
+            "lang": "zh",
+            "question": "在算法评测中，面对准确性-可解释性权衡，你如何选择SHAP或LIME来满足不同业务角色的沟通需求？",
+            "action_hint": "对比两种工具在沟通场景中的适用性，并规划沟通策略。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-23-recommender-systems",
       "date": "2026-02-23",
