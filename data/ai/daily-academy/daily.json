@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-02-24T14:14:58.512Z",
+  "generatedAt": "2026-02-25T02:36:18.499Z",
   "lessons": [
+    {
+      "id": "2026-02-25-pytorch-module",
+      "date": "2026-02-25",
+      "title": {
+        "zh": "PyTorch 入门：张量、Module 与训练循环",
+        "en": "Getting Started with PyTorch: Tensors, Modules, and Training Loops"
+      },
+      "summary": {
+        "zh": "本课程系统讲解PyTorch训练循环的核心组件：张量、Module及其协同机制。首先破除训练循环作为“黑箱”的误解，明确其作为可控工程流程的本质。随后深入张量与Module的工程化定义，阐述其支持GPU加速和自动微分的特性。接着拆解前向传播、损失计算、反向传播和优化器更新的数学原理与实现要点，避免常见误区如梯度累积。最后，通过构建可复现训练脚手架，整合数据加载、验证循环和随机性控制，实现从理论到实践的完整落地。课程包含端到端代码示例，使用鸢尾花数据集演示可复现训练流程，并计算准确率等评估指标。",
+        "en": "This course systematically explains the core components of PyTorch training loops: tensors, modules, and their synergistic mechanisms. It first dispels the misconception of training loops as 'black boxes,' clarifying their nature as controllable engineering processes. It then delves into the engineering definitions of tensors and modules, detailing their support for GPU acceleration and automatic differentiation. Next, it breaks down the mathematical principles and implementation points of forward pass, loss computation, backpropagation, and optimizer updates, avoiding common pitfalls like gradient accumulation. Finally, by building a reproducible training scaffold that integrates data loading, validation loops, and randomness control, it achieves a complete transition from theory to practice. The course includes an end-to-end code example using the Iris dataset to demonstrate a reproducible training pipeline and compute evaluation metrics such as accuracy."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "pytorch",
+        "training loop"
+      ],
+      "content": {
+        "zh": "<h2>PyTorch入门：张量、Module与训练循环</h2>\n\n<p>深度学习模型的训练并非神秘的黑箱操作，而是一套可编程、可观测的工程流程。本课程将系统拆解PyTorch训练循环的核心组件：从张量与Module的工程化定义，到前向传播、损失计算、反向传播的协同机制，最终构建可复现的训练脚手架。通过端到端的代码示例，你将掌握从数据加载到模型评估的完整实践，为构建可靠AI系统奠定基础。</p>\n\n<h3>从直觉到定义：为什么训练循环不是“黑箱”</h3>\n<p>许多初学者在调整模型参数后，发现每次运行结果都不一致，这种困惑常源于将训练循环视为框架内部的“魔法”。实际上，训练循环（Training Loop）是用户完全可控的代码流程，它迭代执行四个核心步骤：前向传播、损失计算、反向传播和参数更新。理解这一点，是构建可复现AI系统的第一步。</p>\n<p>精确定义上，训练循环是深度学习模型训练的核心控制结构。其数学形式可表示为迭代过程：对于每个训练批次 \\( t \\)，执行 \\( \\theta_{t+1} = \\theta_t - \\eta \\nabla_{\\theta} L(f(x_t; \\theta_t), y_t) \\)，其中 \\( \\theta \\) 是模型参数，\\( \\eta \\) 是学习率，\\( L \\) 是损失函数，\\( f \\) 是模型前向传播函数。这个公式明确了每一步的可计算性——损失梯度 \\( \\nabla_{\\theta} L \\) 通过反向传播获得，而非神秘优化（来源：PyTorch Tutorial: What is torch.nn really?, 2023）。</p>\n<p>机制上，训练循环的每个组件都有明确职责：前向传播计算预测值，损失函数量化误差，反向传播通过链式法则计算梯度，优化器执行参数更新。这些组件通过计算图协同工作：前向传播构建计算图，反向传播沿图反向传递梯度。工程实现时，关键要点包括使用PyTorch的自动微分（autograd）跟踪计算图，确保张量操作不破坏梯度流，以及将循环封装为可重用的函数或类。</p>\n<p>常见误区包括认为“训练循环是框架内部魔法，用户无法干预”，这导致调试困难。失败模式可能表现为梯度爆炸（梯度值过大）、训练不收敛（损失震荡）或结果不可复现。诊断时，应检查梯度值（如打印梯度范数）、验证损失曲线，并确保随机种子控制。例如，忽略优化器的梯度清零（optimizer.zero_grad()）会导致梯度累积，错误更新参数。</p>\n<p>总之，训练循环是可编程、可观测的工程组件。掌握其定义和机制后，我们便能自信地定制每一步，如添加梯度裁剪或自定义损失。接下来，我们将深入训练循环的基本材料——张量和Module，理解它们如何承载数据和模型结构。</p>\n\n<h3>核心材料：张量与Module的工程化理解</h3>\n<p>在构建训练循环前，必须掌握其基础材料：张量（Tensor）和模块（Module）。张量常被误认为只是NumPy数组的替代，但实际上，它是支持GPU加速和自动微分的多维数组，是PyTorch中数据流动的核心载体。Module则更非普通Python类——它是所有神经网络组件的基类，负责参数管理和前向传播定义。</p>\n<p>精确定义上，张量可形式化为 \\( T \\in \\mathbb{R}^{d_1 \\times d_2 \\times \\dots \\times d_n} \\)，其中 \\( d_i \\) 是维度大小，支持操作如加法、矩阵乘法。Module在PyTorch中继承自 <code>torch.nn.Module</code>，其关键方法是 <code>forward()</code>，定义模型如何从输入映射到输出。例如，一个线性层可表示为 \\( y = Wx + b \\)，其中 \\( W \\) 和 \\( b \\) 是注册的可训练参数（来源：PyTorch Documentation: torch.nn.Module, 2023）。</p>\n<p>机制上，张量通过计算图跟踪操作，实现自动微分；Module通过参数注册（<code>self.register_parameter()</code>）使优化器能识别和更新权重。工程实现要点包括：使用 <code>torch.Tensor</code> 而非Python列表以避免性能损失，将模型组件模块化以提高可维护性，并注意张量设备（CPU/GPU）的一致性。延迟敏感点包括大张量的内存分配和跨设备数据传输。</p>\n<p>常见误区是“张量可以像Python列表一样随意修改而不影响计算图”，这可能导致梯度错误。失败模式包括内存溢出（大张量未释放）、设备不匹配（CPU/GPU张量混合运算）或参数未注册（优化器忽略某些权重）。诊断时，应检查张量形状、设备类型，并使用 <code>model.parameters()</code> 验证参数列表。例如，未将张量移动到GPU会导致训练速度极慢。</p>\n<p>理解了张量和Module如何承载数据和模型，我们便可以组装它们进入训练循环的核心——前向传播、损失与反向传播的协同机制。这就像有了砖瓦和蓝图，接下来是建造过程。</p>\n\n<h3>机制拆解：前向传播、损失与反向传播的协同</h3>\n<p>训练循环的核心机制在于前向传播、损失计算、反向传播和优化器更新的协同。一个典型困惑是：“为什么要在每个batch前调用 <code>optimizer.zero_grad()</code>？” 这涉及梯度管理——如果不清零，梯度会累积，导致参数更新错误。理解这些步骤的数学原理和工程边界，是避免陷阱的关键。</p>\n<p>精确定义上，前向传播（Forward Pass）是模型根据输入 \\( x \\) 计算预测 \\( \\hat{y} = f(x; \\theta) \\) 的过程；损失函数（Loss Function）如交叉熵 \\( L = -\\sum_{i=1}^{C} y_i \\log(\\hat{y}_i) \\)，其中 \\( C \\) 是类别数，量化预测误差；反向传播（Backward Pass）通过链式法则计算梯度 \\( \\nabla_{\\theta} L \\)；优化器（Optimizer）如SGD更新参数 \\( \\theta \\leftarrow \\theta - \\eta \\nabla_{\\theta} L \\)。</p>\n<p>机制协同上，PyTorch的自动微分系统在 <code>loss.backward()</code> 时自动计算梯度，但需显式调用 <code>optimizer.step()</code> 更新参数。工程实现要点包括：在验证阶段使用 <code>torch.no_grad()</code> 关闭梯度计算以节省内存，监控梯度范数防止爆炸，以及选择合适优化器（如Adam）。复杂度敏感点在于反向传播的计算图遍历，可能成为大规模模型的瓶颈。</p>\n<p>常见误区包括“反向传播会自动更新模型参数”——实际上，反向传播只计算梯度，更新必须由优化器执行。失败模式可能表现为梯度消失（梯度值过小）、训练过拟合（验证损失上升）或计算效率低。诊断时，可打印损失曲线、检查梯度值，并使用工具如PyTorch Profiler分析性能。例如，未使用 <code>torch.no_grad()</code> 在验证阶段会导致不必要的内存消耗。</p>\n<p>掌握了单次迭代的机制，我们便能将其扩展为完整、可复现的训练流程。接下来，我们将构建一个训练脚手架，整合数据加载、验证循环和随机性控制，实现工程落地。</p>\n\n<h3>工程落地：构建可复现训练脚手架</h3>\n<p>将训练循环机制转化为稳定、可复现的工程实践，是项目成功的关键。许多团队遇到“模型在本地能复现，换台机器就失效”的问题，这通常源于对可复现性（Reproducibility）的忽视。可复现性指在相同代码、数据和随机种子下获得一致结果的能力，而训练脚手架（Training Scaffold）是实现它的代码框架。</p>\n<p>精确定义上，可复现性要求控制所有随机源，包括PyTorch随机种子（<code>torch.manual_seed()</code>）、NumPy随机种子和数据加载顺序。训练脚手架包含数据加载（如DataLoader）、训练/验证循环、模型保存和日志记录组件。评估指标如准确率 \\( \\text{Accuracy} = \\frac{\\text{正确预测数}}{\\text{总样本数}} \\) 用于监控性能（来源：Reproducibility in Machine Learning, 2021）。</p>\n<p>机制上，通过设置全局随机种子和确定性CUDA算法（<code>torch.backends.cudnn.deterministic = True</code>）来保证可复现性。工程实现要点包括：使用可复现的数据划分（如 <code>train_test_split</code> 的 <code>random_state</code>），封装训练循环为类或函数，以及保存模型和随机种子信息。边界条件包括多进程数据加载的随机性控制。</p>\n<p>常见误区是“只要设置了随机种子，结果就一定可复现”，但忽略了数据加载的随机性（如DataLoader的 <code>worker_init_fn</code>）或GPU非确定性操作。失败模式包括结果漂移、训练不稳定或模型无法重用。诊断时，应记录所有随机种子，验证数据加载顺序，并比较多次运行的指标。例如，未设置 <code>worker_init_fn</code> 在多进程数据加载中会导致不可复现的结果。</p>\n<p>以下是一个端到端最小可复现实验，使用鸢尾花数据集进行三分类，覆盖本课关键概念：</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nimport numpy as np\n\n# 可复现性设置\ntorch.manual_seed(42)\nnp.random.seed(42)\ntorch.backends.cudnn.deterministic = True\n\n# 数据加载与检查\ndata = load_iris()\nX, y = data.data, data.target\nprint(\"数据形状：特征\", X.shape, \"标签\", y.shape)  # (150, 4) (150,)\nprint(\"类别分布：\", np.bincount(y))  # [50 50 50]\nprint(\"样例特征（前3行）：\\n\", X[:3])\n\n# 可复现切分\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)\n\n# 数据标准化\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)\n\n# 转换为张量\nX_train = torch.tensor(X_train, dtype=torch.float32)\ny_train = torch.tensor(y_train, dtype=torch.long)\nX_test = torch.tensor(X_test, dtype=torch.float32)\ny_test = torch.tensor(y_test, dtype=torch.long)\n\n# 定义简单神经网络模型\nclass IrisModel(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.relu = nn.ReLU()\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.fc2(x)\n        return x\n\nmodel = IrisModel()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# 训练循环\nepochs = 100\nfor epoch in range(epochs):\n    model.train()\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()\n    \n    # 验证阶段\n    if (epoch+1) % 20 == 0:\n        model.eval()\n        with torch.no_grad():\n            test_outputs = model(X_test)\n            _, predicted = torch.max(test_outputs, 1)\n            accuracy = (predicted == y_test).sum().item() / y_test.size(0)\n            print(f\"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {accuracy:.4f}\")\n\n# 最终评估\nmodel.eval()\nwith torch.no_grad():\n    test_outputs = model(X_test)\n    _, predicted = torch.max(test_outputs, 1)\n    accuracy = (predicted == y_test).sum().item() / y_test.size(0)\n    print(f\"最终测试准确率: {accuracy:.4f}\")\n    # 打印混淆矩阵\n    from sklearn.metrics import confusion_matrix\n    cm = confusion_matrix(y_test.numpy(), predicted.numpy())\n    print(\"混淆矩阵:\\n\", cm)\n\n# 保存模型和随机种子信息\ntorch.save(model.state_dict(), \"iris_model.pth\")\nprint(\"模型已保存，随机种子: 42\")\nprint(\"PyTorch版本:\", torch.__version__)\n</code></pre>\n<p>这个脚手架提供了稳定、可调试的训练基础，你可以将其作为模板扩展到更复杂的项目。通过掌握张量、Module和训练循环，你已拥有构建可复现AI系统的核心工具。</p>\n\n<p>在深度学习之旅中，理解训练循环的工程本质是关键一步。从定义到机制，再到落地实践，每一步都强调可控性和可复现性。记住，好的工程不是魔法，而是清晰、可测试的代码流程。现在，尝试将本课的脚手架应用到你自己的数据集，记录下遇到的挑战和解决方案——这是成长为成熟工程师的必经之路。</p>",
+        "en": "<h2>Getting Started with PyTorch: Tensors, Modules, and the Training Loop</h2>\n\n<p>Training deep learning models is not a mysterious black-box process but a programmable, observable engineering workflow. This course systematically deconstructs the core components of PyTorch training loops: from the engineering definitions of tensors and modules, to the synergistic mechanisms of forward pass, loss computation, and backpropagation, culminating in building a reproducible training scaffold. Through an end-to-end code example, you will master the complete practice from data loading to model evaluation, laying the foundation for constructing reliable AI systems.</p>\n\n<h3>From Intuition to Definition: Why the Training Loop Isn't a 'Black Box'</h3>\n<p>Many beginners, after adjusting model parameters, find inconsistent results across runs—a confusion often stemming from perceiving the training loop as internal framework 'magic.' In reality, the training loop is a user-controllable code flow that iteratively executes four core steps: forward pass, loss computation, backward pass, and parameter update. Understanding this is the first step toward building reproducible AI systems.</p>\n<p>Precisely defined, the training loop is the core control structure for training deep learning models. Mathematically, it can be expressed as an iterative process: for each training batch \\( t \\), execute \\( \\theta_{t+1} = \\theta_t - \\eta \\nabla_{\\theta} L(f(x_t; \\theta_t), y_t) \\), where \\( \\theta \\) represents model parameters, \\( \\eta \\) is the learning rate, \\( L \\) is the loss function, and \\( f \\) is the forward propagation function. This formula clarifies the computability of each step—the loss gradient \\( \\nabla_{\\theta} L \\) is obtained via backpropagation, not through mysterious optimization (Source: PyTorch Tutorial: What is torch.nn really?, 2023).</p>\n<p>Mechanistically, each component of the training loop has a clear role: the forward pass computes predictions, the loss function quantifies error, backpropagation calculates gradients via the chain rule, and the optimizer performs parameter updates. These components work synergistically through computational graphs: the forward pass builds the graph, and backpropagation propagates gradients backward along it. Key engineering considerations include using PyTorch's automatic differentiation (autograd) to track computational graphs, ensuring tensor operations don't disrupt gradient flow, and encapsulating the loop into reusable functions or classes.</p>\n<p>A common misconception is that 'the training loop is internal framework magic, inaccessible to users,' leading to debugging difficulties. Failure modes may include gradient explosion (excessively large gradients), non-convergence (oscillating loss), or irreproducible results. For diagnosis, check gradient values (e.g., print gradient norms), validate loss curves, and ensure random seed control. For instance, neglecting optimizer gradient zeroing (optimizer.zero_grad()) causes gradient accumulation and erroneous parameter updates.</p>\n<p>In summary, the training loop is a programmable, observable engineering component. By mastering its definition and mechanisms, you can confidently customize each step, such as adding gradient clipping or custom loss functions. Next, we'll delve into the fundamental materials of the training loop—tensors and modules—to understand how they carry data and model structures.</p>\n\n<h3>Core Materials: An Engineering Understanding of Tensors and Modules</h3>\n<p>Before constructing a training loop, one must master its foundational materials: tensors and modules. Tensors are often mistaken as mere replacements for NumPy arrays, but they are multidimensional arrays supporting GPU acceleration and automatic differentiation, serving as the core carriers of data flow in PyTorch. Modules are far from ordinary Python classes—they are base classes for all neural network components, responsible for parameter management and forward propagation definition.</p>\n<p>Precisely defined, a tensor can be formalized as \\( T \\in \\mathbb{R}^{d_1 \\times d_2 \\times \\dots \\times d_n} \\), where \\( d_i \\) is the dimension size, supporting operations like addition and matrix multiplication. A module in PyTorch inherits from <code>torch.nn.Module</code>, with its key method being <code>forward()</code>, defining how the model maps inputs to outputs. For example, a linear layer can be expressed as \\( y = Wx + b \\), where \\( W \\) and \\( b \\) are registered trainable parameters (Source: PyTorch Documentation: torch.nn.Module, 2023).</p>\n<p>Mechanistically, tensors track operations via computational graphs to enable automatic differentiation; modules allow optimizers to identify and update weights through parameter registration (<code>self.register_parameter()</code>). Engineering implementation points include using <code>torch.Tensor</code> instead of Python lists to avoid performance loss, modularizing model components for maintainability, and ensuring tensor device consistency (CPU/GPU). Latency-sensitive aspects include memory allocation for large tensors and cross-device data transfers.</p>\n<p>A common misconception is that 'tensors can be modified arbitrarily like Python lists without affecting the computational graph,' which may lead to gradient errors. Failure modes include memory overflow (large tensors not released), device mismatch (mixing CPU/GPU tensors in operations), or unregistered parameters (optimizers ignoring certain weights). For diagnosis, check tensor shapes, device types, and use <code>model.parameters()</code> to verify parameter lists. For example, failing to move tensors to the GPU can drastically slow down training.</p>\n<p>Understanding how tensors and modules carry data and model structures allows us to assemble them into the core of the training loop—the synergistic mechanism of forward pass, loss, and backpropagation. This is akin to having bricks and a blueprint; next comes the construction process.</p>\n\n<h3>Mechanism Breakdown: The Synergy of Forward Pass, Loss, and Backpropagation</h3>\n<p>The core mechanism of the training loop lies in the synergy of forward pass, loss computation, backpropagation, and optimizer updates. A typical puzzle is: 'Why call <code>optimizer.zero_grad()</code> before each batch?' This involves gradient management—if not zeroed, gradients accumulate, leading to incorrect parameter updates. Understanding the mathematical principles and engineering boundaries of these steps is key to avoiding pitfalls.</p>\n<p>Precisely defined, the forward pass is the process where the model computes predictions \\( \\hat{y} = f(x; \\theta) \\) from inputs \\( x \\); the loss function, such as cross-entropy \\( L = -\\sum_{i=1}^{C} y_i \\log(\\hat{y}_i) \\) with \\( C \\) as the number of classes, quantifies prediction error; backpropagation calculates gradients \\( \\nabla_{\\theta} L \\) via the chain rule; and the optimizer (e.g., SGD) updates parameters \\( \\theta \\leftarrow \\theta - \\eta \\nabla_{\\theta} L \\).</p>\n<p>In terms of synergy, PyTorch's automatic differentiation system computes gradients during <code>loss.backward()</code>, but requires explicit calls to <code>optimizer.step()</code> for parameter updates. Engineering implementation points include using <code>torch.no_grad()</code> during validation to disable gradient computation and save memory, monitoring gradient norms to prevent explosion, and selecting appropriate optimizers (e.g., Adam). Complexity-sensitive aspects involve traversing computational graphs during backpropagation, which can become a bottleneck for large-scale models.</p>\n<p>A common misconception is that 'backpropagation automatically updates model parameters'—in reality, backpropagation only computes gradients; updates must be executed by the optimizer. Failure modes may manifest as vanishing gradients (excessively small values), overfitting (rising validation loss), or low computational efficiency. For diagnosis, print loss curves, inspect gradient values, and use tools like PyTorch Profiler for performance analysis. For example, omitting <code>torch.no_grad()</code> during validation leads to unnecessary memory consumption.</p>\n<p>Mastering the mechanism of a single iteration enables us to extend it into a complete, reproducible training pipeline. Next, we'll build a training scaffold that integrates data loading, validation loops, and randomness control for engineering implementation.</p>\n\n<h3>Engineering Implementation: Building a Reproducible Training Scaffold</h3>\n<p>Transforming the training loop mechanism into stable, reproducible engineering practices is crucial for project success. Many teams encounter issues like 'the model reproduces locally but fails on another machine,' often due to neglecting reproducibility. Reproducibility refers to the ability to obtain consistent results under identical code, data, and random seeds, while a training scaffold is the code framework to achieve it.</p>\n<p>Precisely defined, reproducibility requires controlling all random sources, including PyTorch random seeds (<code>torch.manual_seed()</code>), NumPy random seeds, and data loading order. The training scaffold comprises components like data loading (e.g., DataLoader), training/validation loops, model saving, and logging. Evaluation metrics such as accuracy \\( \\text{Accuracy} = \\frac{\\text{Number of Correct Predictions}}{\\text{Total Samples}} \\) are used to monitor performance (Source: Reproducibility in Machine Learning, 2021).</p>\n<p>Mechanistically, reproducibility is ensured by setting global random seeds and deterministic CUDA algorithms (<code>torch.backends.cudnn.deterministic = True</code>). Engineering implementation points include using reproducible data splits (e.g., <code>random_state</code> in <code>train_test_split</code>), encapsulating training loops into classes or functions, and saving model and random seed information. Boundary conditions include randomness control in multi-process data loading.</p>\n<p>A common misconception is that 'setting random seeds guarantees reproducibility,' but this overlooks randomness in data loading (e.g., DataLoader's <code>worker_init_fn</code>) or non-deterministic GPU operations. Failure modes include result drift, training instability, or unreusable models. For diagnosis, record all random seeds, verify data loading order, and compare metrics across multiple runs. For example, omitting <code>worker_init_fn</code> in multi-process data loading can lead to irreproducible results.</p>\n<p>Below is an end-to-end minimal reproducible experiment using the Iris dataset for three-class classification, covering key concepts from this lesson:</p>\n<pre><code>import torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nimport numpy as np\n\n# Reproducibility setup\ntorch.manual_seed(42)\nnp.random.seed(42)\ntorch.backends.cudnn.deterministic = True\n\n# Data loading and inspection\ndata = load_iris()\nX, y = data.data, data.target\nprint(\"Data shape: features\", X.shape, \"labels\", y.shape)  # (150, 4) (150,)\nprint(\"Class distribution:\", np.bincount(y))  # [50 50 50]\nprint(\"Sample features (first 3 rows):\\n\", X[:3])\n\n# Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)\n\n# Data standardization\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X_train)\nX_test = scaler.transform(X_test)\n\n# Convert to tensors\nX_train = torch.tensor(X_train, dtype=torch.float32)\ny_train = torch.tensor(y_train, dtype=torch.long)\nX_test = torch.tensor(X_test, dtype=torch.float32)\ny_test = torch.tensor(y_test, dtype=torch.long)\n\n# Define a simple neural network model\nclass IrisModel(nn.Module):\n    def __init__(self):\n        super().__init__()\n        self.fc1 = nn.Linear(4, 10)\n        self.relu = nn.ReLU()\n        self.fc2 = nn.Linear(10, 3)\n    \n    def forward(self, x):\n        x = self.relu(self.fc1(x))\n        x = self.fc2(x)\n        return x\n\nmodel = IrisModel()\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# Training loop\nepochs = 100\nfor epoch in range(epochs):\n    model.train()\n    optimizer.zero_grad()\n    outputs = model(X_train)\n    loss = criterion(outputs, y_train)\n    loss.backward()\n    optimizer.step()\n    \n    # Validation phase\n    if (epoch+1) % 20 == 0:\n        model.eval()\n        with torch.no_grad():\n            test_outputs = model(X_test)\n            _, predicted = torch.max(test_outputs, 1)\n            accuracy = (predicted == y_test).sum().item() / y_test.size(0)\n            print(f\"Epoch {epoch+1}, Loss: {loss.item():.4f}, Test Accuracy: {accuracy:.4f}\")\n\n# Final evaluation\nmodel.eval()\nwith torch.no_grad():\n    test_outputs = model(X_test)\n    _, predicted = torch.max(test_outputs, 1)\n    accuracy = (predicted == y_test).sum().item() / y_test.size(0)\n    print(f\"Final test accuracy: {accuracy:.4f}\")\n    # Print confusion matrix\n    from sklearn.metrics import confusion_matrix\n    cm = confusion_matrix(y_test.numpy(), predicted.numpy())\n    print(\"Confusion matrix:\\n\", cm)\n\n# Save model and random seed info\ntorch.save(model.state_dict(), \"iris_model.pth\")\nprint(\"Model saved, random seed: 42\")\nprint(\"PyTorch version:\", torch.__version__)\n</code></pre>\n<p>This scaffold provides a stable, debuggable training foundation that you can use as a template for more complex projects. By mastering tensors, modules, and the training loop, you now possess the core tools to build reproducible AI systems.</p>\n\n<p>In the journey of deep learning, understanding the engineering essence of the training loop is a critical step. From definitions to mechanisms, and down to practical implementation, each phase emphasizes controllability and reproducibility. Remember, good engineering isn't magic—it's clear, testable code flows. Now, try applying this lesson's scaffold to your own dataset, documenting challenges and solutions encountered—this is the path to becoming a mature engineer.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：PyTorch 入门：张量、Module 与训练循环 · 结构总览 · 数据：课程大纲】在设计《PyTorch 入门：张量、Module 与训练循环》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: PyTorch 入门：张量、Module 与训练循环 · 结构总览 · Data: 课程大纲】When outlining \"PyTorch 入门：张量、Module 与训练循环\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：PyTorch 入门：张量、Module 与训练循环 · worked example · 数据：掌握 DL 训练的核心机制与工程实践 数据/代码】在复现《PyTorch 入门：张量、Module 与训练循环》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: PyTorch 入门：张量、Module 与训练循环 · worked example · Data: 掌握 DL 训练的核心机制与工程实践 数据/代码】While reproducing the worked example in \"PyTorch 入门：张量、Module 与训练循环\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：PyTorch 入门：张量、Module 与训练循环 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《PyTorch 入门：张量、Module 与训练循环》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: PyTorch 入门：张量、Module 与训练循环 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"PyTorch 入门：张量、Module 与训练循环\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：PyTorch 入门：张量、Module 与训练循环 · 参考资料 · 数据：课程引用文献】当引用文献支撑《PyTorch 入门：张量、Module 与训练循环》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: PyTorch 入门：张量、Module 与训练循环 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"PyTorch 入门：张量、Module 与训练循环\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "PyTorch Tutorial: What is torch.nn really?（PyTorch，2023）",
+            "en": "PyTorch Tutorial: What is torch.nn really? (PyTorch, 2023)"
+          },
+          "url": "https://pytorch.org/tutorials/beginner/nn_tutorial.html"
+        },
+        {
+          "label": {
+            "zh": "PyTorch Documentation: torch.nn.Module（PyTorch，2023）",
+            "en": "PyTorch Documentation: torch.nn.Module (PyTorch, 2023)"
+          },
+          "url": "https://pytorch.org/docs/stable/generated/torch.nn.Module.html"
+        },
+        {
+          "label": {
+            "zh": "Reproducibility in Machine Learning（arXiv，2021）",
+            "en": "Reproducibility in Machine Learning (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2109.01652"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-02-25-pytorch-module-zh.mp3"
+      },
+      "meta": {
+        "category": "训练机制与工程实践",
+        "level": "4. 深度学习核心",
+        "difficultyScore": 2,
+        "related": [
+          "优化基础：梯度下降、动量与自适应优化器",
+          "实验追踪：MLflow/W&B 思路与模板"
+        ],
+        "learningObjectives": [
+          "掌握 DL 训练的核心机制与工程实践",
+          "能写出一个稳定可复现的训练脚手架"
+        ],
+        "personas": [
+          "深度学习初学者",
+          "工程师",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握PyTorch训练循环的核心机制，可帮助团队在深度学习项目中实现可复现、可调试的工程实践，提升模型开发效率与可靠性。",
+          "best_for": "适合具备Python基础、了解神经网络基本概念的深度学习初学者、工程师和研究人员，希望系统掌握PyTorch训练循环的工程实现。",
+          "visual_hint": "使用要点列表和流程箭头展示数据在张量、Module和训练循环中的流转过程，辅以公式和代码片段增强理解。"
+        },
+        "tone_profile": {
+          "persona": "深度学习初学者 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 深度学习初学者、工程师、研究人员，帮助他们把 PyTorch 入门：张量、Module 与训练循环 应用于 训练机制与工程实践",
+          "prefersEnglish": false,
+          "industries": [
+            "深度学习初学者",
+            "工程师",
+            "研究人员"
+          ],
+          "personas": [
+            "深度学习初学者",
+            "工程师",
+            "研究人员"
+          ],
+          "pains": "在 训练机制与工程实践 场景缺乏 PyTorch 入门：张量、Module 与训练循环 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "4. 深度学习核心"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为深度学习初学者，你曾将训练循环视为黑箱而难以调试。现在学习了PyTorch张量和Module的工程化定义后，如何重新设计你当前项目中的训练流程，使其更可控且支持GPU加速？",
+            "action_hint": "尝试用PyTorch重写一个简单模型的前向传播，并思考如何加入自动微分和优化器更新步骤。"
+          },
+          {
+            "lang": "zh",
+            "question": "在工程实践中，你遇到过因梯度累积或随机性控制不当导致的训练结果不稳定。基于本课拆解的反向传播和优化器原理，你将如何调整现有训练循环来避免这些误区？",
+            "action_hint": "检查一个现有训练脚本，识别可能梯度累积的代码段，并设计可复现的随机种子设置方案。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-02-24-deep-learning",
       "date": "2026-02-24",
