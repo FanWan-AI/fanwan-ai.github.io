@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-03-02T02:46:56.485Z",
+  "generatedAt": "2026-03-02T14:18:18.477Z",
   "lessons": [
+    {
+      "id": "2026-03-02-image-text-retrieval",
+      "date": "2026-03-02",
+      "title": {
+        "zh": "多模态检索：image-text retrieval 的工程做法",
+        "en": "Multimodal Retrieval: Engineering Practices for Image-Text Retrieval"
+      },
+      "summary": {
+        "zh": "本课程系统讲解多模态检索的工程实现路径，涵盖从共享表示空间学习到完整检索流程的各个环节。首先建立跨模态匹配的动机，明确任务定义与评测指标；随后深入对比学习机制，解析CLIP等模型的工作原理；最后通过可复现代码示例，展示从数据准备到检索评测的工程实践。课程强调数学形式化与工程关键点，帮助开发者掌握构建稳健多模态检索系统的方法。",
+        "en": "This course systematically explains the engineering implementation path for multimodal retrieval, covering all aspects from shared representation space learning to complete retrieval pipelines. It begins by establishing the motivation for cross-modal matching and defining task boundaries and evaluation metrics. It then delves into contrastive learning mechanisms, analyzing the working principles of models like CLIP. Finally, through reproducible code examples, it demonstrates engineering practices from data preparation to retrieval evaluation. The course emphasizes mathematical formalization and engineering key points, helping developers master methods for building robust multimodal retrieval systems."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "multimodal retrieval",
+        "rerank"
+      ],
+      "content": {
+        "zh": "<h2>多模态检索：从理论到工程实践</h2>\n\n<p>在计算机视觉与自然语言处理的交叉领域，多模态检索已成为构建智能搜索、内容推荐和跨模态理解系统的核心技术。本课程将系统讲解图像-文本检索的工程实现路径，从基础定义到完整工作流，帮助开发者掌握这一关键技术。</p>\n\n<h3>从单模态到多模态：为什么检索需要跨模态匹配？</h3>\n\n<p>传统基于标签的图像检索系统面临根本性局限：当用户用自然语言描述搜索意图时，如“夕阳下的海滩”，基于预定义标签的系统可能因语义鸿沟而失效。多模态检索通过联合学习图像和文本的共享表示空间，实现跨模态语义对齐，从而解决这一挑战（来源：Learning Transferable Visual Models From Natural Language Supervision, 2021）。</p>\n\n<p>多模态检索（Multimodal Retrieval）定义为在不同数据类型间进行相似性搜索的任务，核心是学习共享表示空间（Shared Representation Space）。该空间将图像和文本映射到同一向量空间，使得语义相似的跨模态样本距离相近。例如，文本“棕色小狗在草地”应与对应图像在共享空间中具有高余弦相似度。</p>\n\n<p>从数学角度，共享表示学习可形式化为优化问题：给定图像-文本对集合 \\(D = \\{(I_i, T_i)\\}_{i=1}^N\\)，目标是学习映射函数 \\(f_I\\) 和 \\(f_T\\)，使得正样本对的相似度最大化，负样本对的相似度最小化。相似度通常用余弦相似度计算：\\(\\text{sim}(I,T) = \\frac{f_I(I) \\cdot f_T(T)}{\\|f_I(I)\\| \\|f_T(T)\\|}\\)。</p>\n\n<p>工程实现中，数据预处理需统一图像尺寸和文本分词策略。常见误区是直接拼接预训练的单模态特征，这忽略了跨模态对齐需求。失败模式表现为检索结果语义不一致，如文本查询“红色汽车”返回蓝色汽车图像。诊断方法包括可视化特征分布和计算跨模态相似度矩阵。</p>\n\n<p>理解多模态检索的动机后，我们需要明确其任务边界和评估标准，为工程实践提供量化基准。</p>\n\n<h3>任务定义与评测：如何衡量多模态检索的好坏？</h3>\n\n<p>多模态检索包含两个子任务：图像-文本检索（给定文本查询检索图像）和文本-图像检索（给定图像查询检索文本）。评测需使用专门指标，因为传统准确率无法捕捉检索系统的排序质量（来源：Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models, 2015）。</p>\n\n<p>核心评测指标包括Recall@K和均值平均精度（Mean Average Precision, mAP）。Recall@K衡量在前K个结果中相关结果的比例：\\(\\text{Recall@K} = \\frac{\\text{相关结果数}}{\\text{总相关数}}\\)。mAP则综合评估精确度和召回率，计算公式为：\\(\\text{mAP} = \\frac{1}{Q} \\sum_{q=1}^{Q} \\frac{1}{m_q} \\sum_{k=1}^{m_q} \\text{Precision@k}\\)，其中Q为查询数，m_q为第q个查询的相关结果数。Precision@k定义为前k个结果中相关结果的比例：\\(\\text{Precision@k} = \\frac{\\text{前k个结果中的相关数}}{k}\\)。</p>\n\n<p>工程实践中，评测流程需标准化数据集划分和随机种子设置。常见误区是依赖单一指标，如仅关注Recall@1而忽略Recall@5和Recall@10。失败模式包括指标虚高但实际用户体验差，原因可能是测试集过小或分布偏差。诊断需进行错误分析，如混淆矩阵识别语义模糊案例。</p>\n\n<p>有了评测框架，我们深入探讨多模态检索的底层机制，理解对比学习如何实现跨模态对齐。</p>\n\n<h3>机制解析：从CLIP到检索流程的底层原理</h3>\n\n<p>CLIP模型通过对比学习实现强大的跨模态检索能力。其核心机制是在共享表示空间中拉近正样本对、推开负样本对，学习语义一致的跨模态表示（来源：Learning Transferable Visual Models From Natural Language Supervision, 2021）。</p>\n\n<p>对比学习的目标函数可表示为：\\(\\mathcal{L} = -\\frac{1}{N} \\sum_{i=1}^{N} \\log \\frac{\\exp(\\text{sim}(I_i, T_i)/\\tau)}{\\sum_{j=1}^{N} \\exp(\\text{sim}(I_i, T_j)/\\tau)}\\)，其中\\(\\tau\\)为温度参数，控制相似度分布的尖锐程度。该损失函数最大化正样本对的相似度，同时最小化与所有负样本对的相似度。</p>\n\n<p>完整检索流程包括四个阶段：编码（使用多模态模型将图像和文本映射为向量）、索引（构建高效向量数据库，如使用FAISS）、相似度计算（计算查询向量与库中向量的余弦相似度）、重排序（Reranking，对初步结果进行精细排序）。工程关键点包括索引的构建速度和内存占用优化（来源：FAISS: A Library for Efficient Similarity Search, 2017）。</p>\n\n<p>常见误区是训练时使用简单负样本，导致模型收敛缓慢。失败模式包括过拟合或欠拟合，表现为训练损失下降但测试指标停滞。诊断方法包括监控损失曲线和进行消融实验，如调整负样本采样策略。</p>\n\n<p>理解机制后，我们将这些原理应用于工程实践，构建一个可复现的多模态检索系统。</p>\n\n<h3>工程实践：构建可复现的多模态检索系统</h3>\n\n<p>构建多模态检索系统需遵循标准化工程流程，确保结果可复现。我们从数据准备开始，使用公开数据集和轻量工具链。</p>\n\n<p>工程流程包括：数据加载与预处理、模型微调（Fine-tuning）、索引构建、检索评测和重排序优化。使用Flickr30k数据集作为示例，该数据集包含31,783张图像和158,915条文本描述，适合多模态检索任务（来源：Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models, 2015）。</p>\n\n<p>微调阶段，我们在预训练CLIP模型基础上，使用对比学习损失进行领域适应。目标函数扩展为：\\(\\mathcal{L}_{\\text{ft}} = \\mathcal{L}_{\\text{contrastive}} + \\lambda \\mathcal{L}_{\\text{regularization}}\\)，其中\\(\\lambda\\)控制正则化强度，防止过拟合。工程实现需注意学习率调度和早停策略。</p>\n\n<p>常见误区是忽略可复现性设置，导致结果不可比较。失败模式包括环境依赖冲突或随机性影响。诊断需记录完整环境配置，包括库版本和随机种子。具体诊断方法包括：使用pip freeze记录依赖版本对比差异，可视化随机种子影响下的指标波动。以下代码展示端到端实现：</p>\n\n<pre><code>import torch\nimport torchvision.transforms as transforms\nfrom transformers import CLIPProcessor, CLIPModel\nimport numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\n\n# 设置随机种子确保可复现\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\n# 模拟Flickr30k数据（实际使用可从Hugging Face加载）\ndata = {\n    'image_id': [f'img_{i}' for i in range(100)],\n    'text': [f'A photo of object {i}' for i in range(100)],\n    'embedding': [np.random.randn(512) for _ in range(100)]\n}\ndf = pd.DataFrame(data)\nprint(f\"数据规模: {df.shape}\")\nprint(f\"样例数据:\\n{df.head()}\")\n\n# 划分训练测试集\ntrain_df, test_df = train_test_split(df, test_size=0.2, random_state=SEED)\nprint(f\"训练集: {len(train_df)}, 测试集: {len(test_df)}\")\n\n# 初始化CLIP模型和处理器\nmodel = CLIPModel.from_pretrained(\"openai/clip-vit-base-patch32\")\nprocessor = CLIPProcessor.from_pretrained(\"openai/clip-vit-base-patch32\")\n\n# 模拟微调过程（简化）\ndef fine_tune_step(batch_images, batch_texts):\n    inputs = processor(text=batch_texts, images=batch_images, return_tensors=\"pt\", padding=True)\n    outputs = model(**inputs)\n    image_embeds = outputs.image_embeds\n    text_embeds = outputs.text_embeds\n    # 对比学习损失\n    logits = (text_embeds @ image_embeds.T) * model.logit_scale.exp()\n    targets = torch.arange(len(batch_texts)).to(logits.device)\n    loss = torch.nn.functional.cross_entropy(logits, targets)\n    return loss, image_embeds, text_embeds\n\n# 构建索引（使用numpy模拟FAISS）\ndef build_index(embeddings):\n    index = np.array(embeddings)\n    return index\n\nimage_index = build_index(train_df['embedding'].tolist())\nprint(f\"索引维度: {image_index.shape}\")\n\n# 检索函数\ndef retrieve(query_text, top_k=5):\n    # 编码查询文本\n    inputs = processor(text=query_text, return_tensors=\"pt\")\n    query_embed = model.get_text_features(**inputs).detach().numpy()\n    # 计算相似度\n    similarities = np.dot(image_index, query_embed.T).flatten()\n    top_indices = np.argsort(similarities)[-top_k:][::-1]\n    return top_indices, similarities[top_indices]\n\n# 测试检索\nquery = \"A photo of object 10\"\ntop_indices, scores = retrieve(query, top_k=3)\nprint(f\"查询: {query}\")\nprint(f\"Top-3 索引: {top_indices}\")\nprint(f\"相似度分数: {scores}\")\n\n# 计算Recall@K\ndef compute_recall_at_k(query_results, relevant_indices, k_values=[1,3,5]):\n    recalls = {}\n    for k in k_values:\n        retrieved = set(query_results[:k])\n        relevant = set(relevant_indices)\n        recalls[f'Recall@{k}'] = len(retrieved & relevant) / len(relevant) if len(relevant) > 0 else 0\n    return recalls\n\n# 模拟评测\nrelevant_idx = [10]  # 假设对象10为相关结果\nrecalls = compute_recall_at_k(top_indices, relevant_idx, k_values=[1,3,5])\nprint(f\"评测指标: {recalls}\")\n\n# 记录环境\nimport sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"PyTorch版本: {torch.__version__}\")</code></pre>\n\n<p>该代码展示了从数据准备到检索评测的完整流程，输出包括数据规模、样例、索引维度、检索结果和Recall@K指标。轻量替代方案可使用TF-IDF文本特征和ResNet图像特征进行基线实验，再逐步升级到CLIP模型。</p>\n\n<p>通过本课程，您已掌握多模态检索从理论到工程的全链路知识。接下来，尝试将所学应用于您的特定领域数据，并探索重排序等进阶优化技术。</p>",
+        "en": "<h2>Multimodal Retrieval: From Theory to Engineering Practice</h2>\n\n<p>In the intersection of computer vision and natural language processing, multimodal retrieval has become a core technology for building intelligent search, content recommendation, and cross-modal understanding systems. This course systematically explains the engineering implementation path for image-text retrieval, from fundamental definitions to complete workflows, helping developers master this key technology.</p>\n\n<h3>From Unimodal to Multimodal: Why Retrieval Requires Cross-Modal Matching</h3>\n\n<p>Traditional tag-based image retrieval systems face fundamental limitations: when users describe search intent in natural language, such as \"sunset on a beach,\" systems relying on predefined tags may fail due to semantic gaps. Multimodal retrieval addresses this challenge by jointly learning a shared representation space for images and text, enabling cross-modal semantic alignment (Source: Learning Transferable Visual Models From Natural Language Supervision, 2021).</p>\n\n<p>Multimodal Retrieval is defined as the task of similarity search across different data types, with the core being learning a Shared Representation Space. This space maps images and text into the same vector space, where semantically similar cross-modal samples are close. For example, the text \"a brown puppy on grass\" should have high cosine similarity with its corresponding image in the shared space.</p>\n\n<p>Mathematically, shared representation learning can be formalized as an optimization problem: given a set of image-text pairs \\(D = \\{(I_i, T_i)\\}_{i=1}^N\\), the goal is to learn mapping functions \\(f_I\\) and \\(f_T\\) that maximize similarity for positive pairs and minimize it for negative pairs. Similarity is typically computed using cosine similarity: \\(\\text{sim}(I,T) = \\frac{f_I(I) \\cdot f_T(T)}{\\|f_I(I)\\| \\|f_T(T)\\|}\\).</p>\n\n<p>In engineering implementation, data preprocessing requires unifying image sizes and text tokenization strategies. A common misconception is directly concatenating pre-trained unimodal features, which ignores cross-modal alignment needs. Failure modes manifest as semantically inconsistent retrieval results, such as returning a blue car image for the text query \"red car.\" Diagnostic methods include visualizing feature distributions and computing cross-modal similarity matrices.</p>\n\n<p>Understanding the motivation for multimodal retrieval, we need to define its task boundaries and evaluation standards to provide quantitative benchmarks for engineering practice.</p>\n\n<h3>Task Definition and Evaluation: How to Measure Multimodal Retrieval Performance</h3>\n\n<p>Multimodal retrieval includes two subtasks: Image-Text Retrieval (retrieving images given a text query) and Text-Image Retrieval (retrieving text given an image query). Evaluation requires specialized metrics, as traditional accuracy cannot capture the ranking quality of retrieval systems (Source: Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models, 2015).</p>\n\n<p>Core evaluation metrics include Recall@K and Mean Average Precision (mAP). Recall@K measures the proportion of relevant results in the top K results: \\(\\text{Recall@K} = \\frac{\\text{number of relevant results}}{\\text{total relevant}}\\). mAP comprehensively assesses precision and recall, calculated as: \\(\\text{mAP} = \\frac{1}{Q} \\sum_{q=1}^{Q} \\frac{1}{m_q} \\sum_{k=1}^{m_q} \\text{Precision@k}\\), where Q is the number of queries and m_q is the number of relevant results for the q-th query. Precision@k is defined as the proportion of relevant results among the top k results: \\(\\text{Precision@k} = \\frac{\\text{relevant in top k}}{k}\\).</p>\n\n<p>In engineering practice, evaluation processes require standardized dataset splits and random seed settings. A common misconception is relying on a single metric, such as focusing only on Recall@1 while ignoring Recall@5 and Recall@10. Failure modes include inflated metrics but poor actual user experience, possibly due to small test sets or distribution bias. Diagnosis requires error analysis, such as confusion matrices to identify semantically ambiguous cases.</p>\n\n<p>With an evaluation framework in place, we delve into the underlying mechanisms of multimodal retrieval to understand how contrastive learning enables cross-modal alignment.</p>\n\n<h3>Mechanism Analysis: From CLIP to the Underlying Principles of Retrieval Pipelines</h3>\n\n<p>The CLIP model achieves powerful cross-modal retrieval capabilities through contrastive learning. Its core mechanism pulls positive pairs closer and pushes negative pairs apart in the shared representation space, learning semantically consistent cross-modal representations (Source: Learning Transferable Visual Models From Natural Language Supervision, 2021).</p>\n\n<p>The contrastive learning objective function can be expressed as: \\(\\mathcal{L} = -\\frac{1}{N} \\sum_{i=1}^{N} \\log \\frac{\\exp(\\text{sim}(I_i, T_i)/\\tau)}{\\sum_{j=1}^{N} \\exp(\\text{sim}(I_i, T_j)/\\tau)}\\), where \\(\\tau\\) is a temperature parameter controlling the sharpness of the similarity distribution. This loss function maximizes similarity for positive pairs while minimizing similarity with all negative pairs.</p>\n\n<p>The complete retrieval pipeline includes four stages: Encoding (using multimodal models to map images and text into vectors), Indexing (building efficient vector databases, e.g., using FAISS), Similarity Computation (calculating cosine similarity between query vectors and library vectors), and Reranking (refining the ranking of initial results). Engineering key points include optimizing index construction speed and memory usage (Source: FAISS: A Library for Efficient Similarity Search, 2017).</p>\n\n<p>A common misconception is using simple negative samples during training, leading to slow convergence. Failure modes include overfitting or underfitting, manifested as decreasing training loss but stagnant test metrics. Diagnostic methods involve monitoring loss curves and conducting ablation experiments, such as adjusting negative sampling strategies.</p>\n\n<p>Understanding the mechanisms, we apply these principles to engineering practice, building a reproducible multimodal retrieval system.</p>\n\n<h3>Engineering Practice: Building a Reproducible Multimodal Retrieval System</h3>\n\n<p>Building a multimodal retrieval system requires following standardized engineering processes to ensure reproducible results. We start with data preparation, using public datasets and lightweight toolchains.</p>\n\n<p>The engineering workflow includes: Data Loading and Preprocessing, Model Fine-tuning, Index Construction, Retrieval Evaluation, and Reranking Optimization. Using the Flickr30k dataset as an example, which contains 31,783 images and 158,915 text descriptions, it is suitable for multimodal retrieval tasks (Source: Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models, 2015).</p>\n\n<p>During fine-tuning, we adapt the pre-trained CLIP model using contrastive learning loss for domain adaptation. The objective function extends to: \\(\\mathcal{L}_{\\text{ft}} = \\mathcal{L}_{\\text{contrastive}} + \\lambda \\mathcal{L}_{\\text{regularization}}\\), where \\(\\lambda\\) controls regularization strength to prevent overfitting. Engineering implementation requires attention to learning rate scheduling and early stopping strategies.</p>\n\n<p>A common misconception is neglecting reproducibility settings, leading to incomparable results. Failure modes include environment dependency conflicts or randomness effects. Diagnosis requires recording complete environment configurations, including library versions and random seeds. Specific diagnostic methods include: using pip freeze to record dependency versions for comparison, visualizing metric fluctuations under different random seeds. The following code demonstrates an end-to-end implementation:</p>\n\n<pre><code>import torch\nimport torchvision.transforms as transforms\nfrom transformers import CLIPProcessor, CLIPModel\nimport numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\n\n# Set random seeds for reproducibility\nSEED = 42\ntorch.manual_seed(SEED)\nnp.random.seed(SEED)\n\n# Simulate Flickr30k data (in practice, load from Hugging Face)\ndata = {\n    'image_id': [f'img_{i}' for i in range(100)],\n    'text': [f'A photo of object {i}' for i in range(100)],\n    'embedding': [np.random.randn(512) for _ in range(100)]\n}\ndf = pd.DataFrame(data)\nprint(f\"Data scale: {df.shape}\")\nprint(f\"Sample data:\\n{df.head()}\")\n\n# Split into train and test sets\ntrain_df, test_df = train_test_split(df, test_size=0.2, random_state=SEED)\nprint(f\"Training set: {len(train_df)}, Test set: {len(test_df)}\")\n\n# Initialize CLIP model and processor\nmodel = CLIPModel.from_pretrained(\"openai/clip-vit-base-patch32\")\nprocessor = CLIPProcessor.from_pretrained(\"openai/clip-vit-base-patch32\")\n\n# Simulate fine-tuning process (simplified)\ndef fine_tune_step(batch_images, batch_texts):\n    inputs = processor(text=batch_texts, images=batch_images, return_tensors=\"pt\", padding=True)\n    outputs = model(**inputs)\n    image_embeds = outputs.image_embeds\n    text_embeds = outputs.text_embeds\n    # Contrastive learning loss\n    logits = (text_embeds @ image_embeds.T) * model.logit_scale.exp()\n    targets = torch.arange(len(batch_texts)).to(logits.device)\n    loss = torch.nn.functional.cross_entropy(logits, targets)\n    return loss, image_embeds, text_embeds\n\n# Build index (simulate FAISS with numpy)\ndef build_index(embeddings):\n    index = np.array(embeddings)\n    return index\n\nimage_index = build_index(train_df['embedding'].tolist())\nprint(f\"Index dimension: {image_index.shape}\")\n\n# Retrieval function\ndef retrieve(query_text, top_k=5):\n    # Encode query text\n    inputs = processor(text=query_text, return_tensors=\"pt\")\n    query_embed = model.get_text_features(**inputs).detach().numpy()\n    # Compute similarity\n    similarities = np.dot(image_index, query_embed.T).flatten()\n    top_indices = np.argsort(similarities)[-top_k:][::-1]\n    return top_indices, similarities[top_indices]\n\n# Test retrieval\nquery = \"A photo of object 10\"\ntop_indices, scores = retrieve(query, top_k=3)\nprint(f\"Query: {query}\")\nprint(f\"Top-3 indices: {top_indices}\")\nprint(f\"Similarity scores: {scores}\")\n\n# Compute Recall@K\ndef compute_recall_at_k(query_results, relevant_indices, k_values=[1,3,5]):\n    recalls = {}\n    for k in k_values:\n        retrieved = set(query_results[:k])\n        relevant = set(relevant_indices)\n        recalls[f'Recall@{k}'] = len(retrieved & relevant) / len(relevant) if len(relevant) > 0 else 0\n    return recalls\n\n# Simulate evaluation\nrelevant_idx = [10]  # Assume object 10 is relevant\nrecalls = compute_recall_at_k(top_indices, relevant_idx, k_values=[1,3,5])\nprint(f\"Evaluation metrics: {recalls}\")\n\n# Record environment\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"PyTorch version: {torch.__version__}\")</code></pre>\n\n<p>This code demonstrates the complete workflow from data preparation to retrieval evaluation, outputting data scale, samples, index dimension, retrieval results, and Recall@K metrics. A lightweight alternative involves using TF-IDF text features and ResNet image features for baseline experiments, then gradually upgrading to the CLIP model.</p>\n\n<p>Through this course, you have mastered the end-to-end knowledge of multimodal retrieval from theory to engineering. Next, try applying what you've learned to your specific domain data and explore advanced optimization techniques like reranking.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：多模态检索：image-text retrieval 的工程做法 · 结构总览 · 数据：课程大纲】在设计《多模态检索：image-text retrieval 的工程做法》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 多模态检索：image-text retrieval 的工程做法 · 结构总览 · Data: 课程大纲】When outlining \"多模态检索：image-text retrieval 的工程做法\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：多模态检索：image-text retrieval 的工程做法 · worked example · 数据：理解视觉/多模态任务的主流范式与评测 数据/代码】在复现《多模态检索：image-text retrieval 的工程做法》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 多模态检索：image-text retrieval 的工程做法 · worked example · Data: 理解视觉/多模态任务的主流范式与评测 数据/代码】While reproducing the worked example in \"多模态检索：image-text retrieval 的工程做法\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：多模态检索：image-text retrieval 的工程做法 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《多模态检索：image-text retrieval 的工程做法》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 多模态检索：image-text retrieval 的工程做法 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"多模态检索：image-text retrieval 的工程做法\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：多模态检索：image-text retrieval 的工程做法 · 参考资料 · 数据：课程引用文献】当引用文献支撑《多模态检索：image-text retrieval 的工程做法》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 多模态检索：image-text retrieval 的工程做法 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"多模态检索：image-text retrieval 的工程做法\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Learning Transferable Visual Models From Natural Language Supervision（arXiv，2021）",
+            "en": "Learning Transferable Visual Models From Natural Language Supervision (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2103.00020"
+        },
+        {
+          "label": {
+            "zh": "Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models（arXiv，2015）",
+            "en": "Flickr30k Entities: Collecting Region-to-Phrase Correspondences for Richer Image-to-Sentence Models (arXiv, 2015)"
+          },
+          "url": "https://arxiv.org/abs/1505.04870"
+        },
+        {
+          "label": {
+            "zh": "FAISS: A Library for Efficient Similarity Search（arXiv，2017）",
+            "en": "FAISS: A Library for Efficient Similarity Search (arXiv, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1702.08734"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-02-image-text-retrieval-zh.mp3"
+      },
+      "meta": {
+        "category": "CV/Multimodal 方法与评测",
+        "level": "5. 视觉与多模态基础",
+        "difficultyScore": 3,
+        "related": [
+          "生成模型概览：VAE/GAN/Flow 的差异与取舍",
+          "RAG 总览：何时用、何时别用"
+        ],
+        "learningObjectives": [
+          "理解视觉/多模态任务的主流范式与评测",
+          "能完成一个小型多模态检索或视觉demo"
+        ],
+        "personas": [
+          "CV工程师",
+          "研究人员",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握多模态检索的工程做法可帮助团队在CV/Multimodal方法与评测上做出可复用的实践。",
+          "best_for": "适合CV工程师、研究人员、产品经理，需要快速吸收视觉与多模态基础主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "CV工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 CV工程师、研究人员、产品经理，帮助他们把 多模态检索：image-text retrieval 的工程做法 应用于 CV/Multimodal 方法与评测",
+          "prefersEnglish": false,
+          "industries": [
+            "CV工程师",
+            "研究人员",
+            "产品经理"
+          ],
+          "personas": [
+            "CV工程师",
+            "研究人员",
+            "产品经理"
+          ],
+          "pains": "在 CV/Multimodal 方法与评测 场景缺乏 多模态检索：image-text retrieval 的工程做法 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "5. 视觉与多模态基础"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为CV工程师，你在处理图像与文本匹配任务时，通常如何评估检索效果？结合你当前项目，描述一个具体场景，并思考多模态检索的工程做法能如何优化现有流程。",
+            "action_hint": "尝试列出你项目中图像-文本匹配的关键挑战，并设想引入共享表示空间学习后可能带来的改进。"
+          },
+          {
+            "lang": "zh",
+            "question": "如果你是产品经理，负责一个需要图像搜索或图文推荐的功能，你如何定义业务场景下的成功指标？基于多模态检索的工程路径，你会如何设计从数据准备到系统部署的关键环节？",
+            "action_hint": "从用户需求出发，思考一个具体的产品用例，并规划实现多模态检索所需的工程步骤与资源。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-02-mapiou",
       "date": "2026-03-02",
