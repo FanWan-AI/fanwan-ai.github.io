@@ -1,6 +1,183 @@
 {
-  "generatedAt": "2026-03-03T03:05:06.326Z",
+  "generatedAt": "2026-03-03T14:17:53.529Z",
   "lessons": [
+    {
+      "id": "2026-03-03-nlp",
+      "date": "2026-03-03",
+      "title": {
+        "zh": "NLP 任务地图：分类、序列标注、生成与评测",
+        "en": "NLP Task Map: Classification, Sequence Labeling, Generation, and Evaluation"
+      },
+      "summary": {
+        "zh": "本课程系统梳理自然语言处理四大核心任务：分类、序列标注、生成与评测。通过数学形式化定义、机制解释与工程实践，建立从传统方法到大语言模型应用的可执行知识框架。课程涵盖交叉熵损失、条件随机场、自回归生成等关键数学模型，提供TF-IDF+逻辑回归的完整可复现代码示例，并强调可复现性、评估指标多维分析与常见误区诊断。学习者将掌握根据具体需求选择技术路径的系统方法。",
+        "en": "This course systematically organizes four core natural language processing tasks: classification, sequence labeling, generation, and evaluation. Through mathematical formalization, mechanism explanation, and engineering practice, it establishes an executable knowledge framework from traditional methods to large language model applications. The course covers key mathematical models including cross-entropy loss, conditional random fields, and autoregressive generation, provides a complete reproducible code example of TF-IDF + logistic regression, and emphasizes reproducibility, multi-dimensional evaluation metric analysis, and common misconception diagnosis. Learners will master systematic methods for selecting technical paths based on specific needs."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "nlp"
+      ],
+      "content": {
+        "zh": "<h3>从直觉到定义：为什么需要NLP任务地图</h3>\n<p>面对海量文本数据时，工程师常陷入“不知从何下手”的困境。是直接调用大语言模型API，还是构建传统机器学习管线？这种选择困惑源于缺乏对自然语言处理任务体系的系统认知。NLP任务地图（NLP Task Map）正是为解决这一问题而设计的分类框架，它将复杂多样的文本处理需求归纳为四大核心任务：分类（Classification）、序列标注（Sequence Labeling）、生成（Generation）与评测（Evaluation）。每个任务都有其独特的数学形式化定义、实现机制和适用场景。</p>\n<p>分类任务为文本分配预定义类别标签，其数学本质是学习从文本特征空间到离散标签空间的映射函数。给定文本序列 \\(x = (w_1, w_2, ..., w_n)\\)，分类模型需要预测其所属类别 \\(y \\in \\{1, 2, ..., K\\}\\)，其中K为类别总数。目标函数通常采用交叉熵损失：\\[\\mathcal{L}_{CE} = -\\sum_{i=1}^{K} y_i \\log(\\hat{y}_i)\\]，其中\\(y_i\\)为真实标签的one-hot编码，\\(\\hat{y}_i\\)为模型预测的概率分布。这个公式直观反映了预测概率与真实分布之间的差异。</p>\n<p>工程实现时，分类任务的数据流遵循“原始文本→特征提取→分类器→评估”的标准管线。特征提取阶段，传统方法常用TF-IDF（词频-逆文档频率）将文本转换为数值向量：\\[\\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)}\\]，其中t为词项，d为文档，N为文档总数，DF(t)为包含词项t的文档数。现代深度学习方法则使用预训练语言模型（如BERT）的[CLS] token表示作为特征。延迟敏感点主要在于特征提取的计算复杂度，TF-IDF为O(n·m)，而BERT推理为O(n²·d)，其中n为序列长度，m为词汇表大小，d为隐藏层维度。</p>\n<p>常见误区是认为“大语言模型可以解决所有分类任务”。实际上，传统方法在特定场景仍有优势：当训练数据规模较小（<1000样本）时，逻辑回归等简单模型往往比微调大模型更稳定；当推理延迟要求极严格（<10ms）时，TF-IDF+线性分类器的组合远快于大模型推理；当需要完全可控的决策边界时，传统模型的参数可解释性更强。失败模式包括类别不平衡导致的模型偏向、特征稀疏导致的过拟合、以及测试集泄露造成的虚假高准确率。</p>\n<p>诊断分类模型问题时，应同时查看多个评估指标。准确率\\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\)仅适用于类别平衡的数据集；对于不平衡数据，需要结合精确率\\(\\text{Precision} = \\frac{TP}{TP+FP}\\)、召回率\\(\\text{Recall} = \\frac{TP}{TP+FN}\\)和F1分数\\(\\text{F1} = 2 \\times \\frac{\\text{Precision} \\times \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\)进行综合评估。混淆矩阵可视化能清晰展示各类别的错分模式。</p>\n<p>理解了分类任务的定义与边界后，我们自然会问：当标签需要分配给序列中的每个token而非整个文本时，该如何处理？这引出了序列标注任务的独特挑战。</p>\n\n<h3>任务机制详解：从传统方法到提示工程</h3>\n<p>序列标注任务要求为文本序列中的每个token分配标签，典型应用包括命名实体识别、词性标注和语义角色标注。与分类任务不同，序列标注需要考虑token之间的上下文依赖关系。数学上，给定输入序列\\(x = (x_1, x_2, ..., x_T)\\)，模型需要输出标签序列\\(y = (y_1, y_2, ..., y_T)\\)，其中每个\\(y_t \\in \\mathcal{Y}\\)来自有限的标签集。条件随机场（CRF）是传统序列标注的核心模型，其目标函数为：\\[P(y|x) = \\frac{1}{Z(x)} \\exp\\left(\\sum_{t=1}^{T} \\sum_{k=1}^{K} \\theta_k f_k(y_t, y_{t-1}, x, t)\\right)\\]，其中\\(Z(x)\\)为归一化因子，\\(f_k\\)为特征函数，\\(\\theta_k\\)为可学习参数。</p>\n<p>现代深度学习方法用神经网络替代手工特征工程。双向LSTM-CRF架构通过LSTM层捕获上下文信息，CRF层确保标签序列的全局一致性。Transformer架构（来源：Attention Is All You Need, 2017）引入自注意力机制，允许每个token直接关注序列中的所有其他token，计算复杂度为O(T²·d)。预训练语言模型BERT（来源：BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding, 2019）通过掩码语言建模任务学习丰富的上下文表示，微调时只需在顶层添加线性分类器即可用于序列标注。</p>\n<p>工程实现要点包括：数据标注需遵循BIO或BIOES等标注规范；批处理时需处理变长序列（常用padding和masking）；评估时需按token而非样本计算指标。对于命名实体识别，常用指标包括实体级别的精确率、召回率和F1分数。序列标注对计算资源敏感，长序列（>512 token）需要分段处理或使用长上下文模型。</p>\n<p>常见误区是“序列标注就是为每个词独立分类”。实际上，标签之间存在强依赖关系：在命名实体识别中，“B-LOC”后应接“I-LOC”而非“B-PER”；在词性标注中，冠词后通常接名词而非动词。忽略这些约束会导致不合法的标签序列。另一个误区是过度依赖大模型，对于领域特定的实体类型（如医疗术语、法律条款），基于规则或词典的方法可能更准确且高效。</p>\n<p>失败模式包括：标注不一致导致的训练噪声、罕见实体召回率低、嵌套实体识别困难。诊断时，应分析混淆矩阵中特定实体类型的错分模式，检查边界识别错误（B/I标签混淆）还是类型识别错误（LOC/ORG混淆）。对于长实体，可计算边界精确率（边界完全匹配的比例）。</p>\n<p>掌握了离散标签的分配机制后，我们转向更具创造性的任务：如何让模型生成连贯、相关、多样化的文本？这需要深入理解文本生成的概率建模本质。</p>\n\n<h3>工程实践：构建可复现的NLP任务管线</h3>\n<p>文本生成任务要求模型根据输入生成连贯的文本输出，涵盖机器翻译、摘要生成、对话系统等应用。数学上，生成模型需要建模条件概率分布\\(P(y|x)\\)，其中\\(y = (y_1, y_2, ..., y_M)\\)为输出序列。自回归生成通过链式法则分解该概率：\\[P(y|x) = \\prod_{t=1}^{M} P(y_t | y_{&lt;t}, x)\\]，每个时间步基于已生成前缀和输入预测下一个token。目标函数为负对数似然：\\[\\mathcal{L}_{NLL} = -\\sum_{t=1}^{M} \\log P(y_t | y_{&lt;t}, x)\\]。</p>\n<p>传统统计方法如n-gram语言模型基于马尔可夫假设，仅考虑有限历史上下文。神经生成模型使用RNN、LSTM或Transformer编码输入并解码输出。现代大语言模型通过提示工程（Prompt Engineering）引导生成：设计提示模板\\(\\text{prompt}(x)\\)，让模型补全后续文本。例如，摘要生成提示可为“请为以下文章生成摘要：{文章内容}\\n摘要：”。提示工程的核心是找到能激发模型相关知识的表达方式，同时控制生成风格和格式。</p>\n<p>评测生成质量是核心挑战。自动评测指标ROUGE（Recall-Oriented Understudy for Gisting Evaluation）基于n-gram重叠度计算：\\[\\text{ROUGE-N} = \\frac{\\sum_{S\\in\\{\\text{参考摘要}\\}} \\sum_{\\text{gram}_n\\in S} \\text{Count}_{\\text{match}}(\\text{gram}_n)}{\\sum_{S\\in\\{\\text{参考摘要}\\}} \\sum_{\\text{gram}_n\\in S} \\text{Count}(\\text{gram}_n)}\\]，其中N为n-gram长度，\\(\\text{Count}_{\\text{match}}\\)为生成摘要与参考摘要共享的n-gram数量。ROUGE-1关注unigram重叠，ROUGE-2关注bigram重叠，ROUGE-L关注最长公共子序列。</p>\n<p>工程实现需确保可复现性：固定随机种子、记录依赖包版本、保存中间结果。数据管线应包括清洗（去除HTML标签、标准化空格）、分词（按任务选择词、字或子词单元）、划分（按stratify方式保持类别分布）。模型训练需监控训练/验证损失曲线，防止过拟合。部署时需考虑生成速度（受解码算法和序列长度影响）和内存占用（模型参数量）。</p>\n<p>常见误区是“准确率高就代表模型好”。对于生成任务，高ROUGE分数可能对应流畅但无关的文本，或相关但冗余的文本。需要结合人工评估检查生成内容的忠实度（是否歪曲原意）、连贯性（是否逻辑通顺）和信息量（是否包含关键信息）。另一个误区是忽视提示工程的系统性：提示应经过A/B测试优化，记录不同模板的性能差异。</p>\n<p>失败模式包括：生成重复内容（因beam search的多样性不足）、生成无关内容（因注意力机制失效）、生成不安全内容（因训练数据偏见）。诊断时，应分析生成样本的错误类型，调整解码参数（如temperature、top-p）、修改提示模板、或增加后处理规则。对于关键应用，应建立回归测试集，监控模型更新后的性能变化。</p>\n<p>现在，让我们将这些理论知识落实到具体代码中，构建一个完整的文本分类系统，体验从数据到评估的全流程。</p>\n\n<h3>可复现示例：新闻文本分类系统</h3>\n<p>以下代码构建了一个端到端的新闻文本分类系统，使用scikit-learn内置的20newsgroups数据集（来源：Scikit-learn: Machine Learning in Python, 2011）。我们实现TF-IDF特征提取+逻辑回归的完整管线，计算准确率和F1分数，并可视化混淆矩阵进行错误分析。</p>\n<pre><code># 代码块#1：端到端新闻文本分类系统\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# 固定随机种子确保可复现性\nnp.random.seed(42)\n\n# 1. 加载数据集并检查基本信息\ndata = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nprint(f\"数据集shape: {len(data.data)} samples, {len(data.target_names)} categories\")\nprint(f\"前3个类别: {data.target_names[:3]}\")\nprint(f\"样例文本（前200字符）: {data.data[0][:200]}...\")\nprint(f\"对应标签: {data.target_names[data.target[0]]}\")\n\n# 2. 划分训练集、验证集、测试集（stratify保持类别分布）\nX_temp, X_test, y_temp, y_test = train_test_split(\n    data.data, data.target, test_size=0.2, random_state=42, stratify=data.target\n)\nX_train, X_val, y_train, y_val = train_test_split(\n    X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp  # 0.25 * 0.8 = 0.2\n)\nprint(f\"训练集: {len(X_train)} samples, 验证集: {len(X_val)} samples, 测试集: {len(X_test)} samples\")\n\n# 3. 构建TF-IDF + 逻辑回归pipeline\npipeline = Pipeline([\n    ('tfidf', TfidfVectorizer(max_features=10000, stop_words='english')),\n    ('clf', LogisticRegression(max_iter=1000, random_state=42))\n])\n\n# 训练模型\npipeline.fit(X_train, y_train)\n\n# 4. 评估模型\nval_pred = pipeline.predict(X_val)\nval_accuracy = accuracy_score(y_val, val_pred)\nval_f1 = f1_score(y_val, val_pred, average='macro')\nprint(f\"验证集准确率: {val_accuracy:.4f}\")\nprint(f\"验证集宏平均F1分数: {val_f1:.4f}\")\n\n# 在测试集上最终评估\ntest_pred = pipeline.predict(X_test)\ntest_accuracy = accuracy_score(y_test, test_pred)\ntest_f1 = f1_score(y_test, test_pred, average='macro')\nprint(f\"测试集准确率: {test_accuracy:.4f}\")\nprint(f\"测试集宏平均F1分数: {test_f1:.4f}\")\n\n# 5. 混淆矩阵可视化\ncm = confusion_matrix(y_test, test_pred)\nplt.figure(figsize=(12, 10))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', \n            xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix for 20 Newsgroups Classification')\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.tight_layout()\nplt.show()\n\n# 6. 错误分析：找出最易混淆的类别对\nconfusion_pairs = []\nfor i in range(len(data.target_names)):\n    for j in range(len(data.target_names)):\n        if i != j and cm[i, j] > 5:  # 忽略少量错分\n            confusion_pairs.append((data.target_names[i], data.target_names[j], cm[i, j]))\nconfusion_pairs.sort(key=lambda x: x[2], reverse=True)\nprint(\"\\n最易混淆的类别对（错分样本数>5）:\")\nfor true_label, pred_label, count in confusion_pairs[:5]:\n    print(f\"  {true_label} → {pred_label}: {count} samples\")\n\n# 7. 记录关键信息\nprint(\"\\n关键依赖包版本:\")\nimport sklearn\nprint(f\"scikit-learn: {sklearn.__version__}\")\nprint(f\"numpy: {np.__version__}\")\nprint(f\"随机种子: 42\")</code></pre>\n<p>运行此代码将输出数据集规模、类别数量、样例文本，并计算测试集准确率和宏平均F1分数。混淆矩阵可视化展示各类别的错分模式，错误分析识别最易混淆的类别对（如“comp.sys.ibm.pc.hardware”与“comp.sys.mac.hardware”）。该实现完全自包含，无需外部数据文件，可在任何配置了scikit-learn的环境中复现。</p>\n<p>若需替换为深度学习模型，可将TF-IDF向量器替换为BERT特征提取器：使用transformers库加载预训练BERT模型，提取[CLS] token的隐藏状态作为特征，然后输入相同的逻辑回归分类器。注意深度模型需要GPU加速，且推理延迟显著高于传统方法。</p>\n\n<p>通过本课程，我们系统梳理了NLP四大核心任务的定义、机制与工程实践。分类任务学习离散标签映射，序列标注建模token级依赖，生成任务自回归预测序列，评测任务量化模型性能。每种任务都有其适用的数学工具、实现要点和评估标准。掌握这张任务地图，你便能根据具体需求选择合适的技术路径，无论是构建传统机器学习管线还是设计大语言模型提示。下一步，可探索检索增强生成（RAG）如何结合检索与生成任务，或深入研究LLM评估指标的设计原理。</p>",
+        "en": "<h3>From Intuition to Definition: Why We Need an NLP Task Map</h3>\n<p>When confronted with massive text data, engineers often face the dilemma of \"not knowing where to start.\" Should they directly call large language model APIs or build traditional machine learning pipelines? This confusion stems from a lack of systematic understanding of the natural language processing task landscape. The NLP Task Map is designed to address this issue—a classification framework that organizes diverse text processing needs into four core tasks: classification, sequence labeling, generation, and evaluation. Each task has its unique mathematical formalization, implementation mechanisms, and applicable scenarios.</p>\n<p>Classification tasks assign predefined category labels to texts, mathematically learning a mapping function from text feature space to discrete label space. Given a text sequence \\(x = (w_1, w_2, ..., w_n)\\), the classification model predicts its category \\(y \\in \\{1, 2, ..., K\\}\\), where K is the total number of categories. The objective function typically uses cross-entropy loss: \\[\\mathcal{L}_{CE} = -\\sum_{i=1}^{K} y_i \\log(\\hat{y}_i)\\] where \\(y_i\\) is the one-hot encoding of the true label and \\(\\hat{y}_i\\) is the model's predicted probability distribution. This formula intuitively reflects the discrepancy between predicted probabilities and the true distribution.</p>\n<p>In engineering implementation, classification tasks follow a standard pipeline: \"raw text → feature extraction → classifier → evaluation.\" For feature extraction, traditional methods often use TF-IDF (Term Frequency-Inverse Document Frequency) to convert text into numerical vectors: \\[\\text{TF-IDF}(t,d) = \\text{TF}(t,d) \\times \\log\\frac{N}{\\text{DF}(t)}\\] where t is a term, d is a document, N is the total number of documents, and DF(t) is the number of documents containing term t. Modern deep learning approaches use the [CLS] token representation from pre-trained language models (e.g., BERT) as features. Latency-sensitive points mainly involve the computational complexity of feature extraction: O(n·m) for TF-IDF versus O(n²·d) for BERT inference, where n is sequence length, m is vocabulary size, and d is hidden dimension.</p>\n<p>A common misconception is that \"large language models can solve all classification tasks.\" In reality, traditional methods still have advantages in specific scenarios: when training data is small (<1000 samples), simple models like logistic regression are often more stable than fine-tuning large models; when inference latency requirements are extremely strict (<10ms), TF-IDF + linear classifier combinations are much faster than large model inference; when fully controllable decision boundaries are needed, traditional models offer better parameter interpretability. Failure modes include model bias due to class imbalance, overfitting from sparse features, and inflated accuracy from test set leakage.</p>\n<p>To diagnose classification model issues, multiple evaluation metrics should be examined simultaneously. Accuracy \\(\\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN}\\) is only suitable for balanced datasets; for imbalanced data, precision \\(\\text{Precision} = \\frac{TP}{TP+FP}\\), recall \\(\\text{Recall} = \\frac{TP}{TP+FN}\\), and F1-score \\(\\text{F1} = 2 \\times \\frac{\\text{Precision} \\times \\text{Recall}}{\\text{Precision} + \\text{Recall}}\\) should be combined for comprehensive assessment. Confusion matrix visualization clearly displays misclassification patterns across categories.</p>\n<p>After understanding the definition and boundaries of classification tasks, a natural question arises: when labels need to be assigned to each token in a sequence rather than the entire text, how should we proceed? This leads to the unique challenges of sequence labeling tasks.</p>\n\n<h3>Task Mechanism Deep Dive: From Traditional Methods to Prompt Engineering</h3>\n<p>Sequence labeling tasks require assigning labels to each token in a text sequence, with typical applications including named entity recognition, part-of-speech tagging, and semantic role labeling. Unlike classification tasks, sequence labeling must consider contextual dependencies between tokens. Mathematically, given an input sequence \\(x = (x_1, x_2, ..., x_T)\\), the model outputs a label sequence \\(y = (y_1, y_2, ..., y_T)\\), where each \\(y_t \\in \\mathcal{Y}\\) comes from a finite label set. Conditional Random Fields (CRF) are core traditional models for sequence labeling, with objective function: \\[P(y|x) = \\frac{1}{Z(x)} \\exp\\left(\\sum_{t=1}^{T} \\sum_{k=1}^{K} \\theta_k f_k(y_t, y_{t-1}, x, t)\\right)\\] where \\(Z(x)\\) is the normalization factor, \\(f_k\\) are feature functions, and \\(\\theta_k\\) are learnable parameters.</p>\n<p>Modern deep learning methods replace manual feature engineering with neural networks. The BiLSTM-CRF architecture uses LSTM layers to capture contextual information, with a CRF layer ensuring global consistency of label sequences. The Transformer architecture (Source: Attention Is All You Need, 2017) introduces self-attention mechanisms, allowing each token to directly attend to all other tokens in the sequence, with computational complexity O(T²·d). Pre-trained language model BERT (Source: BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding, 2019) learns rich contextual representations through masked language modeling tasks; fine-tuning only requires adding a linear classifier on top for sequence labeling.</p>\n<p>Engineering implementation points include: data annotation should follow labeling schemes like BIO or BIOES; batch processing must handle variable-length sequences (commonly using padding and masking); evaluation should compute metrics per token rather than per sample. For named entity recognition, common metrics include entity-level precision, recall, and F1-score. Sequence labeling is sensitive to computational resources; long sequences (>512 tokens) require segmentation or long-context models.</p>\n<p>A common misconception is that \"sequence labeling is just independent classification for each word.\" In reality, strong dependencies exist between labels: in named entity recognition, \"B-LOC\" should be followed by \"I-LOC\" not \"B-PER\"; in part-of-speech tagging, articles are typically followed by nouns not verbs. Ignoring these constraints leads to illegal label sequences. Another misconception is over-reliance on large models; for domain-specific entity types (e.g., medical terms, legal clauses), rule-based or dictionary methods may be more accurate and efficient.</p>\n<p>Failure modes include: training noise from inconsistent annotations, low recall for rare entities, difficulty recognizing nested entities. For diagnosis, analyze misclassification patterns of specific entity types in confusion matrices, checking whether errors are boundary recognition mistakes (B/I label confusion) or type recognition mistakes (LOC/ORG confusion). For long entities, boundary precision (proportion of exact boundary matches) can be computed.</p>\n<p>After mastering mechanisms for assigning discrete labels, we turn to more creative tasks: how to make models generate coherent, relevant, and diverse text? This requires deep understanding of the probabilistic modeling essence of text generation.</p>\n\n<h3>Engineering Practice: Building Reproducible NLP Task Pipelines</h3>\n<p>Text generation tasks require models to generate coherent text outputs based on inputs, covering applications like machine translation, summarization, and dialogue systems. Mathematically, generation models need to model the conditional probability distribution \\(P(y|x)\\), where \\(y = (y_1, y_2, ..., y_M)\\) is the output sequence. Autoregressive generation decomposes this probability via chain rule: \\[P(y|x) = \\prod_{t=1}^{M} P(y_t | y_{&lt;t}, x)\\] each timestep predicting the next token based on previously generated prefix and input. The objective function is negative log-likelihood: \\[\\mathcal{L}_{NLL} = -\\sum_{t=1}^{M} \\log P(y_t | y_{&lt;t}, x)\\]</p>\n<p>Traditional statistical methods like n-gram language models rely on Markov assumptions, considering only limited historical context. Neural generation models use RNN, LSTM, or Transformer to encode input and decode output. Modern large language models guide generation through prompt engineering: designing prompt templates \\(\\text{prompt}(x)\\) for models to complete subsequent text. For example, a summarization prompt could be \"Please generate a summary for the following article: {article content}\\nSummary:\". The core of prompt engineering is finding expressions that elicit relevant knowledge from models while controlling generation style and format.</p>\n<p>Evaluating generation quality is a core challenge. Automatic evaluation metric ROUGE (Recall-Oriented Understudy for Gisting Evaluation) computes based on n-gram overlap: \\[\\text{ROUGE-N} = \\frac{\\sum_{S\\in\\{\\text{reference summaries}\\}} \\sum_{\\text{gram}_n\\in S} \\text{Count}_{\\text{match}}(\\text{gram}_n)}{\\sum_{S\\in\\{\\text{reference summaries}\\}} \\sum_{\\text{gram}_n\\in S} \\text{Count}(\\text{gram}_n)}\\] where N is n-gram length, \\(\\text{Count}_{\\text{match}}\\) is the number of n-grams shared between generated and reference summaries. ROUGE-1 focuses on unigram overlap, ROUGE-2 on bigram overlap, ROUGE-L on longest common subsequence.</p>\n<p>Engineering implementation must ensure reproducibility: fixing random seeds, recording dependency versions, saving intermediate results. Data pipelines should include cleaning (removing HTML tags, normalizing whitespace), tokenization (choosing word, character, or subword units per task), splitting (stratified to maintain class distribution). Model training should monitor train/validation loss curves to prevent overfitting. Deployment must consider generation speed (affected by decoding algorithms and sequence length) and memory usage (model parameter count).</p>\n<p>A common misconception is that \"high accuracy means the model is good.\" For generation tasks, high ROUGE scores may correspond to fluent but irrelevant text, or relevant but redundant text. Human evaluation should complement to check faithfulness (whether original meaning is distorted), coherence (whether logic is smooth), and informativeness (whether key information is included). Another misconception is neglecting the systematic nature of prompt engineering: prompts should be optimized via A/B testing, recording performance differences across templates.</p>\n<p>Failure modes include: generating repetitive content (due to insufficient diversity in beam search), generating irrelevant content (due to attention mechanism failure), generating unsafe content (due to biases in training data). For diagnosis, analyze error types in generated samples, adjust decoding parameters (e.g., temperature, top-p), modify prompt templates, or add post-processing rules. For critical applications, establish regression test sets to monitor performance changes after model updates.</p>\n<p>Now, let's translate this theoretical knowledge into concrete code, building a complete text classification system to experience the full pipeline from data to evaluation.</p>\n\n<h3>Reproducible Example: News Text Classification System</h3>\n<p>The following code builds an end-to-end news text classification system using scikit-learn's built-in 20newsgroups dataset (Source: Scikit-learn: Machine Learning in Python, 2011). We implement a complete pipeline of TF-IDF feature extraction + logistic regression, compute accuracy and F1-score, and visualize confusion matrix for error analysis.</p>\n<pre><code># Code Block #1: End-to-End News Text Classification System\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# Fix random seed for reproducibility\nnp.random.seed(42)\n\n# 1. Load dataset and check basic information\ndata = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nprint(f\"Dataset shape: {len(data.data)} samples, {len(data.target_names)} categories\")\nprint(f\"First 3 categories: {data.target_names[:3]}\")\nprint(f\"Sample text (first 200 chars): {data.data[0][:200]}...\")\nprint(f\"Corresponding label: {data.target_names[data.target[0]]}\")\n\n# 2. Split train, validation, test sets (stratify to maintain class distribution)\nX_temp, X_test, y_temp, y_test = train_test_split(\n    data.data, data.target, test_size=0.2, random_state=42, stratify=data.target\n)\nX_train, X_val, y_train, y_val = train_test_split(\n    X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp  # 0.25 * 0.8 = 0.2\n)\nprint(f\"Train set: {len(X_train)} samples, Validation set: {len(X_val)} samples, Test set: {len(X_test)} samples\")\n\n# 3. Build TF-IDF + Logistic Regression pipeline\npipeline = Pipeline([\n    ('tfidf', TfidfVectorizer(max_features=10000, stop_words='english')),\n    ('clf', LogisticRegression(max_iter=1000, random_state=42))\n])\n\n# Train model\npipeline.fit(X_train, y_train)\n\n# 4. Evaluate model\nval_pred = pipeline.predict(X_val)\nval_accuracy = accuracy_score(y_val, val_pred)\nval_f1 = f1_score(y_val, val_pred, average='macro')\nprint(f\"Validation accuracy: {val_accuracy:.4f}\")\nprint(f\"Validation macro-average F1-score: {val_f1:.4f}\")\n\n# Final evaluation on test set\ntest_pred = pipeline.predict(X_test)\ntest_accuracy = accuracy_score(y_test, test_pred)\ntest_f1 = f1_score(y_test, test_pred, average='macro')\nprint(f\"Test accuracy: {test_accuracy:.4f}\")\nprint(f\"Test macro-average F1-score: {test_f1:.4f}\")\n\n# 5. Confusion matrix visualization\ncm = confusion_matrix(y_test, test_pred)\nplt.figure(figsize=(12, 10))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', \n            xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix for 20 Newsgroups Classification')\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.tight_layout()\nplt.show()\n\n# 6. Error analysis: identify most confused category pairs\nconfusion_pairs = []\nfor i in range(len(data.target_names)):\n    for j in range(len(data.target_names)):\n        if i != j and cm[i, j] > 5:  # ignore minor misclassifications\n            confusion_pairs.append((data.target_names[i], data.target_names[j], cm[i, j]))\nconfusion_pairs.sort(key=lambda x: x[2], reverse=True)\nprint(\"\\nMost confused category pairs (misclassified samples >5):\")\nfor true_label, pred_label, count in confusion_pairs[:5]:\n    print(f\"  {true_label} → {pred_label}: {count} samples\")\n\n# 7. Record key information\nprint(\"\\nKey dependency versions:\")\nimport sklearn\nprint(f\"scikit-learn: {sklearn.__version__}\")\nprint(f\"numpy: {np.__version__}\")\nprint(f\"Random seed: 42\")</code></pre>\n<p>Running this code outputs dataset size, number of categories, sample text, and computes test accuracy and macro-average F1-score. Confusion matrix visualization shows misclassification patterns across categories, with error analysis identifying most confused category pairs (e.g., \"comp.sys.ibm.pc.hardware\" vs \"comp.sys.mac.hardware\"). This implementation is fully self-contained, requiring no external data files, and reproducible in any environment with scikit-learn installed.</p>\n<p>To replace with deep learning models, substitute the TF-IDF vectorizer with BERT feature extractor: use transformers library to load pre-trained BERT model, extract hidden states of [CLS] token as features, then feed into the same logistic regression classifier. Note deep models require GPU acceleration and have significantly higher inference latency than traditional methods.</p>\n\n<p>Through this course, we systematically organized definitions, mechanisms, and engineering practices for four core NLP tasks. Classification learns discrete label mappings, sequence labeling models token-level dependencies, generation autoregressively predicts sequences, evaluation quantifies model performance. Each task has suitable mathematical tools, implementation points, and evaluation standards. Mastering this task map enables you to choose appropriate technical paths based on specific needs, whether building traditional machine learning pipelines or designing large language model prompts. Next, explore how Retrieval-Augmented Generation (RAG) combines retrieval and generation tasks, or delve into design principles of LLM evaluation metrics.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：NLP 任务地图：分类、序列标注、生成与评测 · 结构总览 · 数据：课程大纲】在设计《NLP 任务地图：分类、序列标注、生成与评测》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: NLP 任务地图：分类、序列标注、生成与评测 · 结构总览 · Data: 课程大纲】When outlining \"NLP 任务地图：分类、序列标注、生成与评测\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：NLP 任务地图：分类、序列标注、生成与评测 · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《NLP 任务地图：分类、序列标注、生成与评测》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: NLP 任务地图：分类、序列标注、生成与评测 · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"NLP 任务地图：分类、序列标注、生成与评测\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：NLP 任务地图：分类、序列标注、生成与评测 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《NLP 任务地图：分类、序列标注、生成与评测》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: NLP 任务地图：分类、序列标注、生成与评测 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"NLP 任务地图：分类、序列标注、生成与评测\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：NLP 任务地图：分类、序列标注、生成与评测 · 参考资料 · 数据：课程引用文献】当引用文献支撑《NLP 任务地图：分类、序列标注、生成与评测》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: NLP 任务地图：分类、序列标注、生成与评测 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"NLP 任务地图：分类、序列标注、生成与评测\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Attention Is All You Need（NeurIPS，2017）",
+            "en": "Attention Is All You Need (NeurIPS, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1706.03762"
+        },
+        {
+          "label": {
+            "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（NAACL，2019）",
+            "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (NAACL, 2019)"
+          },
+          "url": "https://arxiv.org/abs/1810.04805"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（JMLR，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (JMLR, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-03-nlp-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 2,
+        "related": [
+          "RAG 总览：何时用、何时别用",
+          "LLM 应用 Evals：离线评测集构建与回归测试"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 NLP 任务地图：分类、序列标注、生成与评测 可帮助团队在语言",
+          "best_for": "适合 NLP工程师、产品经理、研究人员，需要快速吸收 6. NLP 到大语言模型 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 NLP 任务地图：分类、序列标注、生成与评测 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 NLP 任务地图：分类、序列标注、生成与评测 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，在构建文本分类系统时，你如何根据业务需求在传统TF-IDF+逻辑回归与大语言模型微调之间做出选择？",
+            "action_hint": "思考分类任务的准确率、可解释性要求与计算资源限制"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，设计智能客服系统时，你如何结合序列标注（实体识别）与文本生成任务来优化用户体验？",
+            "action_hint": "分析用户查询中的关键信息提取与自然回复生成的协同机制"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-03-deployment",
       "date": "2026-03-03",
