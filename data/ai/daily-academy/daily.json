@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-03-03T14:17:53.529Z",
+  "generatedAt": "2026-03-04T14:22:35.814Z",
   "lessons": [
+    {
+      "id": "2026-03-04-tokenizationbpeunigram",
+      "date": "2026-03-04",
+      "title": {
+        "zh": "Tokenization：BPE/Unigram 与多语种要点",
+        "en": "Tokenization: BPE/Unigram and Multilingual Key Points"
+      },
+      "summary": {
+        "zh": "本课程深入探讨了分词在语言建模中的核心作用，从基础概念到BPE和Unigram算法的机制与实现。首先，解释了为什么分词是模型处理文本的关键步骤，涉及分词、子词和词表的定义。其次，详细分析了BPE和Unigram的原理，包括数学公式和工程参数选择。最后，通过多语种分词的实践示例，展示了如何构建可复现流程并计算评估指标。课程强调理论结合实践，帮助学习者掌握从传统NLP到LLM的关键概念链条，并应用于提示工程等场景。",
+        "en": "This course delves into the core role of tokenization in language modeling, from fundamental concepts to the mechanisms and implementation of BPE and Unigram algorithms. First, it explains why tokenization is a critical step for models to process text, covering definitions of tokenization, subwords, and vocabulary. Second, it provides a detailed analysis of BPE and Unigram principles, including mathematical formulas and engineering parameter selection. Finally, through a practical example of multilingual tokenization, it demonstrates how to build a reproducible pipeline and compute evaluation metrics. The course emphasizes combining theory with practice, helping learners master key conceptual chains from traditional NLP to LLMs and apply them in scenarios like prompt engineering."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "tokenization",
+        "bpe"
+      ],
+      "content": {
+        "zh": "<h3>从字符到Token：为什么需要分词？</h3>\n<p>在自然语言处理（Natural Language Processing, NLP）中，语言模型（Language Model, LM）无法直接处理原始文本字符串。文本由字符序列组成，而字符本身缺乏语义信息。例如，英文单词“unhappiness”包含13个字符，但模型需要理解其作为“un-”（否定前缀）、“happi”（词根）和“-ness”（名词后缀）的组合。分词（Tokenization）正是将连续文本转换为离散单元（tokens）的过程，这些单元可以是单词、子词（subword）或字符，构成模型输入的基础。在大型语言模型（Large Language Model, LLM）如GPT系列中，分词决定了模型如何“看到”文本，直接影响其理解和生成能力。这一步骤是语言建模的基石，尤其在提示工程（Prompt Engineering）中，token数量直接关联上下文窗口限制。</p>\n<p>精确定义上，分词指将文本分割为tokens的算法或流程。关键术语包括：分词（Tokenization）、子词（Subword，介于字符和完整词之间的文本单元）、词表（Vocabulary，所有可能tokens的集合）。例如，在中文中，“自然语言处理”可能被分词为[“自然”, “语言”, “处理”]，而在子词分词中，英文“lower”可能被分解为[“low”, “er”]。分词的目标是平衡词表大小和语义粒度：词表过大会导致稀疏性问题，过小则丢失语义细节。数学上，分词可视为一个映射函数 \\( f: T \\rightarrow V \\)，其中 \\( T \\) 是文本空间，\\( V \\) 是词表索引空间，目标是最大化文本的压缩效率或语言模型概率。</p>\n<p>机制上，分词的核心是选择合适的分割策略。传统方法如空格分割（whitespace tokenization）简单但局限，无法处理无空格语言（如中文）或复合词（如“New York”）。更先进的方法基于统计或神经网络，例如BPE（Byte Pair Encoding，字节对编码）和Unigram（一元语言模型）。评估分词质量常用指标包括压缩率（Compression Ratio），定义为原始文本长度与token数量的比值：\\( CR = \\frac{L_{\\text{text}}}{N_{\\text{tokens}}} \\)，其中 \\( L_{\\text{text}} \\) 是字符数，\\( N_{\\text{tokens}} \\) 是token数。高压缩率表示更高效的表示，但可能牺牲语义。另一个关键指标是词汇覆盖率（Vocabulary Coverage），衡量词表覆盖训练数据中不同文本单元的比例。</p>\n<p>工程实现中，分词流程包括文本预处理（如规范化、去除特殊字符）、分词算法应用和词表构建。关键要点是处理多语言文本时需统一编码（如UTF-8），并考虑语言特异性。例如，英文可能使用BPE，而中文可能基于字符或词分割。复杂度方面，分词通常是 \\( O(n) \\) 线性时间，但词表大小影响内存使用。延迟敏感点包括分词器的初始化和批量处理优化。在提示工程中，分词影响提示长度计算，例如GPT-3的上下文窗口以tokens计，而非字符，这要求工程师精确控制输入规模。</p>\n<p>常见误区包括认为分词仅是空格分割，或一个词表可处理所有语言。失败模式可能源于未处理罕见字符或编码错误，导致模型输入噪声。诊断方法包括检查token分布（如频率直方图）和对比不同分词器的输出。例如，如果token数量异常高，可能指示过度分割。另一个误区是忽视分词对模型性能的间接影响，如过大的词表增加训练成本。通过可视化token序列和计算指标如词汇覆盖率，可评估分词效果。实践中，建议使用标准化工具如SentencePiece（来源：SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing, 2018）来避免常见陷阱。</p>\n<p>理解了分词的基础作用和挑战，我们接下来深入两种主流算法：BPE和Unigram，它们如何从不同角度优化分词过程，并为多语种处理奠定基础。</p>\n<h3>BPE与Unigram：两种子词算法的核心思想</h3>\n<p>BPE（Byte Pair Encoding，字节对编码）和Unigram（Unigram Language Model，一元语言模型）是子词分词（Subword Tokenization）的两种核心算法，广泛应用于现代语言模型如BERT和GPT。BPE起源于数据压缩领域，通过迭代合并频繁字符对构建词表；Unigram则基于概率模型，选择最大化整体概率的分词方案。两者都旨在解决词汇表外（Out-of-Vocabulary, OOV）词问题，但机制不同：BPE是贪婪的、确定性的，而Unigram是概率性的、可提供多个候选。在语言建模中，这些算法帮助模型处理未见词汇，提升泛化能力。</p>\n<p>精确定义上，BPE是一种基于频率的合并算法，核心思想是逐步将最常见字符对（character pair）合并为新token，直到达到预设词表大小。Unigram是一种语言模型分词方法，假设每个token独立，通过最大化序列概率 \\( P(\\mathbf{x}) = \\prod_{i} P(t_i) \\) 来选择分词，其中 \\( t_i \\) 是token，\\( P(t_i) \\) 从其频率估计。关键术语包括：字节对编码（Byte Pair Encoding, BPE）、一元语言模型（Unigram Language Model）、合并操作（Merge Operation）。例如，在BPE中，如果“e”和“s”频繁共现，它们可能合并为“es”。这些定义源自经典论文（来源：Neural Machine Translation of Rare Words with Subword Units, 2015）。</p>\n<p>机制上，BPE算法步骤包括：初始化词表为所有字符；计算所有相邻字符对频率；合并最高频对；重复直到词表大小达标。数学上，合并准则基于频率最大化：\\( \\text{merge} = \\arg\\max_{(a,b)} \\text{freq}(a,b) \\)，其中 \\( a \\) 和 \\( b \\) 是字符或现有tokens。Unigram则通过动态规划求解最优分词，目标函数是 \\( \\max_{\\mathbf{t}} \\sum_{i} \\log P(t_i) \\)，其中 \\( P(t_i) \\) 通常用最大似然估计（Maximum Likelihood Estimation, MLE）从训练数据学习。Unigram还可通过退火（Annealing）调整概率，生成多样分词，如论文所述（来源：Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates, 2018）。</p>\n<p>工程实现要点包括：BPE需维护频率表，复杂度为 \\( O(k \\cdot n) \\)，其中 \\( k \\) 是合并次数，\\( n \\) 是文本长度；Unigram需预计算token概率，可能使用维特比算法（Viterbi Algorithm）进行高效解码。参数选择上，BPE的词表大小是关键，通常基于验证集性能调整；Unigram则需设置平滑参数避免零概率。在工具层面，SentencePiece库实现了两者，支持多语言。例如，训练BPE分词器时，过小的词表可能导致信息丢失，而过大会增加过拟合风险。实际中，建议从较小词表开始，逐步扩展。</p>\n<p>常见误区包括认为BPE总是优于Unigram，或忽视算法对语言特性的适应性。失败模式可能源于训练数据偏差，如BPE在低资源语言上合并无意义对。诊断方法包括分析合并历史和比较不同参数下的分词质量。例如，如果BPE产生过多罕见tokens，可能需要调整词表大小或预处理。另一个误区是混淆BPE与WordPiece（后者类似但合并准则不同）。通过计算指标如分词一致性（Tokenization Consistency），可评估算法稳定性。实践中，混合使用BPE和Unigram可能在某些场景更优。</p>\n<p>掌握了BPE和Unigram的原理，我们转向多语种场景，探讨如何在实际工程中应用这些算法处理复杂文本，并构建可复现的流程。</p>\n<h3>多语种分词的工程实践</h3>\n<p>多语种分词（Multilingual Tokenization）涉及处理混合语言文本，如中英文混合“Hello 世界”，需考虑语言特异性、字符编码和模型兼容性。随着全球化应用增多，如机器翻译或跨语言检索，高效的多语言分词成为关键。挑战包括语言识别（Language Identification）、处理不同书写系统（如拉丁字母vs.汉字）和平衡词表大小。例如，中文通常按字符分词，而英文可能用BPE，混合时需协调策略。这要求工程师理解Unicode编码和语言检测技术。</p>\n<p>精确定义上，多语种分词指为多种语言设计统一或混合的分词流程。关键术语包括：Unicode（统一字符编码标准）、语言标识（Language Identification）、特殊token（Special Tokens，如[CLS]、[SEP]）。例如，在Transformer模型中，特殊token用于分隔序列或表示任务。数学上，多语言分词可视为一个优化问题：最小化整体困惑度（Perplexity）或最大化跨语言对齐（Cross-lingual Alignment）。评估指标常用双语评估替分（BLEU, Bilingual Evaluation Understudy），但针对分词，可使用token重叠率（Token Overlap Rate）：\\( \\text{TOR} = \\frac{|\\text{tokens}_1 \\cap \\text{tokens}_2|}{\\max(|\\text{tokens}_1|, |\\text{tokens}_2|)} \\)，比较不同分词器的输出一致性。</p>\n<p>机制上，多语种分词流程包括：文本预处理（统一为UTF-8编码）、语言检测（可用库如langdetect）、应用语言特定分词器、后处理（如添加特殊token）。工程实现要点是使用灵活的工具如SentencePiece，它支持从混合语料训练单一分词器，通过Unicode编码处理多语言。例如，SentencePiece将文本视为Unicode字符序列，无需预先分词，从而支持无空格语言。复杂度方面，语言检测增加 \\( O(n) \\) 开销，但可缓存结果优化。根据官方文档（来源：SentencePiece GitHub Repository），该工具简化了多语言处理。</p>\n<p>在实现中，关键步骤是训练分词器：收集多语言数据、清洗（去除噪声）、训练BPE或Unigram模型。例如，为处理中英文，可混合使用中文维基百科和英文新闻数据。失败模式可能源于编码错误（如非UTF-8字符）或语言误判，导致分词错误。诊断方法包括检查token分布按语言和可视化分词边界。另一个常见误区是假设一个词表适用于所有语言；实际上，不同语言可能需要不同粒度，如中文字符vs.英文子词。通过以下综合示例，我们构建一个可复现的多语言分词流程，应用BPE和Unigram，并计算评估指标以巩固理解。</p>\n<pre><code>import sentencepiece as spm\nimport pandas as pd\nimport numpy as np\n\n# Step 1: Construct mixed Chinese-English text data (inline, no external files)\ntexts = [\n    \"Hello world\",\n    \"你好世界\",\n    \"Hello 世界\",\n    \"Natural Language Processing 自然语言处理\",\n    \"Tokenization is a fundamental step\"\n]\nprint(\"Original text examples:\")\nfor t in texts[:3]:\n    print(f\"  {t}\")\nprint(f\"Data scale: {len(texts)} texts\")\n\n# Step 2: Text cleaning (simple removal of extra spaces, may need more in practice)\ncleaned_texts = [t.strip() for t in texts]\n\n# Step 3: Train BPE tokenizer (using inline data, avoiding temporary files)\ncorpus_text = '\\n'.join(cleaned_texts)\nspm.SentencePieceTrainer.train(\n    sentence_iterator=iter([corpus_text]),\n    model_prefix='bpe_model',\n    vocab_size=50,  # Small vocabulary for demonstration\n    model_type='bpe',\n    input_format='text'\n)\nsp_bpe = spm.SentencePieceProcessor(model_file='bpe_model.model')\n\n# Train Unigram tokenizer\nspm.SentencePieceTrainer.train(\n    sentence_iterator=iter([corpus_text]),\n    model_prefix='unigram_model',\n    vocab_size=50,\n    model_type='unigram',\n    input_format='text'\n)\nsp_uni = spm.SentencePieceProcessor(model_file='unigram_model.model')\n\nprint(f\"BPE vocabulary size: {sp_bpe.get_piece_size()}\")\nprint(f\"Unigram vocabulary size: {sp_uni.get_piece_size()}\")\n\n# Step 4: Apply tokenizers to new text\nsample_text = \"Hello 世界 Tokenization\"\ntokens_bpe = sp_bpe.encode_as_pieces(sample_text)\ntokens_uni = sp_uni.encode_as_pieces(sample_text)\nprint(f\"Sample text: {sample_text}\")\nprint(f\"BPE tokenization result: {tokens_bpe}\")\nprint(f\"Unigram tokenization result: {tokens_uni}\")\n\n# Step 5: Compute evaluation metric - Token Overlap Rate (TOR)\ndef token_overlap_rate(tokens1, tokens2):\n    set1, set2 = set(tokens1), set(tokens2)\n    overlap = len(set1.intersection(set2))\n    max_len = max(len(set1), len(set2))\n    return overlap / max_len if max_len > 0 else 0.0\n\ntor = token_overlap_rate(tokens_bpe, tokens_uni)\nprint(f\"Token Overlap Rate (TOR) between BPE and Unigram: {tor:.3f}\")\nprint(\"Formula: TOR = |tokens1 ∩ tokens2| / max(|tokens1|, |tokens2|)\")\n\n# Print intermediate variables\nprint(f\"BPE token sequence length: {len(tokens_bpe)}\")\nprint(f\"Unigram token sequence length: {len(tokens_uni)}\")\n\n# Clean up temporary files\nimport os\nif os.path.exists('bpe_model.model'):\n    os.remove('bpe_model.model')\nif os.path.exists('bpe_model.vocab'):\n    os.remove('bpe_model.vocab')\nif os.path.exists('unigram_model.model'):\n    os.remove('unigram_model.model')\nif os.path.exists('unigram_model.vocab'):\n    os.remove('unigram_model.vocab')</code></pre>\n<p>此示例展示了端到端流程：从内联数据构造、清洗、训练BPE和Unigram分词器，到应用和评估。输出包括原始文本、词表大小、分词结果和TOR指标。TOR计算了两种算法分词结果的重叠程度，值越高表示一致性越好；这里TOR较低，反映BPE和Unigram在不同语言上的策略差异。通过调整vocab_size或添加更多数据，可优化分词效果。此代码完全可复现，无需外部文件，依赖仅sentencepiece。轻量替代方案：若无法安装sentencepiece，可用简单规则分词（如按空格和字符分割）作为baseline，但会损失子词优势。</p>\n<p>总结来说，分词是语言模型的基石，BPE和Unigram提供了灵活的子词解决方案，而多语种处理需结合语言特性和工程实践。掌握这些概念，您能更有效地设计提示和理解模型行为，为高级NLP任务打下基础。</p>",
+        "en": "<h3>From Characters to Tokens: Why Tokenization Matters</h3>\n<p>In natural language processing (NLP), language models (LMs) cannot directly process raw text strings. Text consists of character sequences, but characters themselves lack semantic information. For example, the English word \"unhappiness\" contains 13 characters, but a model needs to understand it as a combination of \"un-\" (negation prefix), \"happi\" (stem), and \"-ness\" (noun suffix). Tokenization is the process of converting continuous text into discrete units called tokens, which can be words, subwords, or characters, forming the foundation of model input. In large language models (LLMs) like the GPT series, tokenization determines how the model \"sees\" text, directly impacting its comprehension and generation capabilities. This step is fundamental to language modeling, especially in prompt engineering, where token count relates directly to context window limits.</p>\n<p>Precisely defined, tokenization refers to the algorithm or pipeline that segments text into tokens. Key terms include: Tokenization, Subword (text units between characters and full words), and Vocabulary (the set of all possible tokens). For instance, in Chinese, \"自然语言处理\" might be tokenized into [\"自然\", \"语言\", \"处理\"], while in subword tokenization, English \"lower\" might be decomposed into [\"low\", \"er\"]. The goal of tokenization is to balance vocabulary size and semantic granularity: an overly large vocabulary leads to sparsity issues, while an overly small one loses semantic detail. Mathematically, tokenization can be viewed as a mapping function \\( f: T \\rightarrow V \\), where \\( T \\) is the text space and \\( V \\) is the vocabulary index space, aiming to maximize compression efficiency or language model probability.</p>\n<p>Mechanistically, the core of tokenization is selecting an appropriate segmentation strategy. Traditional methods like whitespace tokenization are simple but limited, unable to handle languages without spaces (e.g., Chinese) or compound words (e.g., \"New York\"). More advanced methods are based on statistics or neural networks, such as BPE (Byte Pair Encoding) and Unigram (Unigram Language Model). Common metrics for evaluating tokenization quality include compression ratio, defined as the ratio of original text length to token count: \\( CR = \\frac{L_{\\text{text}}}{N_{\\text{tokens}}} \\), where \\( L_{\\text{text}} \\) is the character count and \\( N_{\\text{tokens}} \\) is the token count. A high compression ratio indicates more efficient representation but may sacrifice semantics. Another key metric is vocabulary coverage, measuring the proportion of different text units in training data covered by the vocabulary.</p>\n<p>In engineering implementation, the tokenization pipeline includes text preprocessing (e.g., normalization, removing special characters), applying tokenization algorithms, and vocabulary construction. A key point is that handling multilingual text requires unified encoding (e.g., UTF-8) and consideration of language specificity. For example, English might use BPE, while Chinese might be segmented by characters or words. In terms of complexity, tokenization is typically \\( O(n) \\) linear time, but vocabulary size affects memory usage. Latency-sensitive aspects include tokenizer initialization and batch processing optimization. In prompt engineering, tokenization influences prompt length calculation, e.g., GPT-3's context window is measured in tokens, not characters, requiring engineers to precisely control input scale.</p>\n<p>Common misconceptions include thinking tokenization is merely splitting by spaces, or that one vocabulary can handle all languages. Failure modes may arise from not handling rare characters or encoding errors, leading to noisy model input. Diagnostic methods include checking token distributions (e.g., frequency histograms) and comparing outputs from different tokenizers. For instance, if the token count is abnormally high, it may indicate over-segmentation. Another misconception is neglecting the indirect impact of tokenization on model performance, such as increased training costs with large vocabularies. By visualizing token sequences and computing metrics like vocabulary coverage, one can assess tokenization effectiveness. In practice, using standardized tools like SentencePiece (source: SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing, 2018) helps avoid common pitfalls.</p>\n<p>Understanding the foundational role and challenges of tokenization, we now delve into two mainstream algorithms: BPE and Unigram, which optimize the tokenization process from different angles and lay the groundwork for multilingual handling.</p>\n<h3>BPE and Unigram: Core Ideas of Two Subword Algorithms</h3>\n<p>BPE (Byte Pair Encoding) and Unigram (Unigram Language Model) are two core algorithms for subword tokenization, widely used in modern language models like BERT and GPT. BPE originates from data compression, building vocabularies by iteratively merging frequent character pairs; Unigram is based on a probabilistic model, selecting segmentation that maximizes overall probability. Both aim to address out-of-vocabulary (OOV) word issues, but their mechanisms differ: BPE is greedy and deterministic, while Unigram is probabilistic and can provide multiple candidates. In language modeling, these algorithms help models handle unseen vocabulary, improving generalization.</p>\n<p>Precisely defined, BPE is a frequency-based merging algorithm whose core idea is to gradually merge the most common character pairs into new tokens until a preset vocabulary size is reached. Unigram is a language model tokenization method that assumes each token is independent, selecting segmentation by maximizing sequence probability \\( P(\\mathbf{x}) = \\prod_{i} P(t_i) \\), where \\( t_i \\) is a token and \\( P(t_i) \\) is estimated from its frequency. Key terms include: Byte Pair Encoding (BPE), Unigram Language Model, and Merge Operation. For example, in BPE, if \"e\" and \"s\" co-occur frequently, they might merge into \"es\". These definitions stem from classic papers (source: Neural Machine Translation of Rare Words with Subword Units, 2015).</p>\n<p>Mechanistically, the BPE algorithm steps include: initializing the vocabulary with all characters; computing frequencies of all adjacent character pairs; merging the highest-frequency pair; repeating until vocabulary size is met. Mathematically, the merging criterion is based on frequency maximization: \\( \\text{merge} = \\arg\\max_{(a,b)} \\text{freq}(a,b) \\), where \\( a \\) and \\( b \\) are characters or existing tokens. Unigram solves for optimal segmentation via dynamic programming, with the objective function \\( \\max_{\\mathbf{t}} \\sum_{i} \\log P(t_i) \\), where \\( P(t_i) \\) is typically learned from training data using maximum likelihood estimation (MLE). Unigram can also adjust probabilities through annealing to generate diverse segmentations, as described in papers (source: Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates, 2018).</p>\n<p>Engineering implementation points include: BPE requires maintaining a frequency table, with complexity \\( O(k \\cdot n) \\), where \\( k \\) is the number of merges and \\( n \\) is text length; Unigram needs precomputed token probabilities, possibly using the Viterbi algorithm for efficient decoding. In parameter selection, BPE's vocabulary size is critical, usually tuned based on validation set performance; Unigram requires smoothing parameters to avoid zero probabilities. At the tool level, the SentencePiece library implements both, supporting multiple languages. For example, when training a BPE tokenizer, too small a vocabulary may lose information, while too large increases overfitting risk. In practice, starting with a smaller vocabulary and gradually expanding is recommended.</p>\n<p>Common misconceptions include thinking BPE is always better than Unigram, or ignoring algorithm adaptability to language characteristics. Failure modes may stem from training data bias, e.g., BPE merging meaningless pairs in low-resource languages. Diagnostic methods include analyzing merge histories and comparing segmentation quality under different parameters. For instance, if BPE produces too many rare tokens, adjusting vocabulary size or preprocessing may be needed. Another misconception is confusing BPE with WordPiece (the latter is similar but has a different merging criterion). By computing metrics like tokenization consistency, one can evaluate algorithm stability. In practice, hybrid use of BPE and Unigram may be optimal in certain scenarios.</p>\n<p>Having grasped the principles of BPE and Unigram, we turn to multilingual scenarios, exploring how to apply these algorithms in practical engineering to handle complex texts and build reproducible pipelines.</p>\n<h3>Engineering Practices for Multilingual Tokenization</h3>\n<p>Multilingual tokenization involves processing mixed-language texts, such as Chinese-English \"Hello 世界\", requiring consideration of language specificity, character encoding, and model compatibility. With the rise of global applications like machine translation or cross-lingual retrieval, efficient multilingual tokenization becomes crucial. Challenges include language identification, handling different writing systems (e.g., Latin alphabet vs. Chinese characters), and balancing vocabulary sizes. For example, Chinese is often tokenized by characters, while English might use BPE, necessitating coordinated strategies for mixtures. This requires engineers to understand Unicode encoding and language detection techniques.</p>\n<p>Precisely defined, multilingual tokenization refers to designing unified or hybrid tokenization pipelines for multiple languages. Key terms include: Unicode (the universal character encoding standard), Language Identification, and Special Tokens (e.g., [CLS], [SEP]). For instance, in Transformer models, special tokens are used to separate sequences or represent tasks. Mathematically, multilingual tokenization can be viewed as an optimization problem: minimizing overall perplexity or maximizing cross-lingual alignment. Common evaluation metrics include BLEU (Bilingual Evaluation Understudy), but for tokenization, token overlap rate can be used: \\( \\text{TOR} = \\frac{|\\text{tokens}_1 \\cap \\text{tokens}_2|}{\\max(|\\text{tokens}_1|, |\\text{tokens}_2|)} \\), comparing output consistency across tokenizers.</p>\n<p>Mechanistically, the multilingual tokenization pipeline includes: text preprocessing (unifying to UTF-8 encoding), language detection (using libraries like langdetect), applying language-specific tokenizers, and post-processing (e.g., adding special tokens). An engineering key point is using flexible tools like SentencePiece, which supports training a single tokenizer from mixed corpora, handling multiple languages via Unicode encoding. For example, SentencePiece treats text as Unicode character sequences, requiring no pre-tokenization, thus supporting languages without spaces. In terms of complexity, language detection adds \\( O(n) \\) overhead but can be optimized by caching results. According to official documentation (source: SentencePiece GitHub Repository), this tool simplifies multilingual processing.</p>\n<p>In implementation, a key step is training the tokenizer: collecting multilingual data, cleaning (removing noise), and training BPE or Unigram models. For instance, to handle Chinese-English, one might mix Chinese Wikipedia and English news data. Failure modes may arise from encoding errors (e.g., non-UTF-8 characters) or language misidentification, leading to incorrect tokenization. Diagnostic methods include checking token distributions by language and visualizing segmentation boundaries. Another common misconception is assuming one vocabulary suits all languages; in reality, different languages may require different granularities, such as Chinese characters vs. English subwords. Through the following comprehensive example, we build a reproducible multilingual tokenization pipeline, applying BPE and Unigram, and compute evaluation metrics to solidify understanding.</p>\n<pre><code>import sentencepiece as spm\nimport pandas as pd\nimport numpy as np\n\n# Step 1: Construct mixed Chinese-English text data (inline, no external files)\ntexts = [\n    \"Hello world\",\n    \"你好世界\",\n    \"Hello 世界\",\n    \"Natural Language Processing 自然语言处理\",\n    \"Tokenization is a fundamental step\"\n]\nprint(\"Original text examples:\")\nfor t in texts[:3]:\n    print(f\"  {t}\")\nprint(f\"Data scale: {len(texts)} texts\")\n\n# Step 2: Text cleaning (simple removal of extra spaces, may need more in practice)\ncleaned_texts = [t.strip() for t in texts]\n\n# Step 3: Train BPE tokenizer (using inline data, avoiding temporary files)\ncorpus_text = '\\n'.join(cleaned_texts)\nspm.SentencePieceTrainer.train(\n    sentence_iterator=iter([corpus_text]),\n    model_prefix='bpe_model',\n    vocab_size=50,  # Small vocabulary for demonstration\n    model_type='bpe',\n    input_format='text'\n)\nsp_bpe = spm.SentencePieceProcessor(model_file='bpe_model.model')\n\n# Train Unigram tokenizer\nspm.SentencePieceTrainer.train(\n    sentence_iterator=iter([corpus_text]),\n    model_prefix='unigram_model',\n    vocab_size=50,\n    model_type='unigram',\n    input_format='text'\n)\nsp_uni = spm.SentencePieceProcessor(model_file='unigram_model.model')\n\nprint(f\"BPE vocabulary size: {sp_bpe.get_piece_size()}\")\nprint(f\"Unigram vocabulary size: {sp_uni.get_piece_size()}\")\n\n# Step 4: Apply tokenizers to new text\nsample_text = \"Hello 世界 Tokenization\"\ntokens_bpe = sp_bpe.encode_as_pieces(sample_text)\ntokens_uni = sp_uni.encode_as_pieces(sample_text)\nprint(f\"Sample text: {sample_text}\")\nprint(f\"BPE tokenization result: {tokens_bpe}\")\nprint(f\"Unigram tokenization result: {tokens_uni}\")\n\n# Step 5: Compute evaluation metric - Token Overlap Rate (TOR)\ndef token_overlap_rate(tokens1, tokens2):\n    set1, set2 = set(tokens1), set(tokens2)\n    overlap = len(set1.intersection(set2))\n    max_len = max(len(set1), len(set2))\n    return overlap / max_len if max_len > 0 else 0.0\n\ntor = token_overlap_rate(tokens_bpe, tokens_uni)\nprint(f\"Token Overlap Rate (TOR) between BPE and Unigram: {tor:.3f}\")\nprint(\"Formula: TOR = |tokens1 ∩ tokens2| / max(|tokens1|, |tokens2|)\")\n\n# Print intermediate variables\nprint(f\"BPE token sequence length: {len(tokens_bpe)}\")\nprint(f\"Unigram token sequence length: {len(tokens_uni)}\")\n\n# Clean up temporary files\nimport os\nif os.path.exists('bpe_model.model'):\n    os.remove('bpe_model.model')\nif os.path.exists('bpe_model.vocab'):\n    os.remove('bpe_model.vocab')\nif os.path.exists('unigram_model.model'):\n    os.remove('unigram_model.model')\nif os.path.exists('unigram_model.vocab'):\n    os.remove('unigram_model.vocab')</code></pre>\n<p>This example demonstrates an end-to-end pipeline: from inline data construction, cleaning, training BPE and Unigram tokenizers, to application and evaluation. Outputs include original texts, vocabulary sizes, tokenization results, and the TOR metric. TOR calculates the overlap between tokenization results from the two algorithms, with higher values indicating better consistency; here, a low TOR reflects strategic differences between BPE and Unigram across languages. By adjusting vocab_size or adding more data, tokenization can be optimized. This code is fully reproducible, requiring no external files and dependencies only on sentencepiece. Lightweight alternative: if sentencepiece cannot be installed, simple rule-based tokenization (e.g., splitting by spaces and characters) can serve as a baseline, but loses subword advantages.</p>\n<p>In summary, tokenization is the cornerstone of language models, with BPE and Unigram offering flexible subword solutions, while multilingual handling requires combining language characteristics and engineering practices. Mastering these concepts enables more effective prompt design and model behavior understanding, laying a foundation for advanced NLP tasks.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Tokenization：BPE/Unigram 与多语种要点 · 结构总览 · 数据：课程大纲】在设计《Tokenization：BPE/Unigram 与多语种要点》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Tokenization：BPE/Unigram 与多语种要点 · 结构总览 · Data: 课程大纲】When outlining \"Tokenization：BPE/Unigram 与多语种要点\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Tokenization：BPE/Unigram 与多语种要点 · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《Tokenization：BPE/Unigram 与多语种要点》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Tokenization：BPE/Unigram 与多语种要点 · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"Tokenization：BPE/Unigram 与多语种要点\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Tokenization：BPE/Unigram 与多语种要点 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Tokenization：BPE/Unigram 与多语种要点》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Tokenization：BPE/Unigram 与多语种要点 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Tokenization：BPE/Unigram 与多语种要点\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Tokenization：BPE/Unigram 与多语种要点 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Tokenization：BPE/Unigram 与多语种要点》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Tokenization：BPE/Unigram 与多语种要点 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Tokenization：BPE/Unigram 与多语种要点\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Neural Machine Translation of Rare Words with Subword Units（arXiv，2015）",
+            "en": "Neural Machine Translation of Rare Words with Subword Units (arXiv, 2015)"
+          },
+          "url": "https://arxiv.org/abs/1508.07909"
+        },
+        {
+          "label": {
+            "zh": "Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates（arXiv，2018）",
+            "en": "Subword Regularization: Improving Neural Network Translation Models with Multiple Subword Candidates (arXiv, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1804.10959"
+        },
+        {
+          "label": {
+            "zh": "SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing（arXiv，2018）",
+            "en": "SentencePiece: A simple and language independent subword tokenizer and detokenizer for Neural Text Processing (arXiv, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1808.06226"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-04-tokenizationbpeunigram-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 2,
+        "related": [
+          "RAG 总览：何时用、何时别用",
+          "LLM 应用 Evals：离线评测集构建与回归测试"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering tokenization, BPE, Unigram, and multilingual considerations at this stage helps teams develop reusable practices in language modeling and prompt engineering.",
+          "best_for": "Suitable for NLP engineers, product managers, and researchers who need to quickly absorb topics from NLP to large language models.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate the process."
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 Tokenization：BPE/Unigram 与多语种要点 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 Tokenization：BPE/Unigram 与多语种要点 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，你在处理多语言文本时，如何根据BPE和Unigram算法的原理，设计适合特定语种的分词策略？",
+            "action_hint": "回顾你最近处理的多语言项目，思考分词选择对模型性能的影响。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，在构建多语言AI产品时，你会如何利用BPE和Unigram的分词特性来优化提示工程，提升用户体验？",
+            "action_hint": "结合你负责的产品场景，分析不同分词方法对交互效果的实际差异。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-03-nlp",
       "date": "2026-03-03",
