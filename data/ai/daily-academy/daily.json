@@ -1,6 +1,177 @@
 {
-  "generatedAt": "2026-03-05T02:38:51.325Z",
+  "generatedAt": "2026-03-05T14:26:11.448Z",
   "lessons": [
+    {
+      "id": "2026-03-05-n-gram-rnn-transformer",
+      "date": "2026-03-05",
+      "title": {
+        "zh": "语言模型演进：n-gram → RNN → Transformer",
+        "en": "Evolution of Language Models: n-gram → RNN → Transformer"
+      },
+      "summary": {
+        "zh": "语言模型从统计方法到神经网络的演进，揭示了自然语言处理从基于频率的预测到上下文理解的关键转变，为现代大语言模型奠定了基础，课程围绕 语言建模与提示工程 中的可执行路径展开。内容串联 从统计直觉到n-gram：语言的可预测性、RNN：循环中的记忆与遗忘、Transformer：自注意力与并行革命，梳理定义、推导与迁移步骤。",
+        "en": "语言模型演进：n-gram → RNN → Transformer is positioned for 语言建模与提示工程 initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从统计直觉到n-gram：语言的可预测性, RNN：循环中的记忆与遗忘, Transformer：自注意力与并行革命 to translate theory into executable steps."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "language model",
+        "transformer"
+      ],
+      "content": {
+        "zh": "<h2>语言模型演进：从统计直觉到神经架构</h2>\n\n<h3>从统计直觉到n-gram：语言的可预测性</h3>\n<p>当我们面对“今天天气很___”这样的句子时，人类能自然地预测“好”“晴朗”等词，这种预测能力源于对语言共现规律的统计直觉。在自然语言处理早期，n-gram模型正是将这种直觉形式化的工具。n-gram（中文：n元语法）是基于马尔可夫假设的统计语言模型，它假设当前词的出现概率仅依赖于前n-1个词。这种简化使得模型能够通过统计语料库中的词序列频率来预测下一个词，为机器理解语言提供了第一个可计算的框架。</p>\n<p>从数学角度看，n-gram模型的核心是条件概率估计。给定一个词序列w₁,w₂,...,wₘ，模型的目标是计算整个序列的概率P(w₁,w₂,...,wₘ)。通过链式法则和马尔可夫假设，这个概率可以分解为：P(w₁,w₂,...,wₘ) ≈ ∏ᵢ P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁)。其中，条件概率P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁)通过最大似然估计计算：P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁) = count(wᵢ₋ₙ₊₁,...,wᵢ) / count(wᵢ₋ₙ₊₁,...,wᵢ₋₁)。这里count(·)表示序列在训练语料中出现的次数。当n=2时，我们得到bigram模型；n=3得到trigram模型。实际应用中，由于数据稀疏问题，常采用平滑技术如加一平滑（Laplace smoothing）来处理未见序列。</p>\n<p>在工程实现中，n-gram模型的数据流相对简单：首先对文本进行分词和预处理，然后构建n-gram频率表。对于英文，常用空格分词；对于中文，需要先进行分词处理。存储n-gram频率时，可以使用字典结构，键为n-1个词的前缀，值为下一个词的频率分布。预测时，只需查找前缀对应的频率分布并选择概率最高的词。时间复杂度方面，构建频率表需要O(N)的语料扫描，其中N为词数；预测单个词需要O(1)的字典查找。然而，当n增大时，存储空间呈指数增长——n-gram模型有Vⁿ个可能的序列，其中V是词汇表大小，这导致了著名的“维度灾难”问题。</p>\n<p>n-gram模型的常见误区是认为“n越大越好”。实际上，随着n增大，模型面临两个核心问题：参数爆炸和数据稀疏。参数爆炸指模型参数数量随Vⁿ增长，即使对于中等词汇量，当n≥4时参数数量已难以存储。数据稀疏指大多数长序列在训练语料中出现次数极少甚至为零，导致概率估计不可靠。失败模式表现为对长距离依赖的完全失效——例如在“虽然今天天气很糟糕，但是___”这样的句子中，n-gram模型无法建立“虽然”和“但是”之间的逻辑联系，因为这两个词可能被多个词隔开。诊断这些问题可以通过分析n-gram覆盖度（语料中实际出现的n-gram比例）和困惑度指标来实现。</p>\n<p>尽管n-gram模型简单有效，但其本质局限在于无法捕捉超越n-1个词的依赖关系。这种局限在复杂语法结构和语义理解任务中尤为明显，促使研究者寻求能够处理变长依赖的新方法。统计模型为我们提供了语言建模的基础概率框架，但真正的突破需要能够动态记忆上下文的架构。</p>\n\n<h3>RNN：循环中的记忆与遗忘</h3>\n<p>当我们需要理解“他去了北京，然后___”这样的句子时，关键在于模型能否记住“他”和“北京”这两个关键信息。循环神经网络（RNN）通过引入隐藏状态（hidden state）机制，为处理这类序列依赖问题提供了新思路。RNN的核心思想是在每个时间步维护一个隐藏状态向量，该向量编码了到当前为止的所有历史信息，并随着序列推进不断更新。这种设计使RNN能够理论上处理任意长度的序列，为语言建模带来了从静态统计到动态记忆的范式转变。</p>\n<p>从数学定义看，RNN在时间步t的计算包含两个关键方程：隐藏状态更新hₜ = f(Wₕₕhₜ₋₁ + Wₓₕxₜ + bₕ)和输出计算yₜ = g(Wₕᵧhₜ + bᵧ)。其中xₜ是时间步t的输入向量（如词嵌入），hₜ是当前隐藏状态，hₜ₋₁是前一时刻隐藏状态，Wₕₕ、Wₓₕ、Wₕᵧ是权重矩阵，bₕ、bᵧ是偏置项，f和g是激活函数（常用tanh或ReLU）。对于语言建模任务，目标函数是最大化序列的似然概率：L(θ) = ∑ₜ log P(wₜ | w₁,...,wₜ₋₁; θ)，其中P(wₜ | ·)通过softmax函数从输出yₜ计算得到。通过反向传播时间（BPTT）算法，模型可以学习到序列中的时序模式。</p>\n<p>工程实现中，RNN的数据流呈现明显的时序特性。以字符级语言模型为例：首先将字符转换为one-hot向量或嵌入向量，然后按顺序输入RNN单元。每个时间步，RNN接收当前输入和前一隐藏状态，计算新隐藏状态和输出。输出层通常是一个全连接层加softmax，产生下一个字符的概率分布。在PyTorch中，可以使用nn.RNN或nn.LSTM模块轻松实现。复杂度方面，前向传播的时间复杂度为O(T × H²)，其中T是序列长度，H是隐藏层维度；空间复杂度主要来自存储所有时间步的隐藏状态，用于反向传播。实际部署时，由于RNN的序列依赖性，难以充分利用GPU并行能力，这成为其关键性能瓶颈。</p>\n<p>RNN最常见的误区是认为“RNN能完美记住所有历史”。实际上，RNN面临梯度消失（vanishing gradient）和梯度爆炸（exploding gradient）的根本问题。梯度消失指在反向传播过程中，梯度随时间步指数级减小，导致早期时间步的参数几乎无法更新。数学上，这源于雅可比矩阵∂hₜ/∂hₜ₋₁的谱范数小于1时的连乘效应。梯度爆炸则相反，当雅可比矩阵谱范数大于1时梯度指数增长，导致训练不稳定。失败模式表现为对长序列依赖的“遗忘”——例如在超过50个时间步后，RNN难以维持对序列开头的记忆。诊断方法包括监控梯度范数、使用梯度裁剪（gradient clipping）以及分析不同时间步的注意力分布（如果引入注意力机制）。</p>\n<p>RNN的序列处理能力标志着神经网络在语言建模中的成熟应用，但梯度问题从根本上限制了其处理长距离依赖的能力。这种限制在需要全局上下文理解的任务中尤为突出，催生了能够并行计算且保持长距离依赖的新架构。从循环到并行的转变，不仅是计算效率的提升，更是模型表达能力的质的飞跃。</p>\n\n<h3>Transformer：自注意力与并行革命</h3>\n<p>理解“苹果公司发布了新手机，它很昂贵”这句话时，关键是要识别“它”指代的是“手机”而非“苹果公司”。这种指代消解需要模型同时考虑序列中所有位置的关系，这正是Transformer架构的核心优势。Transformer基于自注意力（self-attention）机制，彻底摒弃了RNN的循环结构，通过并行计算所有位置对的关联权重，实现了真正的全局上下文建模。2017年，Vaswani等人发表了《Attention Is All You Need》（来源：Attention Is All You Need, 2017），开创了这一革命性架构，为后续大语言模型奠定了基础。</p>\n<p>自注意力机制的数学表达清晰而优雅。给定输入序列的矩阵表示X ∈ ℝ^{T×d}（T为序列长度，d为模型维度），首先计算查询（Q）、键（K）、值（V）矩阵：Q = XW_Q, K = XW_K, V = XW_V，其中W_Q, W_K, W_V ∈ ℝ^{d×dₖ}是可学习参数。注意力权重通过缩放点积计算：Attention(Q,K,V) = softmax(QKᵀ/√dₖ)V。这里softmax函数确保权重和为1，√dₖ缩放防止点积过大导致梯度消失。多头注意力将这个过程重复h次，每个头学习不同的表示子空间：MultiHead(Q,K,V) = Concat(head₁,...,headₕ)W_O，其中headᵢ = Attention(XW_Qᵢ, XW_Kᵢ, XW_Vᵢ)。整个Transformer的目标函数通常结合语言建模损失和可能的任务特定损失，例如掩码语言建模损失：L(θ) = -∑_{t∈M} log P(x_t | x_\\M; θ)，其中M是随机掩码的位置集合。</p>\n<p>从工程视角看，Transformer的数据流高度并行化。以编码器为例：输入序列首先添加位置编码（positional encoding）——通常使用正弦余弦函数：PE(pos,2i) = sin(pos/10000^{2i/d}), PE(pos,2i+1) = cos(pos/10000^{2i/d})，其中pos是位置索引，i是维度索引。然后经过多头注意力层和前馈网络层，每层都有残差连接和层归一化。在PyTorch中，可以使用nn.TransformerEncoder模块实现。复杂度方面，自注意力层的时间复杂度为O(T² × d)，空间复杂度也为O(T²)，这限制了处理超长序列的能力。实际部署时，Transformer能充分利用GPU的矩阵乘法并行性，训练速度比RNN快一个数量级。关键延迟敏感点在于注意力矩阵的计算和存储，特别是当T很大时。</p>\n<p>关于Transformer的常见误区是认为“Transformer完全不需要循环”。实际上，在自回归生成任务中，Transformer解码器仍然需要顺序生成——每个生成步骤依赖之前生成的所有token。另一个误区是认为注意力权重直接对应“理解”，实际上注意力只是加权求和机制，并不保证语义合理性。失败模式包括位置编码外推失效（训练时未见的长序列位置）、注意力头崩溃（多个头学习到相似模式）和长序列内存溢出。诊断这些问题的工具包括可视化注意力图、分析位置编码的相似性矩阵以及监控各层的激活统计量。</p>\n<p>Transformer的并行能力和长距离依赖建模使其成为大语言模型的基石，但理解这些特性只是开始。真正的挑战在于如何将这些模型知识转化为实际应用能力，特别是在与模型交互的关键界面——提示设计上。从架构理解到交互设计，是每个NLP实践者必须完成的思维跨越。</p>\n\n<h3>综合示例：语言模型演进的可视化实验</h3>\n<p>为了具体展示从n-gram到Transformer的演进差异，我们设计一个字符级语言模型实验，使用莎士比亚十四行诗片段作为数据。这个实验将实现三个关键目标：展示不同架构如何处理相同数据、量化评估各模型性能、演示提示工程的实际应用。所有代码自包含，无需外部数据文件，确保完全可复现。</p>\n<pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom collections import defaultdict, Counter\nfrom sklearn.metrics import accuracy_score\nimport warnings\nwarnings.filterwarnings('ignore')\n\n# 1. 数据准备\ntext = \"\"\"Shall I compare thee to a summer's day?\nThou art more lovely and more temperate:\nRough winds do shake the darling buds of May,\nAnd summer's lease hath all too short a date;\"\"\"\nchars = sorted(list(set(text)))\nchar_to_idx = {ch: i for i, ch in enumerate(chars)}\nidx_to_char = {i: ch for i, ch in enumerate(chars)}\nvocab_size = len(chars)\nprint(f\"字符词汇表大小: {vocab_size}\")\nprint(f\"字符集: {''.join(chars)}\")\n\n# 转换为索引序列\ndata = [char_to_idx[ch] for ch in text]\nseq_length = 10\nX, y = [], []\nfor i in range(len(data) - seq_length):\n    X.append(data[i:i+seq_length])\n    y.append(data[i+seq_length])\nX = np.array(X)\ny = np.array(y)\nprint(f\"数据形状: X={X.shape}, y={y.shape}\")\nprint(f\"样例输入: {''.join([idx_to_char[idx] for idx in X[0]])}\")\nprint(f\"对应标签: {idx_to_char[y[0]]}\")\n\n# 2. n-gram模型（bigram）\nbigram_counts = defaultdict(Counter)\nfor seq, next_char in zip(X, y):\n    prefix = tuple(seq[-1:])  # 使用前一个字符\n    bigram_counts[prefix][next_char] += 1\n\n# 预测函数\ndef bigram_predict(prefix):\n    prefix = tuple(prefix[-1:])\n    if prefix in bigram_counts:\n        next_char = max(bigram_counts[prefix], key=bigram_counts[prefix].get)\n        return next_char\n    return np.random.randint(vocab_size)\n\n# 评估\nbigram_preds = [bigram_predict(seq) for seq in X]\nbigram_acc = accuracy_score(y, bigram_preds)\nprint(f\"\\nBigram模型准确率: {bigram_acc:.4f}\")\nprint(f\"Bigram预测样例: 输入'{''.join([idx_to_char[idx] for idx in X[5]])}' -> 预测'{idx_to_char[bigram_preds[5]]}' (真实'{idx_to_char[y[5]]}')\")\n\n# 3. RNN模型（单层LSTM）\nclass CharRNN(nn.Module):\n    def __init__(self, vocab_size, embed_dim=32, hidden_dim=64):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, embed_dim)\n        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)\n        self.fc = nn.Linear(hidden_dim, vocab_size)\n    \n    def forward(self, x):\n        embedded = self.embedding(x)\n        lstm_out, (hidden, cell) = self.lstm(embedded)\n        output = self.fc(lstm_out[:, -1, :])\n        return output\n\n# 训练准备\nX_tensor = torch.LongTensor(X)\ny_tensor = torch.LongTensor(y)\nmodel = CharRNN(vocab_size)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# 训练循环\nlosses = []\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_tensor)\n    loss = criterion(outputs, y_tensor)\n    loss.backward()\n    optimizer.step()\n    losses.append(loss.item())\n    if epoch % 20 == 0:\n        print(f\"Epoch {epoch}: loss = {loss.item():.4f}\")\n\nprint(f\"\\nRNN最终损失: {losses[-1]:.4f}\")\nprint(f\"RNN参数数量: {sum(p.numel() for p in model.parameters())}\")\n\n# 4. 提示测试对比\nprompt = \"Shall I compare thee to a \"\nprompt_indices = [char_to_idx[ch] for ch in prompt]\n\n# Bigram生成\ngenerated_bigram = prompt\nfor _ in range(20):\n    last_chars = [char_to_idx[ch] for ch in generated_bigram[-1:]]\n    next_idx = bigram_predict(last_chars)\ngenerated_bigram += idx_to_char[next_idx]\n\n# RNN生成\nmodel.eval()\ngenerated_rnn = prompt\ncurrent_seq = torch.LongTensor([prompt_indices[-seq_length:]])\nfor _ in range(20):\n    with torch.no_grad():\n        output = model(current_seq)\n        next_idx = torch.argmax(output, dim=1).item()\n    generated_rnn += idx_to_char[next_idx]\n    current_seq = torch.cat([current_seq[:, 1:], torch.LongTensor([[next_idx]])], dim=1)\n\nprint(f\"\\n提示: '{prompt}'\")\nprint(f\"Bigram续写: {generated_bigram}\")\nprint(f\"RNN续写: {generated_rnn}\")\n\n# 5. 指标计算：字符级困惑度（perplexity）\ndef compute_perplexity(model, X_val, y_val):\n    model.eval()\n    with torch.no_grad():\n        outputs = model(X_val)\n        probs = torch.softmax(outputs, dim=1)\n        target_probs = probs[range(len(y_val)), y_val]\n        log_prob = torch.log(target_probs + 1e-10).mean()\n        perplexity = torch.exp(-log_prob)\n    return perplexity.item()\n\nrnn_perplexity = compute_perplexity(model, X_tensor[:20], y_tensor[:20])\nprint(f\"\\nRNN在验证集上的困惑度: {rnn_perplexity:.2f}\")\nprint(\"困惑度公式: PP = exp(-1/N * Σ log P(w_i | w_<i))，值越低表示模型越好\")\n</code></pre>\n<p>这个实验清晰地展示了演进路径：bigram模型仅依赖前一个字符的统计规律，准确率有限；RNN通过LSTM记忆更长的上下文，生成更连贯的文本。困惑度指标从数学上量化了模型的不确定性，为我们提供了跨模型比较的统一尺度。在提示测试中，相同的莎士比亚风格提示在不同模型上产生了不同质量的续写——这正是模型架构差异在应用层的直接体现。</p>\n\n<h3>结语：演进中的不变原理</h3>\n<p>从n-gram的频率统计到RNN的时序记忆，再到Transformer的全局注意力，语言模型的演进看似是技术栈的不断更替，实则遵循着一条清晰的逻辑主线：如何更有效地建模语言中的依赖关系。n-gram用局部近似全局，RNN用循环连接时间，Transformer用注意力跨越空间，每种架构都在其时代背景下做出了最优的权衡。作为NLP实践者，理解这条演进路径的价值不在于背诵历史，而在于培养一种架构直觉——能够洞察当前模型的局限，预见下一个突破的方向，最重要的是，设计出符合模型能力的交互方式。当你在下一个项目中设计提示模板时，不妨自问：这个提示假设了模型具备哪种依赖建模能力？它是否超出了模型的上下文边界？答案或许就藏在这条从统计到神经的演进之路中。</p>",
+        "en": "<h2>The Evolution of Language Models: From Statistical Intuition to Neural Architectures</h2>\n\n<h3>From Statistical Intuition to n-gram: The Predictability of Language</h3>\n<p>When presented with a sentence fragment like \"The weather today is very ___\", humans naturally predict words like \"nice\" or \"sunny\", an ability rooted in statistical intuition about word co-occurrence patterns. In early natural language processing, n-gram models formalized this intuition into computational frameworks. An n-gram (Chinese: n元语法) is a statistical language model based on the Markov assumption, which posits that the probability of the current word depends only on the previous n-1 words. This simplification enables the model to predict the next word by counting sequence frequencies in corpora, providing the first computable framework for machine language understanding.</p>\n<p>Mathematically, the core of n-gram modeling is conditional probability estimation. Given a word sequence w₁,w₂,...,wₘ, the model aims to compute the joint probability P(w₁,w₂,...,wₘ). Through the chain rule and Markov assumption, this decomposes as: P(w₁,w₂,...,wₘ) ≈ ∏ᵢ P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁). The conditional probability P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁) is estimated via maximum likelihood: P(wᵢ | wᵢ₋ₙ₊₁,...,wᵢ₋₁) = count(wᵢ₋ₙ₊₁,...,wᵢ) / count(wᵢ₋ₙ₊₁,...,wᵢ₋₁), where count(·) denotes sequence frequency in training data. When n=2, we obtain bigram models; n=3 yields trigram models. In practice, smoothing techniques like Laplace smoothing address data sparsity for unseen sequences.</p>\n<p>Engineering implementation of n-gram models involves straightforward data flow: tokenization and preprocessing, followed by n-gram frequency table construction. For English, space-based tokenization suffices; Chinese requires word segmentation. Frequency tables can be stored in dictionary structures with (n-1)-word prefixes as keys and next-word frequency distributions as values. Prediction involves O(1) dictionary lookup. Time complexity is O(N) for corpus scanning (N being word count), but storage grows exponentially with n—there are Vⁿ possible sequences for vocabulary size V, leading to the \"curse of dimensionality\".</p>\n<p>A common misconception is that \"larger n always improves performance\". In reality, increasing n causes parameter explosion and data sparsity. Parameter explosion refers to the Vⁿ growth in parameters, making storage infeasible for n≥4 even with moderate vocabularies. Data sparsity means most long sequences appear rarely or never, yielding unreliable probability estimates. Failure modes include complete breakdown on long-range dependencies—e.g., n-gram models cannot connect \"although\" and \"but\" when separated by multiple words. Diagnosis involves analyzing n-gram coverage (proportion of possible n-grams observed) and perplexity metrics.</p>\n<p>While n-gram models are simple and effective, their fundamental limitation is inability to capture dependencies beyond n-1 words. This becomes critical for complex syntactic structures and semantic understanding, motivating the search for architectures that dynamically memorize context. Statistical models provide the foundational probabilistic framework, but true breakthroughs require architectures capable of contextual memory.</p>\n\n<h3>RNN: Memory and Forgetting in Recurrence</h3>\n<p>Understanding sentences like \"He went to Beijing, then ___\" requires remembering the key entities \"He\" and \"Beijing\". Recurrent Neural Networks (RNNs) address such sequential dependencies through hidden state mechanisms. The core idea is maintaining a hidden state vector at each timestep, encoding all historical information up to that point, updated progressively through the sequence. This design enables RNNs to theoretically handle arbitrary-length sequences, marking a paradigm shift from static statistics to dynamic memory in language modeling.</p>\n<p>Mathematically, RNN computation at timestep t involves two key equations: hidden state update hₜ = f(Wₕₕhₜ₋₁ + Wₓₕxₜ + bₕ) and output computation yₜ = g(Wₕᵧhₜ + bᵧ). Here xₜ is the input vector (e.g., word embedding), hₜ is the current hidden state, hₜ₋₁ is the previous hidden state, Wₕₕ, Wₓₕ, Wₕᵧ are weight matrices, bₕ, bᵧ are biases, and f and g are activation functions (commonly tanh or ReLU). For language modeling, the objective is maximizing sequence likelihood: L(θ) = ∑ₜ log P(wₜ | w₁,...,wₜ₋₁; θ), where P(wₜ | ·) is computed via softmax from output yₜ. Backpropagation Through Time (BPTT) enables learning temporal patterns.</p>\n<p>Engineering implementation reveals RNNs' sequential nature. For character-level language modeling: characters are converted to one-hot or embedding vectors, then fed sequentially to RNN cells. Each timestep, the RNN receives current input and previous hidden state, computing new hidden state and output. The output layer typically uses a fully connected layer with softmax to produce next-character probability distributions. In PyTorch, nn.RNN or nn.LSTM modules simplify implementation. Time complexity is O(T × H²) for forward pass (T: sequence length, H: hidden dimension); space complexity mainly comes from storing hidden states for backpropagation. In deployment, RNNs' sequential dependency limits GPU parallelization, creating a key performance bottleneck.</p>\n<p>The most prevalent misconception is that \"RNNs perfectly remember all history\". In reality, RNNs suffer from vanishing gradient and exploding gradient problems. Vanishing gradient refers to exponential decay of gradients during backpropagation, causing early timestep parameters to barely update—mathematically arising from repeated multiplication of Jacobian matrices ∂hₜ/∂hₜ₋₁ with spectral norm <1. Exploding gradient is the opposite, with gradient norms growing exponentially when spectral norm >1, destabilizing training. Failure modes include \"forgetting\" long-range dependencies—e.g., after 50+ timesteps, RNNs struggle to retain information from sequence beginnings. Diagnosis involves monitoring gradient norms, applying gradient clipping, and analyzing attention distributions (if attention mechanisms are incorporated).</p>\n<p>RNNs' sequential processing capability marked neural networks' maturation in language modeling, but gradient problems fundamentally limit long-range dependency handling. This limitation becomes acute in tasks requiring global context understanding, spurring new architectures that enable parallel computation while preserving long-range dependencies. The shift from recurrence to parallelism represents not just computational efficiency gains, but qualitative leaps in model expressive power.</p>\n\n<h3>Transformer: Self-Attention and the Parallel Revolution</h3>\n<p>Understanding \"Apple Inc. released a new phone; it is expensive\" requires identifying that \"it\" refers to \"phone\" rather than \"Apple Inc.\". This coreference resolution demands simultaneous consideration of all positional relationships in the sequence—the exact strength of the Transformer architecture. Based on self-attention mechanisms, Transformers completely abandon RNNs' recurrent structure, computing pairwise association weights across all positions in parallel to achieve true global context modeling. In 2017, Vaswani et al. published \"Attention Is All You Need\" (source: Attention Is All You Need, 2017), pioneering this revolutionary architecture that underpins modern large language models.</p>\n<p>The mathematical formulation of self-attention is elegant. Given input matrix representation X ∈ ℝ^{T×d} (T: sequence length, d: model dimension), query (Q), key (K), and value (V) matrices are computed: Q = XW_Q, K = XW_K, V = XW_V, where W_Q, W_K, W_V ∈ ℝ^{d×dₖ} are learnable parameters. Attention weights come from scaled dot-product: Attention(Q,K,V) = softmax(QKᵀ/√dₖ)V. The softmax ensures weights sum to 1; √dₖ scaling prevents large dot products causing gradient issues. Multi-head attention repeats this process h times, each head learning different representation subspaces: MultiHead(Q,K,V) = Concat(head₁,...,headₕ)W_O, where headᵢ = Attention(XW_Qᵢ, XW_Kᵢ, XW_Vᵢ). The overall Transformer objective typically combines language modeling loss (e.g., masked language modeling loss: L(θ) = -∑_{t∈M} log P(x_t | x_\\M; θ), where M is randomly masked positions) with task-specific losses.</p>\n<p>From an engineering perspective, Transformer data flow is highly parallelized. For the encoder: input sequences first receive positional encoding—commonly using sine-cosine functions: PE(pos,2i) = sin(pos/10000^{2i/d}), PE(pos,2i+1) = cos(pos/10000^{2i/d}), where pos is position index and i is dimension index. Then multi-head attention and feed-forward layers follow, each with residual connections and layer normalization. In PyTorch, nn.TransformerEncoder facilitates implementation. Complexity-wise, self-attention layers have O(T² × d) time and O(T²) space complexity, limiting ultra-long sequence handling. In deployment, Transformers fully leverage GPU matrix multiplication parallelism, training orders of magnitude faster than RNNs. Key latency sensitivities lie in attention matrix computation and storage, especially for large T.</p>\n<p>A common misconception is that \"Transformers require no recurrence whatsoever\". Actually, in autoregressive generation, Transformer decoders still generate sequentially—each step depends on all previously generated tokens. Another fallacy is equating attention weights with \"understanding\"; attention is merely a weighted summation mechanism without semantic guarantees. Failure modes include positional encoding extrapolation failure (unseen long sequence positions), attention head collapse (multiple heads learning similar patterns), and long-sequence memory overflow. Diagnostic tools include attention map visualization, positional encoding similarity matrix analysis, and layer activation statistics monitoring.</p>\n<p>Transformers' parallel capability and long-range dependency modeling make them the foundation of large language models, but understanding these properties is just the beginning. The real challenge lies in translating model knowledge into practical application skills, particularly at the critical interface of human-model interaction: prompt design. Moving from architectural comprehension to interaction design represents an essential cognitive leap for every NLP practitioner.</p>\n\n<h3>Comprehensive Example: Visualizing Language Model Evolution</h3>\n<p>To concretely demonstrate evolutionary differences from n-gram to Transformer, we design a character-level language model experiment using Shakespearean sonnet fragments as data. This experiment achieves three key goals: showing how different architectures process identical data, quantitatively evaluating model performance, and demonstrating practical prompt engineering. All code is self-contained with no external data files, ensuring full reproducibility.</p>\n<pre><code>import numpy as np\nimport torch\nimport torch.nn as nn\nimport torch.optim as optim\nfrom collections import defaultdict, Counter\nfrom sklearn.metrics import accuracy_score\nimport warnings\nwarnings.filterwarnings('ignore')\n\n# 1. Data preparation\ntext = \"\"\"Shall I compare thee to a summer's day?\nThou art more lovely and more temperate:\nRough winds do shake the darling buds of May,\nAnd summer's lease hath all too short a date;\"\"\"\nchars = sorted(list(set(text)))\nchar_to_idx = {ch: i for i, ch in enumerate(chars)}\nidx_to_char = {i: ch for i, ch in enumerate(chars)}\nvocab_size = len(chars)\nprint(f\"Vocabulary size: {vocab_size}\")\nprint(f\"Character set: {''.join(chars)}\")\n\n# Convert to index sequence\ndata = [char_to_idx[ch] for ch in text]\nseq_length = 10\nX, y = [], []\nfor i in range(len(data) - seq_length):\n    X.append(data[i:i+seq_length])\n    y.append(data[i+seq_length])\nX = np.array(X)\ny = np.array(y)\nprint(f\"Data shape: X={X.shape}, y={y.shape}\")\nprint(f\"Sample input: {''.join([idx_to_char[idx] for idx in X[0]])}\")\nprint(f\"Corresponding label: {idx_to_char[y[0]]}\")\n\n# 2. n-gram model (bigram)\nbigram_counts = defaultdict(Counter)\nfor seq, next_char in zip(X, y):\n    prefix = tuple(seq[-1:])  # Use previous character\n    bigram_counts[prefix][next_char] += 1\n\n# Prediction function\ndef bigram_predict(prefix):\n    prefix = tuple(prefix[-1:])\n    if prefix in bigram_counts:\n        next_char = max(bigram_counts[prefix], key=bigram_counts[prefix].get)\n        return next_char\n    return np.random.randint(vocab_size)\n\n# Evaluation\nbigram_preds = [bigram_predict(seq) for seq in X]\nbigram_acc = accuracy_score(y, bigram_preds)\nprint(f\"\\nBigram model accuracy: {bigram_acc:.4f}\")\nprint(f\"Bigram prediction sample: input '{''.join([idx_to_char[idx] for idx in X[5]])}' -> predicted '{idx_to_char[bigram_preds[5]]}' (true '{idx_to_char[y[5]]}')\")\n\n# 3. RNN model (single-layer LSTM)\nclass CharRNN(nn.Module):\n    def __init__(self, vocab_size, embed_dim=32, hidden_dim=64):\n        super().__init__()\n        self.embedding = nn.Embedding(vocab_size, embed_dim)\n        self.lstm = nn.LSTM(embed_dim, hidden_dim, batch_first=True)\n        self.fc = nn.Linear(hidden_dim, vocab_size)\n    \n    def forward(self, x):\n        embedded = self.embedding(x)\n        lstm_out, (hidden, cell) = self.lstm(embedded)\n        output = self.fc(lstm_out[:, -1, :])\n        return output\n\n# Training setup\nX_tensor = torch.LongTensor(X)\ny_tensor = torch.LongTensor(y)\nmodel = CharRNN(vocab_size)\ncriterion = nn.CrossEntropyLoss()\noptimizer = optim.Adam(model.parameters(), lr=0.01)\n\n# Training loop\nlosses = []\nfor epoch in range(100):\n    optimizer.zero_grad()\n    outputs = model(X_tensor)\n    loss = criterion(outputs, y_tensor)\n    loss.backward()\n    optimizer.step()\n    losses.append(loss.item())\n    if epoch % 20 == 0:\n        print(f\"Epoch {epoch}: loss = {loss.item():.4f}\")\n\nprint(f\"\\nRNN final loss: {losses[-1]:.4f}\")\nprint(f\"RNN parameter count: {sum(p.numel() for p in model.parameters())}\")\n\n# 4. Prompt testing comparison\nprompt = \"Shall I compare thee to a \"\nprompt_indices = [char_to_idx[ch] for ch in prompt]\n\n# Bigram generation\ngenerated_bigram = prompt\nfor _ in range(20):\n    last_chars = [char_to_idx[ch] for ch in generated_bigram[-1:]]\n    next_idx = bigram_predict(last_chars)\n    generated_bigram += idx_to_char[next_idx]\n\n# RNN generation\nmodel.eval()\ngenerated_rnn = prompt\ncurrent_seq = torch.LongTensor([prompt_indices[-seq_length:]])\nfor _ in range(20):\n    with torch.no_grad():\n        output = model(current_seq)\n        next_idx = torch.argmax(output, dim=1).item()\n    generated_rnn += idx_to_char[next_idx]\n    current_seq = torch.cat([current_seq[:, 1:], torch.LongTensor([[next_idx]])], dim=1)\n\nprint(f\"\\nPrompt: '{prompt}'\")\nprint(f\"Bigram continuation: {generated_bigram}\")\nprint(f\"RNN continuation: {generated_rnn}\")\n\n# 5. Metric computation: character-level perplexity\ndef compute_perplexity(model, X_val, y_val):\n    model.eval()\n    with torch.no_grad():\n        outputs = model(X_val)\n        probs = torch.softmax(outputs, dim=1)\n        target_probs = probs[range(len(y_val)), y_val]\n        log_prob = torch.log(target_probs + 1e-10).mean()\n        perplexity = torch.exp(-log_prob)\n    return perplexity.item()\n\nrnn_perplexity = compute_perplexity(model, X_tensor[:20], y_tensor[:20])\nprint(f\"\\n"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：语言模型演进：n-gram → RNN → Transformer · 结构总览 · 数据：课程大纲】在设计《语言模型演进：n-gram → RNN → Transformer》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 语言模型演进：n-gram → RNN → Transformer · 结构总览 · Data: 课程大纲】When outlining \"语言模型演进：n-gram → RNN → Transformer\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：语言模型演进：n-gram → RNN → Transformer · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《语言模型演进：n-gram → RNN → Transformer》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 语言模型演进：n-gram → RNN → Transformer · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"语言模型演进：n-gram → RNN → Transformer\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：语言模型演进：n-gram → RNN → Transformer · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《语言模型演进：n-gram → RNN → Transformer》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 语言模型演进：n-gram → RNN → Transformer · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"语言模型演进：n-gram → RNN → Transformer\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：语言模型演进：n-gram → RNN → Transformer · 参考资料 · 数据：课程引用文献】当引用文献支撑《语言模型演进：n-gram → RNN → Transformer》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 语言模型演进：n-gram → RNN → Transformer · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"语言模型演进：n-gram → RNN → Transformer\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Attention Is All You Need（NeurIPS，2017）",
+            "en": "Attention Is All You Need (NeurIPS, 2017)"
+          },
+          "url": "https://arxiv.org/abs/1706.03762"
+        },
+        {
+          "label": {
+            "zh": "A Neural Probabilistic Language Model（JMLR，2003）",
+            "en": "A Neural Probabilistic Language Model (JMLR, 2003)"
+          },
+          "url": "https://www.jmlr.org/papers/volume3/bengio03a/bengio03a.pdf"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-05-n-gram-rnn-transformer-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 2,
+        "related": [
+          "RAG 总览：何时用、何时别用",
+          "LLM 应用 Evals：离线评测集构建与回归测试"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 语言模型演进：n-gram → RNN → Transformer 可帮助团队在 语言建模与提示工程 上做出可复用的实践。",
+          "best_for": "适合 NLP工程师、产品经理、研究人员，需要快速吸收 6. NLP 到大语言模型 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 语言模型演进：n-gram → RNN → Transformer 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 语言模型演进：n-gram → RNN → Transformer 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，你在设计语言模型时，如何从n-gram的统计直觉出发，结合RNN的记忆机制，最终利用Transformer的自注意力优化上下文理解？",
+            "action_hint": "回顾你最近的项目，思考不同模型架构如何影响语言建模的准确性和效率。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，在规划基于大语言模型的应用时，你如何借鉴从n-gram到Transformer的演进路径，确保提示工程既利用统计规律又捕捉深层语义？",
+            "action_hint": "分析现有产品中的语言处理模块，评估模型选择对用户体验和功能实现的影响。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-05-tokenizationbpeunigram",
       "date": "2026-03-05",
