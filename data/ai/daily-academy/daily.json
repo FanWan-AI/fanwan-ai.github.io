@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-03-05T14:26:11.448Z",
+  "generatedAt": "2026-03-06T02:43:13.147Z",
   "lessons": [
+    {
+      "id": "2026-03-06-pretraining",
+      "date": "2026-03-06",
+      "title": {
+        "zh": "预训练与微调范式：为什么有效、何时失效",
+        "en": "The Pretraining and Fine-tuning Paradigm: Why It Works and When It Fails"
+      },
+      "summary": {
+        "zh": "本课程系统解析预训练与微调范式的有效性与失效边界。从传统NLP的标注数据稀缺问题出发，阐述预训练如何通过大规模无监督学习获取通用语言表示，微调如何利用少量标注数据适配下游任务。深入机制层面，涵盖自监督学习目标函数、迁移学习原理及工程实现要点。通过可复现文本分类示例，对比微调与提示工程效果，并分析常见失败模式如分布偏移、任务不匹配。课程提供从数据准备到评估的全流程指导，帮助学习者掌握可迁移方法，应用于实际语言建模与提示工程项目。",
+        "en": "This course systematically analyzes the effectiveness and failure boundaries of the pretraining and finetuning paradigm. Starting from the scarcity of labeled data in traditional NLP, it explains how pretraining acquires general language representations through large-scale unsupervised learning, and how finetuning adapts to downstream tasks with minimal labeled data. Delving into mechanisms, it covers self-supervised learning objectives, transfer learning principles, and engineering implementation points. A reproducible text classification example contrasts finetuning with prompt engineering, analyzing common failure modes like distribution shift and task mismatch. The course provides end-to-end guidance from data preparation to evaluation, equipping learners with transferable methods for practical language modeling and prompt engineering projects."
+      },
+      "difficulty": "beginner",
+      "tags": [
+        "pretraining",
+        "finetuning"
+      ],
+      "content": {
+        "zh": "<h2>引言：从标注困境到通用能力</h2>\n<p>在传统自然语言处理（NLP）中，监督学习模型依赖大量标注数据来学习特定任务，如情感分类或命名实体识别。然而，高质量标注数据稀缺且成本高昂，这限制了模型泛化到新领域或任务的能力。预训练与微调范式通过两阶段学习解决了这一困境：首先在大规模无监督文本上学习通用语言表示，再通过少量标注数据适配下游任务。这种范式不仅降低了数据需求，还提升了模型跨任务的迁移能力，成为现代语言模型（如BERT、GPT系列）的核心构建方法（来源：BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding, 2018）。</p>\n<p>本课程将系统解析预训练与微调的有效性与失效边界。我们将从直觉出发，逐步深入机制、数学推导和工程实践，帮助您掌握从数据准备到模型评估的全流程。通过一个可复现的文本分类示例，您将亲身体验微调与提示工程的对比，并学会诊断常见失败模式。无论您是NLP工程师、产品经理还是研究人员，理解这一范式都将为您在实际项目中提供可执行路径。</p>\n<h3>从标注困境到通用能力：预训练的直觉</h3>\n<p>传统NLP模型面临的核心挑战是标注数据稀缺。例如，构建一个医疗问答系统需要大量专业标注，这既耗时又昂贵。预训练（Pretraining）通过在大规模无监督数据（如网页文本、书籍）上训练模型，学习通用语言表示，从而缓解数据依赖。具体来说，预训练模型通过自监督任务（如掩码语言建模）捕获词汇、句法和语义信息，形成可迁移的表示空间。</p>\n<p>预训练的核心目标是学习数据分布 \\( P(X) \\)，其中 \\( X \\) 表示输入文本序列。通过最大化似然函数 \\( \\mathcal{L}_{\\text{pretrain}} = \\sum_{i} \\log P(x_i | x_{<i}) \\)，模型学习预测下一个词或掩码词，从而编码语言统计规律。这种无监督学习不依赖人工标注，但能捕捉丰富语言特征，为下游任务提供坚实基础。</p>\n<p>在工程实现中，预训练通常使用Transformer架构，通过多头自注意力机制处理长序列。关键要点包括：数据预处理（如分词、掩码策略）、训练优化（如AdamW、学习率调度）和硬件配置（如分布式训练）。复杂度主要来自模型参数量（如BERT-base有1.1亿参数）和序列长度，延迟敏感点在于注意力计算 \\( O(n^2) \\)，需通过优化（如FlashAttention）加速。</p>\n<p>常见误区是认为预训练模型可直接用于任何任务。实际上，预训练学习的是通用表示，而非具体任务逻辑。例如，如果预训练数据缺乏某领域知识（如医学术语），模型在该领域可能失效。失败模式包括：数据分布偏移（训练与测试数据差异大）、领域不匹配（如新闻到医疗）。诊断方法：检查模型在验证集上的性能下降，分析错误案例的语义相似性。</p>\n<p>理解了预训练的动机和机制，我们接下来明确其与微调的关系。预训练提供通用能力，微调则负责任务适配，两者结合形成完整学习范式。</p>\n<h3>有效性与机制：预训练如何学习，微调为何适配</h3>\n<p>预训练的有效性源于自监督学习（Self-supervised Learning），它从数据自身生成标签进行训练。例如，在掩码语言建模（MLM）任务中，模型随机掩码输入词并预测原词，学习上下文表示。数学上，MLM目标函数为 \\( \\mathcal{L}_{\\text{MLM}} = -\\sum_{m \\in M} \\log P(w_m | \\mathbf{x}_{\\backslash m}) \\)，其中 \\( M \\) 是掩码位置集合，\\( w_m \\) 是原词，\\( \\mathbf{x}_{\\backslash m} \\) 是掩码后序列。这迫使模型理解词汇间依赖关系，构建深层表示。</p>\n<p>微调（Finetuning）在预训练模型基础上，使用有监督数据进一步训练以适配特定任务。其有效性来自迁移学习：预训练表示提供了高质量初始化，微调通过梯度更新小幅调整参数，快速收敛。目标函数为 \\( \\mathcal{L}_{\\text{finetune}} = \\sum_{(x,y)} \\ell(f_\\theta(x), y) \\)，其中 \\( f_\\theta \\) 是模型，\\( \\ell \\) 是损失函数（如交叉熵），\\( (x,y) \\) 是标注样本。微调通常只需少量数据（如几百样本），因为模型已具备语言先验。</p>\n<p>工程实现要点：数据准备需确保标注质量与任务对齐；模型选择考虑预训练架构（如BERT用于分类，GPT用于生成）；训练循环包括学习率调整（如线性预热）、早停防止过拟合。复杂度较低，但需注意计算资源（如GPU内存）。延迟敏感点在于推理阶段，可通过量化、剪枝优化。</p>\n<p>微调并非总是有效。失效场景包括：数据质量低（噪声多）、任务不匹配（如从文本分类到代码生成）、过拟合（训练数据过少）。诊断方法：监控训练/验证损失曲线，使用交叉验证评估泛化。反例：用新闻数据预训练的模型在医疗微调时，若数据分布差异大，性能可能骤降。</p>\n<p>机制清晰后，我们进入工程实践，看看如何将理论转化为可复现流程。</p>\n<h3>工程落地：从数据到评估的可复现流程</h3>\n<p>预训练与微调的工程流程涵盖数据预处理、模型训练、评估及提示工程应用。首先，数据预处理包括清洗、分词和划分数据集。为确保可复现性（Reproducibility），需固定随机种子（如`random_state=42`）和环境版本。评估指标如准确率（Accuracy）公式为 \\( \\text{Accuracy} = \\frac{\\text{正确预测数}}{\\text{总样本数}} \\)，用于量化模型性能。</p>\n<p>提示工程（Prompt Engineering）通过设计输入文本来引导模型输出，作为微调的补充。例如，在文本分类中，提示“分类这段新闻：”后接文本，可激发模型零样本能力。但提示工程依赖模型已有知识，若提示模糊或任务复杂，效果可能有限。工程要点：提示设计需简洁、明确；迭代测试不同模板；结合少样本学习提升稳定性。</p>\n<p>失败模式诊断：提示工程失效常见原因包括提示歧义（如“分析这段文本”过于模糊）、模型知识不足（如询问未训练领域）、任务复杂度高（如多步推理）。诊断步骤：测试不同提示模板，分析错误案例的语义模式，对比微调性能作为基准。若提示工程准确率低于阈值（如0.7），建议转向微调（来源：Prompt Engineering for Large Language Models: A Survey, 2023）。</p>\n<p>下面是一个端到端最小可复现实验，使用sklearn内置数据集演示微调与提示工程对比。代码覆盖数据加载、预处理、微调训练、评估及提示实现，确保无外部文件依赖。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport seaborn as sns\nimport matplotlib.pyplot as plt\n\n# 步骤1：数据检查\nprint(\"=== 数据加载与检查 ===\")\ndata = fetch_20newsgroups(subset='all', categories=['sci.space', 'rec.sport.baseball'])\ntexts = data.data\ntargets = data.target\nprint(f\"数据集shape: {len(texts)} 样本, {len(set(targets))} 类别\")\nprint(\"示例前2条:\")\nfor i in range(2):\n    print(f\"文本{i+1}: {texts[i][:100]}...\")\n    print(f\"标签: {targets[i]} ({data.target_names[targets[i]]})\")\n\n# 步骤2：可复现切分\nX_train, X_test, y_train, y_test = train_test_split(\n    texts, targets, test_size=0.2, random_state=42, stratify=targets\n)\nprint(f\"训练集: {len(X_train)} 样本, 测试集: {len(X_test)} 样本\")\nprint(f\"类别分布 - 训练: {np.bincount(y_train)}, 测试: {np.bincount(y_test)}\")\n\n# 步骤3：pipeline（微调）\nvectorizer = TfidfVectorizer(max_features=1000, stop_words='english')\nX_train_vec = vectorizer.fit_transform(X_train)\nX_test_vec = vectorizer.transform(X_test)\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_vec, y_train)\ny_pred = model.predict(X_test_vec)\n\n# 步骤4：指标与误差分析\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"微调模型准确率: {accuracy:.4f}\")\ncm = confusion_matrix(y_test, y_pred)\nprint(\"混淆矩阵:\")\nprint(cm)\nsns.heatmap(cm, annot=True, fmt='d', xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix')\nplt.show()\n\n# 步骤5：提示工程实现（模拟）\nprint(\"\\n=== 提示工程模拟 ===\")\ndef prompt_engineering(texts, model_name='simulated'):\n    \"\"\"模拟提示工程：基于关键词简单分类\"\"\"\n    predictions = []\n    for text in texts:\n        if 'space' in text.lower() or 'nasa' in text.lower():\n            predictions.append(0)  # sci.space\n        elif 'baseball' in text.lower() or 'game' in text.lower():\n            predictions.append(1)  # rec.sport.baseball\n        else:\n            predictions.append(np.random.randint(0, 2))  # 随机猜测\n    return np.array(predictions)\n\ny_pred_prompt = prompt_engineering(X_test)\naccuracy_prompt = accuracy_score(y_test, y_pred_prompt)\nprint(f\"提示工程准确率: {accuracy_prompt:.4f}\")\nprint(\"对比: 微调 {:.4f} vs 提示工程 {:.4f}\".format(accuracy, accuracy_prompt))\n\n# 记录环境\nprint(\"\\n=== 环境信息 ===\")\nimport sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"sklearn版本: {pd.__version__}\")  # 示例版本输出</code></pre>\n<p>代码输出关键中间结果：数据集规模、类别分布、准确率分数和混淆矩阵。微调模型使用TF-IDF向量化和逻辑回归作为轻量替代，避免大模型下载。提示工程模拟基于关键词分类，展示其局限性。准确率公式已计算并打印，帮助量化性能差异。</p>\n<p>失败模式诊断：若微调准确率低，检查数据质量或模型复杂度；若提示工程失效，优化提示设计或转向微调。通过误差分析（如混淆矩阵），可识别模型混淆类别，指导改进。</p>\n<p>本节演示了完整工程流程，下一部分我们将总结关键洞见与可迁移方法。</p>\n<h2>总结与可迁移方法</h2>\n<p>预训练与微调范式通过两阶段学习平衡通用能力与任务适配，成为现代语言建模的基石。我们从直觉出发，深入机制和工程实践，揭示了其有效条件（如数据对齐、表示质量）和失效边界（如分布偏移、任务不匹配）。通过可复现示例，您体验了微调与提示工程的对比，并学会使用指标（如准确率）进行诊断。</p>\n<p>可迁移方法包括：始终从数据检查开始，确保分布一致性；优先微调复杂任务，用提示工程快速原型；监控评估指标，及时调整策略。在实际项目中，结合课程概念，您能设计可控流程，避免常见陷阱。下一步，探索相关主题如RAG或LLM评估，深化您的应用能力。</p>",
+        "en": "<h2>Introduction: From Annotation Scarcity to General Capability</h2>\n<p>In traditional natural language processing (NLP), supervised learning models rely on large amounts of labeled data to learn specific tasks, such as sentiment classification or named entity recognition. However, high-quality labeled data is scarce and costly, limiting model generalization to new domains or tasks. The pretraining and finetuning paradigm addresses this challenge through a two-stage learning process: first learning general language representations from large-scale unsupervised text, then adapting to downstream tasks with minimal labeled data. This approach not only reduces data requirements but also enhances cross-task transferability, becoming a core methodology for modern language models like BERT and GPT series (Source: BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding, 2018).</p>\n<p>This course systematically analyzes the effectiveness and failure boundaries of pretraining and finetuning. Starting from intuition, we delve into mechanisms, mathematical derivations, and engineering practices, guiding you through the full pipeline from data preparation to model evaluation. Through a reproducible text classification example, you will experience the contrast between finetuning and prompt engineering and learn to diagnose common failure modes. Whether you are an NLP engineer, product manager, or researcher, understanding this paradigm will provide actionable pathways for your projects.</p>\n<h3>From Annotation Scarcity to General Capability: The Intuition of Pretraining</h3>\n<p>The core challenge in traditional NLP is the scarcity of labeled data. For instance, building a medical QA system requires extensive expert annotations, which are time-consuming and expensive. Pretraining mitigates this dependency by training models on large-scale unsupervised data (e.g., web text, books) to learn general language representations. Specifically, pretrained models capture lexical, syntactic, and semantic information through self-supervised tasks like masked language modeling, forming a transferable representation space.</p>\n<p>The primary goal of pretraining is to learn the data distribution \\( P(X) \\), where \\( X \\) denotes the input text sequence. By maximizing the likelihood function \\( \\mathcal{L}_{\\text{pretrain}} = \\sum_{i} \\log P(x_i | x_{<i}) \\), the model learns to predict the next or masked word, thereby encoding statistical language patterns. This unsupervised learning does not rely on human labels but captures rich linguistic features, providing a solid foundation for downstream tasks.</p>\n<p>In engineering implementation, pretraining typically employs the Transformer architecture, processing long sequences via multi-head self-attention. Key considerations include data preprocessing (e.g., tokenization, masking strategies), training optimization (e.g., AdamW, learning rate scheduling), and hardware configuration (e.g., distributed training). Complexity arises from model parameters (e.g., BERT-base has 110 million) and sequence length, with latency sensitivity in attention computation \\( O(n^2) \\), optimized via techniques like FlashAttention.</p>\n<p>A common misconception is that pretrained models can be directly applied to any task. In reality, pretraining learns general representations, not specific task logic. For example, if pretraining data lacks code snippets, the model may fail on programming tasks. Failure modes include distribution shift (divergence between training and test data) and domain mismatch (e.g., news to medical). Diagnosis involves checking performance drops on validation sets and analyzing semantic similarity in error cases.</p>\n<p>With the motivation and mechanisms of pretraining clarified, we next define its relationship with finetuning. Pretraining provides general capability, while finetuning handles task adaptation, together forming a complete learning paradigm.</p>\n<h3>Effectiveness and Mechanisms: How Pretraining Learns, Why Finetuning Adapts</h3>\n<p>The effectiveness of pretraining stems from self-supervised learning, which generates labels from the data itself for training. For instance, in masked language modeling (MLM), the model randomly masks input words and predicts the originals, learning contextual representations. Mathematically, the MLM objective function is \\( \\mathcal{L}_{\\text{MLM}} = -\\sum_{m \\in M} \\log P(w_m | \\mathbf{x}_{\\backslash m}) \\), where \\( M \\) is the set of masked positions, \\( w_m \\) is the original word, and \\( \\mathbf{x}_{\\backslash m} \\) is the masked sequence. This forces the model to understand inter-word dependencies, building deep representations.</p>\n<p>Finetuning further trains the pretrained model on supervised data to adapt to specific tasks. Its effectiveness comes from transfer learning: pretrained representations provide high-quality initialization, and finetuning slightly adjusts parameters via gradient updates for rapid convergence. The objective function is \\( \\mathcal{L}_{\\text{finetune}} = \\sum_{(x,y)} \\ell(f_\\theta(x), y) \\), where \\( f_\\theta \\) is the model, \\( \\ell \\) is the loss function (e.g., cross-entropy), and \\( (x,y) \\) are labeled samples. Finetuning often requires minimal data (e.g., hundreds of samples) due to the model's prior language knowledge.</p>\n<p>Engineering implementation points: data preparation must ensure label quality and task alignment; model selection considers pretrained architectures (e.g., BERT for classification, GPT for generation); training loops include learning rate adjustments (e.g., linear warmup) and early stopping to prevent overfitting. Complexity is low, but computational resources (e.g., GPU memory) must be considered. Latency sensitivity lies in inference, optimizable via quantization or pruning.</p>\n<p>Finetuning is not always effective. Failure scenarios include low data quality (high noise), task mismatch (e.g., text classification to code generation), and overfitting (insufficient training data). Diagnosis methods: monitor training/validation loss curves, use cross-validation to assess generalization. Counterexample: a model pretrained on news data may perform poorly in medical finetuning if data distributions differ significantly.</p>\n<p>With mechanisms clear, we proceed to engineering practice, translating theory into reproducible workflows.</p>\n<h3>Engineering Implementation: Reproducible Pipeline from Data to Evaluation</h3>\n<p>The engineering pipeline for pretraining and finetuning encompasses data preprocessing, model training, evaluation, and prompt engineering applications. First, data preprocessing includes cleaning, tokenization, and dataset splitting. To ensure reproducibility, fix random seeds (e.g., `random_state=42`) and environment versions. Evaluation metrics like accuracy are quantified as \\( \\text{Accuracy} = \\frac{\\text{correct predictions}}{\\text{total samples}} \\).</p>\n<p>Prompt engineering guides model outputs by designing input text, serving as a complement to finetuning. For example, in text classification, the prompt \"Classify this news:\" followed by text can elicit zero-shot capabilities. However, prompt engineering relies on existing model knowledge and may be limited if prompts are vague or tasks complex. Engineering points: design concise, clear prompts; iteratively test templates; combine with few-shot learning for stability.</p>\n<p>Failure mode diagnosis: common reasons for prompt engineering failure include ambiguous prompts (e.g., \"analyze this text\" is too vague), insufficient model knowledge (e.g., querying untrained domains), and high task complexity (e.g., multi-step reasoning). Diagnostic steps: test different prompt templates, analyze semantic patterns in error cases, compare with finetuning performance as a baseline. If prompt engineering accuracy falls below a threshold (e.g., 0.7), consider switching to finetuning (Source: Prompt Engineering for Large Language Models: A Survey, 2023).</p>\n<p>Below is an end-to-end minimal reproducible experiment using sklearn's built-in dataset to demonstrate finetuning versus prompt engineering. The code covers data loading, preprocessing, finetuning training, evaluation, and prompt implementation, with no external file dependencies.</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport seaborn as sns\nimport matplotlib.pyplot as plt\n\n# Step 1: Data inspection\nprint(\"=== Data Loading and Inspection ===\")\ndata = fetch_20newsgroups(subset='all', categories=['sci.space', 'rec.sport.baseball'])\ntexts = data.data\ntargets = data.target\nprint(f\"Dataset shape: {len(texts)} samples, {len(set(targets))} classes\")\nprint(\"First 2 examples:\")\nfor i in range(2):\n    print(f\"Text {i+1}: {texts[i][:100]}...\")\n    print(f\"Label: {targets[i]} ({data.target_names[targets[i]]})\")\n\n# Step 2: Reproducible split\nX_train, X_test, y_train, y_test = train_test_split(\n    texts, targets, test_size=0.2, random_state=42, stratify=targets\n)\nprint(f\"Training set: {len(X_train)} samples, Test set: {len(X_test)} samples\")\nprint(f\"Class distribution - Train: {np.bincount(y_train)}, Test: {np.bincount(y_test)}\")\n\n# Step 3: Pipeline (finetuning)\nvectorizer = TfidfVectorizer(max_features=1000, stop_words='english')\nX_train_vec = vectorizer.fit_transform(X_train)\nX_test_vec = vectorizer.transform(X_test)\nmodel = LogisticRegression(random_state=42)\nmodel.fit(X_train_vec, y_train)\ny_pred = model.predict(X_test_vec)\n\n# Step 4: Metrics and error analysis\naccuracy = accuracy_score(y_test, y_pred)\nprint(f\"Finetuned model accuracy: {accuracy:.4f}\")\ncm = confusion_matrix(y_test, y_pred)\nprint(\"Confusion matrix:\")\nprint(cm)\nsns.heatmap(cm, annot=True, fmt='d', xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix')\nplt.show()\n\n# Step 5: Prompt engineering simulation\nprint(\"\\n=== Prompt Engineering Simulation ===\")\ndef prompt_engineering(texts, model_name='simulated'):\n    \"\"\"Simulate prompt engineering: simple classification based on keywords\"\"\"\n    predictions = []\n    for text in texts:\n        if 'space' in text.lower() or 'nasa' in text.lower():\n            predictions.append(0)  # sci.space\n        elif 'baseball' in text.lower() or 'game' in text.lower():\n            predictions.append(1)  # rec.sport.baseball\n        else:\n            predictions.append(np.random.randint(0, 2))  # random guess\n    return np.array(predictions)\n\ny_pred_prompt = prompt_engineering(X_test)\naccuracy_prompt = accuracy_score(y_test, y_pred_prompt)\nprint(f\"Prompt engineering accuracy: {accuracy_prompt:.4f}\")\nprint(\"Comparison: Finetuning {:.4f} vs Prompt Engineering {:.4f}\".format(accuracy, accuracy_prompt))\n\n# Environment logging\nprint(\"\\n=== Environment Information ===\")\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"sklearn version: {pd.__version__}\")  # example version output</code></pre>\n<p>The code outputs key intermediate results: dataset size, class distribution, accuracy scores, and confusion matrix. The finetuned model uses TF-IDF vectorization and logistic regression as a lightweight alternative, avoiding large model downloads. Prompt engineering simulation classifies based on keywords, illustrating its limitations. The accuracy formula is computed and printed to quantify performance differences.</p>\n<p>Failure mode diagnosis: if finetuning accuracy is low, check data quality or model complexity; if prompt engineering fails, optimize prompt design or switch to finetuning. Error analysis (e.g., confusion matrix) identifies misclassified categories, guiding improvements.</p>\n<p>This section demonstrated a complete engineering workflow. Next, we summarize key insights and transferable methods.</p>\n<h2>Conclusion and Transferable Methods</h2>\n<p>The pretraining and finetuning paradigm balances general capability with task adaptation through two-stage learning, forming the cornerstone of modern language modeling. Starting from intuition, we explored mechanisms and engineering practices, revealing effectiveness conditions (e.g., data alignment, representation quality) and failure boundaries (e.g., distribution shift, task mismatch). Through a reproducible example, you experienced the contrast between finetuning and prompt engineering and learned to diagnose using metrics like accuracy.</p>\n<p>Transferable methods include: always start with data inspection to ensure distribution consistency; prioritize finetuning for complex tasks, using prompt engineering for rapid prototyping; monitor evaluation metrics and adjust strategies promptly. In practical projects, applying these concepts enables designing controlled workflows and avoiding common pitfalls. Next, explore related topics like RAG or LLM evaluation to deepen your application skills.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：预训练与微调范式：为什么有效、何时失效 · 结构总览 · 数据：课程大纲】在设计《预训练与微调范式：为什么有效、何时失效》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 预训练与微调范式：为什么有效、何时失效 · 结构总览 · Data: 课程大纲】When outlining \"预训练与微调范式：为什么有效、何时失效\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：预训练与微调范式：为什么有效、何时失效 · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《预训练与微调范式：为什么有效、何时失效》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 预训练与微调范式：为什么有效、何时失效 · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"预训练与微调范式：为什么有效、何时失效\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：预训练与微调范式：为什么有效、何时失效 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《预训练与微调范式：为什么有效、何时失效》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 预训练与微调范式：为什么有效、何时失效 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"预训练与微调范式：为什么有效、何时失效\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：预训练与微调范式：为什么有效、何时失效 · 参考资料 · 数据：课程引用文献】当引用文献支撑《预训练与微调范式：为什么有效、何时失效》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 预训练与微调范式：为什么有效、何时失效 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"预训练与微调范式：为什么有效、何时失效\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding（arXiv，2018）",
+            "en": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding (arXiv, 2018)"
+          },
+          "url": "https://arxiv.org/abs/1810.04805"
+        },
+        {
+          "label": {
+            "zh": "Fine-Tuning Pretrained Language Models: Weight Initializations, Data Orders, and Early Stopping（arXiv，2020）",
+            "en": "Fine-Tuning Pretrained Language Models: Weight Initializations, Data Orders, and Early Stopping (arXiv, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2002.06305"
+        },
+        {
+          "label": {
+            "zh": "Prompt Engineering for Large Language Models: A Survey（arXiv，2023）",
+            "en": "Prompt Engineering for Large Language Models: A Survey (arXiv, 2023)"
+          },
+          "url": "https://arxiv.org/abs/2310.00001"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-06-pretraining-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 2,
+        "related": [
+          "RAG 总览：何时用、何时别用",
+          "LLM 应用 Evals：离线评测集构建与回归测试"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握预训练与微调范式可帮助团队在语言建模与提示工程上做出可复用的实践。",
+          "best_for": "适合NLP工程师、产品经理、研究人员，需要快速吸收NLP到大语言模型主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "故事化",
+          "energy": "encouraging",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 预训练与微调范式：为什么有效、何时失效 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 预训练与微调范式：为什么有效、何时失效 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，你在处理文本分类任务时，如何判断当前场景更适合采用预训练-微调范式还是直接使用提示工程？请结合数据标注成本、任务复杂度等因素分析。",
+            "action_hint": "尝试列出你最近项目中涉及的任务类型和数据特征，对比两种方法的适用条件。"
+          },
+          {
+            "lang": "zh",
+            "question": "在产品设计阶段，当遇到分布偏移导致模型效果下降时，你会如何调整预训练-微调策略？请描述具体的诊断步骤和应对方案。",
+            "action_hint": "回顾过往项目中模型失效的案例，分析数据分布变化对微调效果的影响机制。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-05-n-gram-rnn-transformer",
       "date": "2026-03-05",
