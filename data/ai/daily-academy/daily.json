@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-03-06T02:43:13.147Z",
+  "generatedAt": "2026-03-06T14:13:09.676Z",
   "lessons": [
+    {
+      "id": "2026-03-06-prompt",
+      "date": "2026-03-06",
+      "title": {
+        "zh": "Prompt 基础：指令、约束、结构化输出",
+        "en": "Prompt Basics: Instructions, Constraints, and Structured Output"
+      },
+      "summary": {
+        "zh": "本课程深入探讨提示工程的核心概念：指令、约束与结构化输出。从传统NLP的固定标签体系出发，阐述如何通过自然语言指令引导大语言模型执行任务，并利用约束实现可控生成。课程涵盖注意力机制中的提示响应原理，以及构建可复现评估管线的工程实践。通过数学公式和端到端代码示例，提供从理论到应用的完整知识链，帮助学习者掌握系统化提示设计方法。",
+        "en": "This course delves into the core concepts of prompt engineering: instructions, constraints, and structured output. Starting from the fixed-label systems of traditional NLP, it explains how to guide large language models with natural language instructions and use constraints for controlled generation. The course covers the principles of prompt response in attention mechanisms and the engineering practice of building reproducible evaluation pipelines. Through mathematical formulas and end-to-end code examples, it provides a complete knowledge chain from theory to application, helping learners master systematic prompt design methods."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "prompting",
+        "structured output"
+      ],
+      "content": {
+        "zh": "<h2>从任务标签到自然语言指令：NLP范式的转变</h2><p>传统自然语言处理（Natural Language Processing, NLP）任务通常依赖于预定义的标签体系。例如，在情感分析（Sentiment Analysis）任务中，模型被训练为将输入文本映射到“积极”、“消极”或“中性”等固定类别。这种范式假设任务空间是封闭且有限的，但在大语言模型（Large Language Model, LLM）时代，这种假设面临挑战。LLM通过海量文本预训练，具备了强大的语言理解和生成能力，能够处理开放域任务，但传统固定标签方法无法充分利用这种能力。问题的核心在于：如何将LLM的通用能力引导到特定任务上？这需要从“标签分类”转向“指令引导”。</p><p>指令提示（Instruction Prompting）是通过自然语言指令引导LLM完成特定任务的方法。它区别于传统监督学习的固定标签，而是使用如“请总结以下文章”或“分析这句话的情感倾向”等自然语言描述。零样本学习（Zero-shot Learning）指LLM在没有任务特定训练数据的情况下执行新任务的能力，这依赖于模型在预训练阶段学到的通用模式。从数学角度看，传统分类任务可形式化为学习条件概率 \\( P(y|x) \\)，其中\\( y \\)来自有限标签集；而指令提示可视为学习 \\( P(y|x, I) \\)，其中\\( I \\)是指令文本，扩展了任务空间。</p><p>机制上，指令通过影响Transformer的注意力权重（Attention Weights）来引导生成。在自注意力（Self-Attention）机制中，每个token计算与其他token的关联度，指令词如“总结”会增强与关键内容token的注意力，从而影响输出分布。例如，给定输入序列\\( X = [x_1, x_2, ..., x_n] \\)和指令\\( I \\)，模型计算注意力分数 \\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\)，其中\\( Q, K, V \\)是查询、键、值矩阵，指令token会调整这些矩阵的表示。</p><p>工程实现时，指令设计需考虑明确性和上下文。数据流通常包括：输入文本 → 拼接指令 → 模型推理 → 输出解析。关键要点是指令位置效应（Prompt Position Effect）：指令放在输入前部通常效果更好，因为能更早影响注意力分布。复杂度方面，指令增加输入长度，可能轻微影响延迟，但通常可忽略。实现中应避免模糊指令，如“处理这个文本”，而使用“提取实体并分类为人物、地点或组织”。</p><p>常见误区包括认为LLM像人类一样“理解”指令语义。实际上，LLM基于统计模式匹配响应，例如指令“分析情感”可能激活训练数据中与情感词共现的模式。失败模式包括指令歧义导致输出不一致，或指令与任务不匹配。诊断方法可通过A/B测试比较不同指令变体，或分析注意力可视化工具。例如，若输出偏离预期，检查指令是否明确指定了输出格式或范围。</p><p>理解了指令的基础作用后，我们面临新问题：如何确保输出符合特定要求，避免自由生成带来的不可控性？这引出了约束提示的概念。</p><h2>约束的力量：从自由生成到可控输出</h2><p>LLM在自由生成模式下可能产生过长、不相关或格式混乱的输出，这在生产环境中不可接受。例如，摘要任务可能生成冗余内容，或情感分析输出额外解释。约束提示（Constrained Prompting）通过明确格式、长度、内容范围等限制来控制输出，而结构化输出（Structured Output）特指要求LLM以JSON、XML等固定格式返回结果。这解决了可控性问题，使输出更易于程序化处理。</p><p>从概率角度，约束可视为在生成过程中引入先验或后处理过滤。无约束生成建模为 \\( P(y|x) \\)，而带约束生成可形式化为 \\( P(y|x, C) \\)，其中\\( C \\)是约束条件，如输出长度不超过\\( L \\)或格式为JSON。在实践中，这常通过提示工程实现，例如在指令中指定“用三个要点总结，每个不超过20字”。数学上，这类似于在解码阶段应用束搜索（Beam Search）时加入长度惩罚或格式验证。</p><p>机制上，约束通过调整生成概率分布来工作。在自回归生成中，每个时间步预测下一个token的概率 \\( P(y_t | y_{<t}, x) \\)，约束如“输出JSON”会提高符合JSON语法token的概率。例如，在生成过程中，模型可能学习到“{”后应跟键名，从而减少无效输出。注意力权重会偏向与约束相关的模式，如格式关键词。</p><p>工程实现要点包括：设计约束时平衡灵活性与可控性，过度约束可能导致模型无法发挥能力。数据流为：输入 → 指令+约束 → 模型生成 → 格式验证。复杂度方面，结构化输出增加后处理步骤，但通常开销较小。敏感点包括约束与模型能力的匹配；例如，要求复杂嵌套JSON可能超出模型能力。实现时，可使用少量示例（Few-shot）引导格式。</p><p>常见误区是认为约束越多越好，但过度约束可能限制模型创造性或导致错误。失败模式包括约束不明确（如“简短总结”未定义长度）或模型忽略约束。诊断方法包括输出分析：检查是否符合格式，或使用规则验证。例如，若JSON解析失败，需调整提示或添加示例。另一个失败模式是约束冲突，如同时要求“简短”和“详细”。</p><p>掌握了约束设计后，我们需要深入理解：这些指令和约束如何在LLM内部被处理？这涉及提示的机制分析。</p><h2>提示的机制：注意力如何响应指令与约束</h2><p>为什么同样的指令在不同位置或上下文中效果不同？这源于Transformer的注意力机制。提示工程不是编程命令，而是通过调整注意力权重来影响生成。例如，指令词“总结”可能增强与关键句子token的关联，而约束如“JSON”可能激活格式相关token。理解这一点有助于优化提示设计，避免盲目试错。</p><p>从数学定义，注意力权重计算为 \\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\)，其中\\( Q, K, V \\)来自输入序列的线性变换。提示token作为序列一部分，影响这些矩阵，从而改变权重分布。例如，指令token的查询向量\\( Q_I \\)可能与内容token的键向量\\( K_C \\)有高相似度，导致注意力集中。提示位置效应（Prompt Position Effect）可形式化为：位置\\( p \\)的提示对输出质量的影响函数 \\( f(p) \\)，通常\\( p \\)较小（如前部）时效果更佳。</p><p>机制解释：提示如同给LLM的“搜索关键词”，而非“编程命令”。在预训练中，模型学习到某些指令模式与特定输出的共现概率，例如“翻译成英文”常后跟英文文本。在生成时，模型基于这些模式采样。约束通过类似机制工作，如“输出列表”可能激活列表格式的token序列。直觉上，这类似于在概率空间引导采样方向。</p><p>工程实现中，可利用注意力可视化工具（如Transformers库的`model.attention`）分析提示效果。数据流包括：输入嵌入 → 注意力计算 → 输出生成。复杂度方面，分析注意力增加计算开销，但仅用于调试。敏感点包括模型架构差异；例如，不同LLM可能对提示响应不同。实现要点：测试提示变体时，固定随机种子以确保可比性。</p><p>常见误区是认为LLM“理解”指令语义，实则基于统计模式。失败模式包括提示被忽略或误解，尤其在多轮对话中。诊断方法包括检查注意力图：如果指令token未与相关内容关联，可能需要重写提示。另一个失败模式是提示冲突，如指令与上下文矛盾。例如，在长文本中，指令可能被淹没。</p><p>理解了机制后，我们可以系统化地构建提示工程流程，确保可复现和可评估。</p><h2>工程化实践：构建可复现的提示评估管线</h2><p>如何科学比较不同提示的效果？这需要工程化方法，避免主观评估。提示版本控制（Prompt Versioning）系统化记录和管理变体，而提示评估指标（Prompt Evaluation Metrics）如准确率、一致性用于量化效果。建立从设计到评估的完整流程，确保结果可靠和可复现。</p><p>从评估角度，常用指标包括准确率（Accuracy）、F1分数（F1 Score）等。准确率公式为 \\( \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\)，其中TP、TN、FP、FN是真阳性、真阴性、假阳性、假阴性。对于生成任务，可使用ROUGE分数，如ROUGE-1基于unigram重叠： \\( \\text{ROUGE-1} = \\frac{\\sum_{s \\in S} \\sum_{gram_1 \\in s} \\text{Count}_{\\text{match}}(gram_1)}{\\sum_{s \\in S} \\sum_{gram_1 \\in s} \\text{Count}(gram_1)} \\)，其中\\( S \\)是参考摘要集。这些指标帮助客观比较提示。</p><p>机制上，评估管线通过批量测试和指标计算实现。流程包括：数据准备 → 提示应用 → 输出收集 → 指标计算。数学上，这涉及统计假设检验，如比较不同提示的指标均值是否显著差异。工程实现要点：使用版本控制工具（如Git）管理提示，确保实验可复现。数据流应自动化，避免手动干预。</p><p>工程实现包括：设计提示变体（如基础指令、带约束、带示例），应用相同LLM，计算指标。复杂度方面，批量测试可能耗时，但可并行化。敏感点包括模型参数（如温度）影响输出随机性；应固定这些参数。实现时，记录环境细节（Python版本、库版本、随机种子）。例如，使用`random.seed(42)`确保可复现。</p><p>常见误区是认为最佳提示可直觉设计，实则需迭代测试。失败模式包括评估数据偏差或指标不适用。诊断方法：分析混淆矩阵或错误案例，调整提示。例如，如果准确率低，检查提示是否明确或数据是否噪声。另一个失败模式是过拟合测试集，需使用交叉验证。</p><p>以下端到端示例演示如何构建可复现的评估管线，覆盖本课关键概念。</p><pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport random\n\n# 步骤1：加载数据并模拟影评情感分析\n# 使用20newsgroups子集，rec.sport.baseball作为积极（模拟正面影评），talk.politics.mideast作为消极（模拟负面影评）\ncategories = ['rec.sport.baseball', 'talk.politics.mideast']\nnewsgroups = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = newsgroups.data\nlabels = [0 if 'baseball' in newsgroups.target_names[t] else 1 for t in newsgroups.target_names]  # 0=积极, 1=消极\n\n# 限制数据量以便快速运行\ntexts = texts[:2000]\nlabels = labels[:2000]\nprint(f\"数据集形状: ({len(texts)}, 2) - 文本和标签\")\nprint(f\"类别分布: 积极{labels.count(0)}条, 消极{labels.count(1)}条\")\nprint(\"样例head (前2条):\")\nfor i in range(2):\n    print(f\"文本{i}: {texts[i][:100]}... 标签: {'积极' if labels[i]==0 else '消极'}\")\n\n# 步骤2：切分训练/测试集\nX_train, X_test, y_train, y_test = train_test_split(texts, labels, test_size=0.2, random_state=42, stratify=labels)\nprint(f\"训练集大小: {len(X_train)}, 测试集大小: {len(X_test)}\")\n\n# 步骤3：模拟LLM响应函数（实际中可替换为真实API，此处用规则模拟）\ndef simulate_llm(text, prompt_variant):\n    \"\"\"模拟LLM基于提示的情感分析输出。\"\"\"\n    # 提示变体设计\n    if prompt_variant == \"A\":\n        # 基础指令\n        instruction = \"分析以下文本的情感倾向，输出'积极'或'消极': \"\n    elif prompt_variant == \"B\":\n        # 带格式约束\n        instruction = \"请判断情感，严格输出单个词'积极'或'消极'，不要额外文本: \"\n    elif prompt_variant == \"C\":\n        # 带示例few-shot\n        instruction = \"示例1: '这部电影很棒' -> 积极\\n示例2: '我不喜欢这个角色' -> 消极\\n现在分析: \"\n    else:\n        instruction = \"分析情感: \"\n    \n    # 模拟LLM逻辑：简单基于关键词匹配（实际中为复杂模型）\n    full_input = instruction + text[:500]  # 限制文本长度\n    positive_keywords = ['good', 'great', 'excellent', 'love', 'best', 'awesome', 'fun']\n    negative_keywords = ['bad', 'poor', 'terrible', 'hate', 'worst', 'awful', 'boring']\n    \n    pos_count = sum(1 for word in positive_keywords if word in full_input.lower())\n    neg_count = sum(1 for word in negative_keywords if word in full_input.lower())\n    \n    # 引入随机性模拟模型不确定性\n    random.seed(42)  # 固定随机种子以确保可复现\n    if pos_count > neg_count:\n        return \"积极\" if random.random() < 0.9 else \"消极\"  # 90%准确率模拟\n    elif neg_count > pos_count:\n        return \"消极\" if random.random() < 0.9 else \"积极\"\n    else:\n        return \"积极\" if random.random() < 0.5 else \"消极\"  # 随机猜测\n\n# 步骤4：批量测试并计算指标\nprompt_variants = [\"A\", \"B\", \"C\"]\nresults = {}\nfor variant in prompt_variants:\n    predictions = []\n    for text in X_test:\n        pred = simulate_llm(text, variant)\n        predictions.append(0 if pred == \"积极\" else 1)  # 映射回数值标签\n    \n    acc = accuracy_score(y_test, predictions)\n    f1 = f1_score(y_test, predictions, average='weighted')\n    cm = confusion_matrix(y_test, predictions)\n    \n    results[variant] = {\n        \"accuracy\": acc,\n        \"f1_score\": f1,\n        \"confusion_matrix\": cm\n    }\n    print(f\"提示{variant}准确率: {acc:.2f}, F1分数: {f1:.2f}\")\n    print(f\"混淆矩阵:\\n{cm}\")\n\n# 步骤5：环境记录\nprint(\"\\n环境记录: Python 3.9, sklearn 1.2.0, random_seed=42\")\nprint(\"提示版本对比完成。\")</code></pre><p>此代码块展示了端到端评估管线：加载数据、设计提示变体、模拟LLM响应、计算准确率和F1分数。输出包括数据集规模、样例、中间变量（如预测列表）和指标结果。准确率公式如前所述，用于量化提示效果。若需真实LLM，可替换`simulate_llm`为API调用，但轻量替代方案已覆盖关键概念。</p><p>通过本课，你掌握了从指令定义到工程实践的完整链条。现在，你可以开始设计自己的提示实验，系统化地优化LLM交互。</p>",
+        "en": "<h2>From Task Labels to Natural Language Instructions: The Shift in NLP Paradigm</h2><p>Traditional Natural Language Processing (NLP) tasks often rely on predefined label systems. For example, in sentiment analysis, models are trained to map input text to fixed categories such as \"positive,\" \"negative,\" or \"neutral.\" This paradigm assumes a closed and finite task space, but in the era of Large Language Models (LLMs), this assumption faces challenges. LLMs, pre-trained on vast text corpora, possess powerful language understanding and generation capabilities, enabling them to handle open-domain tasks. However, traditional fixed-label methods cannot fully leverage this ability. The core problem is: how to guide the general capabilities of LLMs to specific tasks? This requires a shift from \"label classification\" to \"instruction guidance.\"</p><p>Instruction Prompting is a method that uses natural language instructions to guide LLMs in completing specific tasks. It differs from traditional supervised learning with fixed labels by employing natural language descriptions such as \"Please summarize the following article\" or \"Analyze the sentiment of this sentence.\" Zero-shot Learning refers to the ability of LLMs to perform new tasks without task-specific training data, relying on general patterns learned during pre-training. Mathematically, traditional classification tasks can be formalized as learning the conditional probability \\( P(y|x) \\), where \\( y \\) comes from a finite label set; instruction prompting can be viewed as learning \\( P(y|x, I) \\), where \\( I \\) is the instruction text, expanding the task space.</p><p>Mechanistically, instructions influence generation by affecting the attention weights in Transformers. In the self-attention mechanism, each token computes its relevance to other tokens; instruction words like \"summarize\" enhance attention to key content tokens, thereby influencing the output distribution. For instance, given an input sequence \\( X = [x_1, x_2, ..., x_n] \\) and an instruction \\( I \\), the model computes attention scores \\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\), where \\( Q, K, V \\) are query, key, and value matrices; instruction tokens adjust the representations of these matrices.</p><p>In engineering implementation, instruction design must consider clarity and context. The data flow typically includes: input text → concatenate instruction → model inference → output parsing. A key point is the Prompt Position Effect: placing instructions at the beginning of the input often yields better results because they can influence attention distribution earlier. In terms of complexity, instructions increase input length, which may slightly affect latency but is usually negligible. Implementation should avoid ambiguous instructions like \"process this text\" and instead use \"extract entities and classify them as person, location, or organization.\"</p><p>Common misconceptions include believing that LLMs \"understand\" instruction semantics like humans do. In reality, LLMs respond based on statistical pattern matching; for example, the instruction \"analyze sentiment\" may activate patterns co-occurring with sentiment words in training data. Failure modes include ambiguous instructions leading to inconsistent outputs or mismatched instructions and tasks. Diagnostic methods involve A/B testing different instruction variants or analyzing attention visualization tools. For instance, if the output deviates from expectations, check whether the instruction explicitly specifies the output format or scope.</p><p>After understanding the basic role of instructions, we face a new problem: how to ensure outputs meet specific requirements and avoid the uncontrollability of free generation? This leads to the concept of constrained prompting.</p><h2>The Power of Constraints: From Free Generation to Controlled Output</h2><p>LLMs in free-generation mode may produce outputs that are too long, irrelevant, or poorly formatted, which is unacceptable in production environments. For example, summarization tasks might generate redundant content, or sentiment analysis outputs might include unnecessary explanations. Constrained Prompting controls outputs by specifying constraints such as format, length, or content scope, while Structured Output specifically refers to requiring LLMs to return results in fixed formats like JSON or XML. This addresses controllability issues, making outputs easier to process programmatically.</p><p>From a probabilistic perspective, constraints can be viewed as introducing priors or post-processing filters during generation. Unconstrained generation is modeled as \\( P(y|x) \\), while constrained generation can be formalized as \\( P(y|x, C) \\), where \\( C \\) represents constraint conditions, such as output length not exceeding \\( L \\) or format being JSON. In practice, this is often implemented through prompt engineering, e.g., specifying \"summarize in three bullet points, each no more than 20 words\" in the instruction. Mathematically, this is similar to applying length penalties or format validation during beam search in the decoding phase.</p><p>Mechanistically, constraints work by adjusting the probability distribution of generation. In autoregressive generation, each time step predicts the probability of the next token \\( P(y_t | y_{<t}, x) \\); constraints like \"output JSON\" increase the probability of tokens that conform to JSON syntax. For example, during generation, the model might learn that after \"{\", a key name should follow, thereby reducing invalid outputs. Attention weights tend to favor patterns related to constraints, such as format keywords.</p><p>Engineering implementation points include balancing flexibility and controllability when designing constraints; over-constraining may hinder the model's capabilities. The data flow is: input → instruction + constraints → model generation → format validation. In terms of complexity, structured output adds post-processing steps, but the overhead is usually small. Sensitive points include matching constraints with model capabilities; for instance, requiring complex nested JSON may exceed the model's ability. In implementation, few-shot examples can be used to guide the format.</p><p>A common misconception is that more constraints lead to better results, but over-constraining can limit creativity or cause errors. Failure modes include ambiguous constraints (e.g., \"brief summary\" without defined length) or the model ignoring constraints. Diagnostic methods involve output analysis: check if the format is adhered to, or use rule-based validation. For example, if JSON parsing fails, adjust the prompt or add examples. Another failure mode is conflicting constraints, such as requiring both \"concise\" and \"detailed.\"</p><p>After mastering constraint design, we need to delve deeper: how are these instructions and constraints processed internally within LLMs? This involves analyzing the mechanisms of prompting.</p><h2>The Mechanism of Prompts: How Attention Responds to Instructions and Constraints</h2><p>Why do the same instructions yield different effects in different positions or contexts? This stems from the attention mechanism in Transformers. Prompt engineering is not about programming commands but about influencing generation by adjusting attention weights. For example, instruction words like \"summarize\" may enhance associations with key sentence tokens, while constraints like \"JSON\" may activate format-related tokens. Understanding this helps optimize prompt design and avoid blind trial and error.</p><p>Mathematically, attention weights are computed as \\( \\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V \\), where \\( Q, K, V \\) come from linear transformations of the input sequence. Prompt tokens, as part of the sequence, affect these matrices, thereby altering weight distributions. For instance, the query vector \\( Q_I \\) of an instruction token may have high similarity with the key vector \\( K_C \\) of content tokens, leading to focused attention. The Prompt Position Effect can be formalized as a function \\( f(p) \\) representing the impact of a prompt at position \\( p \\) on output quality, typically better when \\( p \\) is small (e.g., at the beginning).</p><p>Mechanistic explanation: prompts act as \"search keywords\" for LLMs, not \"programming commands.\" During pre-training, models learn co-occurrence probabilities between certain instruction patterns and specific outputs, e.g., \"translate to English\" often precedes English text. During generation, models sample based on these patterns. Constraints work through similar mechanisms; for example, \"output a list\" may activate token sequences for list formats. Intuitively, this is akin to guiding the sampling direction in probability space.</p><p>In engineering implementation, attention visualization tools (e.g., `model.attention` in the Transformers library) can be used to analyze prompt effectiveness. The data flow includes: input embedding → attention computation → output generation. In terms of complexity, analyzing attention adds computational overhead but is only for debugging. Sensitive points include differences in model architectures; for example, different LLMs may respond differently to prompts. Implementation key points: when testing prompt variants, fix random seeds to ensure comparability.</p><p>A common misconception is that LLMs \"understand\" instruction semantics, whereas they actually rely on statistical patterns. Failure modes include prompts being ignored or misunderstood, especially in multi-turn dialogues. Diagnostic methods involve checking attention maps: if instruction tokens are not associated with relevant content, the prompt may need rewriting. Another failure mode is prompt conflict, such as instructions contradicting the context. For example, in long texts, instructions may get drowned out.</p><p>After understanding the mechanisms, we can systematically build prompt engineering workflows to ensure reproducibility and evaluability.</p><h2>Engineering Practice: Building Reproducible Prompt Evaluation Pipelines</h2><p>How to scientifically compare the effects of different prompts? This requires engineering methods to avoid subjective evaluation. Prompt Versioning systematically records and manages variants, while Prompt Evaluation Metrics such as accuracy and consistency quantify effectiveness. Establishing a complete workflow from design to evaluation ensures reliable and reproducible results.</p><p>From an evaluation perspective, common metrics include Accuracy and F1 Score. The accuracy formula is \\( \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\), where TP, TN, FP, FN are true positives, true negatives, false positives, and false negatives. For generation tasks, ROUGE scores can be used, such as ROUGE-1 based on unigram overlap: \\( \\text{ROUGE-1} = \\frac{\\sum_{s \\in S} \\sum_{gram_1 \\in s} \\text{Count}_{\\text{match}}(gram_1)}{\\sum_{s \\in S} sum_{gram_1 \\in s} \\text{Count}(gram_1)} \\), where \\( S \\) is the set of reference summaries. These metrics help objectively compare prompts.</p><p>Mechanistically, evaluation pipelines work through batch testing and metric computation. The process includes: data preparation → prompt application → output collection → metric calculation. Mathematically, this involves statistical hypothesis testing, such as comparing whether the mean metrics of different prompts differ significantly. Engineering implementation points: use version control tools (e.g., Git) to manage prompts, ensuring experiment reproducibility. The data flow should be automated to avoid manual intervention.</p><p>Engineering implementation includes designing prompt variants (e.g., basic instruction, with constraints, with examples), applying the same LLM, and computing metrics. In terms of complexity, batch testing may be time-consuming but can be parallelized. Sensitive points include model parameters (e.g., temperature) affecting output randomness; these should be fixed. During implementation, record environmental details (Python version, library versions, random seeds). For example, use `random.seed(42)` to ensure reproducibility.</p><p>A common misconception is that the best prompt can be designed intuitively, but in reality, iterative testing is required. Failure modes include biased evaluation data or inappropriate metrics. Diagnostic methods: analyze confusion matrices or error cases to adjust prompts. For instance, if accuracy is low, check if the prompt is clear or if the data is noisy. Another failure mode is overfitting to the test set, requiring cross-validation.</p><p>The following end-to-end example demonstrates how to build a reproducible evaluation pipeline, covering the key concepts of this lesson.</p><pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport random\n\n# Step 1: Load data and simulate movie review sentiment analysis\n# Use a subset of 20newsgroups, rec.sport.baseball as positive (simulating positive reviews), talk.politics.mideast as negative (simulating negative reviews)\ncategories = ['rec.sport.baseball', 'talk.politics.mideast']\nnewsgroups = fetch_20newsgroups(subset='all', categories=categories, shuffle=True, random_state=42)\ntexts = newsgroups.data\nlabels = [0 if 'baseball' in newsgroups.target_names[t] else 1 for t in newsgroups.target_names]  # 0=positive, 1=negative\n\n# Limit data size for quick execution\ntexts = texts[:2000]\nlabels = labels[:2000]\nprint(f\"Dataset shape: ({len(texts)}, 2) - texts and labels\")\nprint(f\"Class distribution: positive {labels.count(0)} entries, negative {labels.count(1)} entries\")\nprint(\"Sample head (first 2 entries):\")\nfor i in range(2):\n    print(f\"Text {i}: {texts[i][:100]}... Label: {'positive' if labels[i]==0 else 'negative'}\")\n\n# Step 2: Split into train/test sets\nX_train, X_test, y_train, y_test = train_test_split(texts, labels, test_size=0.2, random_state=42, stratify=labels)\nprint(f\"Training set size: {len(X_train)}, Test set size: {len(X_test)}\")\n\n# Step 3: Simulate LLM response function (in practice, replace with real API; here using rules for simulation)\ndef simulate_llm(text, prompt_variant):\n    \"\"\"Simulate LLM sentiment analysis output based on prompt.\"\"\"\n    # Prompt variant design\n    if prompt_variant == \"A\":\n        # Basic instruction\n        instruction = \"Analyze the sentiment of the following text, output 'positive' or 'negative': \"\n    elif prompt_variant == \"B\":\n        # With format constraint\n        instruction = \"Please determine sentiment, strictly output a single word 'positive' or 'negative', no extra text: \"\n    elif prompt_variant == \"C\":\n        # With few-shot examples\n        instruction = \"Example 1: 'This movie is great' -> positive\\nExample 2: 'I dislike this character' -> negative\\nNow analyze: \"\n    else:\n        instruction = \"Analyze sentiment: \"\n    \n    # Simulate LLM logic: simple keyword matching (in reality, a complex model)\n    full_input = instruction + text[:500]  # Limit text length\n    positive_keywords = ['good', 'great', 'excellent', 'love', 'best', 'awesome', 'fun']\n    negative_keywords = ['bad', 'poor', 'terrible', 'hate', 'worst', 'awful', 'boring']\n    \n    pos_count = sum(1 for word in positive_keywords if word in full_input.lower())\n    neg_count = sum(1 for word in negative_keywords if word in full_input.lower())\n    \n    # Introduce randomness to simulate model uncertainty\n    random.seed(42)  # Fix random seed for reproducibility\n    if pos_count > neg_count:\n        return \"positive\" if random.random() < 0.9 else \"negative\"  # Simulate 90% accuracy\n    elif neg_count > pos_count:\n        return \"negative\" if random.random() < 0.9 else \"positive\"\n    else:\n        return \"positive\" if random.random() < 0.5 else \"negative\"  # Random guess\n\n# Step 4: Batch test and compute metrics\nprompt_variants = [\"A\", \"B\", \"C\"]\nresults = {}\nfor variant in prompt_variants:\n    predictions = []\n    for text in X_test:\n        pred = simulate_llm(text, variant)\n        predictions.append(0 if pred == \"positive\" else 1)  # Map back to numerical labels\n    \n    acc = accuracy_score(y_test, predictions)\n    f1 = f1_score(y_test, predictions, average='weighted')\n    cm = confusion_matrix(y_test, predictions)\n    \n    results[variant] = {\n        \"accuracy\": acc,\n        \"f1_score\": f1,\n        \"confusion_matrix\": cm\n    }\n    print(f\"Prompt {variant} accuracy: {acc:.2f}, F1 score: {f1:.2f}\")\n    print(f\"Confusion matrix:\\n{cm}\")\n\n# Step 5: Environment recording\nprint(\"\\nEnvironment record: Python 3.9, sklearn 1.2.0, random_seed=42\")\nprint(\"Prompt version comparison completed.\")</code></pre><p>This code block demonstrates an end-to-end evaluation pipeline: loading data, designing prompt variants, simulating LLM responses, and computing accuracy and F1 scores. The output includes dataset size, samples, intermediate variables (e.g., prediction lists), and metric results. The accuracy formula, as mentioned earlier, is used to quantify prompt effectiveness. If a real LLM is needed, replace `simulate_llm` with an API call, but the lightweight alternative already covers key concepts.</p><p>Through this lesson, you have mastered the complete chain from instruction definition to engineering practice. Now, you can start designing your own prompt experiments to systematically optimize LLM interactions.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Prompt 基础：指令、约束、结构化输出 · 结构总览 · 数据：课程大纲】在设计《Prompt 基础：指令、约束、结构化输出》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Prompt 基础：指令、约束、结构化输出 · 结构总览 · Data: 课程大纲】When outlining \"Prompt 基础：指令、约束、结构化输出\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Prompt 基础：指令、约束、结构化输出 · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《Prompt 基础：指令、约束、结构化输出》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Prompt 基础：指令、约束、结构化输出 · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"Prompt 基础：指令、约束、结构化输出\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Prompt 基础：指令、约束、结构化输出 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Prompt 基础：指令、约束、结构化输出》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Prompt 基础：指令、约束、结构化输出 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Prompt 基础：指令、约束、结构化输出\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Prompt 基础：指令、约束、结构化输出 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Prompt 基础：指令、约束、结构化输出》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Prompt 基础：指令、约束、结构化输出 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Prompt 基础：指令、约束、结构化输出\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Prompting: Better Ways of Using Language Models for NLP Tasks（arXiv，2021）",
+            "en": "Prompting: Better Ways of Using Language Models for NLP Tasks (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2102.07350"
+        },
+        {
+          "label": {
+            "zh": "The Power of Scale for Parameter-Efficient Prompt Tuning（arXiv，2021）",
+            "en": "The Power of Scale for Parameter-Efficient Prompt Tuning (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2104.08691"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（JMLR，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (JMLR, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-06-prompt-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 3,
+        "related": [
+          "Function Calling / Tool Use：结构化执行",
+          "RAG 可靠性：引用、证据链、拒答策略"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering the fundamentals of prompt engineering—instructions, constraints, and structured output—enables teams to develop controllable and reproducible LLM applications, bridging the gap",
+          "best_for": "适合 NLP工程师、产品经理、研究人员，需要快速吸收 6. NLP 到大语言模型 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 Prompt 基础：指令、约束、结构化输出 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 Prompt 基础：指令、约束、结构化输出 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，你在设计文本分类系统时，如何将传统固定标签体系转化为自然语言指令，让大语言模型理解你的意图？",
+            "action_hint": "尝试用一句话描述你的分类任务，并思考如何添加约束来确保输出格式的一致性。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，在规划智能客服功能时，你如何通过结构化输出设计，确保模型生成的回答既准确又符合业务逻辑？",
+            "action_hint": "列出客服场景的关键约束条件，并设计一个包含指令和输出格式的提示模板。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-06-pretraining",
       "date": "2026-03-06",
