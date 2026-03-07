@@ -1,6 +1,184 @@
 {
-  "generatedAt": "2026-03-07T02:41:08.826Z",
+  "generatedAt": "2026-03-07T14:14:13.724Z",
   "lessons": [
+    {
+      "id": "2026-03-07-hallucination",
+      "date": "2026-03-07",
+      "title": {
+        "zh": "事实性与幻觉：成因、检测与缓解策略",
+        "en": "Factuality and Hallucination: Causes, Detection, and Mitigation Strategies"
+      },
+      "summary": {
+        "zh": "本课程系统探讨语言模型中的事实性与幻觉问题，从精确定义出发，深入分析幻觉产生的内在机制，包括训练数据偏差、模型架构限制和解码策略影响。课程提供多层次的检测评估方法，结合人工标注与自动指标，并给出可操作的缓解策略，如检索增强生成和事实核查提示。通过端到端代码示例展示评估流程和RAG实现，帮助工程师构建更可靠的AI系统。",
+        "en": "This course systematically explores factuality and hallucination in language models, starting from precise definitions and delving into the intrinsic mechanisms behind hallucinations, including training data bias, architectural limitations, and decoding strategy effects. It provides multi-level detection and evaluation methods combining human annotation with automated metrics, and offers actionable mitigation strategies such as retrieval-augmented generation and fact-checking prompts. Through end-to-end code examples demonstrating evaluation pipelines and RAG implementations, it helps engineers build more reliable AI systems."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "hallucination",
+        "factuality"
+      ],
+      "content": {
+        "zh": "<h3>从困惑到定义：什么是事实性，什么是幻觉？</h3>\n<p>在语言模型的实际部署中，工程师常面临一个核心挑战：模型有时能准确回答事实性问题，有时却会“自信地”生成完全错误的信息。这种看似随机的行为背后，是语言模型在事实性与幻觉之间的本质张力。事实性（Factuality）衡量生成内容与真实世界事实的一致性，是评估模型可靠性的关键维度。幻觉（Hallucination）则指模型生成看似合理但不符合事实的内容，包括事实错误、内部矛盾和不相关信息。理解这两者的区别，是构建可信AI系统的第一块基石。</p>\n<p>从技术角度精确定义：事实性可形式化为模型生成序列 \\(y\\) 与真实事实集合 \\(F\\) 的一致性度量。设 \\(\\text{FactCheck}(y, F)\\) 为事实核查函数，返回一致性得分 \\(s \\in [0,1]\\)，其中1表示完全一致。幻觉则定义为当 \\(s < \\tau\\)（阈值通常取0.8-0.9）且模型置信度 \\(p(y|x)\\) 较高时发生的现象。这里 \\(p(y|x)\\) 是模型在输入 \\(x\\) 下生成 \\(y\\) 的概率，高置信度错误正是幻觉的危险特征。</p>\n<p>工程实现中，事实性评估通常需要构建外部知识库 \\(F\\) 和自动化核查流程。一个典型的数据流包括：输入问题 \\(x\\) → 模型生成回答 \\(y\\) → 从知识库检索相关事实 \\(F_x \\subseteq F\\) → 计算 \\(\\text{FactCheck}(y, F_x)\\)。复杂度敏感点在于知识库的覆盖率和检索效率，延迟主要来自检索和核查步骤。对于实时应用，需要权衡核查深度与响应时间。</p>\n<p>常见误区包括将幻觉简单等同于“回答错误”。实际上，幻觉特指模型在高置信度下生成的系统性错误，而非随机失误。另一个误区是认为幻觉只发生在开放域问答中；事实上，摘要、翻译甚至代码生成都可能产生幻觉。失败模式通常表现为：1）模型“编造”不存在的事实细节；2）将不同来源信息错误组合；3）过度泛化训练数据中的模式。诊断时，需要检查生成内容的可验证性，并与可信来源交叉比对。具体诊断步骤可包括：1）使用混淆矩阵分析错误类型分布，计算精确率、召回率；2）计算模型置信度 \\(p(y|x)\\) 与事实性得分 \\(s\\) 的相关系数，识别高置信度错误；3）提供可执行的诊断代码片段，如使用简单规则检查关键词重叠度。</p>\n<p>理解了幻觉的定义和特征，我们自然要追问：为什么经过海量数据训练的模型仍会产生这种系统性错误？这需要深入模型内部，从训练数据到生成过程进行全面解析。</p>\n\n<h3>机制解析：从训练数据到生成过程的幻觉成因</h3>\n<p>幻觉的产生并非单一因素所致，而是训练数据、模型架构和解码策略共同作用的结果。训练数据偏差（Training Data Bias）是根本原因之一：当训练语料包含事实错误、矛盾陈述或不完整信息时，模型会学习到这些错误模式。模型架构方面，自回归生成机制使得错误在序列生成过程中累积放大。解码策略（Decoding Strategy）如贪婪搜索或采样，则直接影响生成内容的多样性和事实性。</p>\n<p>从概率分解角度分析：模型生成序列 \\(y = (y_1, y_2, ..., y_T)\\) 的概率为 \\(p(y|x) = \\prod_{t=1}^T p(y_t | x, y_{<t})\\)。幻觉发生在某个时间步 \\(t\\)，当 \\(p(y_t | x, y_{<t})\\) 在错误token上分配高概率时。训练数据偏差会影响条件概率分布 \\(p(y_t | \\cdot)\\) 的校准；解码策略则决定如何从该分布中选择 \\(y_t\\)。例如，贪婪搜索总是选择概率最高的token，可能放大训练数据中的偏见。束搜索（beam search）通过维护k个候选序列来优化整体概率：\\(\\arg\\max_{y} \\sum_{t=1}^T \\log p(y_t | x, y_{<t})\\)，其中对数概率求和旨在找到全局最优序列。</p>\n<p>工程实现中，需要监控训练数据的质量并设计适当的数据清洗流程。对于解码策略，常见的实现包括束搜索和温度采样（temperature sampling）。温度采样通过调整温度参数 \\(\\tau\\) 控制分布的平滑度：\\(p_\\tau(y_t) \\propto \\exp(\\log p(y_t) / \\tau)\\)。低温度（如0.3）使分布更尖锐，可能增加幻觉风险；高温度（如1.0）增加多样性但可能降低连贯性。复杂度敏感点在于束宽k和温度参数的选择，需要在事实性和多样性之间权衡。</p>\n<p>常见误区包括认为“更大的模型必然减少幻觉”。实际上，更大模型可能更自信地生成错误信息，因为其更强的模式匹配能力会放大训练数据中的偏见。另一个误区是认为微调可以完全消除幻觉；微调可能减少特定领域的幻觉，但无法解决架构层面的根本问题，且可能引入新的幻觉类型。失败模式表现为：1）模型过度依赖训练数据中的虚假相关性；2）解码策略导致错误累积；3）缺乏事实验证机制。诊断时，需要分析错误样本与训练数据分布的关系，并测试不同解码参数的影响。</p>\n<p>理解了幻觉的产生机制，接下来的关键问题是：如何系统性地检测和评估模型输出中的幻觉？这需要建立从人工标注到自动指标的完整评估体系。</p>\n\n<h3>检测与评估：从人工标注到自动指标</h3>\n<p>幻觉检测需要多层次的评估方法，结合人工评估的准确性和自动评估的可扩展性。事实一致性评估（Factual Consistency Evaluation）是核心任务，旨在判断生成内容与源文本或外部知识库的事实一致性。人工评估通常由标注员根据详细指南进行，计算幻觉率（Hallucination Rate）作为关键指标：\\(\\text{HR} = \\frac{N_{\\text{hallucinated}}}{N_{\\text{total}}} \\times 100\\%\\，其中 \\(N_{\\text{hallucinated}}\\) 是包含幻觉的样本数。更精细的指标可引入置信度加权：\\(\\text{HR}_{\\text{weighted}} = \\frac{\\sum_{i=1}^{N_{\\text{hallucinated}}} p(y_i|x_i)}{\\sum_{i=1}^{N_{\\text{total}}} p(y_i|x_i)} \\times 100\\%\\，以反映高置信度错误的严重性。</p>\n<p>自动评估指标需要专门设计来捕捉事实错误。一个基础方法是基于重叠的指标，如针对摘要任务的FactCC指标，计算生成摘要与源文档的事实重叠度。更先进的方法使用自然语言推理（NLI）模型判断蕴含关系。设源文本为 \\(S\\)，生成为 \\(G\\)，NLI模型输出关系 \\(R \\in \\{\\text{entailment}, \\text{neutral}, \\text{contradiction}\\}\\)，事实一致性得分可定义为 \\(\\text{FC} = \\mathbb{I}(R = \\text{entailment})\\)。对于开放域问答，可以使用基于检索的验证，计算生成答案与检索结果的相似度。</p>\n<p>工程实现中，需要构建评估流水线：加载测试数据 → 模型生成 → 人工/自动评估 → 指标计算。复杂度敏感点在于自动评估模型的准确性和延迟。对于大规模评估，需要平衡精度和速度，通常采用分层抽样策略。以下是一个最小可复现的评估示例，使用简单规则实现事实性检查：</p>\n<pre><code>import pandas as pd\nimport numpy as np\n\n# 构造测试数据（内联，无外部文件）\ntest_data = pd.DataFrame({\n    'question': ['谁发现了青霉素？', '地球到月球的距离是多少？', 'Python最初发布于哪一年？'],\n    'ground_truth': ['亚历山大·弗莱明', '约384,400公里', '1991年'],\n    'model_answer': ['亚历山大·弗莱明于1928年发现青霉素', '地球到月球约38万公里', 'Python语言最初发布于1989年']\n})\n\n# 简单事实性检查函数（基于关键词匹配）\ndef factual_check(answer, truth):\n    # 实际应用中应使用更复杂的方法，如NLI或检索验证\n    truth_words = set(truth.lower().split())\n    answer_words = set(answer.lower().split())\n    overlap = len(truth_words & answer_words) / len(truth_words) if truth_words else 0\n    return overlap >= 0.5  # 简单阈值\n\n# 评估流程\nprint(\"测试数据规模:\", test_data.shape)\nprint(\"\\n样例数据:\")\nprint(test_data.head())\n\nresults = []\nfor idx, row in test_data.iterrows():\n    is_factual = factual_check(row['model_answer'], row['ground_truth'])\n    results.append(is_factual)\n    print(f\"问题: {row['question']}\")\n    print(f\"模型回答: {row['model_answer']}\")\n    print(f\"事实检查结果: {'通过' if is_factual else '未通过'}\")\n    print(\"---\")\n\n# 计算幻觉率\nhallucination_rate = (1 - np.mean(results)) * 100\nprint(f\"\\n幻觉率: {hallucination_rate:.1f}%\")\nprint(f\"详细结果: 通过 {sum(results)}/{len(results)} 条\")\nprint(f\"公式: HR = (1 - 通过数/总数) × 100% = {hallucination_rate:.1f}%\")</code></pre>\n<p>常见误区包括认为“BLEU/ROUGE分数高就意味着事实性好”。这些传统指标衡量文本相似度而非事实一致性，可能给包含幻觉但词汇重叠高的文本打高分。另一个误区是试图通过单次评估全面了解幻觉问题；实际上，评估需要覆盖不同领域、任务类型和难度级别。失败模式表现为：1）评估指标与人工判断相关性低；2）测试数据缺乏代表性；3）忽略幻觉的类型差异。诊断时，需要分析错误案例的分布，并验证评估指标的有效性。</p>\n<p>掌握了检测方法，我们如何将这些评估结果转化为实际的改进策略？接下来，我们将探讨从提示工程到系统设计的多层次缓解方案。</p>\n\n<h3>缓解策略：从提示工程到系统设计</h3>\n<p>幻觉缓解需要多层次策略，从即时可用的提示技巧到需要系统设计的架构改进。提示工程方面，事实核查提示（Fact-Checking Prompt）要求模型验证生成内容的正确性或标注不确定性，例如在提示中加入“请基于可靠来源回答，如果不确定请说明”。检索增强生成（Retrieval-Augmented Generation, RAG）是更根本的解决方案，在生成过程中检索外部知识库，基于检索结果生成答案，公式化表示为：\\(p(y|x) \\propto \\sum_{z \\in Z} p(z|x) p(y|x,z)\\)，其中 \\(z\\) 是检索到的文档，\\(Z\\) 是检索结果集，\\(p(z|x)\\) 是检索分布，\\(p(y|x,z)\\) 是基于检索内容的生成分布。</p>\n<p>系统设计层面，可以引入后处理过滤模块，使用NLI模型或规则检查生成内容的事实一致性。另一个策略是集成不确定性估计，当模型置信度低于阈值时触发人工审核。工程实现中，RAG系统的典型数据流为：用户查询 → 检索模块从知识库获取相关文档 → 将查询和文档拼接为增强提示 → 模型生成 → 后处理过滤。复杂度敏感点在于检索质量（召回率和精度）和生成延迟，需要优化检索算法和缓存策略。</p>\n<p>以下是一个RAG的简化实现示例，展示如何结合检索与生成：</p>\n<pre><code>from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nimport numpy as np\n\n# 模拟知识库（内联数据）\nknowledge_base = [\n    \"青霉素由亚历山大·弗莱明于1928年发现。\",\n    \"地球到月球的平均距离约为384,400公里。\",\n    \"Python编程语言由吉多·范罗苏姆创建，最初发布于1991年。\",\n    \"机器学习是人工智能的一个分支，专注于算法和统计模型。\"\n]\n\n# 检索函数（TF-IDF + 余弦相似度）\ndef retrieve_documents(query, kb, top_k=2):\n    vectorizer = TfidfVectorizer().fit(kb + [query])\n    kb_vectors = vectorizer.transform(kb)\n    query_vector = vectorizer.transform([query])\n    similarities = cosine_similarity(query_vector, kb_vectors).flatten()\n    top_indices = np.argsort(similarities)[-top_k:][::-1]\n    return [kb[i] for i in top_indices], similarities[top_indices]\n\n# 模拟生成函数（实际应用中替换为语言模型）\ndef generate_answer(query, retrieved_docs):\n    # 简化：拼接检索结果作为回答\n    context = \" \".join(retrieved_docs)\n    return f\"基于检索信息: {context[:100]}...\"\n\n# 端到端流程\nquery = \"谁发现了青霉素？\"\nprint(f\"查询: {query}\")\n\nretrieved_docs, scores = retrieve_documents(query, knowledge_base)\nprint(f\"\\n检索结果（top-2）:\")\nfor i, (doc, score) in enumerate(zip(retrieved_docs, scores)):\n    print(f\"  {i+1}. {doc} (相似度: {score:.3f})\")\n\nanswer = generate_answer(query, retrieved_docs)\nprint(f\"\\n生成回答: {answer}\")\n\n# 计算检索指标（MRR@k）\ndef mrr_at_k(relevant_doc_index, scores, k=2):\n    \"\"\"计算平均倒数排名，假设第一个文档最相关\"\"\"\n    rank = np.where(np.argsort(scores)[::-1] == relevant_doc_index)[0][0] + 1\n    return 1.0 / rank if rank <= k else 0.0\n\nmrr = mrr_at_k(0, scores)  # 假设第一个文档（索引0）最相关\nprint(f\"\\n检索质量指标: MRR@2 = {mrr:.3f}\")\nprint(\"公式: MRR@k = 1/rank，其中rank是第一个相关文档在top-k中的位置\")</code></pre>\n<p>常见误区包括认为“更复杂的提示一定能减少幻觉”。实际上，过度约束的提示可能降低生成质量或导致模型忽略重要上下文。另一个误区是认为RAG可以完全消除幻觉；RAG依赖检索质量，如果知识库不完整或检索算法有偏差，仍可能产生幻觉。失败模式表现为：1）检索到不相关或错误文档；2）模型无法有效整合检索信息；3）后处理过滤误删正确内容。诊断时，需要分析检索结果的相关性、生成内容与检索信息的一致性，以及过滤模块的精确率-召回率平衡。</p>\n<p>综合运用定义理解、机制分析、检测评估和缓解策略，我们可以构建更可靠、事实性更强的语言模型应用。这需要持续迭代的方法，结合技术深度和工程实践，在模型能力与事实可靠性之间找到最佳平衡。</p>\n\n<p>本课程从事实性与幻觉的基本定义出发，逐步深入其产生机制、检测方法和缓解策略，形成了一个完整的技术框架。作为NLP工程师或研究人员，掌握这一框架不仅有助于解决当前项目中的幻觉问题，更能为未来设计更可靠的AI系统奠定基础。关键是将这些概念转化为可执行的评估流程和系统设计决策，在模型开发的每个阶段都注入事实性考量。</p>",
+        "en": "<h3>From Confusion to Definition: What is Factuality and What is Hallucination?</h3>\n<p>When building language model applications, engineers often encounter a core contradiction: models sometimes provide accurate answers to factual questions, yet at other times they \"confidently\" generate completely false information. This seemingly random behavior stems from the fundamental tension between factuality and hallucination in language models. Factuality measures the consistency between generated content and real-world facts, serving as a key dimension for assessing model reliability. Hallucination refers to content that appears plausible but does not align with facts, including factual errors, internal contradictions, and irrelevant information. Understanding the distinction between these two concepts forms the foundational stone for building trustworthy AI systems.</p>\n<p>From a technical perspective, factuality can be formally defined as a consistency metric between the generated sequence \\(y\\) and a set of true facts \\(F\\). Let \\(\\text{FactCheck}(y, F)\\) be a fact-checking function returning a consistency score \\(s \\in [0,1]\\), where 1 indicates perfect alignment. Hallucination is then defined as occurring when \\(s < \\tau\\) (threshold typically 0.8-0.9) and the model confidence \\(p(y|x)\\) is high. Here, \\(p(y|x)\\) is the probability of generating \\(y\\) given input \\(x\\), and high-confidence errors represent the dangerous characteristic of hallucinations.</p>\n<p>In engineering implementations, factual evaluation typically requires constructing an external knowledge base \\(F\\) and an automated verification pipeline. A standard data flow includes: input question \\(x\\) → model generates answer \\(y\\) → retrieve relevant facts \\(F_x \\subseteq F\\) from knowledge base → compute \\(\\text{FactCheck}(y, F_x)\\). Complexity-sensitive points involve knowledge base coverage and retrieval efficiency, with latency primarily from retrieval and verification steps. For real-time applications, a trade-off between verification depth and response time is necessary.</p>\n<p>Common misconceptions include equating hallucination simply with \"incorrect answers.\" In reality, hallucination specifically refers to systematic errors generated with high confidence, not random mistakes. Another misconception is that hallucinations only occur in open-domain QA; in fact, summarization, translation, and even code generation can produce hallucinations. Failure modes typically manifest as: 1) models \"fabricating\" non-existent factual details; 2) incorrectly combining information from different sources; 3) overgeneralizing patterns from training data. For diagnosis, one must examine the verifiability of generated content and cross-reference with credible sources. Specific diagnostic steps may include: 1) analyzing error type distribution using a confusion matrix, calculating precision and recall; 2) computing the correlation coefficient between model confidence \\(p(y|x)\\) and factual score \\(s\\) to identify high-confidence errors; 3) providing executable diagnostic code snippets, such as using simple rules to check keyword overlap.</p>\n<p>Having understood the definition and characteristics of hallucinations, we naturally ask: why do models trained on massive datasets still produce such systematic errors? This requires delving into the model internals for a comprehensive analysis from training data to generation processes.</p>\n\n<h3>Mechanism Analysis: Causes of Hallucination from Training Data to Generation Process</h3>\n<p>Hallucination arises not from a single factor but from the combined effects of training data, model architecture, and decoding strategies. Training data bias is one fundamental cause: when training corpora contain factual errors, contradictory statements, or incomplete information, models learn these erroneous patterns. In terms of architecture, the autoregressive generation mechanism allows errors to accumulate and amplify during sequence generation. Decoding strategies such as greedy search or sampling directly influence the diversity and factuality of generated content.</p>\n<p>From a probability decomposition perspective: the probability of generating sequence \\(y = (y_1, y_2, ..., y_T)\\) is \\(p(y|x) = \\prod_{t=1}^T p(y_t | x, y_{<t})\\). Hallucination occurs at some timestep \\(t\\) when \\(p(y_t | x, y_{<t})\\) assigns high probability to an incorrect token. Training data bias affects the calibration of the conditional probability distribution \\(p(y_t | \\cdot)\\); decoding strategies determine how \\(y_t\\) is selected from this distribution. For example, greedy search always selects the highest-probability token, potentially amplifying biases in training data. Beam search optimizes overall probability by maintaining k candidate sequences: \\(\\arg\\max_{y} \\sum_{t=1}^T \\log p(y_t | x, y_{<t})\\), where the sum of log probabilities aims to find the globally optimal sequence.</p>\n<p>In engineering implementations, monitoring training data quality and designing appropriate data cleaning pipelines are essential. For decoding strategies, common implementations include beam search and temperature sampling. Temperature sampling controls distribution smoothness via temperature parameter \\(\\tau\\): \\(p_\\tau(y_t) \\propto \\exp(\\log p(y_t) / \\tau)\\). Low temperature (e.g., 0.3) sharpens the distribution, potentially increasing hallucination risk; high temperature (e.g., 1.0) increases diversity but may reduce coherence. Complexity-sensitive points involve choosing beam width k and temperature parameters, requiring a trade-off between factuality and diversity.</p>\n<p>Common misconceptions include believing \"larger models necessarily reduce hallucinations.\" In reality, larger models may generate incorrect information more confidently because their stronger pattern-matching capabilities amplify biases in training data. Another misconception is that fine-tuning can completely eliminate hallucinations; fine-tuning may reduce domain-specific hallucinations but cannot address fundamental architectural issues and may introduce new hallucination types. Failure modes include: 1) models over-relying on spurious correlations in training data; 2) decoding strategies causing error accumulation; 3) lack of fact verification mechanisms. For diagnosis, analyze error samples in relation to training data distribution and test impacts of different decoding parameters.</p>\n<p>Understanding the mechanisms behind hallucinations leads to the crucial question: how can we systematically detect and evaluate hallucinations in model outputs? This requires establishing a comprehensive evaluation system from human annotation to automated metrics.</p>\n\n<h3>Detection and Evaluation: From Human Annotation to Automated Metrics</h3>\n<p>Hallucination detection requires multi-level evaluation methods, combining the accuracy of human assessment with the scalability of automated evaluation. Factual consistency evaluation is the core task, aiming to judge the factual alignment between generated content and source texts or external knowledge bases. Human evaluation typically involves annotators following detailed guidelines, calculating hallucination rate as a key metric: \\(\\text{HR} = \\frac{N_{\\text{hallucinated}}}{N_{\\text{total}}} \\times 100\\%\\), where \\(N_{\\text{hallucinated}}\\) is the number of samples containing hallucinations. A more refined metric can incorporate confidence weighting: \\(\\text{HR}_{\\text{weighted}} = \\frac{\\sum_{i=1}^{N_{\\text{hallucinated}}} p(y_i|x_i)}{\\sum_{i=1}^{N_{\\text{total}}} p(y_i|x_i)} \\times 100\\%\\), reflecting the severity of high-confidence errors.</p>\n<p>Automated evaluation metrics must be specifically designed to capture factual errors. A basic approach uses overlap-based metrics, such as FactCC for summarization tasks, computing factual overlap between generated summaries and source documents. More advanced methods employ natural language inference (NLI) models to judge entailment relations. Let source text be \\(S\\) and generation be \\(G\\), NLI model outputs relation \\(R \\in \\{\\text{entailment}, \\text{neutral}, \\text{contradiction}\\}\\), factual consistency score can be defined as \\(\\text{FC} = \\mathbb{I}(R = \\text{entailment})\\). For open-domain QA, retrieval-based verification can be used, computing similarity between generated answers and retrieved results.</p>\n<p>In engineering implementations, an evaluation pipeline must be built: load test data → model generation → human/automated evaluation → metric computation. Complexity-sensitive points involve the accuracy and latency of automated evaluation models. For large-scale evaluation, balance precision and speed, typically using stratified sampling strategies. Below is a minimal reproducible evaluation example implementing simple rule-based fact checking:</p>\n<pre><code>import pandas as pd\nimport numpy as np\n\n# Construct test data (inline, no external files)\ntest_data = pd.DataFrame({\n    'question': ['Who discovered penicillin?', 'What is the distance from Earth to the Moon?', 'In which year was Python first released?'],\n    'ground_truth': ['Alexander Fleming', 'Approximately 384,400 kilometers', '1991'],\n    'model_answer': ['Alexander Fleming discovered penicillin in 1928', 'The distance from Earth to the Moon is about 380,000 kilometers', 'The Python language was first released in 1989']\n})\n\n# Simple fact-checking function (keyword-based matching)\ndef factual_check(answer, truth):\n    # In practice, more sophisticated methods like NLI or retrieval verification should be used\n    truth_words = set(truth.lower().split())\n    answer_words = set(answer.lower().split())\n    overlap = len(truth_words & answer_words) / len(truth_words) if truth_words else 0\n    return overlap >= 0.5  # Simple threshold\n\n# Evaluation pipeline\nprint(\"Test data size:\", test_data.shape)\nprint(\"\\nSample data:\")\nprint(test_data.head())\n\nresults = []\nfor idx, row in test_data.iterrows():\n    is_factual = factual_check(row['model_answer'], row['ground_truth'])\n    results.append(is_factual)\n    print(f\"Question: {row['question']}\")\n    print(f\"Model answer: {row['model_answer']}\")\n    print(f\"Fact check result: {'Pass' if is_factual else 'Fail'}\")\n    print(\"---\")\n\n# Calculate hallucination rate\nhallucination_rate = (1 - np.mean(results)) * 100\nprint(f\"\\nHallucination rate: {hallucination_rate:.1f}%\")\nprint(f\"Detailed results: Pass {sum(results)}/{len(results)} items\")\nprint(f\"Formula: HR = (1 - passes/total) × 100% = {hallucination_rate:.1f}%\")</code></pre>\n<p>Common misconceptions include believing \"high BLEU/ROUGE scores imply good factuality.\" These traditional metrics measure text similarity rather than factual consistency and may give high scores to texts with hallucinations but high lexical overlap. Another misconception is attempting to fully understand hallucination problems through a single evaluation; in reality, evaluation must cover different domains, task types, and difficulty levels. Failure modes include: 1) low correlation between evaluation metrics and human judgment; 2) unrepresentative test data; 3) ignoring differences in hallucination types. For diagnosis, analyze error case distributions and validate evaluation metric effectiveness.</p>\n<p>Having mastered detection methods, how can we translate these evaluation results into practical improvement strategies? Next, we will explore multi-level mitigation approaches from prompt engineering to system design.</p>\n\n<h3>Mitigation Strategies: From Prompt Engineering to System Design</h3>\n<p>Hallucination mitigation requires multi-level strategies, from immediately applicable prompt techniques to architectural improvements requiring system design. In prompt engineering, fact-checking prompts require models to verify correctness or indicate uncertainty, e.g., adding \"Please answer based on reliable sources; if uncertain, please state so.\" Retrieval-augmented generation (RAG) is a more fundamental solution, retrieving from external knowledge bases during generation and generating answers based on retrieved results, formalized as: \\(p(y|x) \\propto \\sum_{z \\in Z} p(z|x) p(y|x,z)\\), where \\(z\\) is a retrieved document, \\(Z\\) is the retrieval result set, \\(p(z|x)\\) is the retrieval distribution, and \\(p(y|x,z)\\) is the generation distribution conditioned on retrieved content.</p>\n<p>At the system design level, post-processing filtering modules can be introduced, using NLI models or rules to check factual consistency. Another strategy integrates uncertainty estimation, triggering human review when model confidence falls below a threshold. In engineering implementations, a typical RAG system data flow is: user query → retrieval module fetches relevant documents from knowledge base → concatenate query and documents into augmented prompt → model generation → post-processing filtering. Complexity-sensitive points involve retrieval quality (recall and precision) and generation latency, requiring optimization of retrieval algorithms and caching strategies.</p>\n<p>Below is a simplified RAG implementation example demonstrating how to combine retrieval and generation:</p>\n<pre><code>from sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nimport numpy as np\n\n# Simulated knowledge base (inline data)\nknowledge_base = [\n    \"Penicillin was discovered by Alexander Fleming in 1928.\",\n    \"The average distance from Earth to the Moon is approximately 384,400 kilometers.\",\n    \"The Python programming language was created by Guido van Rossum and first released in 1991.\",\n    \"Machine learning is a branch of artificial intelligence focusing on algorithms and statistical models.\"\n]\n\n# Retrieval function (TF-IDF + cosine similarity)\ndef retrieve_documents(query, kb, top_k=2):\n    vectorizer = TfidfVectorizer().fit(kb + [query])\n    kb_vectors = vectorizer.transform(kb)\n    query_vector = vectorizer.transform([query])\n    similarities = cosine_similarity(query_vector, kb_vectors).flatten()\n    top_indices = np.argsort(similarities)[-top_k:][::-1]\n    return [kb[i] for i in top_indices], similarities[top_indices]\n\n# Simulated generation function (replace with language model in practice)\ndef generate_answer(query, retrieved_docs):\n    # Simplified: concatenate retrieval results as answer\n    context = \" \".join(retrieved_docs)\n    return f\"Based on retrieved information: {context[:100]}...\"\n\n# End-to-end pipeline\nquery = \"Who discovered penicillin?\"\nprint(f\"Query: {query}\")\n\nretrieved_docs, scores = retrieve_documents(query, knowledge_base)\nprint(f\"\\nRetrieved documents (top-2):\")\nfor i, (doc, score) in enumerate(zip(retrieved_docs, scores)):\n    print(f\"  {i+1}. {doc} (similarity: {score:.3f})\")\n\nanswer = generate_answer(query, retrieved_docs)\nprint(f\"\\nGenerated answer: {answer}\")\n\n# Calculate retrieval metric (MRR@k)\ndef mrr_at_k(relevant_doc_index, scores, k=2):\n    \"\"\"Compute mean reciprocal rank, assuming first document most relevant\"\"\"\n    rank = np.where(np.argsort(scores)[::-1] == relevant_doc_index)[0][0] + 1\n    return 1.0 / rank if rank <= k else 0.0\n\nmrr = mrr_at_k(0, scores)  # Assume first document (index 0) most relevant\nprint(f\"\\nRetrieval quality metric: MRR@2 = {mrr:.3f}\")\nprint(\"Formula: MRR@k = 1/rank, where rank is position of first relevant document in top-k\")</code></pre>\n<p>Common misconceptions include believing \"more complex prompts necessarily reduce hallucinations.\" In reality, over-constrained prompts may reduce generation quality or cause models to ignore important context. Another misconception is that RAG can completely eliminate hallucinations; RAG depends on retrieval quality, and incomplete knowledge bases or biased retrieval algorithms can still produce hallucinations. Failure modes include: 1) retrieving irrelevant or incorrect documents; 2) models failing to effectively integrate retrieved information; 3) post-processing filters incorrectly removing correct content. For diagnosis, analyze retrieval result relevance, consistency between generated content and retrieved information, and precision-recall balance of filtering modules.</p>\n<p>By comprehensively applying definition understanding, mechanism analysis, detection evaluation, and mitigation strategies, we can build more reliable, factual language model applications. This requires an iterative approach combining technical depth and engineering practice to find the optimal balance between model capability and factual reliability.</p>\n\n<p>This course progresses from basic definitions of factuality and hallucination, gradually delving into their mechanisms, detection methods, and mitigation strategies, forming a complete technical framework. As NLP engineers or researchers, mastering this framework not only helps address hallucination issues in current projects but also lays the foundation for designing more reliable AI systems in the future. The key is translating these concepts into executable evaluation pipelines and system design decisions, injecting factual considerations at every stage of model development.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：事实性与幻觉：成因、检测与缓解策略 · 结构总览 · 数据：课程大纲】在设计《事实性与幻觉：成因、检测与缓解策略》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 事实性与幻觉：成因、检测与缓解策略 · 结构总览 · Data: 课程大纲】When outlining \"事实性与幻觉：成因、检测与缓解策略\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：事实性与幻觉：成因、检测与缓解策略 · worked example · 数据：掌握从传统NLP到LLM的关键概念链条 数据/代码】在复现《事实性与幻觉：成因、检测与缓解策略》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 事实性与幻觉：成因、检测与缓解策略 · worked example · Data: 掌握从传统NLP到LLM的关键概念链条 数据/代码】While reproducing the worked example in \"事实性与幻觉：成因、检测与缓解策略\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：事实性与幻觉：成因、检测与缓解策略 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《事实性与幻觉：成因、检测与缓解策略》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 事实性与幻觉：成因、检测与缓解策略 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"事实性与幻觉：成因、检测与缓解策略\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：事实性与幻觉：成因、检测与缓解策略 · 参考资料 · 数据：课程引用文献】当引用文献支撑《事实性与幻觉：成因、检测与缓解策略》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 事实性与幻觉：成因、检测与缓解策略 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"事实性与幻觉：成因、检测与缓解策略\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "TruthfulQA: Measuring How Models Mimic Human Falsehoods（arXiv，2021）",
+            "en": "TruthfulQA: Measuring How Models Mimic Human Falsehoods (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2109.07958"
+        },
+        {
+          "label": {
+            "zh": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks（arXiv，2020）",
+            "en": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks (arXiv, 2020)"
+          },
+          "url": "https://arxiv.org/abs/2005.11401"
+        },
+        {
+          "label": {
+            "zh": "On the Dangers of Stochastic Parrots: Can Language Models Be Too Big?（FAccT，2021）",
+            "en": "On the Dangers of Stochastic Parrots: Can Language Models Be Too Big? (FAccT, 2021)"
+          },
+          "url": "https://dl.acm.org/doi/10.1145/3442188.3445922"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-07-hallucination-zh.mp3"
+      },
+      "meta": {
+        "category": "语言建模与提示工程",
+        "level": "6. NLP 到大语言模型",
+        "difficultyScore": 3,
+        "related": [
+          "红队测试：用例库与评分规则",
+          "内容安全：policy、过滤、边界案例"
+        ],
+        "learningObjectives": [
+          "掌握从传统NLP到LLM的关键概念链条",
+          "能写出可控的提示并理解其局限"
+        ],
+        "personas": [
+          "NLP工程师",
+          "产品经理",
+          "研究人员"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering the causes, detection, and mitigation strategies of factuality and hallucination at this stage helps teams establish reusable practices in language modeling and prompt engineering.",
+          "best_for": "Suitable for NLP engineers, product managers, and researchers needing to quickly absorb topics from NLP to large language models.",
+          "visual_hint": "Use bullet points + flow arrows to illustrate transitions."
+        },
+        "tone_profile": {
+          "persona": "NLP工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 NLP工程师、产品经理、研究人员，帮助他们把 事实性与幻觉：成因、检测与缓解策略 应用于 语言建模与提示工程",
+          "prefersEnglish": false,
+          "industries": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "personas": [
+            "NLP工程师",
+            "产品经理",
+            "研究人员"
+          ],
+          "pains": "在 语言建模与提示工程 场景缺乏 事实性与幻觉：成因、检测与缓解策略 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "6. NLP 到大语言模型"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为NLP工程师，回顾你最近的语言模型项目，哪些输出曾让你怀疑存在事实性错误？当时你是如何初步判断的，现在学习了检测方法后，会采取哪些不同的验证步骤？",
+            "action_hint": "尝试用课程中的自动指标（如事实一致性分数）重新评估那些可疑输出，并设计一个包含事实核查提示的测试案例。"
+          },
+          {
+            "lang": "zh",
+            "question": "如果你是负责AI产品的经理，在规划新功能时，如何平衡模型输出的创造性与事实准确性？你会设计哪些提示工程策略来减少幻觉，同时保持用户体验？",
+            "action_hint": "基于RAG框架，草拟一个提示模板，明确要求模型引用可验证来源，并设置输出事实性阈值。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-07-few-shot",
       "date": "2026-03-07",
