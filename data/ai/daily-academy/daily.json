@@ -1,6 +1,186 @@
 {
-  "generatedAt": "2026-03-09T14:27:45.575Z",
+  "generatedAt": "2026-03-10T02:42:27.788Z",
   "lessons": [
+    {
+      "id": "2026-03-10-rerankercross-encoder",
+      "date": "2026-03-10",
+      "title": {
+        "zh": "Reranker：cross-encoder 与成本权衡",
+        "en": "Reranker: Cross-Encoder and Cost Trade-offs"
+      },
+      "summary": {
+        "zh": "本课程深入探讨了重排序器（Reranker）在RAG全链路中的关键作用，聚焦于交叉编码器（Cross-encoder）的机制与成本权衡。首先，分析了检索后精度缺口的成因，明确了重排序器通过精细化排序提升Top-k结果质量的目标。其次，解析了交叉编码器与双编码器的架构差异，阐释了全交互计算带来的精度优势与效率代价。最后，通过可复现的工程管线示例，演示了从数据加载、检索、重排序到评估的完整流程，并强调了监控精度、延迟与成本的重要性。课程旨在使学习者掌握构建可控、可评测LLM应用的系统方法。",
+        "en": "This course delves into the critical role of rerankers in the full RAG pipeline, focusing on the mechanisms of cross-encoders and cost trade-offs. First, it analyzes the causes of precision gaps after retrieval, clarifying the reranker's objective to enhance top-k result quality through fine-grained sorting. Second, it examines architectural differences between cross-encoders and bi-encoders, explaining the precision advantages and efficiency costs of full interaction computation. Finally, via a reproducible engineering pipeline example, it demonstrates the complete flow from data loading, retrieval, and reranking to evaluation, emphasizing the importance of monitoring precision, latency, and cost. The course aims to equip learners with systematic methods for building controllable, evaluable LLM applications."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "rag",
+        "retrieval"
+      ],
+      "content": {
+        "zh": "<h3>为什么检索后还需要排序？从精度缺口到成本意识</h3>\n<p>在构建检索增强生成（Retrieval-Augmented Generation, RAG）系统时，工程师常面临一个核心挑战：即使部署了BM25或向量检索，最终生成的答案仍可能不准确。这并非检索器失效，而是源于检索系统固有的精度-召回权衡。检索器的首要目标是高效召回相关候选，其排序逻辑往往基于词频统计或向量相似度，难以捕捉查询与文档间的深层语义关联。例如，对于查询“如何缓解LLM幻觉？”，检索器可能返回大量提及“幻觉”的文档，但未必精准匹配“缓解策略”。若直接将此类噪声文档输入大语言模型（Large Language Model, LLM），不仅会降低生成质量，还会因处理无关内容而增加计算成本。</p>\n<p>重排序器（Reranker）正是为解决此精度缺口而设计。它并非替代检索器，而是对检索器返回的候选集进行二次精细化排序的组件。其核心目标函数可形式化为：给定查询q和检索器返回的候选文档集合D = {d₁, d₂, ..., dₙ}，重排序器输出一个排序列表，使得前k个文档与查询的相关性分数最大化。数学上，这常通过优化归一化折损累计增益（Normalized Discounted Cumulative Gain, NDCG）等指标来实现：\n\\[ \\text{NDCG}@k = \\frac{\\text{DCG}@k}{\\text{IDCG}@k}, \\quad \\text{DCG}@k = \\sum_{i=1}^{k} \\frac{2^{\\text{rel}_i} - 1}{\\log_2(i+1)} \\]\n其中，rel_i表示第i个位置文档的真实相关性分数，IDCG是理想排序下的DCG值。该公式强调：高相关文档应排在前面，且位置折扣（分母中的对数项）惩罚了错误排序。</p>\n<p>交叉编码器（Cross-encoder）是实现重排序的常用模型架构。与双编码器（Bi-encoder）独立编码查询和文档不同，交叉编码器将查询和文档拼接为单个序列输入Transformer，通过自注意力（Self-attention）机制进行全交互计算，从而捕获细粒度语义匹配。例如，对于查询“Python数据可视化库”和文档“Matplotlib教程”，交叉编码器会同时编码两者，并输出一个标量分数（如0.92），直接反映相关性。这种交互虽提升了精度，但计算复杂度为O((|q|+|d|)²)，其中|q|和|d|表示token长度，导致延迟显著高于双编码器的O(|q|+|d|)。</p>\n<p>工程实现中，重排序器需集成在检索器之后、LLM之前。数据流为：用户查询→检索器返回N个候选（如N=20）→重排序器对每个查询-文档对打分→按分数排序取Top-k（如k=5）→输入LLM生成答案。关键敏感点包括：候选集大小N需平衡精度与延迟（N过大则重排序成本剧增），模型选择（如预训练的MS-MARCO模型），以及分数归一化处理。实践中，常使用开源库如transformers加载预训练交叉编码器，并通过批处理优化推理速度。</p>\n<p>常见误区包括：认为重排序器可完全替代检索器，或增加检索结果总能提高答案质量。实际上，重排序器依赖检索器提供高质量候选；若检索结果本身无关，重排序也无法挽回。失败模式常表现为：精度未提升反而延迟增加，可能因候选集过大、模型未针对领域微调，或分数阈值设置不当。诊断时，应分析错误案例的排序分数分布，并监控每查询成本（Cost per query）——即重排序和LLM调用的总token消耗，其公式为：\n\\[ C_{\\text{query}} = \\sum_{i=1}^{k} (\\text{tokens}_{\\text{reranker}_i} + \\text{tokens}_{\\text{LLM}_i}) \\times \\text{price per token} \\]\n通过A/B测试对比基线（如仅用检索器），可量化重排序的净收益。</p>\n<p>理解了重排序的动机与边界，我们接下来深入交叉编码器的内部机制，明确其如何通过交互计算实现精度提升，以及面临的效率约束。</p>\n<h3>Cross-encoder详解：从交互计算到效率边界</h3>\n<p>当工程师尝试优化RAG系统时，常困惑于编码器选择：交叉编码器和双编码器都基于Transformer，为何性能差异如此显著？这源于两者根本的架构差异。双编码器（如Sentence-BERT）分别独立编码查询和文档为固定维向量，通过余弦相似度等度量计算相关性，实现高效检索。其目标函数可视为学习一个映射f，使得相关查询-文档对的向量点积最大化：\n\\[ \\max_f \\, \\mathbb{E}_{(q,d)}[f(q)^\\top f(d)] \\]\n这种分离编码使预计算文档向量成为可能，检索复杂度降至O(1)，但损失了查询与文档间的细粒度交互信息。</p>\n<p>交叉编码器则采用全交互范式。给定查询q和文档d，它们被拼接为序列[CLS] q [SEP] d [SEP]，输入Transformer模型。通过多层自注意力，每个查询token能与所有文档token交互，反之亦然，从而建模复杂语义关系。最终，[CLS]位置的隐藏状态通过线性层输出相关性分数s(q,d)。数学上，这可以表示为：\n\\[ s(q,d) = \\text{Linear}(\\text{Transformer}(\\text{Embed}(q,d))) \\]\n其中Embed表示token嵌入，Transformer包含多头注意力（Multi-head Attention）和前馈网络。这种设计使交叉编码器在MS MARCO等数据集上达到SOTA精度（来源：Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks, 2019）。</p>\n<p>然而，交互计算带来显著效率代价。设查询长度为L_q，文档长度为L_d，Transformer的注意力计算复杂度为O((L_q+L_d)²)，而双编码器为O(L_q + L_d)。对于长文档，交叉编码器的延迟可能增长至秒级，不适合实时大规模检索。工程中，交叉编码器通常用于小规模候选集（如N≤100）的重排序，而双编码器用于初始检索。实现要点包括：选择轻量模型（如MiniLM），使用动态填充（Dynamic Padding）减少计算，并监控GPU内存使用。</p>\n<p>误区包括：认为交叉编码器的精度提升是无成本的，或其在所有场景都优于双编码器。实际上，精度提升以延迟和计算资源为代价；在延迟敏感或候选集巨大的场景，双编码器仍是更优选择。失败模式常表现为：推理超时或内存溢出，可能因文档过长、批处理大小不当，或模型未量化。诊断时，应分析延迟分布与输入长度关系，并使用性能剖析工具（如PyTorch Profiler）识别瓶颈。</p>\n<p>掌握了交叉编码器的机制与局限，我们将其集成到RAG全链路，构建一个可监控的工程管线，确保精度与成本的平衡。</p>\n<h3>工程落地：构建可监控的Reranker管线</h3>\n<p>面对众多预训练模型和评估指标，工程师常不确定如何系统化地部署重排序器，同时控制预算。这要求构建一个端到端的管线（Pipeline），涵盖数据、模型、评估和监控。管线的目标不仅是实现功能，而是确保可复现性（Reproducibility）和可观测性（Observability）。我们定义管线为一系列可配置模块：数据加载→检索→重排序→生成→评估，每个模块输出日志供监控分析。</p>\n<p>评估指标（Evaluation metrics）的选择至关重要。除了精度指标如NDCG@k，还需考虑效率指标如每秒查询数（Queries Per Second, QPS）和成本指标如每查询成本。对于排序任务，平均精度均值（Mean Average Precision, MAP）是常用指标，其公式为：\n\\[ \\text{MAP} = \\frac{1}{|Q|} \\sum_{q \\in Q} \\frac{1}{|D_q|} \\sum_{k=1}^{|D_q|} \\text{Precision}@k \\times \\text{rel}(k) \\]\n其中Q是查询集合，D_q是相关文档集，rel(k)指示第k个文档是否相关。结合业务目标，可能还需自定义指标，如答案准确性（通过LLM评估）。</p>\n<p>工程实现中，管线需集成到现有RAG框架。以下是一个最小可复现示例，使用公开数据集和轻量模型，避免外部文件依赖。代码块#1展示了从数据加载到评估的完整流程：</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom rank_bm25 import BM25Okapi\nfrom transformers import AutoTokenizer, AutoModelForSequenceClassification\nimport torch\nimport torch.nn.functional as F\n\n# 步骤1：数据加载与检查\ncategories = ['comp.graphics', 'rec.autos']\ndataset = fetch_20newsgroups(subset='all', categories=categories, remove=('headers', 'footers', 'quotes'))\ntexts = dataset.data  # 文档列表\ntargets = dataset.target  # 类别标签\nprint(f\"数据集大小: {len(texts)}\")\nprint(f\"前3个文档样例:\\n{texts[:3]}\")\nprint(f\"类别分布: {np.bincount(targets)}\")\n\n# 步骤2：可复现切分\nnp.random.seed(42)\nqueries = [\"best graphics software\", \"car maintenance tips\"]  # 模拟查询\ndoc_train, doc_test, y_train, y_test = train_test_split(texts, targets, test_size=0.3, random_state=42, stratify=targets)\n\n# 步骤3：BM25检索\nbm25 = BM25Okapi([doc.split() for doc in doc_train])\nretrieval_results = []\nfor query in queries:\n    scores = bm25.get_scores(query.split())\n    top_indices = np.argsort(scores)[-10:]  # 取Top-10\n    retrieval_results.append([doc_train[i] for i in top_indices])\nprint(f\"检索结果示例 - 查询1 Top-3: {retrieval_results[0][:3]}\")\n\n# 步骤4：Cross-encoder重排序\ntokenizer = AutoTokenizer.from_pretrained(\"cross-encoder/ms-marco-MiniLM-L-6-v2\")\nmodel = AutoModelForSequenceClassification.from_pretrained(\"cross-encoder/ms-marco-MiniLM-L-6-v2\")\nmodel.eval()\nreranked_results = []\nwith torch.no_grad():\n    for query, docs in zip(queries, retrieval_results):\n        scores = []\n        for doc in docs:\n            inputs = tokenizer(query, doc, truncation=True, padding=True, return_tensors=\"pt\")\n            outputs = model(**inputs)\n            score = F.softmax(outputs.logits, dim=1)[0][1].item()  # 相关性分数\n            scores.append(score)\n        sorted_indices = np.argsort(scores)[::-1][:5]  # 按分数降序取Top-5\n        reranked_results.append([docs[i] for i in sorted_indices])\nprint(f\"重排序结果示例 - 查询1 Top-3: {reranked_results[0][:3]}\")\n\n# 步骤5：评估（使用模拟相关性）\ndef compute_ndcg(scores, ideal_scores, k=3):\n    dcg = sum((2**s - 1) / np.log2(i + 2) for i, s in enumerate(scores[:k]))\n    idcg = sum((2**s - 1) / np.log2(i + 2) for i, s in enumerate(sorted(ideal_scores, reverse=True)[:k]))\n    return dcg / idcg if idcg > 0 else 0.0\n\n# 模拟相关性分数（0/1，实际中需标注）\nsimulated_scores = [1, 0, 1, 0, 1, 0, 0, 1, 0, 0]  # 假设前10个文档的相关性\nideal_scores = sorted(simulated_scores, reverse=True)\nndcg = compute_ndcg(simulated_scores, ideal_scores, k=3)\nprint(f\"NDCG@3: {ndcg:.3f}\")\n\n# 环境记录\nimport sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"PyTorch版本: {torch.__version__}\")\nprint(f\"Transformers版本: {importlib.metadata.version('transformers')}\")</code></pre>\n<p>此代码块覆盖了关键概念：数据加载（来源：Scikit-learn: Machine Learning in Python, 2011）、BM25检索、交叉编码器重排序（使用MS MARCO预训练模型，来源：MS MARCO: A Human Generated MAchine Reading COmprehension Dataset, 2016），以及NDCG评估。它打印了中间结果（数据集大小、检索和重排序样例）和指标（NDCG@3）。若需轻量替代，可用TF-IDF加规则排序作为基线，再逐步升级到模型。</p>\n<p>监控设计需包括：精度漂移检测（如NDCG滚动平均值）、延迟百分位数（P95、P99）、token消耗跟踪。误区包括：认为评估可仅离线完成，无需线上监控。实际上，数据分布可能随时间变化，导致模型失效。失败模式表现为：精度下降而成本上升，可能因查询分布偏移或模型过时。诊断时，应建立仪表盘，实时可视化关键指标，并设置警报阈值。</p>\n<p>通过这个管线，我们实现了从理论到实践的闭环。总结来说，重排序器通过交叉编码器的精细交互，弥补了检索器的精度缺口，但必须与成本权衡结合，才能构建可控、可评测的LLM应用。</p>",
+        "en": "<h3>Why Do We Need Reranking After Retrieval? From Precision Gaps to Cost Awareness</h3>\n<p>When building Retrieval-Augmented Generation (RAG) systems, engineers often face a core challenge: even with BM25 or vector retrieval deployed, the generated answers may still be inaccurate. This is not a failure of the retriever but stems from the inherent precision-recall trade-off in retrieval systems. The primary goal of a retriever is to efficiently recall relevant candidates; its ranking logic often relies on term frequency statistics or vector similarity, which may fail to capture deep semantic relationships between queries and documents. For example, for the query \"How to mitigate LLM hallucinations?\", the retriever might return many documents mentioning \"hallucinations\" but not precisely matching \"mitigation strategies.\" Feeding such noisy documents directly into a Large Language Model (LLM) not only degrades generation quality but also increases computational costs by processing irrelevant content.</p>\n<p>The reranker is designed precisely to address this precision gap. It does not replace the retriever but serves as a component that performs secondary, fine-grained sorting on the candidate set returned by the retriever. Its core objective function can be formalized as: given a query q and a candidate document set D = {d₁, d₂, ..., dₙ} from the retriever, the reranker outputs a ranked list that maximizes the relevance scores of the top-k documents to the query. Mathematically, this is often achieved by optimizing metrics like Normalized Discounted Cumulative Gain (NDCG):\n\\[ \\text{NDCG}@k = \\frac{\\text{DCG}@k}{\\text{IDCG}@k}, \\quad \\text{DCG}@k = \\sum_{i=1}^{k} \\frac{2^{\\text{rel}_i} - 1}{\\log_2(i+1)} \\]\nwhere rel_i denotes the true relevance score of the document at position i, and IDCG is the DCG under ideal ranking. This formula emphasizes that highly relevant documents should rank higher, with a position discount (the logarithmic term in the denominator) penalizing misplacements.</p>\n<p>The cross-encoder is a common model architecture for reranking. Unlike bi-encoders that encode queries and documents independently, cross-encoders concatenate the query and document into a single sequence input to a Transformer, performing full interaction computation via self-attention to capture fine-grained semantic matching. For example, for the query \"Python data visualization library\" and the document \"Matplotlib tutorial,\" the cross-encoder encodes both simultaneously and outputs a scalar score (e.g., 0.92) directly reflecting relevance. While this interaction improves precision, its computational complexity is O((|q|+|d|)²), where |q| and |d| are token lengths, leading to significantly higher latency than bi-encoders' O(|q|+|d|).</p>\n<p>In engineering implementations, the reranker must be integrated after the retriever and before the LLM. The data flow is: user query → retriever returns N candidates (e.g., N=20) → reranker scores each query-document pair → sort by score and take top-k (e.g., k=5) → input to LLM for answer generation. Key sensitivity points include: the candidate set size N must balance precision and latency (large N drastically increases reranking cost), model selection (e.g., pre-trained MS-MARCO models), and score normalization. In practice, open-source libraries like transformers are used to load pre-trained cross-encoders, with batch processing optimizing inference speed.</p>\n<p>Common misconceptions include: believing the reranker can fully replace the retriever, or that adding more retrieval results always improves answer quality. In reality, the reranker relies on the retriever to provide high-quality candidates; if the retrieved results are irrelevant, reranking cannot salvage them. Failure modes often manifest as: no precision improvement despite increased latency, possibly due to an oversized candidate set, lack of domain fine-tuning for the model, or improper score thresholds. For diagnosis, analyze the score distribution of error cases and monitor the cost per query—the total token consumption for reranking and LLM calls, formulated as:\n\\[ C_{\\text{query}} = \\sum_{i=1}^{k} (\\text{tokens}_{\\text{reranker}_i} + \\text{tokens}_{\\text{LLM}_i}) \\times \\text{price per token} \\]\nA/B testing against a baseline (e.g., retriever only) can quantify the net benefit of reranking.</p>\n<p>Understanding the motivation and boundaries of reranking, we next delve into the internal mechanisms of the cross-encoder, clarifying how it achieves precision gains through interaction computation and the efficiency constraints it faces.</p>\n<h3>Cross-encoder Explained: From Interaction Computation to Efficiency Boundaries</h3>\n<p>When engineers seek to optimize RAG systems, they often wonder about encoder choices: both cross-encoders and bi-encoders are based on Transformers, so why do their performances differ so markedly? This stems from fundamental architectural differences. Bi-encoders (e.g., Sentence-BERT) independently encode queries and documents into fixed-dimensional vectors, computing relevance via metrics like cosine similarity for efficient retrieval. Their objective function can be viewed as learning a mapping f that maximizes the vector dot product for relevant query-document pairs:\n\\[ \\max_f \\, \\mathbb{E}_{(q,d)}[f(q)^\\top f(d)] \\]\nThis separate encoding allows pre-computation of document vectors, reducing retrieval complexity to O(1), but loses fine-grained interaction information between queries and documents.</p>\n<p>Cross-encoders adopt a full-interaction paradigm. Given a query q and document d, they are concatenated into the sequence [CLS] q [SEP] d [SEP] and input to a Transformer model. Through multi-layer self-attention, each query token can interact with all document tokens, and vice versa, modeling complex semantic relationships. Finally, the hidden state at the [CLS] position is passed through a linear layer to output a relevance score s(q,d). Mathematically, this can be expressed as:\n\\[ s(q,d) = \\text{Linear}(\\text{Transformer}(\\text{Embed}(q,d))) \\]\nwhere Embed denotes token embedding, and Transformer includes multi-head attention and feed-forward networks. This design enables cross-encoders to achieve state-of-the-art precision on datasets like MS MARCO (Source: Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks, 2019).</p>\n<p>However, interaction computation comes with significant efficiency costs. Let query length be L_q and document length L_d; the attention computation complexity for Transformer is O((L_q+L_d)²), compared to O(L_q + L_d) for bi-encoders. For long documents, cross-encoder latency can grow to seconds, making it unsuitable for real-time, large-scale retrieval. In engineering, cross-encoders are typically used for reranking small candidate sets (e.g., N≤100), while bi-encoders handle initial retrieval. Implementation considerations include: selecting lightweight models (e.g., MiniLM), using dynamic padding to reduce computation, and monitoring GPU memory usage.</p>\n<p>Misconceptions include: believing cross-encoder precision gains are cost-free, or that they outperform bi-encoders in all scenarios. In reality, precision improvements come at the expense of latency and computational resources; in latency-sensitive or large-candidate-set scenarios, bi-encoders remain preferable. Failure modes often manifest as: inference timeouts or memory overflows, possibly due to excessive document length, inappropriate batch sizes, or lack of model quantization. For diagnosis, analyze the relationship between latency distribution and input length, and use profiling tools (e.g., PyTorch Profiler) to identify bottlenecks.</p>\n<p>Having grasped the mechanisms and limitations of cross-encoders, we integrate them into the full RAG pipeline to build a monitorable engineering system that balances precision and cost.</p>\n<h3>Engineering Implementation: Building a Monitorable Reranker Pipeline</h3>\n<p>Faced with numerous pre-trained models and evaluation metrics, engineers often lack clarity on how to systematically deploy rerankers while controlling budgets. This requires constructing an end-to-end pipeline encompassing data, models, evaluation, and monitoring. The pipeline's goal is not only functional implementation but also ensuring reproducibility and observability. We define the pipeline as a series of configurable modules: data loading → retrieval → reranking → generation → evaluation, with each module outputting logs for monitoring and analysis.</p>\n<p>Selection of evaluation metrics is critical. Beyond precision metrics like NDCG@k, efficiency metrics such as Queries Per Second (QPS) and cost metrics like cost per query must be considered. For ranking tasks, Mean Average Precision (MAP) is a common metric, formulated as:\n\\[ \\text{MAP} = \\frac{1}{|Q|} \\sum_{q \\in Q} \\frac{1}{|D_q|} \\sum_{k=1}^{|D_q|} \\text{Precision}@k \\times \\text{rel}(k) \\]\nwhere Q is the set of queries, D_q is the set of relevant documents, and rel(k) indicates whether the document at position k is relevant. Depending on business objectives, custom metrics may be needed, such as answer accuracy (evaluated via LLM).</p>\n<p>In engineering implementation, the pipeline must integrate into existing RAG frameworks. Below is a minimal reproducible example using public datasets and lightweight models, avoiding external file dependencies. Code block #1 demonstrates the complete flow from data loading to evaluation:</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom rank_bm25 import BM25Okapi\nfrom transformers import AutoTokenizer, AutoModelForSequenceClassification\nimport torch\nimport torch.nn.functional as F\n\n# Step 1: Data loading and inspection\ncategories = ['comp.graphics', 'rec.autos']\ndataset = fetch_20newsgroups(subset='all', categories=categories, remove=('headers', 'footers', 'quotes'))\ntexts = dataset.data  # List of documents\ntargets = dataset.target  # Category labels\nprint(f\"Dataset size: {len(texts)}\")\nprint(f\"First 3 document samples:\\n{texts[:3]}\")\nprint(f\"Class distribution: {np.bincount(targets)}\")\n\n# Step 2: Reproducible splitting\nnp.random.seed(42)\nqueries = [\"best graphics software\", \"car maintenance tips\"]  # Simulated queries\ndoc_train, doc_test, y_train, y_test = train_test_split(texts, targets, test_size=0.3, random_state=42, stratify=targets)\n\n# Step 3: BM25 retrieval\nbm25 = BM25Okapi([doc.split() for doc in doc_train])\nretrieval_results = []\nfor query in queries:\n    scores = bm25.get_scores(query.split())\n    top_indices = np.argsort(scores)[-10:]  # Take Top-10\n    retrieval_results.append([doc_train[i] for i in top_indices])\nprint(f\"Retrieval example - Query 1 Top-3: {retrieval_results[0][:3]}\")\n\n# Step 4: Cross-encoder reranking\ntokenizer = AutoTokenizer.from_pretrained(\"cross-encoder/ms-marco-MiniLM-L-6-v2\")\nmodel = AutoModelForSequenceClassification.from_pretrained(\"cross-encoder/ms-marco-MiniLM-L-6-v2\")\nmodel.eval()\nreranked_results = []\nwith torch.no_grad():\n    for query, docs in zip(queries, retrieval_results):\n        scores = []\n        for doc in docs:\n            inputs = tokenizer(query, doc, truncation=True, padding=True, return_tensors=\"pt\")\n            outputs = model(**inputs)\n            score = F.softmax(outputs.logits, dim=1)[0][1].item()  # Relevance score\n            scores.append(score)\n        sorted_indices = np.argsort(scores)[::-1][:5]  # Sort descending, take Top-5\n        reranked_results.append([docs[i] for i in sorted_indices])\nprint(f\"Reranking example - Query 1 Top-3: {reranked_results[0][:3]}\")\n\n# Step 5: Evaluation (using simulated relevance)\ndef compute_ndcg(scores, ideal_scores, k=3):\n    dcg = sum((2**s - 1) / np.log2(i + 2) for i, s in enumerate(scores[:k]))\n    idcg = sum((2**s - 1) / np.log2(i + 2) for i, s in enumerate(sorted(ideal_scores, reverse=True)[:k]))\n    return dcg / idcg if idcg > 0 else 0.0\n\n# Simulated relevance scores (0/1, requires annotation in practice)\nsimulated_scores = [1, 0, 1, 0, 1, 0, 0, 1, 0, 0]  # Assumed relevance for first 10 documents\nideal_scores = sorted(simulated_scores, reverse=True)\nndcg = compute_ndcg(simulated_scores, ideal_scores, k=3)\nprint(f\"NDCG@3: {ndcg:.3f}\")\n\n# Environment recording\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"PyTorch version: {torch.__version__}\")\nprint(f\"Transformers version: {importlib.metadata.version('transformers')}\")</code></pre>\n<p>This code block covers key concepts: data loading (Source: Scikit-learn: Machine Learning in Python, 2011), BM25 retrieval, cross-encoder reranking (using MS MARCO pre-trained model, Source: MS MARCO: A Human Generated MAchine Reading COmprehension Dataset, 2016), and NDCG evaluation. It prints intermediate results (dataset size, retrieval and reranking samples) and a metric (NDCG@3). For a lightweight alternative, TF-IDF with rule-based ranking can serve as a baseline before upgrading to models.</p>\n<p>Monitoring design should include: precision drift detection (e.g., rolling average of NDCG), latency percentiles (P95, P99), and token consumption tracking. A misconception is that evaluation can be done offline only, without online monitoring. In practice, data distributions may shift over time, causing model degradation. Failure modes appear as: declining precision with rising costs, possibly due to query distribution shifts or model obsolescence. For diagnosis, build dashboards to visualize key metrics in real-time and set alert thresholds.</p>\n<p>Through this pipeline, we close the loop from theory to practice. In summary, rerankers address retrieval precision gaps via cross-encoder fine-grained interactions, but must be balanced with cost considerations to build controllable, evaluable LLM applications.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Reranker：cross-encoder 与成本权衡 · 结构总览 · 数据：课程大纲】在设计《Reranker：cross-encoder 与成本权衡》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Reranker：cross-encoder 与成本权衡 · 结构总览 · Data: 课程大纲】When outlining \"Reranker：cross-encoder 与成本权衡\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Reranker：cross-encoder 与成本权衡 · worked example · 数据：掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】在复现《Reranker：cross-encoder 与成本权衡》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Reranker：cross-encoder 与成本权衡 · worked example · Data: 掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】While reproducing the worked example in \"Reranker：cross-encoder 与成本权衡\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Reranker：cross-encoder 与成本权衡 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Reranker：cross-encoder 与成本权衡》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Reranker：cross-encoder 与成本权衡 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Reranker：cross-encoder 与成本权衡\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Reranker：cross-encoder 与成本权衡 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Reranker：cross-encoder 与成本权衡》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Reranker：cross-encoder 与成本权衡 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Reranker：cross-encoder 与成本权衡\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks（arXiv，2019）",
+            "en": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks (arXiv, 2019)"
+          },
+          "url": "https://arxiv.org/abs/1908.10084"
+        },
+        {
+          "label": {
+            "zh": "MS MARCO: A Human Generated MAchine Reading COmprehension Dataset（arXiv，2016）",
+            "en": "MS MARCO: A Human Generated MAchine Reading COmprehension Dataset (arXiv, 2016)"
+          },
+          "url": "https://arxiv.org/abs/1611.09268"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（JMLR，2011）",
+            "en": "Scikit-learn: Machine Learning in Python (JMLR, 2011)"
+          },
+          "url": "https://jmlr.org/papers/v12/pedregosa11a.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-10-rerankercross-encoder-zh.mp3"
+      },
+      "meta": {
+        "category": "RAG/Agent/Evals 全链路",
+        "level": "7. LLM 应用工程",
+        "difficultyScore": 3,
+        "related": [
+          "Serving 架构：批处理、并发、SLA",
+          "成本优化：每 1k token 成本与预算控制"
+        ],
+        "learningObjectives": [
+          "掌握LLM应用从检索到执行到评测的工程闭环",
+          "能实现一个可控、可评测、可监控的LLM应用"
+        ],
+        "personas": [
+          "AI工程师",
+          "平台工程师",
+          "产品经理",
+          "创业者"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering rerankers and cost trade-offs enables teams to implement reusable practices across the full RAG/Agent/Evals pipeline.",
+          "best_for": "Suitable for AI engineers, platform engineers, product managers, and entrepreneurs who need to quickly absorb topics at the LLM application engineering level.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate the pipeline sequence."
+        },
+        "tone_profile": {
+          "persona": "AI工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 AI工程师、平台工程师、产品经理、创业者，帮助他们把 Reranker：cross-encoder 与成本权衡 应用于 RAG/Agent/Evals 全链路",
+          "prefersEnglish": false,
+          "industries": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理",
+            "创业者"
+          ],
+          "pains": "在 RAG/Agent/Evals 全链路 场景缺乏 Reranker：cross-encoder 与成本权衡 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "7. LLM 应用工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为AI工程师，在构建RAG系统时，你如何评估当前检索结果的精度缺口？结合交叉编码器的全交互优势，你会从哪些维度设计重排序策略来平衡精度与计算成本？",
+            "action_hint": "尝试列出你项目中检索阶段的常见误差类型，并思考如何通过重排序器的架构选择来针对性优化。"
+          },
+          {
+            "lang": "zh",
+            "question": "如果你是负责AI平台的产品经理，在规划Reranker模块时，会如何设计评估指标来监控交叉编码器的性能？除了精度提升外，还需要考虑哪些成本因素来确保方案的实际可行性？",
+            "action_hint": "从业务场景出发，设想一个需要同时满足响应速度和准确率的用例，并草拟对应的重排序器部署方案。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-09-hybrid-searchbm25-rerank",
       "date": "2026-03-09",
