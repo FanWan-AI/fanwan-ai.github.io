@@ -1,6 +1,179 @@
 {
-  "generatedAt": "2026-03-10T14:26:38.178Z",
+  "generatedAt": "2026-03-11T02:33:44.276Z",
   "lessons": [
+    {
+      "id": "2026-03-11-function-calling-tool-use",
+      "date": "2026-03-11",
+      "title": {
+        "zh": "Function Calling / Tool Use：结构化执行",
+        "en": "Function Calling / Tool Use: Structured Execution"
+      },
+      "summary": {
+        "zh": "Function Calling/Tool Use 是LLM应用中将自然语言指令转化为结构化工具调用的核心机制，实现从检索到执行再到评测的工程闭环，课程围绕 RAG/Agent/Evals 全链路 中的可执行路径展开。内容串联 从直觉到定义：为什么Function Calling是LLM应用工程化的关键？、机制解析：LLM如何选择工具并生成参数？、工程实践：构建可控、可评测、可监控的Function Calling流程，梳理定义、推导与迁移步骤。",
+        "en": "Function Calling / Tool Use：结构化执行 is positioned for RAG/Agent/Evals 全链路 initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 从直觉到定义：为什么Function Calling是LLM应用工程化的关键？, 机制解析：LLM如何选择工具并生成参数？, 工程实践：构建可控、可评测、可监控的Function Calling流程 to translate theory into executable steps."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "function calling",
+        "tools"
+      ],
+      "content": {
+        "zh": "<h2>Function Calling / Tool Use：结构化执行</h2>\n\n<p>本讲义系统阐述LLM应用中Function Calling（函数调用）的核心机制与工程实现。我们将从定义出发，解析其概率推理本质，构建端到端可监控流程，并通过可复现示例验证关键指标。课程面向具备Python基础、了解RAG/Agent基本概念的工程师与产品决策者，旨在提供构建可控、可评测LLM应用的方法论。</p>\n\n<h3>从直觉到定义：为什么Function Calling是LLM应用工程化的关键？</h3>\n\n<p>在构建LLM应用时，核心挑战在于将自然语言指令转化为可执行的结构化操作。例如，用户查询“明天北京天气如何？”需要转化为对天气API的调用。这一转化过程并非自然语言理解的自然延伸，而是需要专门设计的桥梁机制。在RAG/Agent全链路中，Function Calling正是这座桥梁，它将LLM从文本生成器转变为能够执行具体任务的工作引擎，实现从检索、推理到执行的闭环。</p>\n\n<p>精确定义上，Function Calling（函数调用）是LLM将自然语言查询映射到预定义工具（Tool）的机制。输入包括工具描述集合和用户查询，输出为选定的工具及其调用参数。工具（Tool）指预定义的可执行函数，如数据库查询、API调用或计算模块。这一过程可形式化为一个概率推理问题：给定用户查询 \\( q \\) 和工具集 \\( T = \\{t_1, t_2, ..., t_n\\} \\)，每个工具附带描述 \\( d_i \\)，LLM需要推断最可能的工具-参数对 \\( (t^*, \\theta^*) \\)。其目标函数可表示为联合概率的最大化：</p>\n\n<p>\\[ (t^*, \\theta^*) = \\arg\\max_{t_i, \\theta} P(t_i, \\theta | q, d_i) \\]</p>\n\n<p>该公式表明，Function Calling的核心是计算在给定查询和工具描述下，特定工具及其参数同时出现的后验概率。其中，\\( t_i \\) 代表第i个工具，\\( \\theta \\) 代表参数向量，\\( q \\) 是用户查询，\\( d_i \\) 是工具 \\( t_i \\) 的描述。这一形式化将模糊的“理解”转化为可建模、可优化的计算问题。</p>\n\n<p>工程实现上，一个基础的Function Calling流程包含四个阶段：工具注册、查询解析、参数验证、执行调用。工具注册需定义名称、功能描述和参数schema（通常为JSON Schema格式）。解析阶段，LLM接收查询和工具描述列表，输出结构化的调用JSON。关键敏感点在于系统延迟：工具数量线性增加推理时间，复杂参数schema可能引发解析错误或幻觉。实践中，建议将工具数量控制在10-20个以内，schema嵌套不超过三层，并对高频工具进行缓存优化。</p>\n\n<p>常见误区包括认为Function Calling允许LLM直接执行任意代码或访问未授权资源。实际上，它只能调用经过安全审查和权限控制的预定义工具。主要失败模式有两种：一是工具选择错误（幻觉调用），即LLM选择了与查询语义不匹配的工具；二是参数解析错误，如类型不匹配、缺失必填字段或值越界。诊断时，应记录工具选择置信度（例如 \\( \\max_i P(t_i | q, d_i) \\)）和参数验证通过率。若置信度持续低于阈值（如0.7），则需优化工具描述清晰度或增加示例。</p>\n\n<p>理解了Function Calling的定义与形式化基础，我们自然需要探究：LLM内部如何实现从查询到工具-参数对的概率推理？这涉及更细致的机制设计。</p>\n\n<h3>机制解析：LLM如何选择工具并生成参数？</h3>\n\n<p>当多个工具描述相似时，LLM如何做出准确选择？这引出了Function Calling的核心机制：基于工具描述和参数schema的层次化推理。工具描述（Tool Description）是元数据，包括工具名称、功能说明和参数schema。参数schema（Parameter Schema）定义了每个参数的名称、类型、是否必需、枚举值等约束，通常遵循JSON Schema标准。LLM将这些描述作为上下文，进行多步条件概率计算。</p>\n\n<p>从计算视角，工具选择可建模为给定上下文下的分类问题。假设有n个工具，其描述集合为 \\( D = \\{d_1, d_2, ..., d_n\\} \\)。LLM首先计算每个工具的条件概率：</p>\n\n<p>\\[ P(t_i | q, D) = \\frac{\\exp(\\text{score}(q, d_i))}{\\sum_{j=1}^{n} \\exp(\\text{score}(q, d_j))} \\]</p>\n\n<p>其中，\\( \\text{score}(q, d_i) \\) 是查询 \\( q \\) 与工具描述 \\( d_i \\) 的语义匹配分数，通常通过注意力机制计算得出。工具 \\( t^* \\) 被选择为 \\( \\arg\\max_i P(t_i | q, D) \\)。随后，参数生成通过自回归解码完成：在给定已选工具 \\( t^* \\) 及其描述 \\( d_{t^*} \\) 的条件下，逐个生成参数 \\( \\theta_j \\)，即 \\( P(\\theta_j | q, d_{t^*}, \\theta_{<j}) \\)，直到生成完整参数对象。参数schema在此过程中充当先验约束，确保生成的参数符合类型和结构要求。</p>\n\n<p>工程实现要点包括：第一，工具描述需简洁、无歧义，避免使用模糊或重叠的术语。第二，参数schema应优先使用基本类型（字符串、数字、布尔值），复杂嵌套结构可考虑拆分为多个独立工具以降低解析复杂度。第三，必须实现参数后处理验证层，用于修正常见的类型错误（如字符串到数字的转换）或补充默认值。延迟敏感点主要在于自回归解码步骤：参数数量越多，解码时间越长。每个额外参数可能增加10-30毫秒。优化策略包括使用提前终止、缓存常见参数组合。</p>\n\n<p>常见误区是认为LLM总能完美解析高度复杂或联合类型的参数schema。实际上，当schema包含多层嵌套、条件依赖或宽泛的联合类型时，解析错误率会显著上升。典型失败模式有：参数类型错误（如期望数字却生成字符串）、遗漏必需参数、生成不在枚举列表内的值。诊断时，可计算每个参数字段的错误率 \\( E_j = \\frac{\\text{该字段错误次数}}{\\text{总调用次数}} \\)。针对错误率高的字段，应优化其描述、提供明确示例或简化schema。</p>\n\n<p>掌握了内部推理机制，下一步是将这些原理转化为可部署、可监控的工程系统，确保其在生产环境中的稳健性。</p>\n\n<h3>工程实践：构建可控、可评测、可监控的Function Calling流程</h3>\n\n<p>如何确保Function Calling在生产环境中稳定、可靠且可优化？这需要一套系统化的工程流程，涵盖工具全生命周期管理。该流程主要包括四个环节：工具注册（Tool Registration）、调用执行、错误处理（Error Handling）、评测与监控。工具注册指将函数实现及其元数据（描述、schema）注册到中央管理框架；错误处理需设计策略应对LLM解析异常、工具执行失败、网络超时等多种故障场景。</p>\n\n<p>从数据流视角，完整流程可形式化为一个确定性函数链：输入用户查询 \\( q \\)，经过LLM解析器生成结构化调用请求 \\( (t, \\theta) \\)，随后进行参数验证 \\( V(\\theta) \\rightarrow \\{\\text{valid}, \\text{invalid}\\} \\)，若有效则执行工具 \\( y = t(\\theta) \\)，最终输出结果 \\( y \\)。每个环节都应嵌入监控点。关键评估指标包括工具选择准确率（Tool Selection Accuracy, TSA）和参数验证通过率（Parameter Validation Rate, PVR）：</p>\n\n<p>\\[ \\text{TSA} = \\frac{\\text{正确选择工具的次数}}{\\text{总调用次数}} \\]</p>\n\n<p>\\[ \\text{PVR} = \\frac{\\text{参数验证通过的次数}}{\\text{总调用次数}} \\]</p>\n\n<p>监控不仅记录调用量，更应跟踪质量与性能指标。设第k次调用的工具选择置信度为 \\( c_k \\)（来自 \\( P(t^* | q, D) \\)），参数验证结果为二元变量 \\( v_k \\)，执行耗时为 \\( \\tau_k \\)。可定义一个综合健康度评分：</p>\n\n<p>\\[ H_k = \\alpha \\cdot c_k + \\beta \\cdot v_k - \\gamma \\cdot \\frac{\\tau_k}{\\tau_{\\text{max}}} \\]</p>\n\n<p>其中，\\( \\alpha, \\beta, \\gamma \\) 为可调权重，\\( \\tau_{\\text{max}} \\) 为预设的最大容忍延迟。当 \\( H_k \\) 低于阈值时触发告警，提示需要人工检查或自动降级。</p>\n\n<p>工程实现的具体要点包括：第一，采用统一的服务注册表模式管理工具，支持动态加载、版本控制和依赖管理。第二，在解析层后插入参数验证与标准化中间件，自动处理常见数据格式问题。第三，集成结构化日志系统，记录每次调用的完整上下文（原始查询、所选工具、参数、结果、耗时、错误码）。第四，建立定期评测机制，使用标注测试集计算TSA、PVR等指标，并通过A/B测试对比不同工具描述版本的效果。系统复杂度随工具数量线性增长，需注意注册表的查询效率，可采用索引或缓存优化。</p>\n\n<p>常见误区是认为Function Calling流程一旦部署便无需持续优化。实际上，用户查询分布、工具使用模式会随时间变化，需要基于监控数据进行迭代。典型失败模式包括：工具注册冲突（同名覆盖）、参数验证逻辑存在边界错误、监控数据采样率不足导致指标失真。诊断时，除分析聚合指标外，还应检查混淆矩阵以了解工具选择错误的具体类型（如哪些工具常被混淆）。</p>\n\n<p>下面，我们将通过一个端到端的可复现示例，将上述定义、机制与工程实践融合，展示从数据准备到指标计算的完整闭环。</p>\n\n<h3>综合示例：构建可复现的Function Calling流程</h3>\n\n<p>我们构建一个本地可运行的示例，使用机器学习中经典的Iris（鸢尾花）数据集模拟一个工具调用场景。目标是实现一个“鸢尾花分类预测”工具，并通过模拟的LLM解析、调用执行、评测监控来演示完整流程。本示例完全自包含，无需外部数据文件。</p>\n\n<pre><code># 代码块#1：端到端Function Calling示例\nimport numpy as np\nimport json\nimport re\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# === 步骤1：数据准备与检查 ===\niris = load_iris()\nX, y = iris.data, iris.target          # 特征矩阵 (150, 4)，标签向量 (150,)\nfeature_names = iris.feature_names     # ['sepal length (cm)', ...]\ntarget_names = iris.target_names       # ['setosa', 'versicolor', 'virginica']\n\nprint(\"=== 数据检查 ===\")\nprint(f\"数据集形状 (shape): {X.shape}\")                # 输出: (150, 4)\nprint(f\"特征名称: {feature_names}\")\nprint(f\"类别分布: {np.bincount(y)}\")                  # 输出: [50, 50, 50]\nprint(\"前3条样本数据:\")\nfor i in range(3):\n    print(f\"  样本{i}: 特征={X[i].round(2)}, 真实标签='{target_names[y[i]]}'\")\n\n# 划分训练集和测试集（测试集用于模拟用户查询）\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)\nprint(f\"训练集大小: {X_train.shape[0]}, 测试集大小: {X_test.shape[0]}\")\n\n# === 步骤2：定义工具与注册 ===\nclass ToolRegistry:\n    \"\"\"简单的工具注册表\"\"\"\n    def __init__(self):\n        self.tools = {}\n    \n    def register(self, name: str, description: str, func: callable, schema: dict):\n        self.tools[name] = {'description': description, 'func': func, 'schema': schema}\n    \n    def get_tool(self, name: str):\n        return self.tools.get(name)\n\n# 训练一个简单的分类模型作为工具的后端逻辑\nmodel = RandomForestClassifier(n_estimators=10, random_state=42)\nmodel.fit(X_train, y_train)\nprint(f\"模型训练完成，在训练集上的准确率: {model.score(X_train, y_train):.3f}\")\n\ndef predict_iris(sepal_length: float, sepal_width: float, petal_length: float, petal_width: float) -> str:\n    \"\"\"预测鸢尾花类别。参数单位均为厘米。\"\"\"\n    features = np.array([[sepal_length, sepal_width, petal_length, petal_width]])\n    pred_idx = model.predict(features)[0]\n    return target_names[pred_idx]\n\n# 定义工具的JSON Schema\nschema = {\n    \"type\": \"object\",\n    \"properties\": {\n        \"sepal_length\": {\"type\": \"number\", \"description\": \"花萼长度 (cm)\"},\n        \"sepal_width\":  {\"type\": \"number\", \"description\": \"花萼宽度 (cm)\"},\n        \"petal_length\": {\"type\": \"number\", \"description\": \"花瓣长度 (cm)\"},\n        \"petal_width\":  {\"type\": \"number\", \"description\": \"花瓣宽度 (cm)\"}\n    },\n    \"required\": [\"sepal_length\", \"sepal_width\", \"petal_length\", \"petal_width\"],\n    \"additionalProperties\": False\n}\n\nregistry = ToolRegistry()\nregistry.register(\n    name='predict_iris',\n    description='根据花萼和花瓣的尺寸预测鸢尾花的种类（setosa, versicolor, virginica）',\n    func=predict_iris,\n    schema=schema\n)\nprint(f\"工具 'predict_iris' 已注册。描述: {registry.get_tool('predict_iris')['description']}\")\n\n# === 步骤3：模拟LLM解析（简化规则模拟） ===\ndef simulate_llm_parsing(query: str, registry: ToolRegistry):\n    \"\"\"模拟LLM解析过程：选择工具并提取参数。\"\"\"\n    # 在实际系统中，此处是LLM API调用。本例用规则模拟：\n    # 1. 工具选择：我们只有一个工具，所以总是选择'predict_iris'\n    tool_name = 'predict_iris'\n    tool = registry.get_tool(tool_name)\n    \n    # 2. 参数提取：从查询字符串中提取所有浮点数\n    numbers = re.findall(r'[0-9]+\\.?[0-9]*', query)\n    if len(numbers) >= 4:\n        params = {\n            'sepal_length': float(numbers[0]),\n            'sepal_width':  float(numbers[1]),\n            'petal_length': float(numbers[2]),\n            'petal_width':  float(numbers[3])\n        }\n    else:\n        # 如果未提取到足够数字，使用一个默认样本（仅用于演示）\n        params = {'sepal_length': 5.1, 'sepal_width': 3.5, 'petal_length': 1.4, 'petal_width': 0.2}\n        print(f\"  警告：查询'{query}'中未找到4个数字，使用默认参数{params}\")\n    \n    return tool_name, params, tool\n\n# === 步骤4：执行调用、记录日志、计算指标 ===\ncall_logs = []          # 存储每次调用的详细信息\npredicted_labels = []   # 存储预测的标签\nactual_labels = []      # 存储真实的标签（用于计算指标）\n\nprint(\"\\n=== 开始模拟调用流程 ===\")\nfor idx, (features, true_label_idx) in enumerate(zip(X_test, y_test)):\n    # 构造一个模拟的用户查询\n    query = f\"预测花萼长度{features[0]:.1f}宽度{features[1]:.1f}花瓣长度{features[2]:.1f}宽度{features[3]:.1f}的鸢尾花类别\"\n    \n    # 模拟LLM解析\n    tool_name, params, tool_info = simulate_llm_parsing(query, registry)\n    \n    # 参数验证（检查必需字段是否存在）\n    is_valid = all(key in params for key in schema['required'])\n    if not is_valid:\n        print(f\"  样本{idx}: 参数验证失败，跳过。\")\n        continue\n    \n    # 执行工具调用\n    try:\n        result = tool_info['func'](**params)  # 解包参数调用函数\n        \n        # 记录日志\n        log_entry = {\n            'sample_id': idx,\n            'query': query,\n            'tool': tool_name,\n            'params': params,\n            'prediction': result,\n            'true_label': target_names[true_label_idx]\n        }\n        call_logs.append(log_entry)\n        predicted_labels.append(result)\n        actual_labels.append(target_names[true_label_idx])\n        \n    except Exception as e:\n        print(f\"  样本{idx}: 工具执行错误 - {e}\")\n\nprint(f\"成功完成 {len(call_logs)} 次调用。\")\n\n# === 步骤5：计算并打印评估指标 ===\nprint(\"\\n=== 评估指标 ===\")\n# 计算准确率 (Accuracy)\nif len(predicted_labels) > 0:\n    acc = accuracy_score(actual_labels, predicted_labels)\n    print(f\"工具调用准确率 (Accuracy) = {acc:.3f}\")\n    print(f\"公式: Accuracy = (正确预测数) / (总预测数) = {sum([1 for p,a in zip(predicted_labels, actual_labels) if p==a])} / {len(predicted_labels)}\")\n    \n    # 计算混淆矩阵\n    cm = confusion_matrix(actual_labels, predicted_labels, labels=target_names)\n    print(f\"\\n混淆矩阵 (行为真实标签，列为预测标签):\")\n    print(\"        \" + \" \".join([f\"{n:>10}\" for n in target_names]))\n    for i, row in enumerate(cm):\n        print(f\"{target_names[i]:<8} {row}\")\n    \n    # 可选：计算每个类别的精确率(Precision)\n    print(\"\\n各类别精确率 (Precision):\")\n    for i, class_name in enumerate(target_names):\n        tp = cm[i, i]\n        fp = sum(cm[:, i]) - tp  # 第i列总和减去真正例\n        precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0\n        print(f\"  {class_name}: {precision:.3f} (TP={tp}, FP={fp})\")\nelse:\n    print(\"无成功调用，无法计算指标。\")\n\n# 打印一条示例日志\nprint(\"\\n=== 调用日志示例（第一条） ===\")\nif call_logs:\n    print(json.dumps(call_logs[0], indent=2, ensure_ascii=False))</code></pre>\n\n<p>示例输出展示了完整流程：加载并检查Iris数据集（打印shape和样例），定义并注册预测工具，模拟LLM解析用户查询，执行多次调用并记录日志，最后计算准确率和混淆矩阵等评估指标。该示例完全自包含，无需网络或外部文件，可直接复制运行。它验证了Function Calling流程中工具选择、参数传递、执行和评估的关键环节。</p>\n\n<p>通过本讲义的学习，我们建立了从Function Calling概率形式化定义，到内部推理机制解析，再到可部署工程实践的系统知识。核心结论是：Function Calling的成功依赖于清晰的工具描述、严谨的参数schema设计、鲁棒的工程流水线以及持续的监控优化。在实际项目中，建议从少量核心工具开始，逐步迭代，并始终将可观测性作为系统设计的第一原则。</p>",
+        "en": "<h2>Function Calling / Tool Use: Structured Execution</h2>\n\n<p>This lecture systematically explains the core mechanisms and engineering implementation of Function Calling in LLM applications. We will start from definitions, analyze its probabilistic reasoning nature, build an end-to-end monitorable pipeline, and validate key metrics through a reproducible example. The course targets engineers and product decision-makers with Python fundamentals and basic knowledge of RAG/Agent concepts, aiming to provide a methodology for building controllable, evaluable LLM applications.</p>\n\n<h3>From Intuition to Definition: Why is Function Calling Key to LLM Application Engineering?</h3>\n\n<p>When building LLM applications, a core challenge is transforming natural language instructions into executable structured operations. For instance, the user query \"What's the weather in Beijing tomorrow?\" needs to be converted into a call to a weather API. This transformation is not a natural extension of language understanding but requires a specifically designed bridging mechanism. In the RAG/Agent pipeline, Function Calling serves as this bridge, turning the LLM from a text generator into a work engine capable of executing specific tasks, thereby closing the loop from retrieval and reasoning to execution.</p>\n\n<p>Precisely defined, Function Calling is the mechanism by which an LLM maps a natural language query to a predefined tool. Input includes a set of tool descriptions and the user query; output consists of the selected tool and its invocation parameters. A Tool refers to a predefined executable function, such as a database query, API call, or computation module. This process can be formalized as a probabilistic reasoning problem: given a user query \\( q \\) and a tool set \\( T = \\{t_1, t_2, ..., t_n\\} \\) where each tool has a description \\( d_i \\), the LLM must infer the most likely tool-parameter pair \\( (t^*, \\theta^*) \\). The objective function can be expressed as maximizing the joint probability:</p>\n\n<p>\\[ (t^*, \\theta^*) = \\arg\\max_{t_i, \\theta} P(t_i, \\theta | q, d_i) \\]</p>\n\n<p>This formula indicates that the core of Function Calling is computing the posterior probability of a specific tool and its parameters co-occurring given the query and tool description. Here, \\( t_i \\) represents the i-th tool, \\( \\theta \\) the parameter vector, \\( q \\) the user query, and \\( d_i \\) the description of tool \\( t_i \\). This formalization transforms vague \"understanding\" into a modelable, optimizable computational problem.</p>\n\n<p>In engineering implementation, a basic Function Calling pipeline comprises four stages: tool registration, query parsing, parameter validation, and execution. Tool registration requires defining the name, functional description, and parameter schema (typically in JSON Schema format). During parsing, the LLM receives the query and tool description list, outputting a structured call JSON. Key sensitivity lies in system latency: the number of tools linearly increases inference time, and complex parameter schemas may cause parsing errors or hallucinations. In practice, it is advisable to limit the number of tools to 10-20, schema nesting to no more than three levels, and implement caching for high-frequency tools.</p>\n\n<p>Common misconceptions include believing Function Calling allows LLMs to execute arbitrary code or access unauthorized resources. In reality, it can only invoke predefined tools that have undergone security reviews and permission controls. The primary failure modes are twofold: first, incorrect tool selection (hallucination calls), where the LLM chooses a tool semantically mismatched to the query; second, parameter parsing errors, such as type mismatches, missing required fields, or out-of-range values. For diagnosis, record the tool selection confidence (e.g., \\( \\max_i P(t_i | q, d_i) \\)) and the parameter validation pass rate. If confidence consistently falls below a threshold (e.g., 0.7), optimize the clarity of tool descriptions or add examples.</p>\n\n<p>Understanding the definition and formal foundation of Function Calling naturally leads us to investigate: how does the LLM internally implement the probabilistic reasoning from query to tool-parameter pair? This involves more granular mechanism design.</p>\n\n<h3>Mechanism Analysis: How Do LLMs Select Tools and Generate Parameters?</h3>\n\n<p>When multiple tool descriptions are similar, how does an LLM make an accurate selection? This introduces the core mechanism of Function Calling: hierarchical reasoning based on tool descriptions and parameter schemas. A Tool Description is metadata including the tool name, functional explanation, and parameter schema. The Parameter Schema defines constraints for each parameter such as name, type, necessity, and enumeration values, typically following the JSON Schema standard. The LLM uses these descriptions as context for multi-step conditional probability calculations.</p>\n\n<p>From a computational perspective, tool selection can be modeled as a classification problem given context. Assume there are n tools with description set \\( D = \\{d_1, d_2, ..., d_n\\} \\). The LLM first computes the conditional probability for each tool:</p>\n\n<p>\\[ P(t_i | q, D) = \\frac{\\exp(\\text{score}(q, d_i))}{\\sum_{j=1}^{n} \\exp(\\text{score}(q, d_j))} \\]</p>\n\n<p>where \\( \\text{score}(q, d_i) \\) is the semantic matching score between query \\( q \\) and tool description \\( d_i \\), usually computed via an attention mechanism. Tool \\( t^* \\) is selected as \\( \\arg\\max_i P(t_i | q, D) \\). Subsequently, parameter generation proceeds via autoregressive decoding: given the selected tool \\( t^* \\) and its description \\( d_{t^*} \\), parameters \\( \\theta_j \\) are generated one by one, i.e., \\( P(\\theta_j | q, d_{t^*}, \\theta_{<j}) \\), until a complete parameter object is produced. The parameter schema acts as a prior constraint during this process, ensuring generated parameters conform to type and structural requirements.</p>\n\n<p>Key engineering implementation points include: First, tool descriptions must be concise and unambiguous, avoiding vague or overlapping terminology. Second, parameter schemas should prioritize basic types (string, number, boolean); complex nested structures may be split into multiple independent tools to reduce parsing complexity. Third, a parameter post-processing validation layer must be implemented to correct common type errors (e.g., string-to-number conversion) or supply default values. Latency sensitivity primarily lies in the autoregressive decoding step: more parameters lead to longer decoding times. Each additional parameter may add 10-30 milliseconds. Optimization strategies include using early stopping and caching frequent parameter combinations.</p>\n\n<p>A common misconception is that LLMs can always perfectly parse highly complex or union-type parameter schemas. In reality, parsing error rates increase significantly when schemas contain multi-level nesting, conditional dependencies, or broad union types. Typical failure modes include: parameter type errors (e.g., generating a string when a number is expected), omission of required parameters, and generation of values not in the enumeration list. For diagnosis, compute the error rate per parameter field: \\( E_j = \\frac{\\text{error count for field j}}{\\text{total invocation count}} \\). For fields with high error rates, optimize their description, provide clear examples, or simplify the schema.</p>\n\n<p>Having grasped the internal reasoning mechanisms, the next step is translating these principles into a deployable, monitorable engineering system to ensure robustness in production environments.</p>\n\n<h3>Engineering Practice: Building Controllable, Evaluable, Monitorable Function Calling Pipelines</h3>\n\n<p>How to ensure Function Calling remains stable, reliable, and optimizable in production? This requires a systematic engineering workflow covering the entire tool lifecycle. The workflow primarily consists of four phases: Tool Registration, invocation execution, Error Handling, and evaluation & monitoring. Tool registration involves registering the function implementation and its metadata (description, schema) to a central management framework; error handling requires designing strategies to address various failure scenarios such as LLM parsing exceptions, tool execution failures, and network timeouts.</p>\n\n<p>From a dataflow perspective, the complete pipeline can be formalized as a deterministic function chain: input user query \\( q \\) passes through the LLM parser to generate a structured call request \\( (t, \\theta) \\), followed by parameter validation \\( V(\\theta) \\rightarrow \\{\\text{valid}, \\text{invalid}\\} \\). If valid, the tool is executed \\( y = t(\\theta) \\), and finally the result \\( y \\) is output. Each stage should embed monitoring points. Key evaluation metrics include Tool Selection Accuracy (TSA) and Parameter Validation Rate (PVR):</p>\n\n<p>\\[ \\text{TSA} = \\frac{\\text{number of correct tool selections}}{\\text{total invocation count}} \\]</p>\n\n<p>\\[ \\text{PVR} = \\frac{\\text{number of parameter validation passes}}{\\text{total invocation count}} \\]</p>\n\n<p>Monitoring should track not only invocation volume but also quality and performance metrics. Let the tool selection confidence for the k-th invocation be \\( c_k \\) (derived from \\( P(t^* | q, D) \\)), the parameter validation result be a binary variable \\( v_k \\), and the execution latency be \\( \\tau_k \\). A comprehensive health score can be defined:</p>\n\n<p>\\[ H_k = \\alpha \\cdot c_k + \\beta \\cdot v_k - \\gamma \\cdot \\frac{\\tau_k}{\\tau_{\\text{max}}} \\]</p>\n\n<p>where \\( \\alpha, \\beta, \\gamma \\) are tunable weights and \\( \\tau_{\\text{max}} \\) is a preset maximum tolerable latency. An alert should trigger when \\( H_k \\) falls below a threshold, indicating a need for manual inspection or automatic degradation.</p>\n\n<p>Specific engineering implementation points include: First, adopt a unified service registry pattern for tool management, supporting dynamic loading, version control, and dependency management. Second, insert parameter validation and normalization middleware after the parsing layer to automatically handle common data format issues. Third, integrate a structured logging system to record the full context of each invocation (raw query, selected tool, parameters, result, latency, error code). Fourth, establish a periodic evaluation mechanism using annotated test sets to compute metrics like TSA and PVR, and compare the effects of different tool description versions via A/B testing. System complexity grows linearly with the number of tools; pay attention to the query efficiency of the registry, which can be optimized with indexing or caching.</p>\n\n<p>A common misconception is that a Function Calling pipeline requires no continuous optimization once deployed. In reality, user query distributions and tool usage patterns evolve over time, necessitating iteration based on monitoring data. Typical failure modes include: tool registration conflicts (name collisions), edge-case errors in parameter validation logic, and insufficient monitoring data sampling leading to distorted metrics. For diagnosis, besides analyzing aggregate metrics, examine confusion matrices to understand specific types of tool selection errors (e.g., which tools are frequently confused).</p>\n\n<p>Next, we will integrate the above definitions, mechanisms, and engineering practices through an end-to-end reproducible example, demonstrating the complete闭环 from data preparation to metric computation.</p>\n\n<h3>Comprehensive Example: Building a Reproducible Function Calling Pipeline</h3>\n\n<p>We construct a locally runnable example using the classic Iris dataset from machine learning to simulate a tool invocation scenario. The goal is to implement an \"Iris classification prediction\" tool and demonstrate the complete workflow through simulated LLM parsing, invocation execution, and evaluation monitoring. This example is entirely self-contained, requiring no external data files.</p>\n\n<pre><code># Code Block #1: End-to-End Function Calling Example\nimport numpy as np\nimport json\nimport re\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# === Step 1: Data Preparation & Inspection ===\niris = load_iris()\nX, y = iris.data, iris.target          # Feature matrix (150, 4), label vector (150,)\nfeature_names = iris.feature_names     # ['sepal length (cm)', ...]\ntarget_names = iris.target_names       # ['setosa', 'versicolor', 'virginica']\n\nprint(\"=== Data Inspection ===\")\nprint(f\"Dataset shape: {X.shape}\")                # Output: (150, 4)\nprint(f\"Feature names: {feature_names}\")\nprint(f\"Class distribution: {np.bincount(y)}\")   # Output: [50, 50, 50]\nprint(\"First 3 samples:\")\nfor i in range(3):\n    print(f\"  Sample {i}: features={X[i].round(2)}, true label='{target_names[y[i]]}'\")\n\n# Split into train and test sets (test set simulates user queries)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)\nprint(f\"Training set size: {X_train.shape[0]}, Test set size: {X_test.shape[0]}\")\n\n# === Step 2: Define Tool & Registration ===\nclass ToolRegistry:\n    \"\"\"Simple tool registry\"\"\"\n    def __init__(self):\n        self.tools = {}\n    \n    def register(self, name: str, description: str, func: callable, schema: dict):\n        self.tools[name] = {'description': description, 'func': func, 'schema': schema}\n    \n    def get_tool(self, name: str):\n        return self.tools.get(name)\n\n# Train a simple classifier as the backend logic for the tool\nmodel = RandomForestClassifier(n_estimators=10, random_state=42)\nmodel.fit(X_train, y_train)\nprint(f\"Model trained, accuracy on training set: {model.score(X_train, y_train):.3f}\")\n\ndef predict_iris(sepal_length: float, sepal_width: float, petal_length: float, petal_width: float) -> str:\n    \"\"\"Predict iris species. All parameters in centimeters.\"\"\"\n    features = np.array([[sepal_length, sepal_width, petal_length, petal_width]])\n    pred_idx = model.predict(features)[0]\n    return target_names[pred_idx]\n\n# Define the tool's JSON Schema\nschema = {\n    \"type\": \"object\",\n    \"properties\": {\n        \"sepal_length\": {\"type\": \"number\", \"description\": \"Sepal length (cm)\"},\n        \"sepal_width\":  {\"type\": \"number\", \"description\": \"Sepal width (cm)\"},\n        \"petal_length\": {\"type\": \"number\", \"description\": \"Petal length (cm)\"},\n        \"petal_width\":  {\"type\": \"number\", \"description\": \"Petal width (cm)\"}\n    },\n    \"required\": [\""
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Function Calling / Tool Use：结构化执行 · 结构总览 · 数据：课程大纲】在设计《Function Calling / Tool Use：结构化执行》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Function Calling / Tool Use：结构化执行 · 结构总览 · Data: 课程大纲】When outlining \"Function Calling / Tool Use：结构化执行\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Function Calling / Tool Use：结构化执行 · worked example · 数据：掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】在复现《Function Calling / Tool Use：结构化执行》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Function Calling / Tool Use：结构化执行 · worked example · Data: 掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】While reproducing the worked example in \"Function Calling / Tool Use：结构化执行\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Function Calling / Tool Use：结构化执行 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Function Calling / Tool Use：结构化执行》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Function Calling / Tool Use：结构化执行 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Function Calling / Tool Use：结构化执行\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Function Calling / Tool Use：结构化执行 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Function Calling / Tool Use：结构化执行》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Function Calling / Tool Use：结构化执行 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Function Calling / Tool Use：结构化执行\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Function Calling in OpenAI API（OpenAI，2023）",
+            "en": "Function Calling in OpenAI API (OpenAI, 2023)"
+          },
+          "url": "https://platform.openai.com/docs/guides/function-calling"
+        },
+        {
+          "label": {
+            "zh": "Tool Use and Function Calling in LLMs: A Survey（arXiv，2023）",
+            "en": "Tool Use and Function Calling in LLMs: A Survey (arXiv, 2023)"
+          },
+          "url": "https://arxiv.org/abs/2305.15334"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-11-function-calling-tool-use-zh.mp3"
+      },
+      "meta": {
+        "category": "RAG/Agent/Evals 全链路",
+        "level": "7. LLM 应用工程",
+        "difficultyScore": 3,
+        "related": [
+          "工作流编排：状态机/图工作流实现可控Agent",
+          "研发助手：代码生成 + 单测驱动评测"
+        ],
+        "learningObjectives": [
+          "掌握LLM应用从检索到执行到评测的工程闭环",
+          "能实现一个可控、可评测、可监控的LLM应用"
+        ],
+        "personas": [
+          "AI工程师",
+          "平台工程师",
+          "产品经理",
+          "创业者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 Function Calling / Tool Use：结构化执行 可帮助团队在 RAG/Agent/Evals 全链路 上做出可复用的实践。",
+          "best_for": "适合 AI工程师、平台工程师、产品经理、创业者，需要快速吸收 7. LLM 应用工程 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "AI工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 AI工程师、平台工程师、产品经理、创业者，帮助他们把 Function Calling / Tool Use：结构化执行 应用于 RAG/Agent/Evals 全链路",
+          "prefersEnglish": false,
+          "industries": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理",
+            "创业者"
+          ],
+          "pains": "在 RAG/Agent/Evals 全链路 场景缺乏 Function Calling / Tool Use：结构化执行 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "7. LLM 应用工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为AI工程师，在构建RAG系统时，你如何设计Function Calling流程来确保工具调用的准确性和可控性？",
+            "action_hint": "思考当前项目中自然语言查询到结构化执行的转换难点，并设想一个可评测的流程框架。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为产品经理，在规划Agent功能时，你如何通过Function Calling机制平衡用户需求的灵活性与系统执行的可靠性？",
+            "action_hint": "回顾最近的产品需求，分析哪些场景适合工具调用，并构思从用户指令到工具参数的设计路径。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-10-query-rewrite",
       "date": "2026-03-10",
