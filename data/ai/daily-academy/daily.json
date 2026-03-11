@@ -1,6 +1,178 @@
 {
-  "generatedAt": "2026-03-11T02:33:44.276Z",
+  "generatedAt": "2026-03-11T14:14:12.514Z",
   "lessons": [
+    {
+      "id": "2026-03-11-agent-",
+      "date": "2026-03-11",
+      "title": {
+        "zh": "Agent 最小架构：计划-执行-反思的数据流",
+        "en": "Agent Minimal Architecture: The Data Flow of Planning-Execution-Reflection"
+      },
+      "summary": {
+        "zh": "本课程深入探讨Agent最小架构中的计划-执行-反思数据流，旨在解决LLM应用在复杂任务中失控与不可评测的核心问题。通过定义各阶段边界、解析数据流动机制，并结合数学建模与工程实践，构建可控、可监控的全链路系统。课程包含可复现代码示例，实现从数据加载到评估反馈的完整流程，帮助学习者掌握将理论落地为生产级应用的关键技能。",
+        "en": "This course delves into the Plan-Execute-Reflect data flow within Agent minimal architecture, addressing core issues of uncontrollability and unevaluability in LLM applications for complex tasks. By defining stage boundaries, analyzing data flow mechanisms, and integrating mathematical modeling with engineering practices, it builds controllable, monitorable full-link systems. The course includes reproducible code examples implementing end-to-end processes from data loading to evaluation feedback, equipping learners with key skills to translate theory into production-grade applications."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "agent"
+      ],
+      "content": {
+        "zh": "<h2>Agent最小架构：计划-执行-反思的数据流</h2>\n\n<p>本讲义为AI工程师、平台工程师及产品经理提供一套可执行的工程框架，用于构建可控、可评测的LLM应用系统。我们将从数据流的必要性出发，逐步深入定义、机制与工程实现，最终通过一个可复现的示例完成全链路落地。学习路径遵循从概念到实践的递进逻辑，确保每个环节的理论都能转化为具体的代码与监控指标。</p>\n\n<h3>从直觉到问题：为什么Agent需要计划-执行-反思？</h3>\n<p>在构建基于大语言模型的复杂应用时，开发者常面临一个核心困境：当任务超出单一提示词的处理范围时，系统容易失控或难以量化性能。例如，处理“总结最新AI论文并对比其方法差异”这类多步骤查询，若仅依赖一次LLM调用，往往导致信息遗漏、逻辑断裂或无法追溯错误源头。这种困境源于缺乏结构化的数据流，使得系统既不可控（无法干预中间过程）也不可评测（缺乏标准评估点）。</p>\n<p>Agent最小架构通过引入计划-执行-反思（Plan-Execute-Reflect）数据流，将复杂任务分解为可管理的工程闭环。计划（Plan）阶段根据输入生成任务分解或策略；执行（Execute）阶段调用工具（如RAG检索、函数）完成子任务；反思（Reflect）阶段评估结果并调整后续行为。这三个环节构成数据流动的基本单元，其核心目标在于平衡性能与资源消耗，而非单纯追求输出质量。</p>\n<p>从数学视角看，Agent的目标函数可形式化为期望损失的最小化：</p>\n<p>\\[ \\mathcal{L}_{\\text{agent}} = \\mathbb{E}_{(x, y)}[\\mathcal{R}(y, \\hat{y}) + \\lambda \\cdot \\mathcal{C}(\\pi)] \\]</p>\n<p>其中 \\(x\\) 为输入，\\(y\\) 为期望输出，\\(\\hat{y}\\) 为Agent实际输出，\\(\\mathcal{R}\\) 为评估指标（如准确率），\\(\\pi\\) 为计划策略，\\(\\mathcal{C}\\) 为成本函数（如延迟或计算开销），\\(\\lambda\\) 为权衡系数。该公式强调Agent需在性能与资源间取得平衡，指导我们设计数据流时需同时考虑效果与效率。</p>\n<p>工程实现中，计划阶段常使用思维链（Chain-of-Thought）提示或任务分解模型，输出结构化任务列表；执行阶段需设计统一工具接口，支持同步或异步调用；反思阶段则集成评估模块，实时反馈至计划器。关键复杂度来自数据序列化与状态管理——每个环节需传递完整上下文，避免信息丢失。例如，计划输出需包含任务ID、依赖关系和超时设置，执行日志需关联原始查询以支持溯源。</p>\n<p>常见误区是将Agent简化为单一LLM调用，忽视数据流的结构化设计。这导致系统难以监控中间状态，无法处理部分失败场景（如检索工具超时）。失败模式通常表现为：无限循环（缺乏反思终止条件）、状态不一致（序列化错误）或评估偏差（反思模块过拟合）。诊断时，应检查数据流日志是否包含三个阶段完整记录，并验证反思反馈是否实际影响后续计划。</p>\n<p>理解数据流的必要性后，我们需要明确每个环节的具体边界与接口，这是构建可控系统的基石。</p>\n\n<h3>定义边界：计划、执行、反思的数据接口</h3>\n<p>明确计划、执行、反思间的数据接口是确保Agent可监控、可扩展的关键。接口定义了信息传递的格式与协议，若设计混乱，将导致模块耦合度高、调试困难。例如，计划输出若为自然语言描述，执行器需额外解析，增加错误风险；反思反馈若缺乏结构化，则难以自动化调整策略。</p>\n<p>数据接口（Data Interface）指计划、执行、反思间传递信息的结构化格式，通常采用JSON Schema或Protocol Buffers。计划阶段输出任务列表（Task List），包含子任务的动作、参数、优先级及依赖关系；执行阶段接收任务并返回结果与元数据（如耗时、置信度）；反思阶段接收执行结果，输出调整指令（如重试、修改计划）或评估日志。边界设定需遵循单一职责原则——每个模块仅处理特定数据类型，避免功能重叠。</p>\n<p>从概率图模型看，接口设计影响整个系统的生成过程。假设任务列表 \\(T = \\{t_1, t_2, \\dots, t_n\\}\\)，执行结果 \\(R = \\{r_1, r_2, \\dots, r_n\\}\\)，反思输出调整分布 \\(P(\\Delta | R)\\)。完整数据流可建模为条件概率的链式分解：</p>\n<p>\\[ P(\\hat{y} | x) = \\sum_{T, R} P(T | x) \\cdot P(R | T) \\cdot P(\\hat{y} | R, \\Delta) \\]</p>\n<p>其中 \\(P(T | x)\\) 为计划生成概率，\\(P(R | T)\\) 为执行成功概率，\\(P(\\hat{y} | R, \\Delta)\\) 为反思后输出概率。该分解强调接口需传递足够信息以计算各环节条件概率，为监控与优化提供理论基础。</p>\n<p>工程实现要点包括：定义版本化Schema（便于向后兼容）、采用异步消息队列（解耦模块）、集成验证层（确保数据完整性）。例如，计划输出可遵循JSON Schema：<code>{\"tasks\": [{\"id\": 1, \"action\": \"retrieve\", \"params\": {\"query\": \"...\"}, \"depends_on\": []}]}</code>。复杂度敏感点在于序列化/反序列化开销，尤其当任务列表庞大时，需采用二进制格式或分片传输。</p>\n<p>常见误区是认为反思仅记录日志，不影响实时执行。实际上，反思应能实时调整计划或工具选择，例如基于执行延迟动态切换检索后端。失败模式包括：接口版本冲突（导致解析失败）、数据丢失（队列溢出）、循环依赖（任务死锁）。诊断时，应监控接口调用成功率与数据大小分布，并使用Schema验证工具提前捕获异常。</p>\n<p>接口清晰后，我们需要深入数据流动的具体机制，识别潜在陷阱并建立监控体系。</p>\n\n<h3>机制解析：数据流动、误区与监控</h3>\n<p>计划-执行-反思数据流的核心机制在于如何安全、高效地循环迭代，同时避免常见陷阱如无限循环、性能瓶颈或评估偏差。数据流动不是单向管道，而是带反馈的控制系统，其稳定性取决于循环设计、错误处理与状态持久化策略。</p>\n<p>循环控制（Loop Control）机制限制迭代次数，防止无限执行。设最大迭代次数为 \\(K\\)，每次迭代包含计划 \\(P_k\\)、执行 \\(E_k\\)、反思 \\(R_k\\)，终止条件可基于评估指标阈值或资源上限。例如，当反思输出的质量分数 \\(q_k\\) 满足 \\(q_k \\ge \\theta\\) 或迭代次数 \\(k = K\\) 时停止。数学上，这对应带约束的优化问题：</p>\n<p>\\[ \\max_{k \\le K} \\mathbb{E}[q_k] \\quad \\text{s.t.} \\quad \\sum_{i=1}^k c_i \\le C_{\\text{max}} \\]</p>\n<p>其中 \\(c_i\\) 为第 \\(i\\) 次迭代成本，\\(C_{\\text{max}}\\) 为总预算。该公式强调需在有限资源内寻求最优解，指导我们设置合理的迭代上限与成本监控。</p>\n<p>错误处理（Error Handling）机制确保系统鲁棒性。当执行失败（如工具超时、返回异常）时，反思阶段需捕获错误类型 \\(e\\)，并依据策略 \\(\\pi_e\\) 调整——可能重试、降级或终止。工程实现中，错误应分类处理：可恢复错误（如网络超时）触发重试；不可恢复错误（如权限不足）则记录并跳过。关键要点是错误信息需沿数据流反向传递至计划器，以便动态调整任务列表。</p>\n<p>监控体系需覆盖全链路指标，包括各阶段延迟、成功率与数据一致性。评估指标如准确率（Accuracy）定义为：</p>\n<p>\\[ \\text{Accuracy} = \\frac{1}{N} \\sum_{i=1}^N \\mathbb{I}(\\hat{y}_i = y_i) \\]</p>\n<p>其中 \\(\\mathbb{I}\\) 为指示函数，\\(N\\) 为样本数。此外，应监控数据流吞吐量、错误率分布及状态机转换频率，以便识别瓶颈。</p>\n<p>常见误区是认为数据流越复杂，Agent越智能。实际上，过度设计（如多层反思循环）会增加延迟且难以调试。智能源于有效反馈而非复杂度，简化数据流常能提升可监控性。失败模式包括：活锁（反复调整但无进展）、资源耗尽（未设成本上限）、评估过拟合（反思模块依赖训练数据）。诊断时，需分析迭代轨迹图，检查是否收敛，并对比不同简化版本的性能。</p>\n<p>掌握机制后，我们将通过一个可复现的工程示例，将理论落地为全链路系统。</p>\n\n<h3>工程落地：构建可复现的Agent最小架构</h3>\n<p>将计划-执行-反思数据流应用于RAG/Agent/Evals全链路，需要从零搭建一个可控、可评测的系统。本示例以文本问答任务为例，构建最小可复现实验，覆盖数据加载、计划生成、RAG执行、反思评估及环境记录全流程。</p>\n<p>评估指标（Evaluation Metrics）用于量化Agent性能，我们采用准确率（Accuracy）与F1分数（F1-Score），后者平衡精确率与召回率：</p>\n<p>\\[ \\text{F1} = 2 \\cdot \\frac{\\text{precision} \\cdot \\text{recall}}{\\text{precision} + \\text{recall}} \\]</p>\n<p>其中精确率 \\(\\text{precision} = \\frac{TP}{TP + FP}\\)，召回率 \\(\\text{recall} = \\frac{TP}{TP + FN}\\)，\\(TP, FP, FN\\) 分别为真阳性、假阳性、假阴性。这些指标需在反思阶段计算并反馈，以指导后续调整。</p>\n<p>版本控制（Version Control）确保可复现性，记录代码、数据与模型版本。工程实现要点包括：使用固定随机种子、依赖管理文件（如requirements.txt）、数据快照。全链路管线需模块化设计，允许单独测试计划、执行或反思组件。</p>\n<p>以下端到端代码块实现Agent最小架构，处理简单QA任务，使用内置数据集避免外部文件依赖：</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score\nimport random\n\n# 步骤1：数据检查与加载\ncategories = ['sci.med', 'sci.space']\ndataset = fetch_20newsgroups(subset='train', categories=categories, remove=('headers', 'footers', 'quotes'))\ndf = pd.DataFrame({'text': dataset.data, 'label': dataset.target})\nprint(f\"数据集shape: {df.shape}\")\nprint(\"样例head:\\n\", df.head(2))\n\n# 构造简单QA对（模拟任务）\nqa_pairs = [\n    {\"query\": \"What is antibiotics?\", \"answer\": \"drugs that fight bacterial infections\", \"label\": 0},\n    {\"query\": \"What is Mars?\", \"answer\": \"the fourth planet from the Sun\", \"label\": 1},\n    {\"query\": \"How does vaccine work?\", \"answer\": \"stimulates immune response\", \"label\": 0},\n    {\"query\": \"What is a satellite?\", \"answer\": \"object orbiting a planet\", \"label\": 1},\n]\ntest_df = pd.DataFrame(qa_pairs)\n\n# 步骤2：可复现切分\nrandom.seed(42)\nnp.random.seed(42)\n# 使用固定数据集，无需进一步切分\n\n# 步骤3：pipeline实现（简化版Agent数据流）\ndef plan_phase(query):\n    \"\"\"计划阶段：生成检索任务\"\"\"\n    return {\"tasks\": [{\"id\": 1, \"action\": \"retrieve\", \"params\": {\"query\": query}}]}\n\ndef execute_phase(task, corpus):\n    \"\"\"执行阶段：模拟RAG检索（使用TF-IDF简化）\"\"\"\n    from sklearn.feature_extraction.text import TfidfVectorizer\n    from sklearn.metrics.pairwise import cosine_similarity\n    vectorizer = TfidfVectorizer().fit(corpus)\n    query_vec = vectorizer.transform([task['params']['query']])\n    corpus_vec = vectorizer.transform(corpus)\n    sims = cosine_similarity(query_vec, corpus_vec).flatten()\n    top_idx = np.argmax(sims)\n    return {\"result\": corpus[top_idx], \"score\": sims[top_idx], \"top_k\": sims[:3]}\n\ndef reflect_phase(result, expected_answer):\n    \"\"\"反思阶段：评估并决定是否重试\"\"\"\n    # 简单字符串包含作为评估\n    match = expected_answer.lower() in result['result'].lower()\n    quality = 1.0 if match else 0.0\n    adjust = \"retry\" if quality < 0.5 else \"proceed\"\n    return {\"quality\": quality, \"adjust\": adjust}\n\n# 全链路执行\ncorpus = df['text'].tolist()[:100]  # 使用前100条作为检索库\npredictions, truths = [], []\nfor idx, row in test_df.iterrows():\n    plan = plan_phase(row['query'])\n    task = plan['tasks'][0]\n    exec_result = execute_phase(task, corpus)\n    print(f\"查询: {row['query']}\")\n    print(f\"检索top-k相似度: {exec_result['top_k']}\")\n    reflect = reflect_phase(exec_result, row['answer'])\n    predictions.append(1 if reflect['quality'] > 0.5 else 0)\n    truths.append(row['label'])\n    print(f\"反思质量: {reflect['quality']}, 调整: {reflect['adjust']}\\n\")\n\n# 步骤4：指标计算\naccuracy = accuracy_score(truths, predictions)\nf1 = f1_score(truths, predictions, average='macro')\nprint(f\"评估准确率: {accuracy:.3f}\")\nprint(f\"F1分数: {f1:.3f}\")\n\n# 步骤5：记录环境\nimport sys\nimport sklearn\nprint(\"\\n环境版本:\")\nprint(f\"Python: {sys.version}\")\nprint(f\"pandas: {pd.__version__}\")\nprint(f\"scikit-learn: {sklearn.__version__}\")\nprint(f\"随机种子: 42\")</code></pre>\n<p>该代码输出数据集规模、检索中间结果（top-k相似度）、反思决策及评估指标。轻量替代方案：若需替换LLM，可将计划阶段改用小模型（如T5-small）生成任务列表，但需注意延迟增加。</p>\n<p>常见误区是认为工程落地只需关注功能实现，评测可以后期添加。实际上，评测应集成在数据流中，从开发初期确保可控性。失败模式包括：数据泄露（测试集污染检索库）、评估偏差（指标不匹配业务目标）、环境漂移（依赖版本变化）。诊断时，需验证指标计算正确性，并检查中间日志是否完整。</p>\n<p>通过此示例，你已掌握Agent最小架构的工程实现路径。接下来，请基于自身项目，写下一条可执行行动，例如“在我的RAG系统中添加反思日志模块，记录每次检索质量并每周分析趋势”。</p>\n\n<p>本讲义系统性地阐述了Agent最小架构中计划-执行-反思数据流的定义、机制与工程实践。从目标函数到概率分解，从接口设计到循环控制，每个环节都强调了可监控性与可复现性。通过端到端的代码示例，我们展示了如何将理论转化为可运行的系统，并计算关键评估指标。掌握这一框架后，你可以将其迁移至自身的RAG、Agent或评估链路中，构建更可控、可评测的LLM应用。</p>",
+        "en": "<h2>Agent Minimal Architecture: Plan-Execute-Reflect Data Flow</h2>\n\n<p>This lecture provides AI engineers, platform engineers, and product managers with an executable engineering framework for building controllable, evaluable LLM application systems. We start from the necessity of data flow, progressively delve into definitions, mechanisms, and implementation, and conclude with a reproducible example for full-link deployment. The learning path follows a progressive logic from concepts to practice, ensuring each theoretical component translates into concrete code and monitoring metrics.</p>\n\n<h3>From Intuition to Problem: Why Does an Agent Need Plan-Execute-Reflect?</h3>\n<p>When building complex applications based on large language models, developers often face a core dilemma: as tasks exceed the processing scope of a single prompt, systems tend to become uncontrollable or difficult to quantify in performance. For instance, handling multi-step queries like \"summarize the latest AI paper and compare its methodological differences\" with only one LLM call frequently leads to information omission, logical breaks, or an inability to trace error sources. This stems from a lack of structured data flow, rendering systems neither controllable (unable to intervene in intermediate processes) nor evaluable (lacking standard assessment points).</p>\n<p>The Agent minimal architecture introduces a Plan-Execute-Reflect data flow to decompose complex tasks into manageable engineering loops. The Plan phase generates task breakdowns or strategies based on input; the Execute phase invokes tools (e.g., RAG retrieval, functions) to complete subtasks; the Reflect phase evaluates results and adjusts subsequent behavior. These three components form the basic unit of data movement, with the core objective of balancing performance and resource consumption, not merely pursuing output quality.</p>\n<p>From a mathematical perspective, the Agent's objective function can be formalized as minimizing expected loss:</p>\n<p>\\[ \\mathcal{L}_{\\text{agent}} = \\mathbb{E}_{(x, y)}[\\mathcal{R}(y, \\hat{y}) + \\lambda \\cdot \\mathcal{C}(\\pi)] \\]</p>\n<p>where \\(x\\) is the input, \\(y\\) the expected output, \\(\\hat{y}\\) the Agent's actual output, \\(\\mathcal{R}\\) an evaluation metric (e.g., accuracy), \\(\\pi\\) the planning strategy, \\(\\mathcal{C}\\) a cost function (e.g., latency or computational overhead), and \\(\\lambda\\) a trade-off coefficient. This formula emphasizes that Agents must balance performance and resources, guiding us to consider both effectiveness and efficiency when designing data flow.</p>\n<p>In engineering implementation, the Plan phase often uses Chain-of-Thought prompting or task decomposition models to output structured task lists; the Execute phase requires a unified tool interface supporting synchronous or asynchronous calls; the Reflect phase integrates evaluation modules for real-time feedback to the planner. Key complexity arises from data serialization and state management—each stage must pass complete context to avoid information loss. For example, plan outputs should include task IDs, dependencies, and timeout settings, while execution logs must associate with original queries for traceability.</p>\n<p>A common misconception is reducing Agents to single LLM calls, neglecting structured data flow design. This makes it hard to monitor intermediate states and handle partial failures (e.g., retrieval tool timeouts). Failure modes typically manifest as infinite loops (lacking reflection termination conditions), state inconsistency (serialization errors), or evaluation bias (overfitting in reflection modules). Diagnosis should check if data flow logs contain complete records of all three stages and verify whether reflection feedback actually influences subsequent plans.</p>\n<p>Understanding the necessity of data flow, we next need to define precise boundaries and interfaces for each component, the foundation for building controllable systems.</p>\n\n<h3>Defining Boundaries: Data Interfaces for Plan, Execute, Reflect</h3>\n<p>Clarifying data interfaces between Plan, Execute, and Reflect is crucial for ensuring Agents are monitorable and extensible. Interfaces define the format and protocol for information transfer; if poorly designed, they lead to high module coupling and debugging difficulties. For instance, if plan outputs are natural language descriptions, executors require additional parsing, increasing error risk; if reflection feedback lacks structure, automated strategy adjustment becomes challenging.</p>\n<p>A Data Interface refers to the structured format for passing information between Plan, Execute, and Reflect, typically using JSON Schema or Protocol Buffers. The Plan phase outputs a Task List containing subtask actions, parameters, priorities, and dependencies; the Execute phase receives tasks and returns results with metadata (e.g., duration, confidence); the Reflect phase receives execution results and outputs adjustment instructions (e.g., retry, modify plan) or evaluation logs. Boundary setting should follow the single-responsibility principle—each module handles only specific data types to avoid functional overlap.</p>\n<p>From a probabilistic graphical model perspective, interface design influences the entire system's generation process. Assuming a task list \\(T = \\{t_1, t_2, \\dots, t_n\\}\\), execution results \\(R = \\{r_1, r_2, \\dots, r_n\\}\\), and reflection output adjusting distribution \\(P(\\Delta | R)\\), the full data flow can be modeled as a chain decomposition of conditional probabilities:</p>\n<p>\\[ P(\\hat{y} | x) = \\sum_{T, R} P(T | x) \\cdot P(R | T) \\cdot P(\\hat{y} | R, \\Delta) \\]</p>\n<p>where \\(P(T | x)\\) is the plan generation probability, \\(P(R | T)\\) the execution success probability, and \\(P(\\hat{y} | R, \\Delta)\\) the post-reflection output probability. This decomposition emphasizes that interfaces must convey sufficient information to compute conditional probabilities at each stage, providing a theoretical basis for monitoring and optimization.</p>\n<p>Engineering implementation points include: defining versioned Schemas (for backward compatibility), adopting asynchronous message queues (decoupling modules), and integrating validation layers (ensuring data integrity). For example, plan output could follow JSON Schema: <code>{\"tasks\": [{\"id\": 1, \"action\": \"retrieve\", \"params\": {\"query\": \"...\"}, \"depends_on\": []}]}</code>. Complexity-sensitive aspects involve serialization/deserialization overhead, especially with large task lists, necessitating binary formats or chunked transmission.</p>\n<p>A common misconception is that reflection only logs data without affecting real-time execution. In practice, reflection should enable real-time plan or tool selection adjustments, e.g., dynamically switching retrieval backends based on execution latency. Failure modes include: interface version conflicts (causing parse failures), data loss (queue overflow), and circular dependencies (task deadlocks). Diagnosis should monitor interface call success rates and data size distributions, using Schema validation tools to catch anomalies early.</p>\n<p>With clear interfaces, we now delve into the specific mechanisms of data flow, identifying potential pitfalls and establishing monitoring systems.</p>\n\n<h3>Mechanism Analysis: Data Flow, Misconceptions, and Monitoring</h3>\n<p>The core mechanism of Plan-Execute-Reflect data flow lies in how to safely and efficiently iterate cycles while avoiding common traps like infinite loops, performance bottlenecks, or evaluation bias. Data flow is not a unidirectional pipeline but a feedback-driven control system, whose stability depends on loop design, error handling, and state persistence strategies.</p>\n<p>Loop Control mechanisms limit iteration counts to prevent infinite execution. Let maximum iterations be \\(K\\), each iteration comprising Plan \\(P_k\\), Execute \\(E_k\\), Reflect \\(R_k\\), with termination conditions based on evaluation metric thresholds or resource limits. For example, stop when reflection's quality score \\(q_k\\) satisfies \\(q_k \\ge \\theta\\) or iteration count \\(k = K\\). Mathematically, this corresponds to a constrained optimization problem:</p>\n<p>\\[ \\max_{k \\le K} \\mathbb{E}[q_k] \\quad \\text{s.t.} \\quad \\sum_{i=1}^k c_i \\le C_{\\text{max}} \\]</p>\n<p>where \\(c_i\\) is the cost of iteration \\(i\\) and \\(C_{\\text{max}}\\) the total budget. This formula highlights the need to seek optimal solutions within finite resources, guiding us to set reasonable iteration limits and cost monitoring.</p>\n<p>Error Handling mechanisms ensure system robustness. When execution fails (e.g., tool timeout, abnormal return), the Reflect phase must capture error type \\(e\\) and adjust according to policy \\(\\pi_e\\)—possibly retrying, degrading, or terminating. In engineering, errors should be categorized: recoverable errors (e.g., network timeout) trigger retries; non-recoverable errors (e.g., insufficient permissions) are logged and skipped. A key point is that error information must propagate backward through the data flow to the planner for dynamic task list adjustments.</p>\n<p>Monitoring systems should cover full-link metrics, including latency, success rates, and data consistency per stage. Evaluation metrics like Accuracy are defined as:</p>\n<p>\\[ \\text{Accuracy} = \\frac{1}{N} \\sum_{i=1}^N \\mathbb{I}(\\hat{y}_i = y_i) \\]</p>\n<p>where \\(\\mathbb{I}\\) is the indicator function and \\(N\\) the sample count. Additionally, monitor data flow throughput, error rate distributions, and state machine transition frequencies to identify bottlenecks.</p>\n<p>A common misconception is that more complex data flows make Agents smarter. In reality, over-engineering (e.g., multi-layer reflection loops) increases latency and complicates debugging. Intelligence stems from effective feedback, not complexity; simplifying data flow often enhances monitorability. Failure modes include: livelock (repeated adjustments without progress), resource exhaustion (no cost上限), and evaluation overfitting (reflection modules relying on training data). Diagnosis requires analyzing iteration trajectory graphs, checking for convergence, and comparing performance across simplified versions.</p>\n<p>Having grasped the mechanisms, we now implement a reproducible engineering example to ground theory in a full-link system.</p>\n\n<h3>Engineering Implementation: Building a Reproducible Agent Minimal Architecture</h3>\n<p>Applying Plan-Execute-Reflect data flow to RAG/Agent/Evals full-link requires building a controllable, evaluable system from scratch. This example uses a text QA task to construct a minimal reproducible experiment, covering data loading, plan generation, RAG execution, reflection evaluation, and environment recording.</p>\n<p>Evaluation Metrics quantify Agent performance; we employ Accuracy and F1-Score, the latter balancing precision and recall:</p>\n<p>\\[ \\text{F1} = 2 \\cdot \\frac{\\text{precision} \\cdot \\text{recall}}{\\text{precision} + \\text{recall}} \\]</p>\n<p>where precision \\(\\text{precision} = \\frac{TP}{TP + FP}\\), recall \\(\\text{recall} = \\frac{TP}{TP + FN}\\), and \\(TP, FP, FN\\) are true positives, false positives, false negatives respectively. These metrics must be computed in the Reflect phase and fed back to guide subsequent adjustments.</p>\n<p>Version Control ensures reproducibility by recording code, data, and model versions. Engineering implementation points include: using fixed random seeds, dependency management files (e.g., requirements.txt), and data snapshots. The full-link pipeline should be modular, allowing isolated testing of Plan, Execute, or Reflect components.</p>\n<p>The following end-to-end code block implements an Agent minimal architecture for a simple QA task, using built-in datasets to avoid external file dependencies:</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score\nimport random\n\n# Step 1: Data inspection and loading\ncategories = ['sci.med', 'sci.space']\ndataset = fetch_20newsgroups(subset='train', categories=categories, remove=('headers', 'footers', 'quotes'))\ndf = pd.DataFrame({'text': dataset.data, 'label': dataset.target})\nprint(f\"Dataset shape: {df.shape}\")\nprint(\"Sample head:\\n\", df.head(2))\n\n# Construct simple QA pairs (simulating tasks)\nqa_pairs = [\n    {\"query\": \"What is antibiotics?\", \"answer\": \"drugs that fight bacterial infections\", \"label\": 0},\n    {\"query\": \"What is Mars?\", \"answer\": \"the fourth planet from the Sun\", \"label\": 1},\n    {\"query\": \"How does vaccine work?\", \"answer\": \"stimulates immune response\", \"label\": 0},\n    {\"query\": \"What is a satellite?\", \"answer\": \"object orbiting a planet\", \"label\": 1},\n]\ntest_df = pd.DataFrame(qa_pairs)\n\n# Step 2: Reproducible splitting\nrandom.seed(42)\nnp.random.seed(42)\n# Using fixed dataset, no further splitting needed\n\n# Step 3: Pipeline implementation (simplified Agent data flow)\ndef plan_phase(query):\n    \"\"\"Plan phase: generate retrieval task\"\"\"\n    return {\"tasks\": [{\"id\": 1, \"action\": \"retrieve\", \"params\": {\"query\": query}}]}\n\ndef execute_phase(task, corpus):\n    \"\"\"Execute phase: simulate RAG retrieval (using TF-IDF for simplicity)\"\"\"\n    from sklearn.feature_extraction.text import TfidfVectorizer\n    from sklearn.metrics.pairwise import cosine_similarity\n    vectorizer = TfidfVectorizer().fit(corpus)\n    query_vec = vectorizer.transform([task['params']['query']])\n    corpus_vec = vectorizer.transform(corpus)\n    sims = cosine_similarity(query_vec, corpus_vec).flatten()\n    top_idx = np.argmax(sims)\n    return {\"result\": corpus[top_idx], \"score\": sims[top_idx], \"top_k\": sims[:3]}\n\ndef reflect_phase(result, expected_answer):\n    \"\"\"Reflect phase: evaluate and decide whether to retry\"\"\"\n    # Simple string containment as evaluation\n    match = expected_answer.lower() in result['result'].lower()\n    quality = 1.0 if match else 0.0\n    adjust = \"retry\" if quality < 0.5 else \"proceed\"\n    return {\"quality\": quality, \"adjust\": adjust}\n\n# Full-link execution\ncorpus = df['text'].tolist()[:100]  # Use first 100 entries as retrieval corpus\npredictions, truths = [], []\nfor idx, row in test_df.iterrows():\n    plan = plan_phase(row['query'])\n    task = plan['tasks'][0]\n    exec_result = execute_phase(task, corpus)\n    print(f\"Query: {row['query']}\")\n    print(f\"Retrieval top-k similarities: {exec_result['top_k']}\")\n    reflect = reflect_phase(exec_result, row['answer'])\n    predictions.append(1 if reflect['quality'] > 0.5 else 0)\n    truths.append(row['label'])\n    print(f\"Reflection quality: {reflect['quality']}, adjustment: {reflect['adjust']}\\n\")\n\n# Step 4: Metric calculation\naccuracy = accuracy_score(truths, predictions)\nf1 = f1_score(truths, predictions, average='macro')\nprint(f\"Evaluation accuracy: {accuracy:.3f}\")\nprint(f\"F1 score: {f1:.3f}\")\n\n# Step 5: Environment recording\nimport sys\nimport sklearn\nprint(\"\\nEnvironment versions:\")\nprint(f\"Python: {sys.version}\")\nprint(f\"pandas: {pd.__version__}\")\nprint(f\"scikit-learn: {sklearn.__version__}\")\nprint(f\"Random seed: 42\")</code></pre>\n<p>This code outputs dataset size, retrieval intermediate results (top-k similarities), reflection decisions, and evaluation metrics. Lightweight alternative: if replacing with an LLM, the Plan phase could use a small model (e.g., T5-small) to generate task lists, but note increased latency.</p>\n<p>A common misconception is that engineering implementation only needs to focus on functionality, with evaluation added later. In fact, evaluation should be integrated into the data flow from the start to ensure controllability. Failure modes include: data leakage (test set contaminating retrieval corpus), evaluation bias (metrics mismatching business goals), and environment drift (dependency version changes). Diagnosis should verify metric calculation correctness and check if intermediate logs are complete.</p>\n<p>Through this example, you have mastered the engineering implementation path for Agent minimal architecture. Next, based on your own project, write down one actionable step, such as \"Add a reflection logging module to my RAG system, recording each retrieval's quality and analyzing trends weekly.\"</p>\n\n<p>This lecture systematically elaborates on the definitions, mechanisms, and engineering practices of the Plan-Execute-Reflect data flow within Agent minimal architecture. From objective functions to probability decompositions, from interface design to loop control, each component emphasizes monitorability and reproducibility. Through an end-to-end code example, we demonstrate how to translate theory into a runnable system and compute key evaluation metrics. Mastering this framework enables you to migrate it to your own RAG, Agent, or evaluation pipelines, building more controllable and evaluable LLM applications.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Agent 最小架构：计划-执行-反思的数据流 · 结构总览 · 数据：课程大纲】在设计《Agent 最小架构：计划-执行-反思的数据流》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: Agent 最小架构：计划-执行-反思的数据流 · 结构总览 · Data: 课程大纲】When outlining \"Agent 最小架构：计划-执行-反思的数据流\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：Agent 最小架构：计划-执行-反思的数据流 · worked example · 数据：掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】在复现《Agent 最小架构：计划-执行-反思的数据流》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: Agent 最小架构：计划-执行-反思的数据流 · worked example · Data: 掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】While reproducing the worked example in \"Agent 最小架构：计划-执行-反思的数据流\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：Agent 最小架构：计划-执行-反思的数据流 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《Agent 最小架构：计划-执行-反思的数据流》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: Agent 最小架构：计划-执行-反思的数据流 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"Agent 最小架构：计划-执行-反思的数据流\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：Agent 最小架构：计划-执行-反思的数据流 · 参考资料 · 数据：课程引用文献】当引用文献支撑《Agent 最小架构：计划-执行-反思的数据流》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: Agent 最小架构：计划-执行-反思的数据流 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"Agent 最小架构：计划-执行-反思的数据流\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "ReAct: Synergizing Reasoning and Acting in Language Models（arXiv，2022）",
+            "en": "ReAct: Synergizing Reasoning and Acting in Language Models (arXiv, 2022)"
+          },
+          "url": "https://arxiv.org/abs/2210.03629"
+        },
+        {
+          "label": {
+            "zh": "LangChain Documentation（LangChain，2023）",
+            "en": "LangChain Documentation (LangChain, 2023)"
+          },
+          "url": "https://python.langchain.com/docs/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-11-agent--zh.mp3"
+      },
+      "meta": {
+        "category": "RAG/Agent/Evals 全链路",
+        "level": "7. LLM 应用工程",
+        "difficultyScore": 4,
+        "related": [
+          "Agent 最小架构：计划-执行-反思的数据流",
+          "上线前检查表：从 PoC 到 Production"
+        ],
+        "learningObjectives": [
+          "掌握LLM应用从检索到执行到评测的工程闭环",
+          "能实现一个可控、可评测、可监控的LLM应用"
+        ],
+        "personas": [
+          "AI工程师",
+          "平台工程师",
+          "产品经理",
+          "创业者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 Agent 最小架构：计划-执行-反思的数据流 可帮助团队在 RAG/Agent/Evals 全链路 上做出可复用的实践。",
+          "best_for": "适合 AI工程师、平台工程师、产品经理、创业者，需要快速吸收 7. LLM 应用工程 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "AI工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 AI工程师、平台工程师、产品经理、创业者，帮助他们把 Agent 最小架构：计划-执行-反思的数据流 应用于 RAG/Agent/Evals 全链路",
+          "prefersEnglish": false,
+          "industries": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理",
+            "创业者"
+          ],
+          "pains": "在 RAG/Agent/Evals 全链路 场景缺乏 Agent 最小架构：计划-执行-反思的数据流 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "7. LLM 应用工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您当前负责的RAG/Agent项目中，计划阶段的数据输入通常来自哪些来源？执行阶段如何确保这些数据能准确转化为行动指令？",
+            "action_hint": "尝试绘制您项目中计划-执行-反思的数据流向图，标注关键转换节点。"
+          },
+          {
+            "lang": "zh",
+            "question": "回顾最近一次Agent任务失败案例，反思阶段的数据反馈是如何收集的？这些反馈数据如何影响下一轮的计划制定？",
+            "action_hint": "列出三个可量化的反思指标（如准确率、响应时间、用户满意度），并思考如何建立反馈闭环。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-11-function-calling-tool-use",
       "date": "2026-03-11",
