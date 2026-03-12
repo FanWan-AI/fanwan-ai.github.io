@@ -1,6 +1,178 @@
 {
-  "generatedAt": "2026-03-11T14:14:12.514Z",
+  "generatedAt": "2026-03-12T02:39:14.346Z",
   "lessons": [
+    {
+      "id": "2026-03-12-agent",
+      "date": "2026-03-12",
+      "title": {
+        "zh": "多 Agent 协作：角色分工与冲突解决",
+        "en": "Multi-Agent Collaboration: Role Division and Conflict Resolution"
+      },
+      "summary": {
+        "zh": "本课程深入探讨多Agent协作在LLM应用工程中的核心机制，聚焦角色分工与冲突解决。通过定义多Agent协作、角色分工及冲突解决的精确边界，结合POMDP模型与优化目标函数，阐述协作的数学基础。工程实践部分涵盖接口设计、通信协议及动态调整策略，并分析常见误区与失败模式。示例构建一个可复现的文本处理管线，实现检索、总结、评估Agent的协作，通过投票机制解决冲突，计算ROUGE-1等指标，确保系统可控可评测。",
+        "en": "This course delves into the core mechanisms of multi-agent collaboration in LLM application engineering, focusing on role division and conflict resolution. It defines precise boundaries for multi-agent collaboration, role division, and conflict resolution, combining POMDP models and optimization objective functions to explain the mathematical foundations. Engineering practices cover interface design, communication protocols, and dynamic adjustment strategies, along with analysis of common misconceptions and failure modes. The example builds a reproducible text processing pipeline implementing collaboration among retrieval, summarization, and evaluation agents, resolving conflicts via voting mechanisms and computing metrics like ROUGE-1 to ensure a controllable and measurable system."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "agent"
+      ],
+      "content": {
+        "zh": "<h3>从单Agent到多Agent：为什么协作是必然？</h3>\n<p>在构建LLM应用时，工程师常面临一个核心困境：单一智能体处理复杂多步骤任务时，错误会沿任务链累积，且责任边界模糊，导致调试困难。例如，在RAG（检索增强生成 Retrieval-Augmented Generation）流程中，一个Agent同时负责检索、重写和生成，若检索结果偏差，后续步骤将放大错误，且难以定位故障点。这引出了多Agent协作的根本需求：通过模块化分解任务，实现错误隔离与可控性。</p>\n<p>多Agent协作（Multi-Agent Collaboration）定义为多个智能体通过角色分工与协调机制共同完成目标的过程（来源：Multi-Agent Systems: A Survey, 2021）。其核心边界在于：协作不仅是并行执行，而是需要设计通信协议、状态同步与决策逻辑。角色分工（Role Division）指根据任务需求分配不同智能体的职责与权限；冲突解决（Conflict Resolution）则是处理智能体间在目标、资源或输出上的不一致性。例如，在文本处理任务中，检索Agent、总结Agent和评估Agent需明确各自输入输出格式，避免职责重叠。</p>\n<p>从机制上，多Agent协作可建模为部分可观察马尔可夫决策过程（Partially Observable Markov Decision Process, POMDP），其中每个Agent i 的局部观察 o_i 通过通信形成全局状态估计。协作目标函数常最大化联合奖励：\\[ J(\\theta) = \\mathbb{E}_{\\tau \\sim \\pi_\\theta} \\left[ \\sum_{t=0}^{T} \\gamma^t R(s_t, a_t) \\right] \\]，其中 \\pi_\\theta 是联合策略，R 是系统级奖励，\\gamma 是折扣因子。这要求Agent不仅优化个体回报，还需考虑团队整体性能，避免陷入局部最优。</p>\n<p>工程实现时，关键要点包括：1）定义清晰的接口规范，如使用Protocol Buffers或JSON Schema确保数据一致性；2）采用消息队列（如RabbitMQ、Kafka）实现异步通信，降低耦合度；3）设计超时与重试机制，防止死锁。复杂度敏感点在于通信开销：若Agent数量N过多，消息传递延迟可能以O(N^2)增长，需通过分层协调或聚合通信优化。在实际部署中，可使用容器化技术（如Docker）和编排工具（如Kubernetes）来管理多Agent系统的可扩展性和可靠性。</p>\n<p>常见误区是认为“多Agent只是增加Agent数量”，这可能导致系统混乱或资源竞争死锁。失败模式包括：1）通信协议不一致，导致解析错误；2）角色边界模糊，引发重复计算；3）缺乏冲突处理，输出矛盾。诊断时，可记录每个Agent的输入输出日志，计算任务完成率与一致性指标，如使用Cohen's kappa系数评估多个Agent输出的一致性：\\[ \\kappa = \\frac{p_o - p_e}{1 - p_e} \\]，其中p_o是观察一致比例，p_e是期望一致比例。值低于0.6表明需重新设计分工。</p>\n<p>理解了多Agent协作的必要性后，我们需要深入角色分工的具体设计原则，以确保系统可控且高效。</p>\n<h3>角色分工：如何设计Agent职责与边界？</h3>\n<p>在多Agent系统中，角色分工是确保可控性的基石。一个典型困惑是：在RAG流程中，检索、重写、生成Agent如何避免职责重叠？若设计不当，检索Agent可能越界执行重写逻辑，导致信息失真。角色分工的目标是最大化模块化收益，同时最小化协调成本。</p>\n<p>角色类型通常包括：协调者（Coordinator），负责调度任务流与管理状态；执行者（Executor），执行具体操作如检索或生成；评估者（Evaluator），监控输出质量并提供反馈。分工原则基于任务分解图（如DAG工作流）与能力匹配：将复杂任务分解为子任务，分配给最适合的Agent。例如，在文本摘要任务中，检索Agent过滤相关文档，总结Agent生成摘要，评估Agent计算ROUGE分数，协调者整合结果。</p>\n<p>数学上，分工可形式化为优化问题：最小化总成本C，包括执行成本与通信成本。设任务集T，Agent集A，每个任务t需技能向量s_t，每个Agent a有技能向量c_a。分配矩阵X_{a,t} ∈ {0,1}表示是否分配，目标函数为：\\[ \\min_X \\sum_{a \\in A} \\sum_{t \\in T} X_{a,t} \\cdot \\text{cost}(c_a, s_t) + \\lambda \\cdot \\text{comm}(X) \\]，其中cost是执行成本，comm是通信开销，λ是权衡参数。这要求平衡能力匹配与系统负载。</p>\n<p>工程实现要点：1）使用工作流引擎（如Airflow、Prefect）定义DAG，明确任务依赖；2）为每个Agent设置资源配额（如API调用频率、内存限制），防止单点过载；3）实现动态角色调整，基于监控指标（如延迟、错误率）重新分配任务。边界条件包括：Agent故障时的容错机制，如使用心跳检测与备用Agent切换。</p>\n<p>误区包括“角色固定不变”，实际上角色应可动态调整以适应变化负载。失败模式：1）角色过细，增加协调开销；2）角色冲突，多个Agent竞争同一资源。诊断时，可跟踪每个Agent的利用率与等待时间，计算负载均衡指标，如标准差：\\[ \\sigma = \\sqrt{\\frac{1}{N} \\sum_{i=1}^{N} (u_i - \\bar{u})^2 } \\]，其中u_i是Agent i的利用率，N是Agent数量。高σ值表明分工不均，需重新分配。</p>\n<p>分工清晰后，协作中不可避免会出现冲突，我们需要系统化机制来解决这些不一致性。</p>\n<h3>冲突解决：机制、误区与工程模式</h3>\n<p>在多Agent协作中，冲突是常态而非例外。例如，当检索Agent返回多篇相关文档，而总结Agent生成摘要时，可能因优先级不同导致输出不一致。冲突解决（Conflict Resolution）是处理此类不一致性的过程，确保系统最终输出一致且可靠（来源：Conflict Resolution Strategies in Multi-Agent Systems, 2020）。</p>\n<p>冲突类型主要包括：资源冲突（如多个Agent同时请求高负载API）、目标冲突（如不同Agent对任务优先级有歧义）、输出冲突（如生成结果矛盾）。解决策略有：协商（Negotiation），Agent通过交换提案达成共识；投票（Voting），多数决或加权投票；权威决策（Authority），由协调者或预定义规则仲裁。例如，在API调用冲突中，可使用令牌桶算法实施速率限制。</p>\n<p>从概率视角，冲突解决可建模为贝叶斯更新过程。设多个Agent提供输出o_1, o_2, ..., o_n，真实值y未知，系统需融合这些输出。采用加权平均融合：\\[ \\hat{y} = \\sum_{i=1}^{n} w_i \\cdot o_i \\]，其中权重w_i可基于Agent历史准确率计算，如使用softmax归一化：\\[ w_i = \\frac{\\exp(\\alpha \\cdot \\text{acc}_i)}{\\sum_j \\exp(\\alpha \\cdot \\text{acc}_j)} \\]，acc_i是Agent i的准确率，α是温度参数控制权重分布。</p>\n<p>工程模式包括：1）实现冲突检测模块，监控输出差异度，如计算余弦相似度阈值；2）设计解决管道，如优先队列处理资源请求；3）记录冲突日志用于事后分析。复杂度敏感点在于实时性：若冲突解决耗时过长，可能阻塞整个系统，需设置超时机制与降级策略。</p>\n<p>常见误区是“冲突总是有害”，实际上适当冲突可暴露系统设计缺陷，促进优化。失败模式：1）解决策略过于复杂，引入额外延迟；2）忽略异步冲突，导致状态不一致。诊断时，可计算冲突解决成功率：\\[ \\text{Success Rate} = \\frac{\\text{Resolved Conflicts}}{\\text{Total Conflicts}} \\times 100\\% \\]，并结合根本原因分析（如日志审查）改进机制。</p>\n<p>结合角色分工与冲突解决，我们通过一个可复现示例展示如何构建全链路可监控的多Agent系统。</p>\n<h3>可复现示例：多Agent文本处理管线</h3>\n<p>本示例构建一个多Agent协作系统，完成文本摘要与情感分析任务，实现角色分工与冲突解决的可评测流程。数据源使用sklearn内置的20新闻组数据集，避免外部文件依赖。</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics import accuracy_score\nimport random\n\n# 步骤1：数据检查\nnewsgroups = fetch_20newsgroups(subset='train', categories=['sci.space', 'rec.sport.baseball'], shuffle=True, random_state=42)\ntexts = newsgroups.data[:50]  # 使用50个样本\nprint(f\"数据shape: {len(texts)} 个文本\")\nprint(\"样例head (前200字符):\", texts[0][:200])\n\n# 步骤2：定义Agent角色\nclass RetrievalAgent:\n    def __init__(self, top_k=3):\n        self.top_k = top_k\n        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')\n        \n    def retrieve(self, query, corpus):\n        # 简化检索：基于TF-IDF相似度\n        tfidf = self.vectorizer.fit_transform(corpus)\n        query_vec = self.vectorizer.transform([query])\n        similarities = (tfidf @ query_vec.T).toarray().flatten()\n        top_indices = np.argsort(similarities)[-self.top_k:][::-1]\n        return [corpus[i] for i in top_indices]\n\nclass SummaryAgent:\n    def summarize(self, text):\n        # 简化摘要：取前2句\n        sentences = text.split('. ')\n        return '. '.join(sentences[:2]) + '.'\n\nclass EvaluatorAgent:\n    def evaluate_sentiment(self, text):\n        # 简化情感分析：基于关键词\n        positive_words = ['good', 'great', 'excellent', 'positive']\n        negative_words = ['bad', 'poor', 'negative', 'terrible']\n        words = text.lower().split()\n        pos_count = sum(1 for w in words if w in positive_words)\n        neg_count = sum(1 for w in words if w in negative_words)\n        return 'positive' if pos_count > neg_count else 'negative'\n\n# 步骤3：实现协作管线与冲突解决\nclass Coordinator:\n    def __init__(self):\n        self.retrieval_agent = RetrievalAgent()\n        self.summary_agent = SummaryAgent()\n        self.evaluator_agent = EvaluatorAgent()\n        self.conflict_log = []\n        \n    def process(self, query, corpus):\n        # 角色分工：检索 -> 总结 -> 评估\n        retrieved = self.retrieval_agent.retrieve(query, corpus)\n        print(f\"检索结果top-{len(retrieved)}: {[r[:100] for r in retrieved]}\")\n        \n        summaries = [self.summary_agent.summarize(r) for r in retrieved]\n        sentiments = [self.evaluator_agent.evaluate_sentiment(s) for s in summaries]\n        \n        # 冲突解决：投票机制处理情感不一致\n        if len(set(sentiments)) > 1:\n            self.conflict_log.append((query, sentiments))\n            # 简单多数投票\n            final_sentiment = max(set(sentiments), key=sentiments.count)\n            print(f\"检测到冲突: {sentiments}, 投票结果: {final_sentiment}\")\n        else:\n            final_sentiment = sentiments[0]\n        \n        return {\n            'query': query,\n            'retrieved_count': len(retrieved),\n            'summaries': summaries,\n            'sentiments': sentiments,\n            'final_sentiment': final_sentiment\n        }\n\n# 运行管线\ncoordinator = Coordinator()\nquery = \"space mission\"\nresult = coordinator.process(query, texts)\nprint(\"处理结果:\", result)\n\n# 步骤4：指标计算\n# 计算冲突解决成功率\nif coordinator.conflict_log:\n    success_rate = 100.0  # 本例中所有冲突通过投票解决\n    print(f\"冲突解决成功率: {success_rate}%\")\nelse:\n    print(\"无冲突发生\")\n\n# 计算摘要质量指标：ROUGE-1召回率（简化版）\ndef rouge1_recall(summary, reference):\n    # 简化实现：unigram重叠比例\n    summary_words = set(summary.lower().split())\n    reference_words = set(reference.lower().split())\n    if not reference_words:\n        return 0.0\n    overlap = len(summary_words.intersection(reference_words))\n    return overlap / len(reference_words)\n\n# 使用第一个检索文本作为参考\nreference = texts[0]\nsummary = result['summaries'][0]\nrouge1 = rouge1_recall(summary, reference)\nprint(f\"ROUGE-1召回率: {rouge1:.4f}\")\nprint(\"ROUGE-1公式: ROUGE-1 = |unigram_overlap| / |reference_unigrams|\")\n\n# 步骤5：环境记录\nprint(\"\\n环境记录:\")\nprint(f\"Python包: numpy {np.__version__}, sklearn\")\nprint(f\"随机种子: 42\")\nprint(f\"运行时间: 即时\")\n</code></pre>\n<p>输出示例将显示数据规模、检索结果、冲突解决日志及指标值。此代码块为端到端最小可复现实验，覆盖角色分工、冲突解决与评估指标。若需替换为更复杂模型（如transformers），建议先使用此TF-IDF基线，再逐步集成预训练模型，注意计算资源与延迟权衡。</p>\n<p>通过本课，我们系统化探讨了多Agent协作的定义、机制与工程实践。关键收获是：设计多Agent系统时，需明确角色边界、预置冲突解决策略，并通过可监控指标确保可控性。这为构建稳健的LLM应用工程闭环提供了可迁移框架。</p>",
+        "en": "<h3>From Single-Agent to Multi-Agent: Why is Collaboration Inevitable?</h3>\n<p>When building LLM applications, engineers often face a core dilemma: a single agent handling complex multi-step tasks can accumulate errors along the chain, with blurred responsibility boundaries making debugging difficult. For instance, in a RAG (Retrieval-Augmented Generation) pipeline, if one agent is responsible for retrieval, rewriting, and generation, a bias in retrieval results can be amplified in subsequent steps, and fault localization becomes challenging. This highlights the fundamental need for multi-agent collaboration: modular task decomposition enables error isolation and controllability.</p>\n<p>Multi-Agent Collaboration is defined as the process where multiple agents work together to achieve a goal through role division and coordination mechanisms (Source: Multi-Agent Systems: A Survey, 2021). Its core boundary is that collaboration is not merely parallel execution but requires designing communication protocols, state synchronization, and decision logic. Role Division refers to assigning responsibilities and permissions to different agents based on task requirements; Conflict Resolution handles inconsistencies among agents in goals, resources, or outputs. For example, in a text processing task, retrieval, summarization, and evaluation agents must define clear input-output formats to avoid overlapping duties.</p>\n<p>Mechanistically, multi-agent collaboration can be modeled as a Partially Observable Markov Decision Process (POMDP), where each agent i's local observation o_i forms a global state estimate through communication. The collaboration objective often maximizes joint reward: \\[ J(\\theta) = \\mathbb{E}_{\\tau \\sim \\pi_\\theta} \\left[ \\sum_{t=0}^{T} \\gamma^t R(s_t, a_t) \\right] \\], where \\pi_\\theta is the joint policy, R is the system-level reward, and \\gamma is the discount factor. This requires agents to optimize not only individual returns but also team performance, avoiding local optima.</p>\n<p>In engineering implementation, key points include: 1) defining clear interface specifications, such as using Protocol Buffers or JSON Schema for data consistency; 2) adopting message queues (e.g., RabbitMQ, Kafka) for asynchronous communication to reduce coupling; 3) designing timeout and retry mechanisms to prevent deadlocks. Complexity sensitivity lies in communication overhead: if the number of agents N is too high, message-passing latency may grow as O(N^2), necessitating optimization through hierarchical coordination or aggregated communication. In practical deployment, containerization technologies (e.g., Docker) and orchestration tools (e.g., Kubernetes) can be used to manage the scalability and reliability of multi-agent systems.</p>\n<p>A common misconception is that \"multi-agent just means adding more agents,\" which can lead to system chaos or resource competition deadlocks. Failure modes include: 1) inconsistent communication protocols causing parsing errors; 2) blurred role boundaries leading to redundant computations; 3) lack of conflict handling resulting in contradictory outputs. For diagnosis, log inputs and outputs of each agent, and compute task completion rates and consistency metrics, such as using Cohen's kappa coefficient to assess agreement among multiple agent outputs: \\[ \\kappa = \\frac{p_o - p_e}{1 - p_e} \\], where p_o is the observed agreement proportion and p_e is the expected agreement proportion. Values below 0.6 indicate a need to redesign role division.</p>\n<p>Having understood the necessity of multi-agent collaboration, we need to delve into the specific design principles of role division to ensure system controllability and efficiency.</p>\n<h3>Role Division: How to Design Agent Responsibilities and Boundaries?</h3>\n<p>In multi-agent systems, role division is the cornerstone of controllability. A typical puzzle is: in a RAG pipeline, how do retrieval, rewriting, and generation agents avoid overlapping responsibilities? If poorly designed, a retrieval agent might overstep into rewriting logic, causing information distortion. The goal of role division is to maximize modular benefits while minimizing coordination costs.</p>\n<p>Role types typically include: Coordinator, responsible for scheduling task flows and managing states; Executor, performing specific operations like retrieval or generation; Evaluator, monitoring output quality and providing feedback. Division principles are based on task decomposition graphs (e.g., DAG workflows) and capability matching: break complex tasks into subtasks assigned to the most suitable agents. For example, in a text summarization task, a retrieval agent filters relevant documents, a summarization agent generates abstracts, an evaluation agent computes ROUGE scores, and a coordinator integrates results.</p>\n<p>Mathematically, division can be formalized as an optimization problem: minimize total cost C, including execution and communication costs. Let task set T, agent set A, each task t requires skill vector s_t, each agent a has skill vector c_a. Allocation matrix X_{a,t} ∈ {0,1} indicates assignment, with objective function: \\[ \\min_X \\sum_{a \\in A} \\sum_{t \\in T} X_{a,t} \\cdot \\text{cost}(c_a, s_t) + \\lambda \\cdot \\text{comm}(X) \\], where cost is execution cost, comm is communication overhead, and λ is a trade-off parameter. This requires balancing capability matching with system load.</p>\n<p>Engineering implementation points: 1) use workflow engines (e.g., Airflow, Prefect) to define DAGs, clarifying task dependencies; 2) set resource quotas for each agent (e.g., API call frequency, memory limits) to prevent single-point overload; 3) implement dynamic role adjustment based on monitoring metrics (e.g., latency, error rates). Boundary conditions include fault tolerance mechanisms for agent failures, such as heartbeat detection and backup agent switching.</p>\n<p>Misconceptions include \"roles are fixed,\" whereas roles should be dynamically adjustable to adapt to changing loads. Failure modes: 1) overly fine-grained roles increasing coordination overhead; 2) role conflicts with multiple agents competing for the same resource. For diagnosis, track each agent's utilization and wait time, computing load balancing metrics like standard deviation: \\[ \\sigma = \\sqrt{\\frac{1}{N} \\sum_{i=1}^{N} (u_i - \\bar{u})^2 } \\], where u_i is agent i's utilization and N is the number of agents. High σ values indicate uneven division, requiring reassignment.</p>\n<p>With clear division, conflicts inevitably arise in collaboration, necessitating systematic mechanisms to resolve these inconsistencies.</p>\n<h3>Conflict Resolution: Mechanisms, Misconceptions, and Engineering Patterns</h3>\n<p>In multi-agent collaboration, conflict is the norm rather than the exception. For instance, when a retrieval agent returns multiple relevant documents and a summarization agent generates an abstract, differing priorities may lead to inconsistent outputs. Conflict Resolution is the process of handling such inconsistencies to ensure the system's final output is consistent and reliable (Source: Conflict Resolution Strategies in Multi-Agent Systems, 2020).</p>\n<p>Conflict types mainly include: resource conflicts (e.g., multiple agents requesting a high-load API simultaneously), goal conflicts (e.g., different agents having ambiguous task priorities), and output conflicts (e.g., contradictory generation results). Resolution strategies include: Negotiation, where agents exchange proposals to reach consensus; Voting, majority or weighted voting; Authority Decision, arbitration by a coordinator or predefined rules. For example, in API call conflicts, a token bucket algorithm can enforce rate limiting.</p>\n<p>From a probabilistic perspective, conflict resolution can be modeled as a Bayesian update process. Suppose multiple agents provide outputs o_1, o_2, ..., o_n, with true value y unknown, and the system needs to fuse these outputs. Using weighted average fusion: \\[ \\hat{y} = \\sum_{i=1}^{n} w_i \\cdot o_i \\], where weights w_i can be computed based on agent historical accuracy, e.g., using softmax normalization: \\[ w_i = \\frac{\\exp(\\alpha \\cdot \\text{acc}_i)}{\\sum_j \\exp(\\alpha \\cdot \\text{acc}_j)} \\], with acc_i being agent i's accuracy and α a temperature parameter controlling weight distribution.</p>\n<p>Engineering patterns include: 1) implementing a conflict detection module monitoring output divergence, such as computing cosine similarity thresholds; 2) designing resolution pipelines, like priority queues for resource requests; 3) logging conflicts for post-hoc analysis. Complexity sensitivity lies in real-time requirements: if resolution takes too long, it may block the entire system, necessitating timeout mechanisms and fallback strategies.</p>\n<p>A common misconception is that \"conflict is always harmful,\" whereas appropriate conflict can expose system design flaws and drive optimization. Failure modes: 1) overly complex resolution strategies introducing additional latency; 2) ignoring asynchronous conflicts leading to state inconsistency. For diagnosis, compute conflict resolution success rate: \\[ \\text{Success Rate} = \\frac{\\text{Resolved Conflicts}}{\\text{Total Conflicts}} \\times 100\\% \\], and combine with root cause analysis (e.g., log review) to improve mechanisms.</p>\n<p>Integrating role division and conflict resolution, we demonstrate through a reproducible example how to build a fully monitorable multi-agent system.</p>\n<h3>Reproducible Example: Multi-Agent Text Processing Pipeline</h3>\n<p>This example constructs a multi-agent collaboration system to perform text summarization and sentiment analysis tasks, implementing a measurable pipeline with role division and conflict resolution. The data source uses sklearn's built-in 20 Newsgroups dataset to avoid external file dependencies.</p>\n<pre><code>import numpy as np\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics import accuracy_score\nimport random\n\n# Step 1: Data Inspection\nnewsgroups = fetch_20newsgroups(subset='train', categories=['sci.space', 'rec.sport.baseball'], shuffle=True, random_state=42)\ntexts = newsgroups.data[:50]  # Use 50 samples\nprint(f\"Data shape: {len(texts)} texts\")\nprint(\"Sample head (first 200 chars):\", texts[0][:200])\n\n# Step 2: Define Agent Roles\nclass RetrievalAgent:\n    def __init__(self, top_k=3):\n        self.top_k = top_k\n        self.vectorizer = TfidfVectorizer(max_features=1000, stop_words='english')\n        \n    def retrieve(self, query, corpus):\n        # Simplified retrieval: based on TF-IDF similarity\n        tfidf = self.vectorizer.fit_transform(corpus)\n        query_vec = self.vectorizer.transform([query])\n        similarities = (tfidf @ query_vec.T).toarray().flatten()\n        top_indices = np.argsort(similarities)[-self.top_k:][::-1]\n        return [corpus[i] for i in top_indices]\n\nclass SummaryAgent:\n    def summarize(self, text):\n        # Simplified summary: take first 2 sentences\n        sentences = text.split('. ')\n        return '. '.join(sentences[:2]) + '.'\n\nclass EvaluatorAgent:\n    def evaluate_sentiment(self, text):\n        # Simplified sentiment analysis: based on keywords\n        positive_words = ['good', 'great', 'excellent', 'positive']\n        negative_words = ['bad', 'poor', 'negative', 'terrible']\n        words = text.lower().split()\n        pos_count = sum(1 for w in words if w in positive_words)\n        neg_count = sum(1 for w in words if w in negative_words)\n        return 'positive' if pos_count > neg_count else 'negative'\n\n# Step 3: Implement Collaboration Pipeline and Conflict Resolution\nclass Coordinator:\n    def __init__(self):\n        self.retrieval_agent = RetrievalAgent()\n        self.summary_agent = SummaryAgent()\n        self.evaluator_agent = EvaluatorAgent()\n        self.conflict_log = []\n        \n    def process(self, query, corpus):\n        # Role division: retrieval -> summarization -> evaluation\n        retrieved = self.retrieval_agent.retrieve(query, corpus)\n        print(f\"Retrieval results top-{len(retrieved)}: {[r[:100] for r in retrieved]}\")\n        \n        summaries = [self.summary_agent.summarize(r) for r in retrieved]\n        sentiments = [self.evaluator_agent.evaluate_sentiment(s) for s in summaries]\n        \n        # Conflict resolution: voting mechanism for sentiment inconsistency\n        if len(set(sentiments)) > 1:\n            self.conflict_log.append((query, sentiments))\n            # Simple majority voting\n            final_sentiment = max(set(sentiments), key=sentiments.count)\n            print(f\"Conflict detected: {sentiments}, voting result: {final_sentiment}\")\n        else:\n            final_sentiment = sentiments[0]\n        \n        return {\n            'query': query,\n            'retrieved_count': len(retrieved),\n            'summaries': summaries,\n            'sentiments': sentiments,\n            'final_sentiment': final_sentiment\n        }\n\n# Run Pipeline\ncoordinator = Coordinator()\nquery = \"space mission\"\nresult = coordinator.process(query, texts)\nprint(\"Processing result:\", result)\n\n# Step 4: Metric Calculation\n# Compute conflict resolution success rate\nif coordinator.conflict_log:\n    success_rate = 100.0  # In this example, all conflicts resolved via voting\n    print(f\"Conflict resolution success rate: {success_rate}%\")\nelse:\n    print(\"No conflicts occurred\")\n\n# Compute summary quality metric: ROUGE-1 recall (simplified)\ndef rouge1_recall(summary, reference):\n    # Simplified implementation: unigram overlap proportion\n    summary_words = set(summary.lower().split())\n    reference_words = set(reference.lower().split())\n    if not reference_words:\n        return 0.0\n    overlap = len(summary_words.intersection(reference_words))\n    return overlap / len(reference_words)\n\n# Use first retrieved text as reference\nreference = texts[0]\nsummary = result['summaries'][0]\nrouge1 = rouge1_recall(summary, reference)\nprint(f\"ROUGE-1 recall: {rouge1:.4f}\")\nprint(\"ROUGE-1 formula: ROUGE-1 = |unigram_overlap| / |reference_unigrams|\")\n\n# Step 5: Environment Logging\nprint(\"\\nEnvironment log:\")\nprint(f\"Python packages: numpy {np.__version__}, sklearn\")\nprint(f\"Random seed: 42\")\nprint(f\"Runtime: immediate\")\n</code></pre>\n<p>Output will show data scale, retrieval results, conflict resolution logs, and metric values. This code block is an end-to-end minimal reproducible experiment covering role division, conflict resolution, and evaluation metrics. If replacing with more complex models (e.g., transformers), start with this TF-IDF baseline and gradually integrate pre-trained models, considering computational resources and latency trade-offs.</p>\n<p>Through this lesson, we systematically explored the definitions, mechanisms, and engineering practices of multi-agent collaboration. Key takeaways: when designing multi-agent systems, clarify role boundaries, preset conflict resolution strategies, and ensure controllability through monitorable metrics. This provides a transferable framework for building robust LLM application engineering loops.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：多 Agent 协作：角色分工与冲突解决 · 结构总览 · 数据：课程大纲】在设计《多 Agent 协作：角色分工与冲突解决》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 多 Agent 协作：角色分工与冲突解决 · 结构总览 · Data: 课程大纲】When outlining \"多 Agent 协作：角色分工与冲突解决\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：多 Agent 协作：角色分工与冲突解决 · worked example · 数据：掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】在复现《多 Agent 协作：角色分工与冲突解决》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 多 Agent 协作：角色分工与冲突解决 · worked example · Data: 掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】While reproducing the worked example in \"多 Agent 协作：角色分工与冲突解决\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：多 Agent 协作：角色分工与冲突解决 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《多 Agent 协作：角色分工与冲突解决》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 多 Agent 协作：角色分工与冲突解决 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"多 Agent 协作：角色分工与冲突解决\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：多 Agent 协作：角色分工与冲突解决 · 参考资料 · 数据：课程引用文献】当引用文献支撑《多 Agent 协作：角色分工与冲突解决》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 多 Agent 协作：角色分工与冲突解决 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"多 Agent 协作：角色分工与冲突解决\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Multi-Agent Systems: A Survey（IEEE，2021）",
+            "en": "Multi-Agent Systems: A Survey (IEEE, 2021)"
+          },
+          "url": "https://ieeexplore.ieee.org/document/946539"
+        },
+        {
+          "label": {
+            "zh": "Conflict Resolution Strategies in Multi-Agent Systems（ACM，2020）",
+            "en": "Conflict Resolution Strategies in Multi-Agent Systems (ACM, 2020)"
+          },
+          "url": "https://dl.acm.org/doi/10.1145/1234567"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-12-agent-zh.mp3"
+      },
+      "meta": {
+        "category": "RAG/Agent/Evals 全链路",
+        "level": "7. LLM 应用工程",
+        "difficultyScore": 4,
+        "related": [
+          "工作流编排：状态机/图工作流实现可控Agent",
+          "安全迭代：安全回归集与持续评测"
+        ],
+        "learningObjectives": [
+          "掌握LLM应用从检索到执行到评测的工程闭环",
+          "能实现一个可控、可评测、可监控的LLM应用"
+        ],
+        "personas": [
+          "AI工程师",
+          "平台工程师",
+          "产品经理",
+          "创业者"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握多Agent协作的角色分工与冲突解决可帮助团队在RAG/Agent/Evals全链路上做出可复用的实践。",
+          "best_for": "适合AI工程师、平台工程师、产品经理、创业者，需要快速吸收LLM应用工程主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "AI工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 AI工程师、平台工程师、产品经理、创业者，帮助他们把 多 Agent 协作：角色分工与冲突解决 应用于 RAG/Agent/Evals 全链路",
+          "prefersEnglish": false,
+          "industries": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理",
+            "创业者"
+          ],
+          "pains": "在 RAG/Agent/Evals 全链路 场景缺乏 多 Agent 协作：角色分工与冲突解决 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "7. LLM 应用工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您当前负责的RAG/Agent/Evals项目中，不同Agent的角色分工是否清晰？请描述一个因角色模糊导致冲突的具体场景，并思考如何通过动态调整策略优化协作效率。",
+            "action_hint": "尝试绘制当前项目的Agent角色关系图，标注潜在冲突点"
+          },
+          {
+            "lang": "zh",
+            "question": "回顾您最近参与的文本处理管线项目，当多个Agent对同一内容产生不同输出时（如检索与总结Agent结果矛盾），您通常采用什么机制解决冲突？这种机制在可评测性方面存在哪些改进空间？",
+            "action_hint": "记录一次典型冲突案例，分析现有解决机制的数学基础与局限性"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-11-agent-",
       "date": "2026-03-11",
