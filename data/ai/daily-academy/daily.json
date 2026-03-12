@@ -1,6 +1,193 @@
 {
-  "generatedAt": "2026-03-12T02:39:14.346Z",
+  "generatedAt": "2026-03-12T14:24:05.341Z",
   "lessons": [
+    {
+      "id": "2026-03-12-llm-evals",
+      "date": "2026-03-12",
+      "title": {
+        "zh": "LLM 应用 Evals：离线评测集构建与回归测试",
+        "en": "LLM Application Evals: Offline Evaluation Set Construction and Regression Testing"
+      },
+      "summary": {
+        "zh": "本课程深入探讨LLM应用离线评测集的构建与回归测试工程。通过系统化方法，从定义离线评测集和回归测试的数学形式出发，解析评测数据来源组合策略与评分规则设计原理。课程涵盖工程实现要点，包括可复现评测管线的构建、分层回归测试策略，以及常见误区与失败模式诊断。通过端到端示例展示从数据准备到指标计算的完整流程，提供可迁移的质量保障框架，助力实现可控、可评测、可监控的LLM应用。",
+        "en": "This course delves into the engineering of offline evaluation sets and regression testing for LLM applications. Through systematic methods, it begins with mathematical formulations of offline evaluation sets and regression testing, analyzing combined strategies for evaluation data sources and principles of scoring rubric design. The course covers engineering implementation essentials, including building reproducible evaluation pipelines, layered regression testing strategies, and diagnosing common misconceptions and failure modes. An end-to-end example demonstrates the complete workflow from data preparation to metric computation, offering a transferable quality assurance framework to achieve controllable, evaluable, and monitorable LLM applications."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "evaluation",
+        "monitoring"
+      ],
+      "content": {
+        "zh": "<h3>从直觉到定义：为什么LLM应用需要离线评测</h3>\n<p>在LLM应用的实际部署中，工程师常遇到一个令人困惑的现象：昨天还正常工作的RAG系统，今天突然对相同查询给出错误答案。这种不稳定性源于LLM应用的复杂性——它涉及检索、生成、执行等多个环节，每个环节的微小变化（如文档更新、模型权重调整、提示词优化）都可能引发连锁反应。线上监控虽然能捕捉实时异常，但往往滞后且难以定位根因。这正是离线评测集（Offline Evaluation Set）和回归测试（Regression Testing）的价值所在：它们提供了一种系统化、可重复的质量保障机制，在部署前预先评估应用性能，确保变更不会破坏核心功能。</p>\n<p>离线评测集是一组预先构建的测试用例，每个用例包含输入（如用户查询）、期望输出（如标准答案）和评分规则（如关键实体匹配）。其数学形式可表示为：\\( E = \\{(x_i, y_i^*, r_i)\\}_{i=1}^N \\)，其中\\( x_i \\)是输入，\\( y_i^* \\)是期望输出，\\( r_i \\)是评分函数。回归测试则是在代码或配置变更后，重新运行已有测试用例以确保原有功能未被破坏的测试方法。其目标函数可定义为：\\( \\mathcal{L}_{reg} = \\frac{1}{N} \\sum_{i=1}^N \\mathbb{I}(r_i(f_\\theta(x_i), y_i^*) < \\tau) \\)，其中\\( f_\\theta \\)是当前LLM应用，\\( \\tau \\)是合格阈值，\\( \\mathbb{I} \\)是指示函数。当\\( \\mathcal{L}_{reg} > \\epsilon \\)时，表明变更引入了回归缺陷。</p>\n<p>工程实现中，评测集构建需考虑数据代表性。常见做法是从历史日志中采样真实查询，结合合成数据（Synthetic Data）覆盖边缘案例。例如，对于科技新闻问答系统，可从公开数据集（如CNN/DailyMail）提取实体，通过模板生成多样化问题。评分规则设计需超越简单字符串匹配，采用多维度评估。一个典型评分函数可分解为：\\( r(y, y^*) = \\alpha \\cdot \\text{EM}(y, y^*) + \\beta \\cdot \\text{ROUGE-L}(y, y^*) + \\gamma \\cdot \\text{LLM-judge}(y, y^*) \\)，其中\\( \\alpha, \\beta, \\gamma \\)是权重系数，EM是精确匹配，ROUGE-L衡量语义重叠，LLM-judge利用大模型进行深度评估。</p>\n<p>常见误区包括将离线评测等同于线上A/B测试的简化版。实际上，离线评测关注可重复性和全面性，要求环境隔离、数据固定；线上测试则关注实时效果和用户体验，两者互补但不可替代。失败模式通常表现为：1）评测集覆盖不足，导致“通过测试但线上失败”；2）评分规则过于宽松，掩盖真实缺陷；3）环境不可复现，同一代码在不同机器上结果差异大。诊断时，需检查数据分布是否匹配真实流量，评分阈值是否合理，以及随机种子、依赖版本是否一致。</p>\n<p>理解了离线评测的必要性和定义，接下来我们将深入探讨如何系统化构建评测集，从数据收集到评分规则设计，形成可操作的工程方法。</p>\n<h3>构建机制：从数据收集到评分规则设计</h3>\n<p>构建高质量评测集的第一步是解决数据来源问题。单纯依赖人工标注成本高昂，且难以覆盖长尾场景。实践中，应采用组合策略：1）历史日志：从生产环境收集真实用户查询和响应，这是最贴近实际分布的数据；2）众包标注：针对核心场景，雇佣标注员创建高质量标注对；3）合成数据：通过规则模板或模型生成模拟数据，补充边缘案例；4）公开数据集：如TruthfulQA（来源：TruthfulQA: Measuring How Models Mimic Human Falsehoods, 2021）用于真实性评估，MMLU用于知识广度测试。数据量并非越大越好，关键在于代表性。可通过分层抽样确保核心场景（如高频查询）和风险场景（如已知失败案例）均被覆盖。</p>\n<p>评分规则（Scoring Rubric）是将LLM输出转化为量化分数的核心。其设计需考虑评估维度、打分粒度和一致性。数学上，评分函数可建模为：\\( r(y, y^*) = \\sum_{k=1}^K w_k \\cdot s_k(y, y^*) \\)，其中\\( K \\)是维度数（如准确性、完整性、清晰度），\\( w_k \\)是维度权重，\\( s_k \\)是维度得分函数。维度得分可通过不同方法计算：精确匹配（EM）适用于事实性答案，公式为\\( s_{EM}(y, y^*) = \\mathbb{I}(y = y^*) \\)；模糊匹配如ROUGE-N衡量n-gram重叠，公式为\\( \\text{ROUGE-N} = \\frac{\\sum_{gram_n \\in y^*} \\text{Count}_{match}(gram_n)}{\\sum_{gram_n \\in y^*} \\text{Count}(gram_n)} \\)；LLM-as-judge则利用大模型进行多维评分，通过prompt工程引导模型输出结构化分数。</p>\n<p>工程实现中，评分模块需处理批量推理和结果聚合。对于LLM-as-judge，需设计稳定prompt，例如：“请从准确性（0-10分）、完整性（0-10分）、清晰度（0-10分）三个维度评估以下答案，输出JSON格式：{'accuracy': score1, 'completeness': score2, 'clarity': score3, 'reason': '...'}。”为避免评分偏差，可引入多个评判模型或人工校验样本。复杂度敏感点在于LLM调用成本和延迟，可通过缓存、批量处理优化。数据流通常为：输入评测集 → 加载评分配置 → 并行执行评分函数 → 聚合结果生成报告。</p>\n<p>常见误区包括追求评测集规模而忽视质量，或使用单一评分规则导致评估片面。失败模式表现为：1）合成数据与真实分布偏差大，评测结果失真；2）评分规则过于复杂，难以解释和调试；3）LLM-as-judge的prompt不稳定，相同输入得分波动大。诊断时，应分析评分分布（如直方图）、计算评分者间一致性（如Cohen's kappa），并进行消融实验验证各维度贡献。</p>\n<p>掌握了评测集构建机制，下一步是将这些方法工程化，形成可复现的评测管线，并集成到回归测试框架中。</p>\n<h3>工程落地：可复现的评测管线与回归测试框架</h3>\n<p>评测管线（Evaluation Pipeline）是将数据加载、模型推理、结果评分、报告生成等步骤自动化串联的完整流程。其核心目标是确保可复现性（Reproducibility），即在相同环境、相同输入下，能够重复得到相同结果。数学上，可复现性可表示为：\\( \\forall i, \\mathbb{P}(\\hat{y}_i^{(t)} = \\hat{y}_i^{(t')} | \\theta, x_i, \\mathcal{E}) > 1-\\delta \\)，其中\\( \\hat{y}_i^{(t)} \\)是时间\\( t \\)的输出，\\( \\theta \\)是模型参数，\\( \\mathcal{E} \\)是环境配置，\\( \\delta \\)是允许的误差界。实现可复现性需控制随机种子、代码版本、依赖库、硬件设置等变量。</p>\n<p>工程框架常基于pytest（来源：pytest: helps you write better programs, 2023）构建，包含以下模块：1）数据加载器：从JSONL、CSV等格式读取评测集，进行验证和预处理；2）管线执行器：管理模型加载、批量推理、评分调用；3）结果记录器：存储原始输出、分数、元数据；4）报告生成器：计算总体指标（如准确率、平均分），生成可视化图表。回归测试策略需分层设计：核心用例（如高频查询、关键功能）每次必跑；边缘用例抽样执行；结合变更影响分析（如代码diff）选择性运行相关测试，以平衡覆盖率和效率。</p>\n<p>评估指标计算是管线的关键输出。对于分类任务，准确率公式为\\( \\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN} \\)；对于检索任务，Recall@k公式为\\( \\text{Recall@k} = \\frac{|\\{relevant\\} \\cap \\{top-k\\}|}{|\\{relevant\\}|} \\)。管线应自动计算这些指标，并对比不同版本表现。例如，定义回归检测指标：\\( \\Delta = \\text{Metric}_{\\text{new}} - \\text{Metric}_{\\text{base}} \\)，当\\( \\Delta < -\\eta \\)时触发告警。延迟敏感点在于模型推理和评分调用，可通过异步处理、模型量化优化。</p>\n<p>常见误区认为回归测试就是全量运行所有用例，实际上应智能选择用例以提升效率。失败模式包括：1）环境漂移导致结果不可复现；2）管线耦合过紧，难以扩展新评分规则；3）报告缺乏可读性，无法指导优化。诊断时，需检查环境记录（如requirements.txt、dockerfile）、分析失败用例模式（如检索失败、生成错误、评分歧义），并验证指标计算正确性。</p>\n<p>以下是一个端到端的最小可复现示例，展示如何构建科技新闻问答RAG系统的评测管线，并计算关键指标。</p>\n<pre><code>import json\nimport numpy as np\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nimport random\n\n# 步骤1：构建评测集（使用内联数据，避免外部文件）\nnews_data = [\n    {\"id\": 1, \"text\": \"OpenAI 在2024年发布了 GPT-4o 模型，支持多模态输入。\"},\n    {\"id\": 2, \"text\": \"Google 推出了 Gemini Ultra，在多项基准测试中领先。\"},\n    {\"id\": 3, \"text\": \"Meta 开源了 Llama 3，包含 70B 和 400B 参数版本。\"}\n]\n\n# 基于实体生成合成问题\nevaluation_set = []\nentities = [\"GPT-4o\", \"Gemini Ultra\", \"Llama 3\"]\nfor entity in entities:\n    evaluation_set.append({\n        \"query\": f\"2024年发布了哪些重要AI模型？\",\n        \"expected_entities\": [entity],\n        \"context\": \"科技新闻摘要\"\n    })\n\nprint(\"评测集规模:\", len(evaluation_set))\nprint(\"样例:\", evaluation_set[0])\n\n# 步骤2：模拟RAG检索（TF-IDF作为轻量替代）\ndocuments = [item[\"text\"] for item in news_data]\nvectorizer = TfidfVectorizer().fit(documents)\ndoc_vectors = vectorizer.transform(documents)\n\ndef retrieve(query, top_k=2):\n    query_vec = vectorizer.transform([query])\n    sims = cosine_similarity(query_vec, doc_vectors).flatten()\n    top_indices = np.argsort(sims)[-top_k:][::-1]\n    return [documents[i] for i in top_indices]\n\n# 步骤3：模拟LLM生成（规则生成，替代大模型下载）\ndef generate_answer(retrieved_docs, query):\n    # 简单规则：如果检索文档包含实体，则列出实体\n    answer = \"\"\n    for doc in retrieved_docs:\n        for entity in entities:\n            if entity in doc:\n                answer += entity + \", \"\n    return answer.rstrip(\", \") if answer else \"未找到相关信息\"\n\n# 步骤4：评分函数（实体召回率作为指标）\ndef score_answer(answer, expected_entities):\n    # 计算实体召回率: Recall = |pred ∩ expected| / |expected|\n    pred_entities = [e for e in entities if e in answer]\n    correct = set(pred_entities) & set(expected_entities)\n    recall = len(correct) / len(expected_entities) if expected_entities else 0\n    return {\"pred_entities\": pred_entities, \"recall\": recall}\n\n# 执行评测管线\nresults = []\nfor case in evaluation_set:\n    retrieved = retrieve(case[\"query\"])\n    answer = generate_answer(retrieved, case[\"query\"])\n    score = score_answer(answer, case[\"expected_entities\"])\n    results.append({\n        \"query\": case[\"query\"],\n        \"retrieved_docs\": retrieved,\n        \"answer\": answer,\n        \"score\": score\n    })\n\n# 打印中间结果\nprint(\"\\n中间结果（第一个用例）:\")\nprint(\"检索文档:\", results[0][\"retrieved_docs\"])\nprint(\"生成答案:\", results[0][\"answer\"])\nprint(\"评分输出:\", results[0][\"score\"])\n\n# 计算总体指标：平均召回率\nrecalls = [r[\"score\"][\"recall\"] for r in results]\nmean_recall = np.mean(recalls)\nprint(f\"\\n平均召回率: {mean_recall:.3f}\")\nprint(\"召回率公式: Recall = |pred ∩ expected| / |expected|\")\n\n# 步骤5：环境记录（确保可复现性）\nenvironment = {\n    \"code_version\": \"1.0\",\n    \"random_seed\": 42,\n    \"vectorizer\": \"TF-IDF\",\n    \"generator\": \"rule-based\",\n    \"scoring\": \"entity_recall\",\n    \"sklearn_version\": \"1.3.0\",\n    \"numpy_version\": \"1.24.3\"\n}\nprint(\"\\n环境记录:\", json.dumps(environment, indent=2))</code></pre>\n<p>该示例展示了从数据构建到指标计算的完整流程，使用TF-IDF和规则生成作为轻量替代，避免了大模型下载。实际应用中，可将retrieve和generate替换为真实RAG系统和LLM（如transformers库），并扩展评分维度。通过环境记录，确保了结果的可复现性。</p>\n<p>通过本课，我们系统化地探讨了LLM应用离线评测集的构建与回归测试工程。从定义直觉到机制设计，再到工程落地，形成了一套可迁移的质量保障方法。在实践中，建议从核心场景开始，迭代完善评测集，并将其集成到CI/CD流程，实现持续的质量监控。</p>",
+        "en": "<h3>From Intuition to Definition: Why LLM Applications Need Offline Evaluation</h3>\n<p>In real-world deployment of LLM applications, engineers often encounter a perplexing phenomenon: a RAG system that worked perfectly yesterday suddenly produces incorrect answers to the same queries today. This instability stems from the complexity of LLM applications—they involve multiple stages such as retrieval, generation, and execution, where minor changes (e.g., document updates, model weight adjustments, prompt optimizations) can trigger cascading effects. While online monitoring can capture real-time anomalies, it is often delayed and difficult to root-cause. This is precisely where offline evaluation sets and regression testing prove invaluable: they provide a systematic, repeatable quality assurance mechanism to pre-assess application performance before deployment, ensuring changes do not break core functionality.</p>\n<p>An offline evaluation set is a pre-constructed collection of test cases, each containing an input (e.g., user query), expected output (e.g., reference answer), and scoring rubric (e.g., key entity matching). Mathematically, it can be represented as: \\( E = \\{(x_i, y_i^*, r_i)\\}_{i=1}^N \\), where \\( x_i \\) is the input, \\( y_i^* \\) is the expected output, and \\( r_i \\) is the scoring function. Regression testing is a method to re-run existing test cases after code or configuration changes to ensure original functionality remains intact. Its objective function can be defined as: \\( \\mathcal{L}_{reg} = \\frac{1}{N} \\sum_{i=1}^N \\mathbb{I}(r_i(f_\\theta(x_i), y_i^*) < \\tau) \\), where \\( f_\\theta \\) is the current LLM application, \\( \\tau \\) is a passing threshold, and \\( \\mathbb{I} \\) is the indicator function. When \\( \\mathcal{L}_{reg} > \\epsilon \\), it indicates regression defects have been introduced.</p>\n<p>In engineering implementation, evaluation set construction must consider data representativeness. Common practices include sampling real queries from historical logs and augmenting with synthetic data to cover edge cases. For example, for a tech news QA system, entities can be extracted from public datasets (e.g., CNN/DailyMail), and diverse questions generated via templates. Scoring rubric design must go beyond simple string matching, adopting multi-dimensional assessment. A typical scoring function can be decomposed as: \\( r(y, y^*) = \\alpha \\cdot \\text{EM}(y, y^*) + \\beta \\cdot \\text{ROUGE-L}(y, y^*) + \\gamma \\cdot \\text{LLM-judge}(y, y^*) \\), where \\( \\alpha, \\beta, \\gamma \\) are weight coefficients, EM is exact match, ROUGE-L measures semantic overlap, and LLM-judge leverages large models for in-depth evaluation.</p>\n<p>Common misconceptions include equating offline evaluation with a simplified version of online A/B testing. In practice, offline evaluation focuses on repeatability and comprehensiveness, requiring isolated environments and fixed data; online testing focuses on real-time performance and user experience—they are complementary but not interchangeable. Failure modes typically manifest as: 1) insufficient evaluation set coverage, leading to “passing tests but failing in production”; 2) overly lenient scoring rubrics masking real defects; 3) non-reproducible environments causing result variances across machines. Diagnosis involves checking if data distribution matches real traffic, if scoring thresholds are reasonable, and if random seeds and dependency versions are consistent.</p>\n<p>Having understood the necessity and definitions of offline evaluation, we now delve into systematic construction of evaluation sets, from data collection to scoring rubric design, forming actionable engineering methods.</p>\n<h3>Construction Mechanisms: From Data Collection to Scoring Rubric Design</h3>\n<p>The first step in building a high-quality evaluation set is addressing data sources. Sole reliance on manual annotation is costly and struggles to cover long-tail scenarios. In practice, a combined strategy should be adopted: 1) Historical logs: collect real user queries and responses from production environments, which best reflect actual distribution; 2) Crowdsourced annotation: hire annotators to create high-quality labeled pairs for core scenarios; 3) Synthetic data: generate simulated data via rule templates or models to supplement edge cases; 4) Public datasets: e.g., TruthfulQA (Source: TruthfulQA: Measuring How Models Mimic Human Falsehoods, 2021) for truthfulness assessment, MMLU for knowledge breadth testing. Quantity is not the goal—representativeness is key. Stratified sampling can ensure coverage of both core scenarios (e.g., high-frequency queries) and risk scenarios (e.g., known failure cases).</p>\n<p>The scoring rubric is core to converting LLM outputs into quantitative scores. Its design must consider evaluation dimensions, scoring granularity, and consistency. Mathematically, the scoring function can be modeled as: \\( r(y, y^*) = \\sum_{k=1}^K w_k \\cdot s_k(y, y^*) \\), where \\( K \\) is the number of dimensions (e.g., accuracy, completeness, clarity), \\( w_k \\) are dimension weights, and \\( s_k \\) are dimension score functions. Dimension scores can be computed via various methods: exact match (EM) suits factual answers, with formula \\( s_{EM}(y, y^*) = \\mathbb{I}(y = y^*) \\); fuzzy matching like ROUGE-N measures n-gram overlap, with formula \\( \\text{ROUGE-N} = \\frac{\\sum_{gram_n \\in y^*} \\text{Count}_{match}(gram_n)}{\\sum_{gram_n \\in y^*} \\text{Count}(gram_n)} \\); LLM-as-judge leverages large models for multi-dimensional scoring, guided by prompt engineering to output structured scores.</p>\n<p>In engineering implementation, the scoring module must handle batch inference and result aggregation. For LLM-as-judge, stable prompts must be designed, e.g., “Please evaluate the following answer from three dimensions—accuracy (0-10), completeness (0-10), clarity (0-10)—and output JSON format: {'accuracy': score1, 'completeness': score2, 'clarity': score3, 'reason': '...'}.” To mitigate scoring bias, multiple judge models or human validation samples can be introduced. Complexity-sensitive points include LLM invocation cost and latency, optimizable via caching and batch processing. The data flow typically is: input evaluation set → load scoring configuration → parallel execution of scoring functions → aggregate results into reports.</p>\n<p>Common misconceptions include pursuing evaluation set size over quality, or using a single scoring rubric leading to one-sided assessment. Failure modes manifest as: 1) synthetic data deviating significantly from real distribution, distorting evaluation results; 2) overly complex scoring rubrics that are hard to interpret and debug; 3) unstable prompts for LLM-as-judge causing score fluctuations for identical inputs. Diagnosis should analyze score distributions (e.g., histograms), compute inter-rater agreement (e.g., Cohen's kappa), and conduct ablation experiments to validate each dimension's contribution.</p>\n<p>Having mastered evaluation set construction mechanisms, the next step is to engineer these methods into reproducible evaluation pipelines and integrate them into regression testing frameworks.</p>\n<h3>Engineering Implementation: Reproducible Evaluation Pipelines and Regression Testing Frameworks</h3>\n<p>An evaluation pipeline is an automated end-to-end workflow that chains data loading, model inference, result scoring, and report generation. Its core goal is to ensure reproducibility—the ability to obtain identical results under identical environments and inputs. Mathematically, reproducibility can be expressed as: \\( \\forall i, \\mathbb{P}(\\hat{y}_i^{(t)} = \\hat{y}_i^{(t')} | \\theta, x_i, \\mathcal{E}) > 1-\\delta \\), where \\( \\hat{y}_i^{(t)} \\) is the output at time \\( t \\), \\( \\theta \\) are model parameters, \\( \\mathcal{E} \\) is the environment configuration, and \\( \\delta \\) is the allowable error bound. Achieving reproducibility requires controlling variables such as random seeds, code versions, dependencies, and hardware settings.</p>\n<p>Engineering frameworks are often built on pytest (Source: pytest: helps you write better programs, 2023), comprising modules: 1) Data loader: reads evaluation sets from formats like JSONL, CSV, performing validation and preprocessing; 2) Pipeline executor: manages model loading, batch inference, scoring calls; 3) Result logger: stores raw outputs, scores, metadata; 4) Report generator: computes aggregate metrics (e.g., accuracy, average scores) and generates visualizations. Regression testing strategies should be layered: core cases (e.g., high-frequency queries, critical functionalities) run every time; edge cases sampled; combined with change impact analysis (e.g., code diff) to selectively run relevant tests, balancing coverage and efficiency.</p>\n<p>Metric computation is a key output of the pipeline. For classification tasks, accuracy formula is \\( \\text{Accuracy} = \\frac{TP+TN}{TP+TN+FP+FN} \\); for retrieval tasks, Recall@k formula is \\( \\text{Recall@k} = \\frac{|\\{relevant\\} \\cap \\{top-k\\}|}{|\\{relevant\\}|} \\). The pipeline should automatically compute these metrics and compare performance across versions. For example, define a regression detection metric: \\( \\Delta = \\text{Metric}_{\\text{new}} - \\text{Metric}_{\\text{base}} \\), triggering alerts when \\( \\Delta < -\\eta \\). Latency-sensitive points include model inference and scoring calls, optimizable via asynchronous processing and model quantization.</p>\n<p>A common misconception is that regression testing means running all cases in full; in practice, intelligent case selection improves efficiency. Failure modes include: 1) environment drift causing irreproducible results; 2) overly tight pipeline coupling hindering extension to new scoring rubrics; 3) reports lacking readability, failing to guide optimization. Diagnosis requires checking environment records (e.g., requirements.txt, dockerfile), analyzing failure case patterns (e.g., retrieval failures, generation errors, scoring ambiguities), and verifying metric calculation correctness.</p>\n<p>Below is an end-to-end minimal reproducible example demonstrating how to build an evaluation pipeline for a tech news QA RAG system and compute key metrics.</p>\n<pre><code>import json\nimport numpy as np\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.metrics.pairwise import cosine_similarity\nimport random\n\n# Step 1: Construct evaluation set (using inline data, avoiding external files)\nnews_data = [\n    {\"id\": 1, \"text\": \"OpenAI released GPT-4o in 2024, supporting multimodal input.\"},\n    {\"id\": 2, \"text\": \"Google launched Gemini Ultra, leading in multiple benchmarks.\"},\n    {\"id\": 3, \"text\": \"Meta open-sourced Llama 3, including 70B and 400B parameter versions.\"}\n]\n\n# Generate synthetic questions based on entities\nevaluation_set = []\nentities = [\"GPT-4o\", \"Gemini Ultra\", \"Llama 3\"]\nfor entity in entities:\n    evaluation_set.append({\n        \"query\": \"What major AI models were released in 2024?\",\n        \"expected_entities\": [entity],\n        \"context\": \"Tech news summaries\"\n    })\n\nprint(\"Evaluation set size:\", len(evaluation_set))\nprint(\"Sample:\", evaluation_set[0])\n\n# Step 2: Simulate RAG retrieval (TF-IDF as lightweight alternative)\ndocuments = [item[\"text\"] for item in news_data]\nvectorizer = TfidfVectorizer().fit(documents)\ndoc_vectors = vectorizer.transform(documents)\n\ndef retrieve(query, top_k=2):\n    query_vec = vectorizer.transform([query])\n    sims = cosine_similarity(query_vec, doc_vectors).flatten()\n    top_indices = np.argsort(sims)[-top_k:][::-1]\n    return [documents[i] for i in top_indices]\n\n# Step 3: Simulate LLM generation (rule-based, replacing large model downloads)\ndef generate_answer(retrieved_docs, query):\n    # Simple rule: if retrieved docs contain entities, list them\n    answer = \"\"\n    for doc in retrieved_docs:\n        for entity in entities:\n            if entity in doc:\n                answer += entity + \", \"\n    return answer.rstrip(\", \") if answer else \"No relevant information found\"\n\n# Step 4: Scoring function (entity recall as metric)\ndef score_answer(answer, expected_entities):\n    # Compute entity recall: Recall = |pred ∩ expected| / |expected|\n    pred_entities = [e for e in entities if e in answer]\n    correct = set(pred_entities) & set(expected_entities)\n    recall = len(correct) / len(expected_entities) if expected_entities else 0\n    return {\"pred_entities\": pred_entities, \"recall\": recall}\n\n# Execute evaluation pipeline\nresults = []\nfor case in evaluation_set:\n    retrieved = retrieve(case[\"query\"])\n    answer = generate_answer(retrieved, case[\"query\"])\n    score = score_answer(answer, case[\"expected_entities\"])\n    results.append({\n        \"query\": case[\"query\"],\n        \"retrieved_docs\": retrieved,\n        \"answer\": answer,\n        \"score\": score\n    })\n\n# Print intermediate results\nprint(\"\\nIntermediate results (first case):\")\nprint(\"Retrieved documents:\", results[0][\"retrieved_docs\"])\nprint(\"Generated answer:\", results[0][\"answer\"])\nprint(\"Scoring output:\", results[0][\"score\"])\n\n# Compute aggregate metric: mean recall\nrecalls = [r[\"score\"][\"recall\"] for r in results]\nmean_recall = np.mean(recalls)\nprint(f\"\\nMean recall: {mean_recall:.3f}\")\nprint(\"Recall formula: Recall = |pred ∩ expected| / |expected|\")\n\n# Step 5: Environment recording (ensuring reproducibility)\nenvironment = {\n    \"code_version\": \"1.0\",\n    \"random_seed\": 42,\n    \"vectorizer\": \"TF-IDF\",\n    \"generator\": \"rule-based\",\n    \"scoring\": \"entity_recall\",\n    \"sklearn_version\": \"1.3.0\",\n    \"numpy_version\": \"1.24.3\"\n}\nprint(\"\\nEnvironment record:\", json.dumps(environment, indent=2))</code></pre>\n<p>This example demonstrates a complete workflow from data construction to metric computation, using TF-IDF and rule-based generation as lightweight alternatives to avoid large model downloads. In real applications, retrieve and generate can be replaced with actual RAG systems and LLMs (e.g., via transformers library), and scoring dimensions expanded. Environment recording ensures result reproducibility.</p>\n<p>Through this lesson, we have systematically explored the construction of offline evaluation sets and regression testing engineering for LLM applications. From definitional intuition to mechanism design and engineering implementation, we have established a transferable quality assurance methodology. In practice, it is recommended to start with core scenarios, iteratively refine evaluation sets, and integrate them into CI/CD pipelines for continuous quality monitoring.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：LLM 应用 Evals：离线评测集构建与回归测试 · 结构总览 · 数据：课程大纲】在设计《LLM 应用 Evals：离线评测集构建与回归测试》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: LLM 应用 Evals：离线评测集构建与回归测试 · 结构总览 · Data: 课程大纲】When outlining \"LLM 应用 Evals：离线评测集构建与回归测试\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：LLM 应用 Evals：离线评测集构建与回归测试 · worked example · 数据：掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】在复现《LLM 应用 Evals：离线评测集构建与回归测试》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: LLM 应用 Evals：离线评测集构建与回归测试 · worked example · Data: 掌握LLM应用从检索到执行到评测的工程闭环 数据/代码】While reproducing the worked example in \"LLM 应用 Evals：离线评测集构建与回归测试\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：LLM 应用 Evals：离线评测集构建与回归测试 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《LLM 应用 Evals：离线评测集构建与回归测试》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: LLM 应用 Evals：离线评测集构建与回归测试 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"LLM 应用 Evals：离线评测集构建与回归测试\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：LLM 应用 Evals：离线评测集构建与回归测试 · 参考资料 · 数据：课程引用文献】当引用文献支撑《LLM 应用 Evals：离线评测集构建与回归测试》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: LLM 应用 Evals：离线评测集构建与回归测试 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"LLM 应用 Evals：离线评测集构建与回归测试\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Evaluating Large Language Models Trained on Code（arXiv，2021）",
+            "en": "Evaluating Large Language Models Trained on Code (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2107.03374"
+        },
+        {
+          "label": {
+            "zh": "TruthfulQA: Measuring How Models Mimic Human Falsehoods（arXiv，2021）",
+            "en": "TruthfulQA: Measuring How Models Mimic Human Falsehoods (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2109.07958"
+        },
+        {
+          "label": {
+            "zh": "RAGAS: Automated Evaluation of Retrieval Augmented Generation（arXiv，2023）",
+            "en": "RAGAS: Automated Evaluation of Retrieval Augmented Generation (arXiv, 2023)"
+          },
+          "url": "https://arxiv.org/abs/2305.17407"
+        },
+        {
+          "label": {
+            "zh": "pytest: helps you write better programs（pytest，2023）",
+            "en": "pytest: helps you write better programs (pytest, 2023)"
+          },
+          "url": "https://docs.pytest.org/en/stable/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-12-llm-evals-zh.mp3"
+      },
+      "meta": {
+        "category": "RAG/Agent/Evals 全链路",
+        "level": "7. LLM 应用工程",
+        "difficultyScore": 4,
+        "related": [
+          "回归测试：模型变更必跑清单",
+          "红队测试：用例库与评分规则"
+        ],
+        "learningObjectives": [
+          "掌握LLM应用从检索到执行到评测的工程闭环",
+          "能实现一个可控、可评测、可监控的LLM应用"
+        ],
+        "personas": [
+          "AI工程师",
+          "平台工程师",
+          "产品经理",
+          "创业者"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering offline evaluation set construction and regression testing for LLM applications at this stage helps teams establish reusable practices across the RAG/Agent/Evals pipeline.",
+          "best_for": "Suitable for AI engineers, platform engineers, product managers, and entrepreneurs who need to quickly absorb topics at the LLM application engineering level.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+        },
+        "tone_profile": {
+          "persona": "AI工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 AI工程师、平台工程师、产品经理、创业者，帮助他们把 LLM 应用 Evals：离线评测集构建与回归测试 应用于 RAG/Agent/Evals 全链路",
+          "prefersEnglish": false,
+          "industries": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理"
+          ],
+          "personas": [
+            "AI工程师",
+            "平台工程师",
+            "产品经理",
+            "创业者"
+          ],
+          "pains": "在 RAG/Agent/Evals 全链路 场景缺乏 LLM 应用 Evals：离线评测集构建与回归测试 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "7. LLM 应用工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您当前的RAG/Agent项目中，如何定义离线评测集来评估系统性能？请描述您面临的具体挑战，并思考如何设计评分规则来量化改进效果。",
+            "action_hint": "尝试列出您项目中的关键评估维度，并构思一个简单的评分框架。"
+          },
+          {
+            "lang": "zh",
+            "question": "回顾您最近的LLM应用迭代，回归测试如何帮助您发现性能回归？请分享一个实际案例，并探讨分层测试策略如何优化您的质量保障流程。",
+            "action_hint": "选择一个具体功能点，设想如何为其设计回归测试用例。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-12-agent",
       "date": "2026-03-12",
