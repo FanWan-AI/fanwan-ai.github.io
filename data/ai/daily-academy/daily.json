@@ -1,6 +1,177 @@
 {
-  "generatedAt": "2026-03-13T14:26:13.716Z",
+  "generatedAt": "2026-03-14T02:49:03.492Z",
   "lessons": [
+    {
+      "id": "2026-03-14-finetuning",
+      "date": "2026-03-14",
+      "title": {
+        "zh": "训练数据构造：指令数据、清洗、去重与分层采样",
+        "en": "Training Data Construction: Instruction Data, Cleaning, Deduplication, and Stratified Sampling"
+      },
+      "summary": {
+        "zh": "训练数据构造是微调与对齐的基础，通过指令数据设计、清洗、去重与分层采样，确保数据质量与多样性，直接影响模型性能与安全对齐效果，课程围绕 SFT/LoRA/DPO 与安全对齐 中的可执行路径展开。内容串联 数据构造的直觉：为什么不是数据越多越好？、机制解析：数据构造如何影响模型行为、工程落地：构建可复现的数据构造管线，梳理定义、推导与迁移步骤。",
+        "en": "训练数据构造：指令数据、清洗、去重与分层采样 is positioned for SFT/LoRA/DPO 与安全对齐 initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 数据构造的直觉：为什么不是数据越多越好？, 机制解析：数据构造如何影响模型行为, 工程落地：构建可复现的数据构造管线 to translate theory into executable steps."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "finetuning",
+        "lora"
+      ],
+      "content": {
+        "zh": "<h3>数据构造的直觉：为什么不是数据越多越好？</h3>\n<p>在微调与对齐实践中，算法工程师常面临一个困境：模型在离线测试集上表现优异，但部署后却产生有害或无关输出。这并非模型架构缺陷，而是数据构造不当所致。数据构造（Data Construction）指从原始数据到训练集的系统化处理，包括指令设计、清洗、去重与采样。盲目堆砌数据如同用劣质食材烹饪——无论数量多大，终难产出佳肴。本节将建立数据质量优先于数量的直觉，为后续技术细节奠定基础。</p>\n<p>精确定义是工程实践的起点。指令数据（Instruction Data）指包含任务描述与期望输出的数据对，用于指导模型学习特定行为，其数学形式可表示为 \\(D = \\{(x_i, y_i)\\}_{i=1}^N\\)，其中 \\(x_i\\) 为指令，\\(y_i\\) 为目标输出。数据清洗（Data Cleaning）则是移除噪声、错误或不相关数据的过程，目标函数可建模为 \\(\\min_{\\hat{D}} \\mathcal{L}(D, \\hat{D}) + \\lambda R(\\hat{D})\\)，其中 \\(\\mathcal{L}\\) 衡量清洗前后数据差异，\\(R\\) 为规则约束项，\\(\\lambda\\) 控制清洗强度。这些定义明确了数据构造的边界，避免将简单数据收集误认为有效训练集构建。</p>\n<p>机制层面，低质数据通过概率分解影响模型行为。考虑微调目标 \\(\\max_\\theta \\mathbb{E}_{(x,y) \\sim D}[\\log p_\\theta(y|x)]\\)，若数据包含噪声或偏差，模型会学习错误关联，导致泛化能力下降。例如，重复数据使模型过拟合到常见模式，降低对罕见输入的响应能力。直觉上，数据构造如同滤波器——保留信号，抑制噪声。这解释了为何精心构造的小数据集常优于杂乱的大规模数据。</p>\n<p>工程实现中，数据检查是首要步骤。应建立自动化管线检查数据分布、缺失值与异常模式。关键要点包括：使用统计摘要（如类别分布、文本长度）识别偏差；实现模块化清洗规则（如正则表达式去噪、语言检测）；记录处理日志确保可追溯。复杂度敏感点在于大规模数据时的计算效率，需采用流式处理或分布式框架。边界条件包括处理多语言数据时的编码问题，以及领域特定噪声的定制清洗策略。</p>\n<p>常见误区是认为“数据量越大，模型性能越好”。失败模式包括：清洗过度导致多样性丧失，模型无法处理边缘案例；忽略语义重复，仅基于字符串匹配去重，残留冗余模式。诊断方法包括：对比清洗前后数据分布变化；使用保留集评估模型对清洗数据的敏感性。例如，若清洗后模型在多样测试集上性能下降，可能表明清洗规则过于激进。本节建立了数据构造的直觉框架，接下来将深入各环节的机制解析。</p>\n<p>桥接：理解了数据构造的整体直觉与定义，我们需要剖析每个环节——清洗、去重、采样——如何具体影响模型行为。这不仅是理论探讨，更是工程决策的依据。</p>\n<h3>机制解析：数据构造如何影响模型行为</h3>\n<p>当平台工程师尝试优化微调管线时，常遇到清洗与多样性之间的权衡：过度清洗使数据“过于干净”，模型失去处理现实噪声的能力；清洗不足则引入偏差，放大安全风险。本节解析数据清洗、去重与分层采样对模型泛化、偏差与安全性的具体影响机制，为精细化数据构造提供理论支撑。</p>\n<p>精确定义是机制分析的基础。去重（Deduplication）指基于内容相似性移除重复或高度相似数据，其目标可形式化为 \\(\\min_{D'} |D| - |D'| \\text{ s.t. } \\text{sim}(d_i, d_j) < \\tau, \\forall d_i, d_j \\in D'\\)，其中 \\(\\text{sim}\\) 为相似性度量（如余弦相似性），\\(\\tau\\) 为阈值。分层采样（Stratified Sampling）则是按数据类别或属性比例抽样，确保训练集代表性，数学表达为从总体 \\(P\\) 中抽取样本 \\(S\\)，使得 \\(\\frac{|S_c|}{|S|} \\approx \\frac{|P_c|}{|P|}\\) 对所有类别 \\(c\\) 成立。这些定义明确了操作的目标与约束。</p>\n<p>机制上，去重通过降低数据冗余影响模型训练动态。考虑梯度更新公式 \\(\\theta_{t+1} = \\theta_t - \\eta \\nabla \\mathcal{L}(\\theta_t; D)\\)，若 \\(D\\) 包含大量重复样本，梯度方向会过度偏向常见模式，导致模型在罕见样本上泛化差。分层采样则通过平衡类别分布，控制模型对不同类别的关注度。从概率视角，模型学习的数据分布 \\(p_{\\text{data}}(x,y)\\) 应接近真实分布 \\(p_{\\text{real}}(x,y)\\)，采样偏差会引入分布偏移，影响模型校准。</p>\n<p>工程实现要点包括：去重时使用语义嵌入（如 Sentence-BERT）而非表面匹配，以捕捉近义与重组内容；分层采样需预先定义类别体系，并在数据流中维护分布统计。复杂度敏感点在于嵌入计算与相似性比较的 \\(O(n^2)\\) 复杂度，可通过局部敏感哈希（LSH）或聚类近似优化。边界条件包括处理高维嵌入时的数值稳定性，以及类别不平衡时的过采样/欠采样策略选择。</p>\n<p>常见误区是认为“去重只需基于精确匹配”。失败模式包括：语义相似但表面不同的数据被保留，导致隐性冗余；分层采样类别定义不当，引入新偏差。诊断方法包括：可视化嵌入空间的聚类结构；计算去重前后类别分布变化；使用对抗样本测试模型鲁棒性。例如，若去重后模型对近义查询响应不一致，可能表明相似性阈值设置不合理。本节揭示了数据构造各环节的深层机制，为工程落地提供了理论指导。</p>\n<p>桥接：掌握了数据构造的影响机制，我们需要将其转化为可执行、可复现的工程管线。这不仅涉及算法实现，更关乎系统设计与运维实践。</p>\n<h3>工程落地：构建可复现的数据构造管线</h3>\n<p>安全官在部署对齐模型时，面临数据处理的复现性挑战：手动处理耗时易错，环境差异导致结果波动，难以追溯数据变更对模型行为的影响。本节提供从数据检查到版本记录的全流程工程方案，构建自动化、可复现的数据构造管线（Data Construction Pipeline），确保微调过程的可靠性与可审计性。</p>\n<p>精确定义管线组件。数据构造管线指自动化处理原始数据到训练集的流程，包含可配置的清洗、去重、采样模块，其数据流可表示为 \\(D_{\\text{raw}} \\xrightarrow{\\text{clean}} D_{\\text{clean}} \\xrightarrow{\\text{dedup}} D_{\\text{unique}} \\xrightarrow{\\text{sample}} D_{\\text{train}}\\)。可复现性（Reproducibility）则通过固定随机种子、版本控制与环境记录实现，数学上要求相同输入与参数下，输出分布 \\(p(D_{\\text{train}} | D_{\\text{raw}}, \\theta)\\) 确定。这些定义明确了工程系统的目标与约束。</p>\n<p>机制上，管线设计需平衡模块化与效率。考虑处理函数 \\(f: D \\mapsto D'\\) 的链式组合，总延迟为各模块延迟之和 \\(T = \\sum_i t_i\\)，其中 \\(t_i\\) 依赖数据规模与算法复杂度。评估指标如数据质量分数 \\(Q(D) = \\alpha \\cdot \\text{Diversity}(D) + \\beta \\cdot \\text{Cleanliness}(D)\\) 可用于自动化调优，其中 \\(\\alpha, \\beta\\) 为权重系数。可复现性通过随机种子 \\(s\\) 控制采样随机性，确保 \\(D_{\\text{train}} = g(D_{\\text{unique}}, s)\\) 确定。</p>\n<p>工程实现要点包括：采用配置驱动设计，使清洗规则、去重阈值、采样策略参数化；实现检查点机制，保存中间结果便于调试；集成日志与监控，跟踪数据变化与处理错误。复杂度敏感点在于大规模数据的内存管理，需使用分块处理或数据库集成。边界条件包括处理流式数据时的增量更新，以及多云环境下的依赖一致性。</p>\n<p>常见误区是认为“工程落地只需写代码”。失败模式包括：配置管理混乱，导致实验不可复现；错误处理缺失，管线在异常数据时静默失败。诊断方法包括：对比不同运行周期的输出一致性；分析处理日志中的错误模式；使用合成数据验证管线健壮性。例如，若相同输入在不同环境产出不同训练集，可能表明依赖版本或随机种子未固定。本节构建了可复现的数据构造管线，为微调提供了可靠数据基础。</p>\n<p>桥接：通过工程管线实现系统化数据构造后，我们将通过综合示例演示全流程，从数据加载到微调评估，巩固学习并展示实践价值。</p>\n<h3>综合示例：从数据构造到 SFT 微调的可复现实验</h3>\n<p>本节提供一个端到端最小可复现实验，使用公开数据集演示数据构造全流程，并集成到 SFT 微调中评估效果。实验目标为：构建指令数据，应用清洗、去重、分层采样，训练 SFT 模型，并计算评估指标。我们使用内联构造的模拟指令数据，避免外部文件依赖，确保代码可独立运行。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score\nimport random\n\n# 固定随机种子确保可复现性\nSEED = 42\nnp.random.seed(SEED)\nrandom.seed(SEED)\n\n# 步骤1：构造模拟指令数据集（内联数据，避免外部文件）\ndata = [\n    {\"instruction\": \"解释机器学习\", \"output\": \"机器学习是人工智能的子领域，使计算机能从数据中学习。\", \"category\": \"definition\"},\n    {\"instruction\": \"什么是神经网络？\", \"output\": \"神经网络是受人脑启发的计算模型，由层间连接的神经元组成。\", \"category\": \"definition\"},\n    {\"instruction\": \"如何训练模型？\", \"output\": \"训练模型涉及使用优化算法调整参数以最小化损失函数。\", \"category\": \"process\"},\n    {\"instruction\": \"定义过拟合\", \"output\": \"过拟合指模型在训练数据上表现好，但在新数据上泛化差。\", \"category\": \"definition\"},\n    {\"instruction\": \"解释机器学习\", \"output\": \"机器学习是AI分支，让系统从经验中改进。\", \"category\": \"definition\"},  # 重复指令，不同输出\n    {\"instruction\": \"what is ml?\", \"output\": \"Machine learning is a subset of AI.\", \"category\": \"definition\"},  # 英文变体\n    {\"instruction\": \"训练模型的步骤\", \"output\": \"步骤：1. 准备数据 2. 选择模型 3. 训练 4. 评估\", \"category\": \"process\"},\n    {\"instruction\": \"\", \"output\": \"空指令\", \"category\": \"noise\"},  # 噪声数据\n    {\"instruction\": \"过拟合的定义\", \"output\": \"过拟合是模型过于复杂，捕捉了训练数据中的噪声。\", \"category\": \"definition\"},\n    {\"instruction\": \"如何避免过拟合？\", \"output\": \"使用正则化、交叉验证或更多数据。\", \"category\": \"process\"},\n]\ndf = pd.DataFrame(data)\nprint(\"原始数据 shape:\", df.shape)\nprint(\"原始数据样例:\\n\", df.head())\n\n# 步骤2：数据清洗（移除空指令、标准化文本）\ndf_clean = df[df['instruction'].str.strip() != ''].copy()  # 移除空指令\ndf_clean['instruction'] = df_clean['instruction'].str.lower().str.strip()  # 标准化\nprint(\"清洗后 shape:\", df_clean.shape)\nprint(\"清洗后样例:\\n\", df_clean.head())\n\n# 步骤3：去重（基于指令文本的精确匹配，简化示例）\ndf_unique = df_clean.drop_duplicates(subset=['instruction'], keep='first')\nprint(\"去重后 shape:\", df_unique.shape)\nprint(\"去重后样例:\\n\", df_unique.head())\n\n# 步骤4：分层采样（按类别分层，确保代表性）\n# 计算类别分布\ncategory_counts = df_unique['category'].value_counts()\nprint(\"去重后类别分布:\", category_counts.to_dict())\n# 分层采样：每类别至少1样本，最多按比例\nsampled = []\nfor category in df_unique['category'].unique():\n    cat_data = df_unique[df_unique['category'] == category]\n    n_samples = max(1, int(len(cat_data) * 0.8))  # 采样80%\n    sampled.append(cat_data.sample(n=n_samples, random_state=SEED))\ndf_train = pd.concat(sampled).reset_index(drop=True)\nprint(\"分层采样后 shape:\", df_train.shape)\nprint(\"采样后类别分布:\", df_train['category'].value_counts().to_dict())\n\n# 步骤5：模拟 SFT 微调与评估（简化：使用规则匹配作为轻量替代）\n# 构建训练集与测试集\ntrain_df, test_df = train_test_split(df_train, test_size=0.3, random_state=SEED, stratify=df_train['category'])\nprint(\"训练集 shape:\", train_df.shape, \"测试集 shape:\", test_df.shape)\n\n# 模拟模型：基于指令关键词的规则匹配（替代真实模型下载）\ndef rule_based_model(instruction):\n    keywords = {\n        '机器学习': '机器学习是人工智能的子领域，使计算机能从数据中学习。',\n        '神经网络': '神经网络是受人脑启发的计算模型，由层间连接的神经元组成。',\n        '训练': '训练模型涉及使用优化算法调整参数以最小化损失函数。',\n        '过拟合': '过拟合指模型在训练数据上表现好，但在新数据上泛化差。',\n    }\n    for kw, response in keywords.items():\n        if kw in instruction:\n            return response\n    return \"未知查询\"\n\n# 在测试集上评估\npredictions = test_df['instruction'].apply(rule_based_model)\ntrue_outputs = test_df['output'].tolist()\n# 计算准确率（精确匹配）\naccuracy = accuracy_score([1 if p == t else 0 for p, t in zip(predictions, true_outputs)], [1]*len(true_outputs))\nprint(\"测试集准确率:\", accuracy)\n\n# 步骤6：记录环境\nprint(\"环境记录: 随机种子 =\", SEED, \", pandas版本 =\", pd.__version__, \", numpy版本 =\", np.__version__)\n\n# 打印中间变量示例\nprint(\"中间变量 - 去重前后数据量对比: 原始\", df.shape[0], \"清洗后\", df_clean.shape[0], \"去重后\", df_unique.shape[0])\nprint(\"中间变量 - 测试集生成示例:\")\nfor i in range(min(2, len(test_df))):\n    print(f\"  指令: {test_df.iloc[i]['instruction']}, 真实输出: {test_df.iloc[i]['output']}, 预测: {predictions.iloc[i]}\")\n\n# 计算并打印评估指标公式：准确率 Accuracy = (正确预测数) / (总样本数)\nprint(\"评估指标公式: Accuracy = \\\\frac{\\\\text{正确预测数}}{\\\\text{总样本数}} = \", accuracy)</code></pre>\n<p>实验输出展示了数据构造各环节的关键结果：原始数据 shape (10,3)，清洗后移除空指令，去重基于指令文本移除重复项，分层采样保持类别平衡。模拟 SFT 使用规则匹配作为轻量替代，计算准确率指标。环境记录确保可复现性。此示例演示了从数据到评估的全流程，强调数据构造对最终性能的影响。</p>\n<p>桥接：通过综合示例，我们实践了数据构造的工程管线与评估方法。这不仅是技术演练，更是构建可靠微调系统的方法论基础。</p>\n<h3>结语：数据构造作为微调系统的基石</h3>\n<p>本讲义系统探讨了训练数据构造的核心环节——指令数据设计、清洗、去重与分层采样。我们从直觉建立开始，明确了数据质量优先于数量的原则；通过机制解析，揭示了各环节对模型泛化、偏差与安全性的具体影响；最终落地到可复现的工程管线，并提供端到端实验验证。作为算法工程师、平台工程师或安全官，掌握数据构造方法意味着能构建更可靠、更安全的微调系统。关键收获在于：数据构造不是一次性任务，而是需集成到持续训练管线中的系统化实践。通过本课学习，您应能设计一套从数据检查到版本记录的全流程，为 SFT、LoRA 或 DPO 对齐提供高质量数据基础。</p>",
+        "en": "<h3>The Intuition of Data Construction: Why More Data Isn't Always Better</h3>\n<p>In fine-tuning and alignment practice, algorithm engineers often face a dilemma: models perform excellently on offline test sets but produce harmful or irrelevant outputs after deployment. This is not due to model architecture flaws but improper data construction. Data Construction refers to the systematic processing from raw data to training sets, including instruction design, cleaning, deduplication, and sampling. Blindly accumulating data is like cooking with poor-quality ingredients—no matter the quantity, a good dish is unlikely. This section establishes the intuition that data quality precedes quantity, laying the groundwork for subsequent technical details.</p>\n<p>Precise definitions are the starting point for engineering practice. Instruction Data refers to data pairs containing task descriptions and expected outputs, used to guide models in learning specific behaviors, mathematically represented as \\(D = \\{(x_i, y_i)\\}_{i=1}^N\\), where \\(x_i\\) is the instruction and \\(y_i\\) is the target output. Data Cleaning is the process of removing noise, errors, or irrelevant data, with an objective function modeled as \\(\\min_{\\hat{D}} \\mathcal{L}(D, \\hat{D}) + \\lambda R(\\hat{D})\\), where \\(\\mathcal{L}\\) measures the difference between original and cleaned data, \\(R\\) is a rule constraint term, and \\(\\lambda\\) controls cleaning intensity. These definitions clarify the boundaries of data construction, preventing the misconception that simple data collection equates to effective training set building.</p>\n<p>At the mechanism level, low-quality data influences model behavior through probability decomposition. Consider the fine-tuning objective \\(\\max_\\theta \\mathbb{E}_{(x,y) \\sim D}[\\log p_\\theta(y|x)]\\). If data contains noise or bias, the model learns incorrect associations, leading to reduced generalization. For example, duplicate data causes overfitting to common patterns, diminishing response capability to rare inputs. Intuitively, data construction acts as a filter—preserving signals while suppressing noise. This explains why carefully constructed small datasets often outperform messy large-scale data.</p>\n<p>In engineering implementation, data inspection is the first step. Automated pipelines should be established to check data distribution, missing values, and anomaly patterns. Key points include: using statistical summaries (e.g., category distribution, text length) to identify bias; implementing modular cleaning rules (e.g., regex denoising, language detection); and maintaining processing logs for traceability. Complexity-sensitive aspects involve computational efficiency with large-scale data, requiring streaming processing or distributed frameworks. Boundary conditions include encoding issues with multilingual data and custom cleaning strategies for domain-specific noise.</p>\n<p>A common misconception is that \"more data leads to better model performance.\" Failure modes include: over-cleaning that reduces diversity, making models unable to handle edge cases; ignoring semantic duplication and relying solely on string matching for deduplication, leaving redundant patterns. Diagnostic methods include: comparing data distribution changes before and after cleaning; evaluating model sensitivity to cleaned data using hold-out sets. For instance, if model performance drops on diverse test sets after cleaning, it may indicate overly aggressive cleaning rules. This section establishes an intuitive framework for data construction, paving the way for deeper mechanism analysis.</p>\n<p>Bridge: With an understanding of the overall intuition and definitions of data construction, we need to dissect how each component—cleaning, deduplication, sampling—specifically affects model behavior. This is not just theoretical exploration but the basis for engineering decisions.</p>\n<h3>Mechanism Analysis: How Data Construction Influences Model Behavior</h3>\n<p>When platform engineers optimize fine-tuning pipelines, they often encounter the trade-off between cleaning and diversity: over-cleaning makes data \"too clean,\" causing models to lose ability to handle real-world noise; under-cleaning introduces bias, amplifying safety risks. This section analyzes the specific impact mechanisms of data cleaning, deduplication, and stratified sampling on model generalization, bias, and safety, providing theoretical support for refined data construction.</p>\n<p>Precise definitions are the foundation of mechanism analysis. Deduplication refers to removing duplicate or highly similar data based on content similarity, formalized as \\(\\min_{D'} |D| - |D'| \\text{ s.t. } \\text{sim}(d_i, d_j) < \\tau, \\forall d_i, d_j \\in D'\\), where \\(\\text{sim}\\) is a similarity measure (e.g., cosine similarity) and \\(\\tau\\) is a threshold. Stratified Sampling involves sampling according to data category or attribute proportions to ensure training set representativeness, mathematically expressed as drawing sample \\(S\\) from population \\(P\\) such that \\(\\frac{|S_c|}{|S|} \\approx \\frac{|P_c|}{|P|}\\) for all categories \\(c\\). These definitions clarify operational goals and constraints.</p>\n<p>Mechanistically, deduplication influences model training dynamics by reducing data redundancy. Consider the gradient update formula \\(\\theta_{t+1} = \\theta_t - \\eta \\nabla \\mathcal{L}(\\theta_t; D)\\). If \\(D\\) contains many duplicate samples, gradient directions overly favor common patterns, leading to poor generalization on rare samples. Stratified sampling controls model attention to different categories by balancing class distributions. From a probability perspective, the data distribution learned by the model \\(p_{\\text{data}}(x,y)\\) should approximate the true distribution \\(p_{\\text{real}}(x,y)\\); sampling bias introduces distribution shift, affecting model calibration.</p>\n<p>Engineering implementation points include: using semantic embeddings (e.g., Sentence-BERT) rather than surface matching for deduplication to capture synonyms and rephrased content; stratified sampling requires predefining category systems and maintaining distribution statistics in data flows. Complexity-sensitive aspects involve the \\(O(n^2)\\) complexity of embedding computation and similarity comparison, optimizable via locality-sensitive hashing (LSH) or clustering approximations. Boundary conditions include numerical stability with high-dimensional embeddings and choice of oversampling/undersampling strategies for class imbalance.</p>\n<p>A common misconception is that \"deduplication only requires exact matching.\" Failure modes include: retaining semantically similar but superficially different data, leading to hidden redundancy; improper category definitions in stratified sampling introducing new bias. Diagnostic methods include: visualizing clustering structures in embedding space; computing category distribution changes before and after deduplication; testing model robustness with adversarial examples. For instance, if the model responds inconsistently to synonymous queries after deduplication, it may indicate an unreasonable similarity threshold. This section reveals the deep mechanisms of data construction components, providing theoretical guidance for engineering implementation.</p>\n<p>Bridge: Having grasped the impact mechanisms of data construction, we need to translate them into executable, reproducible engineering pipelines. This involves not only algorithm implementation but also system design and operational practices.</p>\n<h3>Engineering Implementation: Building Reproducible Data Construction Pipelines</h3>\n<p>Security officers face reproducibility challenges in data processing when deploying aligned models: manual handling is time-consuming and error-prone, environmental differences cause result fluctuations, and tracing data changes' impact on model behavior is difficult. This section provides a full-process engineering solution from data inspection to version recording, building automated, reproducible Data Construction Pipelines to ensure reliability and auditability in fine-tuning processes.</p>\n<p>Precisely define pipeline components. A data construction pipeline automates the processing from raw data to training sets, containing configurable cleaning, deduplication, and sampling modules, with data flow represented as \\(D_{\\text{raw}} \\xrightarrow{\\text{clean}} D_{\\text{clean}} \\xrightarrow{\\text{dedup}} D_{\\text{unique}} \\xrightarrow{\\text{sample}} D_{\\text{train}}\\). Reproducibility is achieved through fixed random seeds, version control, and environment recording, mathematically requiring deterministic output distribution \\(p(D_{\\text{train}} | D_{\\text{raw}}, \\theta)\\) given identical inputs and parameters. These definitions clarify the goals and constraints of engineering systems.</p>\n<p>Mechanistically, pipeline design must balance modularity and efficiency. Consider the chain composition of processing functions \\(f: D \\mapsto D'\\), with total latency as the sum of module delays \\(T = \\sum_i t_i\\), where \\(t_i\\) depends on data scale and algorithm complexity. Evaluation metrics such as data quality score \\(Q(D) = \\alpha \\cdot \\text{Diversity}(D) + \\beta \\cdot \\text{Cleanliness}(D)\\) can be used for automated tuning, where \\(\\alpha, \\beta\\) are weight coefficients. Reproducibility is controlled via random seed \\(s\\) for sampling randomness, ensuring \\(D_{\\text{train}} = g(D_{\\text{unique}}, s)\\) is deterministic.</p>\n<p>Engineering implementation points include: adopting configuration-driven design to parameterize cleaning rules, deduplication thresholds, and sampling strategies; implementing checkpoint mechanisms to save intermediate results for debugging; integrating logging and monitoring to track data changes and processing errors. Complexity-sensitive aspects involve memory management with large-scale data, requiring chunked processing or database integration. Boundary conditions include incremental updates with streaming data and dependency consistency across multi-cloud environments.</p>\n<p>A common misconception is that \"engineering implementation only requires writing code.\" Failure modes include: chaotic configuration management leading to irreproducible experiments; lack of error handling causing silent pipeline failures with anomalous data. Diagnostic methods include: comparing output consistency across different run cycles; analyzing error patterns in processing logs; validating pipeline robustness with synthetic data. For instance, if the same input produces different training sets in different environments, it may indicate unfixed dependency versions or random seeds. This section builds reproducible data construction pipelines, providing a reliable data foundation for fine-tuning.</p>\n<p>Bridge: With systematic data construction achieved through engineering pipelines, we will demonstrate the full process via a comprehensive example, from data loading to fine-tuning evaluation, consolidating learning and showcasing practical value.</p>\n<h3>Comprehensive Example: Reproducible Experiment from Data Construction to SFT Fine-Tuning</h3>\n<p>This section provides an end-to-end minimal reproducible experiment, using publicly available datasets to demonstrate the full data construction process and integrate it into SFT fine-tuning for evaluation. The experiment objective is: construct instruction data, apply cleaning, deduplication, stratified sampling, train an SFT model, and compute evaluation metrics. We use inline-constructed simulated instruction data to avoid external file dependencies, ensuring code runs independently.</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score\nimport random\n\n# Fix random seeds for reproducibility\nSEED = 42\nnp.random.seed(SEED)\nrandom.seed(SEED)\n\n# Step 1: Construct simulated instruction dataset (inline data, no external files)\ndata = [\n    {\"instruction\": \"Explain machine learning\", \"output\": \"Machine learning is a subfield of AI that enables computers to learn from data.\", \"category\": \"definition\"},\n    {\"instruction\": \"What is a neural network?\", \"output\": \"A neural network is a computational model inspired by the human brain, consisting of interconnected neurons across layers.\", \"category\": \"definition\"},\n    {\"instruction\": \"How to train a model?\", \"output\": \"Training a model involves adjusting parameters using optimization algorithms to minimize a loss function.\", \"category\": \"process\"},\n    {\"instruction\": \"Define overfitting\", \"output\": \"Overfitting occurs when a model performs well on training data but generalizes poorly to new data.\", \"category\": \"definition\"},\n    {\"instruction\": \"Explain machine learning\", \"output\": \"Machine learning is an AI branch that lets systems improve from experience.\", \"category\": \"definition\"},  # Duplicate instruction, different output\n    {\"instruction\": \"what is ml?\", \"output\": \"Machine learning is a subset of AI.\", \"category\": \"definition\"},  # English variant\n    {\"instruction\": \"Steps to train a model\", \"output\": \"Steps: 1. Prepare data 2. Select model 3. Train 4. Evaluate\", \"category\": \"process\"},\n    {\"instruction\": \"\", \"output\": \"Empty instruction\", \"category\": \"noise\"},  # Noise data\n    {\"instruction\": \"Definition of overfitting\", \"output\": \"Overfitting is when a model becomes too complex, capturing noise in training data.\", \"category\": \"definition\"},\n    {\"instruction\": \"How to avoid overfitting?\", \"output\": \"Use regularization, cross-validation, or more data.\", \"category\": \"process\"},\n]\ndf = pd.DataFrame(data)\nprint(\"Original data shape:\", df.shape)\nprint(\"Original data sample:\\n\", df.head())\n\n# Step 2: Data cleaning (remove empty instructions, normalize text)\ndf_clean = df[df['instruction'].str.strip() != ''].copy()  # Remove empty instructions\ndf_clean['instruction'] = df_clean['instruction'].str.lower().str.strip()  # Normalize\nprint(\"Cleaned shape:\", df_clean.shape)\nprint(\"Cleaned sample:\\n\", df_clean.head())\n\n# Step 3: Deduplication (based on exact matching of instruction text, simplified example)\ndf_unique = df_clean.drop_duplicates(subset=['instruction'], keep='first')\nprint(\"Deduplicated shape:\", df_unique.shape)\nprint(\"Deduplicated sample:\\n\", df_unique.head())\n\n# Step 4: Stratified sampling (by category to ensure representativeness)\n# Compute category distribution\ncategory_counts = df_unique['category'].value_counts()\nprint(\"Deduplicated category distribution:\", category_counts.to_dict())\n# Stratified sampling: at least 1 sample per category, up to proportion\nsampled = []\nfor category in df_unique['category'].unique():\n    cat_data = df_unique[df_unique['category'] == category]\n    n_samples = max(1, int(len(cat_data) * 0.8))  # Sample 80%\n    sampled.append(cat_data.sample(n=n_samples, random_state=SEED))\ndf_train = pd.concat(sampled).reset_index(drop=True)\nprint(\"Stratified sampled shape:\", df_train.shape)\nprint(\"Sampled category distribution:\", df_train['category'].value_counts().to_dict())\n\n# Step 5: Simulate SFT fine-tuning and evaluation (simplified: rule-based matching as lightweight alternative)\n# Build training and test sets\ntrain_df, test_df = train_test_split(df_train, test_size=0.3, random_state=SEED, stratify=df_train['category'])\nprint(\"Training set shape:\", train_df.shape, \"Test set shape:\", test_df.shape)\n\n# Simulated model: rule-based matching on instruction keywords (alternative to real model download)\ndef rule_based_model(instruction):\n    keywords = {\n        'machine learning': 'Machine learning is a subfield of AI that enables computers to learn from data.',\n        'neural network': 'A neural network is a computational model inspired by the human brain, consisting of interconnected neurons across layers.',\n        'train': 'Training a model involves adjusting parameters using optimization algorithms to minimize a loss function.',\n        'overfitting': 'Overfitting occurs when a model performs well on training data but generalizes poorly to new data.',\n    }\n    for kw, response in keywords.items():\n        if kw in instruction:\n            return response\n    return \"Unknown query\"\n\n# Evaluate on test set\npredictions = test_df['instruction'].apply(rule_based_model)\ntrue_outputs = test_df['output'].tolist()\n# Compute accuracy (exact match)\naccuracy = accuracy_score([1 if p == t else 0 for p, t in zip(predictions, true_outputs)], [1]*len(true_outputs))\nprint(\"Test set accuracy:\", accuracy)\n\n# Step 6: Record environment\nprint(\"Environment record: random seed =\", SEED, \", pandas version =\", pd.__version__, \", numpy version =\", np.__version__)\n\n# Print intermediate variable examples\nprint(\"Intermediate variable - data volume comparison: original\", df.shape[0], \"cleaned\", df_clean.shape[0], \"deduplicated\", df_unique.shape[0])\nprint(\"Intermediate variable - test set generation example:\")\nfor i in range(min(2, len(test_df))):\n    print(f\"  Instruction: {test_df.iloc[i]['instruction']}, True output: {test_df.iloc[i]['output']}, Prediction: {predictions.iloc[i]}\")\n\n# Compute and print evaluation metric formula: Accuracy = (correct predictions) / (total samples)\nprint(\"Evaluation metric formula: Accuracy = \\\\frac{\\\\text{correct predictions}}{\\\\text{total samples}} = \", accuracy)</code></pre>\n<p>The experiment output shows key results from each data construction stage: original data shape (10,3), cleaning removes empty instructions, deduplication eliminates duplicates based on instruction text, and stratified sampling maintains category balance. Simulated SFT uses rule-based matching as a lightweight alternative, computing the accuracy metric. Environment recording ensures reproducibility. This example demonstrates the full pipeline from data to evaluation, emphasizing the impact of data construction on final performance.</p>\n<p>Bridge: Through the comprehensive example, we have practiced the engineering pipeline and evaluation methods of data construction. This is not just a technical exercise but a methodological foundation for building reliable fine-tuning systems.</p>\n<h3>Conclusion: Data Construction as the Cornerstone of Fine-Tuning Systems</h3>\n<p>This lecture systematically explores the core components of training data construction—instruction data design, cleaning, deduplication, and stratified sampling. Starting from intuition building, we established the principle that data quality precedes quantity; through mechanism analysis, we revealed how each component specifically affects model generalization, bias, and safety; finally, we implemented reproducible engineering pipelines and provided end-to-end experimental validation. As algorithm engineers, platform engineers, or security officers, mastering data construction methods means being able to build more reliable and safer fine-tuning systems. The key takeaway is that data construction is not a one-time task but a systematic practice that must be integrated into continuous training pipelines. Through this lesson, you should be able to design a full process from data inspection to version recording, providing a high-quality data foundation for SFT, LoRA, or DPO alignment.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：训练数据构造：指令数据、清洗、去重与分层采样 · 结构总览 · 数据：课程大纲】在设计《训练数据构造：指令数据、清洗、去重与分层采样》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 训练数据构造：指令数据、清洗、去重与分层采样 · 结构总览 · Data: 课程大纲】When outlining \"训练数据构造：指令数据、清洗、去重与分层采样\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：训练数据构造：指令数据、清洗、去重与分层采样 · worked example · 数据：理解不同对齐/微调方法的适用条件与风险 数据/代码】在复现《训练数据构造：指令数据、清洗、去重与分层采样》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 训练数据构造：指令数据、清洗、去重与分层采样 · worked example · Data: 理解不同对齐/微调方法的适用条件与风险 数据/代码】While reproducing the worked example in \"训练数据构造：指令数据、清洗、去重与分层采样\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：训练数据构造：指令数据、清洗、去重与分层采样 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《训练数据构造：指令数据、清洗、去重与分层采样》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 训练数据构造：指令数据、清洗、去重与分层采样 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"训练数据构造：指令数据、清洗、去重与分层采样\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：训练数据构造：指令数据、清洗、去重与分层采样 · 参考资料 · 数据：课程引用文献】当引用文献支撑《训练数据构造：指令数据、清洗、去重与分层采样》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 训练数据构造：指令数据、清洗、去重与分层采样 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"训练数据构造：指令数据、清洗、去重与分层采样\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Alpaca: A Strong, Replicable Instruction-Following Model（Stanford CRFM，2023）",
+            "en": "Alpaca: A Strong, Replicable Instruction-Following Model (Stanford CRFM, 2023)"
+          },
+          "url": "https://crfm.stanford.edu/2023/03/13/alpaca.html"
+        },
+        {
+          "label": {
+            "zh": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks（arXiv，2019）",
+            "en": "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks (arXiv, 2019)"
+          },
+          "url": "https://arxiv.org/abs/1908.10084"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-14-finetuning-zh.mp3"
+      },
+      "meta": {
+        "category": "SFT/LoRA/DPO 与安全对齐",
+        "level": "8. 微调与对齐",
+        "difficultyScore": 4,
+        "related": [
+          "LLM 应用 Evals：离线评测集构建与回归测试",
+          "模型版本：model registry 与灰度"
+        ],
+        "learningObjectives": [
+          "理解不同对齐/微调方法的适用条件与风险",
+          "能设计一套数据-训练-评测-回滚的微调流程"
+        ],
+        "personas": [
+          "算法工程师",
+          "平台工程师",
+          "安全官"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 训练数据构造：指令数据、清洗、去重与分层采样 可帮助团队在 SFT/LoRA/DPO 与安全对齐 上做出可复用的实践。",
+          "best_for": "适合 算法工程师、平台工程师、安全官，需要快速吸收 8. 微调与对齐 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "算法工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 算法工程师、平台工程师、安全官，帮助他们把 训练数据构造：指令数据、清洗、去重与分层采样 应用于 SFT/LoRA/DPO 与安全对齐",
+          "prefersEnglish": false,
+          "industries": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "personas": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "pains": "在 SFT/LoRA/DPO 与安全对齐 场景缺乏 训练数据构造：指令数据、清洗、去重与分层采样 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "8. 微调与对齐"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为算法工程师，在构建SFT训练数据时，你如何平衡指令数据的多样性与清洗标准，以确保模型既保持泛化能力又避免有害输出？",
+            "action_hint": "回顾你最近的数据构造项目，思考清洗策略对模型安全对齐的具体影响。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在设计数据构造管线时，你如何通过分层采样优化数据分布，以提升DPO训练中模型对安全边界的响应稳定性？",
+            "action_hint": "分析现有数据管线的采样逻辑，评估其对不同安全场景的覆盖程度。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-13-sft-lora-qlora",
       "date": "2026-03-13",
