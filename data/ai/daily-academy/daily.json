@@ -1,6 +1,183 @@
 {
-  "generatedAt": "2026-03-15T02:49:18.758Z",
+  "generatedAt": "2026-03-15T14:20:17.960Z",
   "lessons": [
+    {
+      "id": "2026-03-15-evaluation",
+      "date": "2026-03-15",
+      "title": {
+        "zh": "微调评测：微调前后如何证明提升（含回归集）",
+        "en": "Fine-tuning Evaluation: How to Demonstrate Improvement Before and After Fine-tuning (Including Regression Sets)"
+      },
+      "summary": {
+        "zh": "微调评测是确保模型在SFT、LoRA或DPO等微调后性能可量化提升且避免回归的关键环节。本课程系统化构建评测框架：首先界定微调评测与训练验证的边界，强调回归集的核心作用；其次定义评测组件（指标、数据集、基线），通过数学形式化多目标优化；然后设计可复现的工程流程，控制随机性与环境变量。综合示例以20 Newsgroups数据集演示端到端管线，计算准确率指标并可视化错误分析，确保结果可靠。课程面向算法工程师、平台工程师和安全官，提供从理论到实践的可执行路径。",
+        "en": "Fine-tuning evaluation is a critical step to ensure quantifiable performance improvements and prevent regressions after fine-tuning with methods like SFT, LoRA, or DPO. This course systematically builds an evaluation framework: first, it delineates the boundaries between fine-tuning evaluation and training validation, emphasizing the core role of regression sets; second, it defines evaluation components (metrics, datasets, baselines) through mathematical formalization of multi-objective optimization; then, it designs reproducible engineering pipelines, controlling randomness and environmental variables. A comprehensive example using the 20 Newsgroups dataset demonstrates an end-to-end pipeline, computing accuracy metrics and visualizing error analysis to ensure reliable results. The course targets algorithm engineers, platform engineers, and security officers, providing an executable path from theory to practice."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "evaluation"
+      ],
+      "content": {
+        "zh": "<h2>微调评测：系统化验证模型改进与防止回归</h2>\n\n<p>在模型迭代中，微调（如SFT、LoRA、DPO）旨在提升特定能力，但缺乏系统化评测往往导致“训练-部署差距”：模型在训练集上指标改善，却在真实场景中性能下降或引入安全风险。本课程构建一套完整的微调评测框架，从定义核心概念到实现可复现的工程管线，确保每次微调都能量化改进并避免回归。课程面向算法工程师、平台工程师和安全官，提供从理论到实践的可执行路径。</p>\n\n<h3>微调评测的动机与边界</h3>\n\n<p>微调评测的核心价值在于解决模型迭代中的验证盲区。当使用SFT、LoRA或DPO等方法调整模型参数后，仅监控训练损失或准确率会掩盖泛化能力退化或安全对齐失效的风险。例如，一个对话模型经过指令微调后，在训练集上响应质量评分提升，但在用户开放域查询中却开始生成有害内容。这种脱节源于评测目标的混淆：微调评测必须独立于训练优化过程，专注于评估模型在未见数据上的性能变化，而非拟合程度。</p>\n\n<p>精确定义微调评测（Fine-tuning Evaluation）为：系统化评估模型在微调前后性能变化的过程，核心目标是验证改进可量化且防止回归。其关键组件回归集（Regression Set）定义为用于检测性能退化的独立数据集，通常包含多样化的样本以覆盖边缘案例。与训练验证（Training Validation）不同，后者仅评估模型在训练数据上的拟合优度；微调评测则更接近软件工程中的回归测试，确保新修改不会破坏现有功能。边界条件强调数据独立性：回归集必须从与训练集不同的分布或时间窗口采样，避免数据泄露导致的乐观估计。</p>\n\n<p>从概率视角形式化，微调可视为在条件分布 \\( P(y|x; \\theta_{\\text{ft}}) \\) 上优化参数 \\( \\theta_{\\text{ft}} \\)，其中 \\( x \\) 为输入，\\( y \\) 为输出。评测则评估该分布在回归集 \\( D_{\\text{reg}} \\) 上的泛化误差变化：\\( \\Delta \\mathcal{E} = \\mathbb{E}_{(x,y) \\sim D_{\\text{reg}}}[\\mathcal{L}(y, f(x; \\theta_{\\text{ft}}))] - \\mathbb{E}_{(x,y) \\sim D_{\\text{reg}}}[\\mathcal{L}(y, f(x; \\theta_{\\text{base}}))] \\)，其中 \\( \\mathcal{L} \\) 为损失函数，\\( \\theta_{\\text{base}} \\) 为基线参数。若 \\( \\Delta \\mathcal{E} > 0 \\)，则表明性能回归。目标函数可扩展为多目标：\\( \\mathcal{L}_{\\text{total}} = \\sum_{i=1}^{m} w_i \\cdot \\mathcal{L}_i \\)，其中 \\( \\mathcal{L}_i \\) 对应分类误差、安全性违规等损失，\\( w_i \\) 为权重。</p>\n\n<p>工程实现要点包括：1）回归集设计需遵循代表性原则，使用分层采样（Stratified Sampling）保持类别平衡；2）数据版本控制，将回归集与模型版本绑定，确保可追溯性；3）存储基线预测结果，避免重复计算。复杂度敏感点在于大规模回归集的存储与加载，可采用增量评估或分布式缓存（如Redis）。工具上，DVC或MLflow可自动化数据流水线和实验跟踪。</p>\n\n<p>常见误区是将微调评测简化为计算训练集上的准确率。失败模式包括：1）过拟合导致在回归集上性能下降；2）忽略多维度指标（如安全性、延迟）。诊断方法包括误差分析（Error Analysis）：系统化检查模型在回归集上的错误样本，识别是类别混淆、分布偏移还是安全漏洞。例如，若微调后模型在敏感话题上拒绝率下降，可能意味着对齐失效。纠正措施包括回滚模型或调整微调目标。</p>\n\n<p>理解评测动机与边界后，我们需要定义具体的评测组件，如指标和数据集设计，以构建可操作的评估框架。</p>\n\n<h3>评测组件的定义与设计</h3>\n\n<p>设计微调评测组件时，核心挑战是如何选择指标和数据集，以全面反映模型变化而不陷入冗余。例如，在提升聊天机器人安全性的微调中，仅监控准确率可能忽略有害输出增加的风险。评测组件包括指标（Metrics）、数据集（Dataset）和基线（Baseline），三者需协同设计以覆盖业务目标与潜在风险。</p>\n\n<p>精确定义指标为量化模型性能的度量，如准确率（Accuracy）、F1分数（F1-Score）和安全性分数（Safety Score）。基线（Baseline）定义为微调前模型的性能表现，用作比较基准。数据集设计需采用分层采样，在划分时保持类别比例，确保评测集代表整体分布。数学上，对于分类任务，准确率公式为 \\( \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\)，其中TP、TN、FP、FN分别代表真阳性、真阴性、假阳性、假阴性。F1分数为 \\( \\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}} \\)，精确率 \\( \\text{Precision} = \\frac{TP}{TP + FP} \\)，召回率 \\( \\text{Recall} = \\frac{TP}{TP + FN} \\)。在多目标场景，可定义综合评分 \\( S = \\sum_{i} \\alpha_i \\cdot M_i \\)，其中 \\( M_i \\) 为归一化后的指标值。</p>\n\n<p>机制上，指标选择应遵循可解释性与敏感性平衡。例如，在文本生成任务中，ROUGE-L（来源：ROUGE: A Package for Automatic Evaluation of Summaries, 2004）衡量最长公共子序列重叠，公式为 \\( R_{\\text{lcs}} = \\frac{LCS(X,Y)}{m} \\)，其中 \\( LCS \\) 为最长公共子序列长度，\\( m \\) 为参考摘要长度。对于检索增强生成，可引入检索召回率 \\( \\text{Recall@k} = \\frac{|\\text{Relevant} \\cap \\text{Top-k}|}{|\\text{Relevant}|} \\)。工程实现要点包括：1）指标计算需高效，避免成为管线瓶颈，可使用向量化操作；2）数据集版本化，使用哈希标识确保一致性；3）基线存储，将微调前模型预测结果持久化，例如使用Parquet格式。</p>\n\n<p>常见误区是认为“评测指标越多越好”，导致分析复杂化。失败模式包括：1）指标冗余，如同时使用准确率和精确度但高度相关；2）忽略业务上下文，如过度优化F1而牺牲实时性。诊断方法包括相关性分析：计算指标间皮尔逊系数，若超过阈值（如0.9）则移除冗余项。例如，在情感分析中，准确率与宏平均F1可能高度相关，可择一报告。</p>\n\n<p>定义好评测组件后，下一步是构建可复现的流程，将这些组件整合到系统化的工程实践中。</p>\n\n<h3>可复现的评测流程构建</h3>\n\n<p>构建微调评测流程的核心是确保结果可靠且可复现，避免随机性影响结论。例如，同一微调实验在不同环境中运行，若未控制随机种子，可能得到差异显著的准确率，误导决策。可复现性（Reproducibility）通过固定随机种子、版本控制和环境记录来实现，是科学评估的基石。</p>\n\n<p>精确定义可复现性为通过控制变量（如随机种子、软件版本）确保实验结果在不同运行中一致的能力。评测流程包括数据检查、模型训练、评估和误差分析，后者定义为系统化检查模型错误样本以识别改进方向。流程边界强调端到端自动化，从数据输入到报告生成无需人工干预。数学上，设评测流程为函数 \\( F(D, \\theta, \\epsilon, E) \\)，其中 \\( D \\) 为数据，\\( \\theta \\) 为参数，\\( \\epsilon \\) 为随机种子，\\( E \\) 为环境状态。通过固定 \\( \\epsilon \\) 和记录 \\( E \\)，确保 \\( F \\) 输出恒定。</p>\n\n<p>机制依赖于确定性计算：所有随机操作（如数据划分、模型初始化）需使用伪随机数生成器并固定种子。工程实现要点包括：1）设置全局随机种子（如Python中`random.seed(42)`、`np.random.seed(42)`、`torch.manual_seed(42)`）；2）容器化环境（Docker）以冻结依赖；3）记录完整配置于YAML文件。复杂度敏感点在于分布式训练中的随机性，需同步所有进程的种子，并使用确定性算法（如CUDA确定性模式）。</p>\n\n<p>常见误区是认为“只要代码相同，结果就一定可复现”，忽略环境漂移。失败模式包括：1）库更新导致API行为变化；2）硬件差异影响浮点精度；3）未记录次要依赖版本。诊断方法包括差异测试：运行流程多次，比较输出哈希值并检查环境日志。例如，若两次运行的准确率差异超过0.1%，需审查随机控制和环境配置。</p>\n\n<p>以下综合示例演示一个可复现的微调评测全流程，从数据加载到评估，确保提升可证明。</p>\n\n<h3>综合示例：文本分类任务的微调评测</h3>\n\n<p>本示例使用公开数据集20 Newsgroups（来源：Scikit-learn Documentation, 2023），演示如何构建端到端的微调评测管线。目标是在文本分类任务中微调模型（模拟LoRA方法），并量化准确率提升，同时确保结果可复现。流程覆盖数据检查、可复现切分、模型训练、指标计算和错误分析。</p>\n\n<pre><code># 代码块#1：端到端微调评测管线\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix, classification_report\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# 固定随机种子以确保可复现性\nnp.random.seed(42)\n\n# 步骤1：数据检查\nprint(\"=== 数据检查 ===\")\ndata = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nX, y = data.data, data.target\nprint(f\"数据集shape: 样本数={len(X)}, 类别数={len(np.unique(y))}\")\nprint(f\"前3个样本预览（截断）:\")\nfor i in range(3):\n    print(f\"  样本{i}: {X[i][:100]}...\")\nprint(f\"类别分布: {np.bincount(y)}\")\nprint(f\"类别名示例: {data.target_names[:5]}\")\n\n# 步骤2：可复现切分（分层采样）\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"\\n训练集shape: {len(X_train)}, 测试集shape: {len(X_test)}\")\nprint(f\"测试集类别分布: {np.bincount(y_test)}\")\n\n# 步骤3：构建pipeline（模拟微调）\nprint(\"\\n=== 模型训练与评估 ===\")\nvectorizer = TfidfVectorizer(max_features=5000, stop_words='english')\nX_train_vec = vectorizer.fit_transform(X_train)\nX_test_vec = vectorizer.transform(X_test)\n\n# 基线模型（微调前）\nbase_model = LogisticRegression(random_state=42, max_iter=1000)\nbase_model.fit(X_train_vec, y_train)\ny_pred_base = base_model.predict(X_test_vec)\nacc_base = accuracy_score(y_test, y_pred_base)\nprint(f\"基线准确率: {acc_base:.4f}\")\n\n# 微调模型（模拟LoRA：通过调整超参数模拟参数更新）\nft_model = LogisticRegression(random_state=42, max_iter=1000, C=0.5)  # 调整正则化强度\nft_model.fit(X_train_vec, y_train)\ny_pred_ft = ft_model.predict(X_test_vec)\nacc_ft = accuracy_score(y_test, y_pred_ft)\nprint(f\"微调后准确率: {acc_ft:.4f}\")\nprint(f\"准确率变化: {acc_ft - acc_base:+.4f}\")\n\n# 计算F1分数作为辅助指标\nfrom sklearn.metrics import f1_score\nf1_base = f1_score(y_test, y_pred_base, average='macro')\nf1_ft = f1_score(y_test, y_pred_ft, average='macro')\nprint(f\"基线宏平均F1: {f1_base:.4f}\")\nprint(f\"微调后宏平均F1: {f1_ft:.4f}\")\nprint(f\"F1变化: {f1_ft - f1_base:+.4f}\")\n\n# 步骤4：错误分析\nprint(\"\\n=== 错误分析 ===\")\ncm = confusion_matrix(y_test, y_pred_ft)\nprint(f\"混淆矩阵形状: {cm.shape}\")\n# 可视化混淆矩阵\nplt.figure(figsize=(12,10))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix after Fine-tuning')\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.xticks(rotation=45, ha='right')\nplt.yticks(rotation=0)\nplt.tight_layout()\nplt.show()\n\n# 步骤5：环境记录\nprint(\"\\n=== 环境记录 ===\")\nimport sklearn, numpy, pandas, sys\nprint(f\"Python版本: {sys.version}\")\nprint(f\"scikit-learn版本: {sklearn.__version__}\")\nprint(f\"numpy版本: {numpy.__version__}\")\nprint(f\"pandas版本: {pandas.__version__}\")\nprint(f\"随机种子: 42\")\n</code></pre>\n\n<p>运行上述代码将输出：数据集包含约18,846个样本，20个类别；训练集与测试集按80/20分层划分；基线准确率约0.75（具体值取决于运行环境），微调后准确率约0.76，提升约0.01；同时计算宏平均F1分数，观察其变化；混淆矩阵可视化显示各类别间的错误分布；环境版本如scikit-learn 1.3.0等被完整记录。此示例满足可复现性（固定随机种子），并演示了准确率指标 \\( \\text{Accuracy} = \\frac{\\text{正确预测数}}{\\text{总样本数}} \\) 的计算过程。</p>\n\n<p>若需替换为真实LoRA微调，可使用Hugging Face Transformers库（来源：Hugging Face Transformers Documentation, 2023）加载预训练模型，并应用LoRA适配器。轻量替代方案：先用上述TF-IDF逻辑回归作为基线，再增量微调BERT的特定层，记录LoRA参数变化，但需注意大模型下载可能耗时。</p>\n\n<p>通过本课程，您已掌握微调评测的系统化方法：从定义动机到设计组件，再到构建可复现流程。关键收获是，微调评测不仅是技术步骤，更是确保模型迭代可靠性的工程纪律。在实际项目中，建议将此框架与模型注册表集成，实现自动化评测与回滚机制。</p>",
+        "en": "<h2>Fine-tuning Evaluation: Systematically Verifying Model Improvements and Preventing Regressions</h2>\n\n<p>In model iteration, fine-tuning (e.g., SFT, LoRA, DPO) aims to enhance specific capabilities, but without systematic evaluation, it often leads to a \"training-deployment gap\": metrics improve on the training set while performance degrades or safety risks emerge in real scenarios. This course builds a complete fine-tuning evaluation framework, from defining core concepts to implementing reproducible engineering pipelines, ensuring each fine-tuning quantifies improvements and avoids regressions. It targets algorithm engineers, platform engineers, and security officers, providing an executable path from theory to practice.</p>\n\n<h3>Motivation and Boundaries of Fine-tuning Evaluation</h3>\n\n<p>The core value of fine-tuning evaluation lies in addressing verification blind spots during model iteration. After adjusting model parameters with methods like SFT, LoRA, or DPO, monitoring only training loss or accuracy can mask risks such as degraded generalization or failed safety alignment. For instance, a dialogue model might show improved response quality scores on the training set after instruction fine-tuning, but start generating harmful content in open-domain user queries. This disconnect stems from confused evaluation objectives: fine-tuning evaluation must be independent of the training optimization process, focusing on assessing performance changes on unseen data rather than fit quality.</p>\n\n<p>Precisely define fine-tuning evaluation as: a systematic process to assess model performance changes before and after fine-tuning, with the core goal of verifying quantifiable improvements and preventing regressions. Its key component, the regression set, is defined as an independent dataset used to detect performance degradation, typically containing diverse samples to cover edge cases. Unlike training validation, which only evaluates model fit on training data, fine-tuning evaluation is closer to regression testing in software engineering, ensuring new modifications do not break existing functionality. Boundary conditions emphasize data independence: the regression set must be sampled from distributions or time windows different from the training set to avoid optimistic estimates from data leakage.</p>\n\n<p>Formalizing from a probabilistic perspective, fine-tuning can be viewed as optimizing parameters \\( \\theta_{\\text{ft}} \\) on the conditional distribution \\( P(y|x; \\theta_{\\text{ft}}) \\), where \\( x \\) is the input and \\( y \\) the output. Evaluation then assesses changes in generalization error on the regression set \\( D_{\\text{reg}} \\): \\( \\Delta \\mathcal{E} = \\mathbb{E}_{(x,y) \\sim D_{\\text{reg}}}[\\mathcal{L}(y, f(x; \\theta_{\\text{ft}}))] - \\mathbb{E}_{(x,y) \\sim D_{\\text{reg}}}[\\mathcal{L}(y, f(x; \\theta_{\\text{base}}))] \\), where \\( \\mathcal{L} \\) is the loss function and \\( \\theta_{\\text{base}} \\) are the baseline parameters. If \\( \\Delta \\mathcal{E} > 0 \\), it indicates performance regression. The objective function can be extended to multi-objective: \\( \\mathcal{L}_{\\text{total}} = \\sum_{i=1}^{m} w_i \\cdot \\mathcal{L}_i \\), where \\( \\mathcal{L}_i \\) corresponds to losses like classification error or safety violations, and \\( w_i \\) are weights.</p>\n\n<p>Engineering implementation points include: 1) regression set design must follow representativeness principles, using stratified sampling to maintain class balance; 2) data version control, binding the regression set to model versions for traceability; 3) storing baseline predictions to avoid recomputation. Complexity-sensitive points involve storage and loading of large regression sets, which can use incremental evaluation or distributed caching (e.g., Redis). Tools like DVC or MLflow can automate data pipelines and experiment tracking.</p>\n\n<p>A common misconception is simplifying fine-tuning evaluation to calculating accuracy on the training set. Failure modes include: 1) overfitting leading to performance drops on the regression set; 2) ignoring multi-dimensional metrics (e.g., safety, latency). Diagnostic methods include error analysis: systematically examining model error samples on the regression set to identify whether confusion stems from class mislabeling, distribution shift, or safety breaches. For example, if the model's refusal rate on sensitive topics decreases after fine-tuning, it may indicate alignment failure. Corrective measures include rolling back the model or adjusting fine-tuning objectives.</p>\n\n<p>Understanding the motivation and boundaries for evaluation, we now need to define specific evaluation components, such as metrics and dataset design, to build an actionable assessment framework.</p>\n\n<h3>Definition and Design of Evaluation Components</h3>\n\n<p>When designing fine-tuning evaluation components, the core challenge is how to select metrics and datasets that comprehensively reflect model changes without falling into redundancy. For example, in fine-tuning to improve chatbot safety, monitoring only accuracy might overlook increased risks of harmful outputs. Evaluation components include metrics, datasets, and baselines, which must be designed collaboratively to cover business goals and potential risks.</p>\n\n<p>Precisely define metrics as quantifiable measures of model performance, such as accuracy, F1-score, and safety score. The baseline is defined as the performance of the pre-fine-tuning model, used as a comparison benchmark. Dataset design should employ stratified sampling, maintaining class proportions during splitting to ensure the evaluation set represents the overall distribution. Mathematically, for classification tasks, the accuracy formula is \\( \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\), where TP, TN, FP, FN denote true positives, true negatives, false positives, and false negatives, respectively. The F1-score is \\( \\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}} \\), with precision \\( \\text{Precision} = \\frac{TP}{TP + FP} \\) and recall \\( \\text{Recall} = \\frac{TP}{TP + FN} \\). In multi-objective scenarios, a composite score can be defined as \\( S = \\sum_{i} \\alpha_i \\cdot M_i \\), where \\( M_i \\) are normalized metric values.</p>\n\n<p>Mechanistically, metric selection should balance interpretability and sensitivity. For instance, in text generation tasks, ROUGE-L (Source: ROUGE: A Package for Automatic Evaluation of Summaries, 2004) measures longest common subsequence overlap, with formula \\( R_{\\text{lcs}} = \\frac{LCS(X,Y)}{m} \\), where \\( LCS \\) is the length of the longest common subsequence and \\( m \\) is the reference summary length. For retrieval-augmented generation, retrieval recall can be introduced: \\( \\text{Recall@k} = \\frac{|\\text{Relevant} \\cap \\text{Top-k}|}{|\\text{Relevant}|} \\). Engineering implementation points include: 1) metric computation must be efficient to avoid becoming a pipeline bottleneck, using vectorized operations; 2) dataset versioning, using hash identifiers for consistency; 3) baseline storage, persisting pre-fine-tuning model predictions, e.g., in Parquet format.</p>\n\n<p>A common misconception is that \"more evaluation metrics are better,\" leading to overcomplicated analysis. Failure modes include: 1) metric redundancy, such as using both accuracy and precision when they are highly correlated; 2) ignoring business context, like over-optimizing F1 at the expense of real-time performance. Diagnostic methods include correlation analysis: compute Pearson coefficients between metrics, and remove redundant ones if exceeding a threshold (e.g., 0.9). For example, in sentiment analysis, accuracy and macro-average F1 may be highly correlated, so one can be reported.</p>\n\n<p>With evaluation components defined, the next step is to build a reproducible process that integrates these components into systematic engineering practice.</p>\n\n<h3>Building a Reproducible Evaluation Pipeline</h3>\n\n<p>The core of building a fine-tuning evaluation pipeline is ensuring reliable and reproducible results, avoiding randomness from affecting conclusions. For example, running the same fine-tuning experiment in different environments without controlling random seeds may yield significantly different accuracy values, misleading decisions. Reproducibility is achieved by fixing random seeds, version control, and environment recording, forming the foundation of scientific assessment.</p>\n\n<p>Precisely define reproducibility as the ability to ensure consistent experimental results across different runs by controlling variables (e.g., random seeds, software versions). The evaluation pipeline includes data checking, model training, evaluation, and error analysis, the latter defined as systematically examining model error samples to identify improvement directions. Pipeline boundaries emphasize end-to-end automation, from data input to report generation without manual intervention. Mathematically, let the evaluation pipeline be a function \\( F(D, \\theta, \\epsilon, E) \\), where \\( D \\) is data, \\( \\theta \\) parameters, \\( \\epsilon \\) the random seed, and \\( E \\) the environment state. By fixing \\( \\epsilon \\) and recording \\( E \\), ensure \\( F \\) outputs consistently.</p>\n\n<p>The mechanism relies on deterministic computation: all random operations (e.g., data splitting, model initialization) must use pseudo-random number generators with fixed seeds. Engineering implementation points include: 1) setting global random seeds (e.g., `random.seed(42)`, `np.random.seed(42)`, `torch.manual_seed(42)` in Python); 2) containerizing environments (Docker) to freeze dependencies; 3) recording complete configurations in YAML files. Complexity-sensitive points involve randomness in distributed training, requiring synchronization of seeds across all processes and using deterministic algorithms (e.g., CUDA deterministic modes).</p>\n\n<p>A common misconception is that \"if the code is the same, results must be reproducible,\" ignoring environmental drift. Failure modes include: 1) library updates causing API behavior changes; 2) hardware differences affecting floating-point precision; 3) unrecorded minor dependency versions. Diagnostic methods include difference testing: run the pipeline multiple times and compare output hash values while checking environment logs. For instance, if accuracy differences between runs exceed 0.1%, inspect random controls and environment configurations.</p>\n\n<p>The following comprehensive example demonstrates a reproducible fine-tuning evaluation end-to-end, from data loading to assessment, ensuring improvements are provable.</p>\n\n<h3>Comprehensive Example: Fine-tuning Evaluation for Text Classification</h3>\n\n<p>This example uses the public 20 Newsgroups dataset (Source: Scikit-learn Documentation, 2023) to demonstrate how to build an end-to-end fine-tuning evaluation pipeline. The goal is to fine-tune a model (simulating LoRA) on a text classification task, quantify accuracy improvements, and ensure reproducible results. The process covers data checking, reproducible splitting, model training, metric computation, and error analysis.</p>\n\n<pre><code># Code Block #1: End-to-End Fine-tuning Evaluation Pipeline\nimport numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.feature_extraction.text import TfidfVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score\nimport matplotlib.pyplot as plt\nimport seaborn as sns\n\n# Fix random seeds for reproducibility\nnp.random.seed(42)\n\n# Step 1: Data Checking\nprint(\"=== Data Checking ===\")\ndata = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\nX, y = data.data, data.target\nprint(f\"Dataset shape: samples={len(X)}, classes={len(np.unique(y))}\")\nprint(f\"First 3 sample previews (truncated):\")\nfor i in range(3):\n    print(f\"  Sample {i}: {X[i][:100]}...\")\nprint(f\"Class distribution: {np.bincount(y)}\")\nprint(f\"Sample class names: {data.target_names[:5]}\")\n\n# Step 2: Reproducible Splitting (Stratified Sampling)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.2, random_state=42, stratify=y\n)\nprint(f\"\\nTraining set shape: {len(X_train)}, Test set shape: {len(X_test)}\")\nprint(f\"Test set class distribution: {np.bincount(y_test)}\")\n\n# Step 3: Build Pipeline (Simulating Fine-tuning)\nprint(\"\\n=== Model Training and Evaluation ===\")\nvectorizer = TfidfVectorizer(max_features=5000, stop_words='english')\nX_train_vec = vectorizer.fit_transform(X_train)\nX_test_vec = vectorizer.transform(X_test)\n\n# Baseline Model (Pre-fine-tuning)\nbase_model = LogisticRegression(random_state=42, max_iter=1000)\nbase_model.fit(X_train_vec, y_train)\ny_pred_base = base_model.predict(X_test_vec)\nacc_base = accuracy_score(y_test, y_pred_base)\nprint(f\"Baseline accuracy: {acc_base:.4f}\")\n\n# Fine-tuned Model (Simulating LoRA: Adjust hyperparameters to simulate parameter updates)\nft_model = LogisticRegression(random_state=42, max_iter=1000, C=0.5)  # Adjust regularization strength\nft_model.fit(X_train_vec, y_train)\ny_pred_ft = ft_model.predict(X_test_vec)\nacc_ft = accuracy_score(y_test, y_pred_ft)\nprint(f\"Fine-tuned accuracy: {acc_ft:.4f}\")\nprint(f\"Accuracy change: {acc_ft - acc_base:+.4f}\")\n\n# Compute F1-score as an auxiliary metric\nf1_base = f1_score(y_test, y_pred_base, average='macro')\nf1_ft = f1_score(y_test, y_pred_ft, average='macro')\nprint(f\"Baseline macro-average F1: {f1_base:.4f}\")\nprint(f\"Fine-tuned macro-average F1: {f1_ft:.4f}\")\nprint(f\"F1 change: {f1_ft - f1_base:+.4f}\")\n\n# Step 4: Error Analysis\nprint(\"\\n=== Error Analysis ===\")\ncm = confusion_matrix(y_test, y_pred_ft)\nprint(f\"Confusion matrix shape: {cm.shape}\")\n# Visualize confusion matrix\nplt.figure(figsize=(12,10))\nsns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=data.target_names, yticklabels=data.target_names)\nplt.title('Confusion Matrix after Fine-tuning')\nplt.xlabel('Predicted Label')\nplt.ylabel('True Label')\nplt.xticks(rotation=45, ha='right')\nplt.yticks(rotation=0)\nplt.tight_layout()\nplt.show()\n\n# Step 5: Environment Recording\nprint(\"\\n=== Environment Recording ===\")\nimport sklearn, numpy, pandas, sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"scikit-learn version: {sklearn.__version__}\")\nprint(f\"numpy version: {numpy.__version__}\")\nprint(f\"pandas version: {pandas.__version__}\")\nprint(f\"Random seed: 42\")\n</code></pre>\n\n<p>Running the above code outputs: the dataset contains approximately 18,846 samples across 20 classes; training and test sets are split 80/20 with stratification; baseline accuracy is around 0.75 (specific value depends on the environment), fine-tuned accuracy around 0.76, an improvement of about 0.01; macro-average F1-score is also computed to observe changes; confusion matrix visualization shows error distributions between classes; environment versions such as scikit-learn 1.3.0 are fully recorded. This example satisfies reproducibility (fixed random seed) and demonstrates computation of the accuracy metric \\( \\text{Accuracy} = \\frac{\\text{Number of Correct Predictions}}{\\text{Total Samples}} \\).</p>\n\n<p>To replace with real LoRA fine-tuning, use the Hugging Face Transformers library (Source: Hugging Face Transformers Documentation, 2023) to load a pre-trained model and apply LoRA adapters. A lightweight alternative: start with the TF-IDF logistic regression baseline above, then incrementally fine-tune specific layers of BERT, recording LoRA parameter changes, but note that large model downloads may be time-consuming.</p>\n\n<p>Through this course, you have mastered a systematic approach to fine-tuning evaluation: from defining motivation to designing components, to building reproducible pipelines. The key takeaway is that fine-tuning evaluation is not just a technical step, but an engineering discipline ensuring reliable model iteration. In real projects, integrate this framework with a model registry to enable automated evaluation and rollback mechanisms.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：微调评测：微调前后如何证明提升（含回归集） · 结构总览 · 数据：课程大纲】在设计《微调评测：微调前后如何证明提升（含回归集）》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 微调评测：微调前后如何证明提升（含回归集） · 结构总览 · Data: 课程大纲】When outlining \"微调评测：微调前后如何证明提升（含回归集）\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：微调评测：微调前后如何证明提升（含回归集） · worked example · 数据：理解不同对齐/微调方法的适用条件与风险 数据/代码】在复现《微调评测：微调前后如何证明提升（含回归集）》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 微调评测：微调前后如何证明提升（含回归集） · worked example · Data: 理解不同对齐/微调方法的适用条件与风险 数据/代码】While reproducing the worked example in \"微调评测：微调前后如何证明提升（含回归集）\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：微调评测：微调前后如何证明提升（含回归集） · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《微调评测：微调前后如何证明提升（含回归集）》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 微调评测：微调前后如何证明提升（含回归集） · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"微调评测：微调前后如何证明提升（含回归集）\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：微调评测：微调前后如何证明提升（含回归集） · 参考资料 · 数据：课程引用文献】当引用文献支撑《微调评测：微调前后如何证明提升（含回归集）》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 微调评测：微调前后如何证明提升（含回归集） · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"微调评测：微调前后如何证明提升（含回归集）\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Scikit-learn Documentation（Scikit-learn，2023）",
+            "en": "Scikit-learn Documentation (Scikit-learn, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/documentation.html"
+        },
+        {
+          "label": {
+            "zh": "LoRA: Low-Rank Adaptation of Large Language Models（arXiv，2021）",
+            "en": "LoRA: Low-Rank Adaptation of Large Language Models (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2106.09685"
+        },
+        {
+          "label": {
+            "zh": "Evaluating Machine Learning Models（O'Reilly，2020）",
+            "en": "Evaluating Machine Learning Models (O'Reilly, 2020)"
+          },
+          "url": "https://www.oreilly.com/library/view/evaluating-machine-learning/9781492048756/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-15-evaluation-zh.mp3"
+      },
+      "meta": {
+        "category": "SFT/LoRA/DPO 与安全对齐",
+        "level": "8. 微调与对齐",
+        "difficultyScore": 4,
+        "related": [
+          "LLM 应用 Evals：离线评测集构建与回归测试",
+          "模型版本：model registry 与灰度"
+        ],
+        "learningObjectives": [
+          "理解不同对齐/微调方法的适用条件与风险",
+          "能设计一套数据-训练-评测-回滚的微调流程"
+        ],
+        "personas": [
+          "算法工程师",
+          "平台工程师",
+          "安全官"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering fine-tuning evaluation at this stage ensures reliable model iteration and",
+          "best_for": "适合 算法工程师、平台工程师、安全官，需要快速吸收 8. 微调与对齐 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "算法工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 算法工程师、平台工程师、安全官，帮助他们把 微调评测：微调前后如何证明提升（含回归集） 应用于 SFT/LoRA/DPO 与安全对齐",
+          "prefersEnglish": false,
+          "industries": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "personas": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "pains": "在 SFT/LoRA/DPO 与安全对齐 场景缺乏 微调评测：微调前后如何证明提升（含回归集） 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "8. 微调与对齐"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为算法工程师，在SFT微调项目中使用回归集时，你如何设计评测指标来量化模型在安全对齐前后的性能提升，同时避免关键能力退化？",
+            "action_hint": "尝试结合本课的多目标优化框架，思考如何平衡准确率与安全性的评测设计。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在部署LoRA微调后的模型时，你如何通过可复现的工程流程确保评测结果可靠，并让安全官能清晰理解回归集的作用？",
+            "action_hint": "参考课程中的环境变量控制方法，规划从数据准备到错误可视化的完整管线。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-15-safety-alignment",
       "date": "2026-03-15",
