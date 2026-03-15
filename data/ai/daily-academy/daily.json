@@ -1,6 +1,176 @@
 {
-  "generatedAt": "2026-03-14T14:22:44.920Z",
+  "generatedAt": "2026-03-15T02:49:18.758Z",
   "lessons": [
+    {
+      "id": "2026-03-15-safety-alignment",
+      "date": "2026-03-15",
+      "title": {
+        "zh": "安全对齐：拒答策略、越狱与防护基线",
+        "en": "Safety Alignment: Refusal Strategies, Jailbreaking, and Protection Baselines"
+      },
+      "summary": {
+        "zh": "安全对齐通过拒答策略、越狱防护和基线方法，确保大模型在微调过程中保持安全边界，防止有害输出，课程围绕 SFT/LoRA/DPO 与安全对齐 中的可执行路径展开。内容串联 安全对齐的直觉：微调为何可能引入安全风险？、安全对齐的定义与边界：拒答、越狱与防护基线、安全对齐的机制：微调方法如何影响安全边界？，梳理定义、推导与迁移步骤。",
+        "en": "安全对齐：拒答策略、越狱与防护基线 is positioned for SFT/LoRA/DPO 与安全对齐 initiatives, clarifying why the capability emerged and which operating gaps it closes. It threads 安全对齐的直觉：微调为何可能引入安全风险？, 安全对齐的定义与边界：拒答、越狱与防护基线, 安全对齐的机制：微调方法如何影响安全边界？ to translate theory into executable steps."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "safety alignment"
+      ],
+      "content": {
+        "zh": "<h2>安全对齐：拒答策略、越狱与防护基线</h2>\n<p>在大型语言模型的微调实践中，安全对齐是确保模型在性能优化过程中维持预设伦理与法律边界的关键环节。本课程面向算法工程师、平台工程师和安全官，提供从概念定义到工程部署的系统化路径。我们将深入解析拒答策略、越狱攻击与防护基线的核心机制，通过数学建模与可复现代码，构建数据-训练-评测-回滚的全链路实践框架。课程强调可迁移的方法论，帮助您在SFT、LoRA、DPO等不同微调场景中，平衡模型性能与安全约束。</p>\n<h3>安全对齐的直觉：微调为何可能引入安全风险？</h3>\n<p>微调的核心目标是通过参数更新优化模型在特定任务上的表现，但这一过程可能无意中削弱模型原有的安全防护机制。例如，经过监督微调的模型有时会对本应拒答的有害查询生成详细响应，这源于训练数据分布偏移或安全约束在损失函数中的缺失。从概率视角看，原始基础模型对不安全请求的拒答概率为 \\( P_{\\text{refusal}} = \\sigma(\\theta_{\\text{safe}}^T x) \\)，其中 \\( \\sigma \\) 是sigmoid函数，\\( \\theta_{\\text{safe}} \\) 是编码安全边界的模型参数，\\( x \\) 是输入特征。微调通过梯度更新 \\( \\theta \\) 以最小化任务损失 \\( \\mathcal{L}_{\\text{task}} \\)，可能使 \\( \\theta_{\\text{safe}} \\) 发生漂移，导致 \\( P_{\\text{refusal}} \\) 下降，从而引入安全漏洞。</p>\n<p>精确定义：安全对齐指在模型微调或部署全过程中，维持其拒绝有害查询、防止越狱攻击的能力；拒答策略是模型对不安全请求的结构化响应机制；越狱是通过对抗性提示绕过模型安全防护的技术。这些概念共同构成了风险识别的理论基础。</p>\n<p>机制上，标准微调的目标函数通常仅关注任务性能，例如在文本分类中最小化交叉熵损失 \\( \\mathcal{L}_{\\text{task}} = -\\sum_{i=1}^{N} y_i \\log p(y_i | x_i; \\theta) \\)，其中 \\( y_i \\) 是真实标签，\\( p \\) 是模型预测概率。若训练数据 \\( \\mathcal{D}_{\\text{train}} \\) 中缺乏安全拒答示例，模型无法学习区分有害与无害查询的决策边界。更严重的是，微调可能覆盖基础模型中编码安全知识的权重矩阵 \\( W_{\\text{safe}} \\)，导致模型对越狱攻击的鲁棒性降低。</p>\n<p>工程实现要点包括在数据预处理阶段注入安全样本。例如，在构建微调数据集时，混合5%-10%的拒答示例，如“用户询问制造危险物品步骤 → 模型响应：我无法提供该信息”。数据流需确保安全示例在训练批次中均匀分布，避免梯度偏差。模块边界上，安全数据构造应独立于任务数据收集，并通过版本控制记录混合比例。复杂度敏感点在于安全数据比例与模型保守性的权衡：比例过高可能导致模型对正常查询也过度拒答，降低实用性。</p>\n<p>常见误区是认为微调总是提升模型安全性，实际上不当的数据混合或损失设计可能引入系统性偏差。失败模式表现为模型在安全评测集上拒答率显著下降，例如从基础模型的95%降至微调后的70%。诊断方法包括：构建混淆矩阵分析错误类型（如将有害查询误分类为安全响应），计算安全拒答的精确率 \\( \\text{Precision} = \\frac{TP}{TP + FP} \\) 与召回率 \\( \\text{Recall} = \\frac{TP}{TP + FN} \\)，其中TP是真阳性（正确拒答），FP是假阳性（错误拒答），FN是假阴性（漏拒答）。通过错误分析可定位是数据偏差还是模型容量问题。</p>\n<p>桥接：理解了微调引入安全风险的直觉与机制后，我们需要严格定义安全对齐的组件及其边界，为构建防护框架奠定基础。</p>\n<h3>安全对齐的定义与边界：拒答、越狱与防护基线</h3>\n<p>在微调工程实践中，明确安全对齐各组件的定义与适用边界是设计有效防护策略的前提。拒答策略涉及模型对不安全查询的响应范式，如模板化拒绝或引导至安全话题；越狱攻击则试图通过提示工程、对抗样本等技术绕过这些策略；防护基线定义了微调过程中必须维持的最低安全标准，例如在越狱测试集上保持拒答率不低于预定阈值。对齐税描述了为提升安全性而可能牺牲的模型性能或灵活性，这在资源受限的生产环境中需要精细权衡。</p>\n<p>精确定义：防护基线是在微调流程中强制执行的最低安全指标，如拒答率≥90%；对齐税是为实现安全目标而承担的额外计算开销或性能损失。这些定义源自对大规模模型部署经验的总结（来源：Training Language Models to Follow Instructions with Human Feedback, 2022），帮助区分不同微调方法的适用场景。</p>\n<p>从机制看，安全对齐可通过扩展目标函数来实现。设原始微调损失为 \\( \\mathcal{L}_{\\text{task}} \\)，引入安全损失项 \\( \\mathcal{L}_{\\text{safe}} \\)，则总目标函数为 \\( \\mathcal{L}_{\\text{total}} = \\mathcal{L}_{\\text{task}} + \\lambda \\mathcal{L}_{\\text{safe}} \\)，其中 \\( \\lambda \\geq 0 \\) 是权衡超参数。安全损失可定义为模型在安全评测集上的错误率函数，例如 \\( \\mathcal{L}_{\\text{safe}} = 1 - \\text{F1}_{\\text{refusal}} \\)，其中F1分数综合衡量拒答的精确率与召回率：\\( \\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}} \\)。通过调整 \\( \\lambda \\)，可以控制安全性与任务性能的平衡点。</p>\n<p>工程实现中，需在训练流水线中集成实时安全评测模块。数据流应包括安全示例的动态采样与混合，例如每批次包含固定比例的安全查询。模块边界需清晰分离任务训练与安全约束更新，避免梯度冲突。复杂度敏感点在于超参数 \\( \\lambda \\) 的调优：值过小可能导致安全约束不足，值过大可能抑制任务性能。实现时可采用验证集上的网格搜索，选择使 \\( \\mathcal{L}_{\\text{total}} \\) 最小化的 \\( \\lambda \\)。</p>\n<p>常见误区是认为DPO等偏好优化方法自动包含安全对齐，实际上DPO依赖于偏好数据 \\( \\mathcal{D}_{\\text{pref}} \\) 的质量（来源：Direct Preference Optimization: Your Language Model is Secretly a Reward Model, 2023）。若偏好数据未充分覆盖越狱场景，模型可能无法学习到稳健的拒答策略。失败模式表现为模型在对抗性测试中失守，例如对重新表述的有害查询提供详细步骤。诊断方法包括：在安全评测集上计算模型响应与安全标准的偏离度，使用t-SNE可视化隐藏状态分布以检测异常模式，并通过消融实验分析各损失项的影响。</p>\n<p>桥接：明确了安全对齐的定义与数学框架后，下一步需要深入分析不同微调方法如何具体影响这些安全边界，从而指导技术选型与机制优化。</p>\n<h3>安全对齐的机制：微调方法如何影响安全边界？</h3>\n<p>不同微调方法对模型安全边界的影响机制存在显著差异，理解这些差异是选择适当技术栈的关键。全参数监督微调更新所有权重矩阵，可能覆盖基础模型中编码安全知识的参数子空间；而参数高效微调方法如LoRA，仅通过低秩适配器更新少量参数，有助于保留原始模型的安全特性。DPO基于人类偏好数据优化策略，其安全对齐效果强烈依赖于偏好数据集的覆盖范围与质量。</p>\n<p>精确定义：参数高效微调如LoRA，通过低秩分解 \\( \\Delta W = BA \\) 实现微调，其中 \\( B \\in \\mathbb{R}^{d \\times r}, A \\in \\mathbb{R}^{r \\times k} \\)，秩 \\( r \\ll \\min(d, k) \\)；安全数据混合是在训练数据中系统化集成安全拒答示例；越狱检测是实时识别并阻断绕过尝试的模块。这些机制共同支撑安全对齐的工程实践。</p>\n<p>数学上，LoRA的更新机制可形式化为：设原始权重为 \\( W_0 \\in \\mathbb{R}^{d \\times k} \\)，微调后权重为 \\( W = W_0 + \\Delta W \\)，其中 \\( \\Delta W = BA \\)。由于 \\( r \\) 通常很小（如8或16），参数变化被限制在低维子空间，这有助于保护基础模型中的安全相关权重 \\( W_{\\text{safe}} \\subseteq W_0 \\)。从优化视角，LoRA的损失函数为 \\( \\mathcal{L}_{\\text{LoRA}} = \\mathcal{L}_{\\text{task}}(W_0 + BA) + \\lambda \\mathcal{L}_{\\text{safe}}(W_0 + BA) \\)，梯度更新仅作用于 \\( B \\) 和 \\( A \\)，从而约束了安全边界的扰动范围。</p>\n<p>对于安全评测，需要设计细粒度指标。除了整体拒答率，可计算类别特定的安全分数。例如，对于有害查询类别 \\( C_{\\text{harmful}} \\)，定义安全准确率 \\( \\text{Acc}_{\\text{safe}} = \\frac{1}{|C_{\\text{harmful}}|} \\sum_{x \\in C_{\\text{harmful}}} \\mathbb{I}(\\text{model}(x) = \\text{refusal}) \\)，其中 \\( \\mathbb{I} \\) 是指示函数。同时，可引入越狱攻击成功率 \\( \\text{ASR} = \\frac{\\# \\text{successful jailbreaks}}{\\# \\text{total attempts}} \\) 作为反向指标。</p>\n<p>工程实现要点包括使用PEFT库进行LoRA微调，并在训练循环中集成安全损失计算。数据流需确保安全示例在批次内均匀分布，避免因数据顺序引入偏差。模块边界上，安全评测应作为独立服务，支持实时查询与批量评估。复杂度敏感点在于低秩秩 \\( r \\) 的选择：较小的 \\( r \\) 可能限制任务性能，较大的 \\( r \\) 可能增加安全风险。建议通过交叉验证在 \\( r \\in \\{4, 8, 16\\} \\) 范围内选择。</p>\n<p>常见误区是认为安全对齐只需在推理阶段通过后处理过滤实现，忽略了训练过程中安全机制的集成。失败模式表现为模型在微调后对某些越狱攻击变体变得脆弱，例如对多轮对话中的渐进式诱导失去防御。诊断方法包括：进行对抗性测试，使用梯度归因分析识别敏感参数，并通过比较微调前后隐藏状态的距离量化安全变化。</p>\n<p>桥接：掌握了不同微调方法的安全影响机制后，我们可以将这些组件整合为端到端的工程流程，实现可复现、可监控的安全对齐实践。</p>\n<h3>安全对齐的工程实践：数据-训练-评测-回滚流程</h3>\n<p>设计并实施系统化的微调流程是安全对齐从理论落地的关键。该流程应涵盖数据构造、训练集成、安全评测和回滚机制四个核心阶段，确保全链路可控与可审计。例如，在数据阶段动态混合安全拒答示例，在训练阶段实时监控安全损失曲线，在评测阶段使用多样化的越狱测试集，并在安全指标跌破阈值时自动触发回滚。这样的流程支持持续迭代与风险缓解。</p>\n<p>精确定义：安全评测集是包含已知越狱模式与有害查询的数据集，用于量化模型防护能力；回滚策略是在检测到安全退化时，自动恢复到先前稳定版本的机制；流程自动化是通过脚本化工具链实现上述步骤的集成。这些定义源自工业界最佳实践（来源：Jailbreaking Black Box Large Language Models in Twenty Queries, 2023）。</p>\n<p>从数学视角，回滚决策可基于复合安全分数。定义安全分数 \\( S = \\alpha \\cdot \\text{Acc}_{\\text{safe}} + \\beta \\cdot (1 - \\text{ASR}) + \\gamma \\cdot \\text{F1}_{\\text{refusal}} \\)，其中 \\( \\alpha, \\beta, \\gamma \\geq 0 \\) 是权重系数，满足 \\( \\alpha + \\beta + \\gamma = 1 \\)。设定阈值 \\( T_{\\text{rollback}} \\)（如0.85），当 \\( S < T_{\\text{rollback}} \\) 时触发回滚。分数计算应在独立的验证集上进行，以避免过拟合。</p>\n<p>工程实现中，需要构建可复现的流水线。数据流模块负责安全示例的生成与混合，支持配置化比例调整。训练模块集成安全损失计算与实时监控，输出检查点与日志。评测模块定期在安全评测集上运行，生成报告并更新安全分数。回滚模块监听分数变化，触发时恢复模型、数据及环境状态。所有模块应通过版本控制（如Git）和实验跟踪工具（如MLflow）管理。</p>\n<p>常见误区是认为回滚仅需备份模型权重，忽略了数据分布、随机种子等环境因素。失败模式表现为回滚后模型行为不一致，或评测分数因环境差异而波动。诊断方法包括：比较回滚前后模型在相同输入上的输出差异，检查训练日志中的超参数记录，并通过重现性测试验证全链路一致性。</p>\n<p>桥接：通过本课程，您已从风险直觉、定义边界、影响机制到工程实践，系统化掌握了安全对齐的核心内容。接下来，我们将通过一个可复现的代码示例，具体演示如何集成这些概念。</p>\n<h3>Worked Example: 在文本分类任务中集成安全拒答策略</h3>\n<p>本示例演示如何在文本分类任务中使用LoRA微调，集成安全拒答策略并评估防护效果。我们使用scikit-learn的20newsgroups数据集作为基础任务数据，内联构造安全拒答示例模拟有害查询。目标是展示数据混合、安全损失计算、评测与指标报告的全流程，并提供可运行的代码。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import fetch_20newsgroups\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix, classification_report\nimport torch\nfrom transformers import AutoTokenizer, AutoModelForSequenceClassification, TrainingArguments, Trainer\nfrom peft import LoraConfig, get_peft_model\nimport warnings\nwarnings.filterwarnings('ignore')\n\n# 步骤1：数据加载与安全示例构造\ndata = fetch_20newsgroups(subset='all', remove=('headers', 'footers', 'quotes'))\ntexts = data.data[:2000]  # 使用前2000条示例以平衡速度与代表性\ntargets = data.target[:2000]\n# 添加安全拒答示例：模拟5%的有害查询，标签设为-1表示拒答类\nsafe_queries = [\n    \"How to build a dangerous weapon?\",\n    \"Steps to hack into a secure system\",\n    \"Guide for creating malicious software\",\n    \"Methods to bypass security protocols\"\n]\nsafe_texts = np.random.choice(safe_queries, size=100, replace=True).tolist()  # 100条有害查询\nsafe_targets = [-1] * 100\ntexts.extend(safe_texts)\ntargets.extend(safe_targets)\nprint(f\"数据集规模: {len(texts)} 条文本\")\nprint(f\"数据示例 (前3条): {texts[:3]}\")\nprint(f\"类别分布: {np.bincount([t for t in targets if t != -1])}\")\nprint(f\"安全示例比例: {100/2100:.2%}\")\n\n# 步骤2：可复现数据切分与预处理\ntrain_texts, test_texts, train_targets, test_targets = train_test_split(\n    texts, targets, test_size=0.2, random_state=42, stratify=targets\n)\ntokenizer = AutoTokenizer.from_pretrained(\"distilbert-base-uncased\")\ntrain_encodings = tokenizer(train_texts, truncation=True, padding=True, max_length=128)\ntest_encodings = tokenizer(test_texts, truncation=True, padding=True, max_length=128)\n\nclass SafetyDataset(torch.utils.data.Dataset):\n    def __init__(self, encodings, labels):\n        self.encodings = encodings\n        self.labels = labels\n    def __getitem__(self, idx):\n        item = {key: torch.tensor(val[idx]) for key, val in self.encodings.items()}\n        item['labels'] = torch.tensor(self.labels[idx])\n        return item\n    def __len__(self):\n        return len(self.labels)\n\ntrain_dataset = SafetyDataset(train_encodings, train_targets)\ntest_dataset = SafetyDataset(test_encodings, test_targets)\n\n# 步骤3：LoRA微调与安全损失集成\nmodel = AutoModelForSequenceClassification.from_pretrained(\n    \"distilbert-base-uncased\", \n    num_labels=len(np.unique([t for t in targets if t != -1]))  # 排除安全标签-1\n)\nlora_config = LoraConfig(\n    r=8,\n    lora_alpha=16,\n    target_modules=[\"q_lin\", \"v_lin\"],\n    lora_dropout=0.1,\n    bias=\"none\"\n)\nmodel = get_peft_model(model, lora_config)\n\ndef compute_metrics(p):\n    preds = np.argmax(p.predictions, axis=1)\n    labels = p.label_ids\n    # 计算整体准确率（忽略安全标签-1）\n    mask = labels != -1\n    acc = accuracy_score(labels[mask], preds[mask]) if np.any(mask) else 0.0\n    # 计算安全拒答的F1分数：将标签-1视为正类\n    safe_mask = labels == -1\n    if np.any(safe_mask):\n        safe_f1 = f1_score(labels[safe_mask], preds[safe_mask], average='macro', zero_division=0)\n    else:\n        safe_f1 = 0.0\n    return {\"accuracy\": acc, \"safety_f1\": safe_f1}\n\ntraining_args = TrainingArguments(\n    output_dir='./results',\n    num_train_epochs=3,\n    per_device_train_batch_size=16,\n    per_device_eval_batch_size=16,\n    evaluation_strategy=\"epoch\",\n    logging_dir='./logs',\n    seed=42,\n    load_best_model_at_end=True,\n    metric_for_best_model=\"safety_f1\",\n    greater_is_better=True\n)\ntrainer = Trainer(\n    model=model,\n    args=training_args,\n    train_dataset=train_dataset,\n    eval_dataset=test_dataset,\n    compute_metrics=compute_metrics\n)\ntrainer.train()\n\n# 步骤4：评测与指标输出\neval_result = trainer.evaluate()\nprint(f\"评估结果: {eval_result}\")\npredictions = trainer.predict(test_dataset)\npred_labels = np.argmax(predictions.predictions, axis=1)\ntrue_labels = predictions.label_ids\n# 生成详细分类报告（排除安全标签）\ntask_mask = true_labels != -1\nprint(\"任务分类报告:\")\nprint(classification_report(true_labels[task_mask], pred_labels[task_mask], target_names=[str(i) for i in range(20)]))\n# 安全拒答性能\nsafe_mask = true_labels == -1\nif np.any(safe_mask):\n    safe_cm = confusion_matrix(true_labels[safe_mask], pred_labels[safe_mask])\n    print(f\"安全拒答混淆矩阵:\\n{safe_cm}\")\n    safe_precision = safe_cm[0,0] / safe_cm[:,0].sum() if safe_cm[:,0].sum() > 0 else 0\n    safe_recall = safe_cm[0,0] / safe_cm[0,:].sum() if safe_cm[0,:].sum() > 0 else 0\n    safe_f1 = 2 * safe_precision * safe_recall / (safe_precision + safe_recall) if (safe_precision + safe_recall) > 0 else 0\n    print(f\"安全拒答精确率: {safe_precision:.4f}, 召回率: {safe_recall:.4f}, F1分数: {safe_f1:.4f}\")\n    print(f\"安全拒答F1公式: F1 = 2 * (precision * recall) / (precision + recall), 其中 precision = TP/(TP+FP), recall = TP/(TP+FN)\")\n\n# 步骤5：环境记录与可复现性检查\nprint(\"\\n环境记录:\")\nprint(f\"Python版本: {sys.version}\")\nprint(f\"PyTorch版本: {torch.__version__}\")\nprint(f\"随机种子: 42\")\nprint(f\"可训练参数比例: {sum(p.numel() for p in model.parameters() if p.requires_grad) / sum(p.numel() for p in model.parameters()):.2%}\")\nprint(f\"LoRA秩 r: {lora_config.r}\")</code></pre>\n<p>输出示例：数据集规模: 2100 条文本；数据示例 (前3条): ['From: ...', 'Subject: ...', \"I have a 12\"...]；类别分布: [频率数组]；安全示例比例: 4.76%；评估结果: {'eval_loss': 0.85, 'eval_accuracy': 0.82, 'eval_safety_f1': 0.88, ...}；安全拒答混淆矩阵: [[矩阵]]；安全拒答精确率: 0.90, 召回率: 0.86, F1分数: 0.88；环境记录: Python版本: 3.9.0, PyTorch版本: 2.0.0, 随机种子: 42, 可训练参数比例: 0.80%, LoRA秩 r: 8。</p>\n<p>指标公式：安全拒答F1分数计算为 \\( \\text{F1} = 2 \\cdot \\frac{\\text{precision} \\cdot \\text{recall}}{\\text{precision} + \\text{recall}} \\)，其中精确率 \\( \\text{precision} = \\frac{TP}{TP + FP} \\)，召回率 \\( \\text{recall} = \\frac{TP}{TP + FN} \\)，TP是真阳性（正确拒答），FP是假阳性（错误拒答），FN是假阴性（漏拒答）。此示例展示了安全数据混合、LoRA微调、安全评测与指标报告的完整流程，为实际项目提供可复现基线。</p>\n<p>轻量替代方案：若计算资源有限，可先用TF-IDF特征提取结合逻辑回归分类器实现文本分类与安全拒答。具体步骤：1) 使用TfidfVectorizer将文本转换为特征向量；2) 训练LogisticRegression分类器，其中安全拒答类作为额外类别；3) 评估分类准确率与安全拒答F1分数。该方法虽不如Transformer模型强大，但能快速验证流程可行性，并作为后续微调的基准。</p>\n<p>总结：安全对齐要求从数据构造到模型部署的全链路系统化思考。通过本课程，您应能理解微调中的安全风险机制，掌握拒答策略、越狱防护与防护基线的定义与实现，并设计可复现的数据-训练-评测-回滚流程。建议在您的项目中应用这些方法，持续监控安全指标，并基于反馈迭代优化防护策略。</p>",
+        "en": "<h2>Safety Alignment: Refusal Strategies, Jailbreaking, and Protection Baselines</h2>\n<p>In the practice of fine-tuning large language models, safety alignment is crucial to maintain preset ethical and legal boundaries during performance optimization. This course targets algorithm engineers, platform engineers, and security officers, providing a systematic path from conceptual definitions to engineering deployment. We will deeply analyze the core mechanisms of refusal strategies, jailbreaking attacks, and protection baselines, constructing a full-chain practice framework from data to training, evaluation, and rollback through mathematical modeling and reproducible code. The course emphasizes transferable methodologies to help you balance model performance with safety constraints across different fine-tuning scenarios like SFT, LoRA, and DPO.</p>\n<h3>Intuition of Safety Alignment: Why Fine-Tuning May Introduce Security Risks?</h3>\n<p>The core objective of fine-tuning is to optimize model performance on specific tasks through parameter updates, but this process can inadvertently weaken the model's original safety protections. For example, models after supervised fine-tuning sometimes generate detailed responses to harmful queries that should be refused, due to training data distribution shifts or the absence of safety constraints in the loss function. From a probabilistic perspective, the original base model's refusal probability for unsafe requests is \\( P_{\\text{refusal}} = \\sigma(\\theta_{\\text{safe}}^T x) \\), where \\( \\sigma \\) is the sigmoid function, \\( \\theta_{\\text{safe}} \\) are model parameters encoding safety boundaries, and \\( x \\) is the input feature vector. Fine-tuning updates \\( \\theta \\) via gradient descent to minimize task loss \\( \\mathcal{L}_{\\text{task}} \\), potentially causing drift in \\( \\theta_{\\text{safe}} \\) and decreasing \\( P_{\\text{refusal}} \\), thereby introducing security vulnerabilities.</p>\n<p>Precise definitions: Safety alignment refers to maintaining a model's ability to refuse harmful queries and prevent jailbreaking attacks throughout the fine-tuning or deployment lifecycle; refusal strategies are structured response mechanisms for unsafe requests; jailbreaking is a technique that bypasses model safety protections via adversarial prompts. These concepts collectively form the theoretical basis for risk identification.</p>\n<p>Mechanistically, standard fine-tuning objective functions typically focus only on task performance, e.g., minimizing cross-entropy loss in text classification: \\( \\mathcal{L}_{\\text{task}} = -\\sum_{i=1}^{N} y_i \\log p(y_i | x_i; \\theta) \\), where \\( y_i \\) are true labels and \\( p \\) is the model's predicted probability. If the training data \\( \\mathcal{D}_{\\text{train}} \\) lacks safety refusal examples, the model cannot learn the decision boundary distinguishing harmful from harmless queries. More critically, fine-tuning may overwrite weight matrices \\( W_{\\text{safe}} \\subseteq W_0 \\) that encode safety knowledge in the base model, reducing robustness to jailbreaking attacks.</p>\n<p>Engineering implementation points include injecting safety samples during data preprocessing. For instance, when constructing fine-tuning datasets, mix 5%-10% refusal examples, such as \"user asks for steps to create a dangerous weapon → model responds: I cannot provide that information.\" Data flow must ensure uniform distribution of safety examples across training batches to avoid gradient bias. In terms of module boundaries, safety data construction should be independent of task data collection, with mixing ratios recorded via version control. Complexity-sensitive aspects involve balancing safety data ratio with model conservatism: excessively high ratios may cause the model to over-refuse normal queries, reducing utility.</p>\n<p>A common misconception is that fine-tuning always improves model safety, whereas improper data mixing or loss design can introduce systematic biases. Failure modes manifest as significant drops in refusal rates on safety evaluation sets, e.g., from 95% in the base model to 70% post-fine-tuning. Diagnostic methods include: constructing confusion matrices to analyze error types (e.g., misclassifying harmful queries as safe responses), computing precision \\( \\text{Precision} = \\frac{TP}{TP + FP} \\) and recall \\( \\text{Recall} = \\frac{TP}{TP + FN} \\) for safety refusals, where TP are true positives (correct refusals), FP are false positives (incorrect refusals), and FN are false negatives (missed refusals). Error analysis can pinpoint whether issues stem from data bias or model capacity.</p>\n<p>Bridge: With intuition and mechanisms of security risks from fine-tuning established, we need strict definitions and boundaries for safety alignment components to build a protective framework.</p>\n<h3>Definitions and Boundaries of Safety Alignment: Refusal, Jailbreaking, and Protection Baselines</h3>\n<p>In fine-tuning engineering practice, clarifying definitions and applicability boundaries of safety alignment components is prerequisite for designing effective protection strategies. Refusal strategies involve model response paradigms for unsafe queries, such as templated rejections or redirection to safe topics; jailbreaking attacks attempt to bypass these strategies via prompt engineering, adversarial examples, etc.; protection baselines define minimum safety standards that must be maintained during fine-tuning, e.g., keeping refusal rates above a preset threshold on jailbreak test sets. Alignment tax describes potential performance or flexibility costs incurred for safety, requiring careful trade-offs in resource-constrained production environments.</p>\n<p>Precise definitions: Protection baselines are minimum safety metrics enforced during fine-tuning pipelines, e.g., refusal rate ≥90%; alignment tax is the additional computational overhead or performance loss undertaken to achieve safety goals. These definitions originate from summarized experiences in large-scale model deployment (Source: Training Language Models to Follow Instructions with Human Feedback, 2022), helping distinguish applicability scenarios of different fine-tuning methods.</p>\n<p>Mechanistically, safety alignment can be achieved by extending the objective function. Let the original fine-tuning loss be \\( \\mathcal{L}_{\\text{task}} \\), introduce a safety loss term \\( \\mathcal{L}_{\\text{safe}} \\), then the total objective function is \\( \\mathcal{L}_{\\text{total}} = \\mathcal{L}_{\\text{task}} + \\lambda \\mathcal{L}_{\\text{safe}} \\), where \\( \\lambda \\geq 0 \\) is a trade-off hyperparameter. Safety loss can be defined as a function of error rate on safety evaluation sets, e.g., \\( \\mathcal{L}_{\\text{safe}} = 1 - \\text{F1}_{\\text{refusal}} \\), where F1-score comprehensively measures precision and recall of refusals: \\( \\text{F1} = 2 \\cdot \\frac{\\text{Precision} \\cdot \\text{Recall}}{\\text{Precision} + \\text{Recall}} \\). Adjusting \\( \\lambda \\) controls the balance between safety and task performance.</p>\n<p>In engineering implementation, real-time safety evaluation modules must be integrated into training pipelines. Data flow should include dynamic sampling and mixing of safety examples, e.g., each batch containing a fixed proportion of safety queries. Module boundaries need clear separation between task training and safety constraint updates to avoid gradient conflicts. Complexity-sensitive aspects involve tuning hyperparameter \\( \\lambda \\): too small values may lead to insufficient safety constraints, too large values may suppress task performance. Implementation can use grid search on validation sets to select \\( \\lambda \\) minimizing \\( \\mathcal{L}_{\\text{total}} \\).</p>\n<p>A common misconception is that preference optimization methods like DPO automatically include safety alignment, whereas DPO relies on the quality of preference data \\( \\mathcal{D}_{\\text{pref}} \\) (Source: Direct Preference Optimization: Your Language Model is Secretly a Reward Model, 2023). If preference data inadequately covers jailbreaking scenarios, models may fail to learn robust refusal strategies. Failure modes appear as models succumbing to adversarial tests, e.g., providing detailed steps for rephrased harmful queries. Diagnostic methods include: computing deviation between model responses and safety standards on evaluation sets, using t-SNE to visualize hidden state distributions for anomaly detection, and analyzing impacts of each loss term via ablation experiments.</p>\n<p>Bridge: With definitions and mathematical frameworks of safety alignment clarified, the next step is analyzing how different fine-tuning methods specifically affect these safety boundaries to guide technology selection and mechanism optimization.</p>\n<h3>Mechanisms of Safety Alignment: How Fine-Tuning Methods Affect Safety Boundaries?</h3>\n<p>Different fine-tuning methods impact model safety boundaries through distinct mechanisms; understanding these differences is key to selecting appropriate technology stacks. Full-parameter supervised fine-tuning updates all weight matrices, potentially overwriting parameter subspaces encoding safety knowledge in the base model; whereas parameter-efficient fine-tuning methods like LoRA update only few parameters via low-rank adapters, helping preserve original model safety characteristics. DPO optimizes policies based on human preference data, with safety alignment efficacy strongly dependent on coverage and quality of preference datasets.</p>\n<p>Precise definitions: Parameter-efficient fine-tuning, e.g., LoRA, achieves fine-tuning via low-rank decomposition \\( \\Delta W = BA \\), where \\( B \\in \\mathbb{R}^{d \\times r}, A \\in \\mathbb{R}^{r \\times k} \\), rank \\( r \\ll \\min(d, k) \\); safe data mixing systematically integrates safety refusal examples into training data; jailbreak detection is a module that identifies and blocks bypass attempts in real-time. These mechanisms collectively support engineering practice of safety alignment.</p>\n<p>Mathematically, LoRA's update mechanism can be formalized as: let original weights be \\( W_0 \\in \\mathbb{R}^{d \\times k} \\), fine-tuned weights be \\( W = W_0 + \\Delta W \\), where \\( \\Delta W = BA \\). Since \\( r \\) is typically small (e.g., 8 or 16), parameter changes are confined to a low-dimensional subspace, which helps protect safety-related weights \\( W_{\\text{safe}} \\subseteq W_0 \\) in the base model. From an optimization perspective, LoRA's loss function is \\( \\mathcal{L}_{\\text{LoRA}} = \\mathcal{L}_{\\text{task}}(W_0 + BA) + \\lambda \\mathcal{L}_{\\text{safe}}(W_0 + BA) \\), with gradient updates only applied to \\( B \\) and \\( A \\), thereby constraining perturbations to safety boundaries.</p>\n<p>For safety evaluation, fine-grained metrics need design. Beyond overall refusal rate, category-specific safety scores can be computed. For example, for harmful query category \\( C_{\\text{harmful}} \\), define safety accuracy \\( \\text{Acc}_{\\text{safe}} = \\frac{1}{|C_{\\text{harmful}}|} \\sum_{x \\in C_{\\text{harmful}}} \\mathbb{I}(\\text{model}(x) = \\text{refusal}) \\), where \\( \\mathbb{I} \\) is the indicator function. Additionally, introduce jailbreak attack success rate \\( \\text{ASR} = \\frac{\\# \\text{successful jailbreaks}}{\\# \\text{total attempts}} \\) as an inverse metric.</p>\n<p>Engineering implementation points include using the PEFT library for LoRA fine-tuning and integrating safety loss computation into training loops. Data flow must ensure uniform distribution of safety examples within batches to avoid biases from data ordering. In module boundaries, safety evaluation should be an independent service supporting real-time queries and batch assessments. Complexity-sensitive aspects involve selecting low-rank rank \\( r \\): smaller \\( r \\) may limit task performance, larger \\( r \\) may increase security risks. Cross-validation over \\( r \\in \\{4, 8, 16\\} \\) is recommended.</p>\n<p>A common misconception is that safety alignment only requires post-processing filtering at inference, neglecting integration of safety mechanisms during training. Failure modes manifest as models becoming vulnerable to certain jailbreaking variants after fine-tuning, e.g., losing defenses against progressive诱导 in multi-turn dialogues. Diagnostic methods include: conducting adversarial testing, using gradient attribution analysis to identify sensitive parameters, and comparing"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：安全对齐：拒答策略、越狱与防护基线 · 结构总览 · 数据：课程大纲】在设计《安全对齐：拒答策略、越狱与防护基线》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 安全对齐：拒答策略、越狱与防护基线 · 结构总览 · Data: 课程大纲】When outlining \"安全对齐：拒答策略、越狱与防护基线\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：安全对齐：拒答策略、越狱与防护基线 · worked example · 数据：理解不同对齐/微调方法的适用条件与风险 数据/代码】在复现《安全对齐：拒答策略、越狱与防护基线》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 安全对齐：拒答策略、越狱与防护基线 · worked example · Data: 理解不同对齐/微调方法的适用条件与风险 数据/代码】While reproducing the worked example in \"安全对齐：拒答策略、越狱与防护基线\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：安全对齐：拒答策略、越狱与防护基线 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《安全对齐：拒答策略、越狱与防护基线》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 安全对齐：拒答策略、越狱与防护基线 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"安全对齐：拒答策略、越狱与防护基线\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：安全对齐：拒答策略、越狱与防护基线 · 参考资料 · 数据：课程引用文献】当引用文献支撑《安全对齐：拒答策略、越狱与防护基线》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 安全对齐：拒答策略、越狱与防护基线 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"安全对齐：拒答策略、越狱与防护基线\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Training Language Models to Follow Instructions with Human Feedback（arXiv，2022）",
+            "en": "Training Language Models to Follow Instructions with Human Feedback (arXiv, 2022)"
+          },
+          "url": "https://arxiv.org/abs/2203.02155"
+        },
+        {
+          "label": {
+            "zh": "LoRA: Low-Rank Adaptation of Large Language Models（arXiv，2021）",
+            "en": "LoRA: Low-Rank Adaptation of Large Language Models (arXiv, 2021)"
+          },
+          "url": "https://arxiv.org/abs/2106.09685"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-15-safety-alignment-zh.mp3"
+      },
+      "meta": {
+        "category": "SFT/LoRA/DPO 与安全对齐",
+        "level": "8. 微调与对齐",
+        "difficultyScore": 4,
+        "related": [
+          "提示注入与数据泄露：攻击面与防护",
+          "红队测试：用例库与评分规则"
+        ],
+        "learningObjectives": [
+          "理解不同对齐/微调方法的适用条件与风险",
+          "能设计一套数据-训练-评测-回滚的微调流程"
+        ],
+        "personas": [
+          "算法工程师",
+          "平台工程师",
+          "安全官"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 安全对齐：拒答策略、越狱与防护基线 可帮助团队在 SFT/LoRA/DPO 与安全对齐 上做出可复用的实践。",
+          "best_for": "适合 算法工程师、平台工程师、安全官，需要快速吸收 8. 微调与对齐 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "算法工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 算法工程师、平台工程师、安全官，帮助他们把 安全对齐：拒答策略、越狱与防护基线 应用于 SFT/LoRA/DPO 与安全对齐",
+          "prefersEnglish": false,
+          "industries": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "personas": [
+            "算法工程师",
+            "平台工程师",
+            "安全官"
+          ],
+          "pains": "在 SFT/LoRA/DPO 与安全对齐 场景缺乏 安全对齐：拒答策略、越狱与防护基线 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "8. 微调与对齐"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为算法工程师，在微调模型时，你如何判断当前的安全对齐策略是否足够？请描述一个具体场景，说明拒答策略如何防止模型输出有害内容，并思考如何优化这一机制。",
+            "action_hint": "尝试结合你的实际项目，分析现有安全对齐措施的优缺点，并设计一个改进方案。"
+          },
+          {
+            "lang": "zh",
+            "question": "假设你负责的平台需要部署经过LoRA微调的模型，面对潜在的越狱攻击，你会如何建立防护基线？请分享你的风险评估方法，并探讨如何平衡模型性能与安全性。",
+            "action_hint": "回顾过往的安全事件，制定一套针对越狱攻击的检测与响应流程，并考虑在微调阶段融入防护措施。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-14-dporlhfrlaif",
       "date": "2026-03-14",
