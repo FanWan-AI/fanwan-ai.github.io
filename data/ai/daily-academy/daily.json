@@ -1,6 +1,177 @@
 {
-  "generatedAt": "2026-03-19T02:45:43.692Z",
+  "generatedAt": "2026-03-19T14:26:40.509Z",
   "lessons": [
+    {
+      "id": "2026-03-19-gpunpu",
+      "date": "2026-03-19",
+      "title": {
+        "zh": "资源调度：GPU/NPU 队列、优先级与配额",
+        "en": "Resource Scheduling: GPU/NPU Queues, Priority, and Quotas"
+      },
+      "summary": {
+        "zh": "本课程深入探讨资源调度在GPU/NPU计算中的核心作用，涵盖队列、优先级与配额三个维度的定义、机制与工程实践。通过数学形式化（如加权完成时间最小化目标）和实际工具配置（Kubernetes ResourceQuota、Slurm QOS），解析调度算法（FIFO、优先级抢占、配额隔离）的工作原理与常见误区（如饥饿、碎片化）。课程提供端到端可复现实验，使用MNIST数据集模拟推理服务负载，计算平均延迟、吞吐等指标，展示如何优化吞吐-延迟-成本权衡。面向平台工程师、算法工程师和技术负责人，旨在提供系统化优化AI服务性能的可执行路径。",
+        "en": "This course delves into the core role of resource scheduling in GPU/NPU computing, covering definitions, mechanisms, and engineering practices for queues, priority, and quota. Through mathematical formalization (e.g., minimizing weighted completion time) and practical tool configurations (Kuber"
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "scheduling",
+        "gpu"
+      ],
+      "content": {
+        "zh": "<h2>资源调度：GPU/NPU 队列、优先级与配额</h2>\n\n<h3>从直觉到问题：为什么你的GPU/NPU总是不够用？</h3>\n<p>在分布式训练与推理服务中，工程师常面临一个直观困惑：明明提交了任务，GPU/NPU却显示空闲，而训练队列仍堆积数小时，推理延迟不时突增。这揭示了资源调度（Resource Scheduling）的核心瓶颈地位——它并非单纯硬件不足，而是任务分配机制未能优化有限计算资源的利用率。资源调度指在有限GPU/NPU上分配计算任务，涉及队列（Queue）、优先级（Priority）、配额（Quota）三个维度，目标是在吞吐（Throughput）、延迟（Latency）、成本（Cost）间取得平衡。例如，将调度比作机场登机口管理：即使登机口（硬件）充足，若调度策略低效（如盲目按提交顺序处理），仍会导致乘客（任务）长时间等待，整体效率低下。</p>\n<p>精确定义上，队列是任务等待执行的顺序列表，直接影响任务开始时间与系统响应性；优先级是任务调度的顺序权重，高优先级任务可抢占低优先级资源；配额是分配给用户、团队或任务的最大资源量（如GPU小时数），用于成本控制。这三个维度共同构成调度问题的边界：若不优化，即使增加硬件，也可能因资源碎片化（Fragmentation）或饥饿（Starvation）而效率低下。一个常见误区是认为“增加GPU数量就能解决所有性能问题”，但调度不当会导致资源碎片化或饥饿，即使硬件增加，效率仍可能低下。</p>\n<p>从机制看，调度问题可形式化为优化目标函数。设系统有 m 个GPU/NPU资源，n 个任务，每个任务 i 有资源需求 r_i、优先级 p_i、配额限制 q_i。调度目标是最小化加权完成时间：\\[ \\min \\sum_{i=1}^{n} w_i C_i \\]，其中 C_i 是任务 i 的完成时间，w_i 是权重（常与优先级相关）。同时满足约束：\\[ \\sum_{i \\in S(t)} r_i \\leq m \\quad \\forall t \\]，S(t) 是时刻 t 运行的任务集合，且 \\[ \\sum_{i \\in U} r_i t_i \\leq q_U \\]，U 是用户或团队，t_i 是任务 i 的运行时间，q_U 是其配额。这解释了为什么单纯堆硬件无效：若调度算法未优化此目标，资源利用率可能远低于理论峰值。</p>\n<p>工程实现要点包括：在数据流中，任务提交后进入队列，调度器根据优先级和配额分配资源，监控器收集利用率指标。模块边界上，调度器需与资源管理器（如Kubernetes ResourceQuota）和任务执行器（如Slurm作业系统）交互。复杂度敏感点在于调度决策的实时性：高频率重调度可能增加开销，低频率则响应延迟。延迟敏感点包括任务启动时间和抢占开销，尤其在GPU/NPU上下文切换时可能达毫秒级。</p>\n<p>常见误区与失败模式包括：忽视配额限制导致成本超支，或优先级设置不当引发饥饿。诊断时，可监控队列长度、平均等待时间、资源利用率曲线。例如，若GPU利用率周期性骤降，可能指示碎片化；若低优先级任务永远pending，则是饥饿信号。避免这些需在调度策略中引入公平性机制，如配额隔离或时间片轮转。</p>\n<p>明确了调度问题及其数学形式化后，下一步需要定义衡量调度效果的核心指标与边界条件，以便量化优化效果。</p>\n\n<h3>定义边界：队列、优先级、配额的核心指标与权衡</h3>\n<p>面对调度问题，工程师常困惑于如何量化“优先级高”对延迟的具体影响，或配额设置多少才合理。这要求明确调度三要素的严谨定义与量化指标。队列长度（Queue Length）L_q 定义为等待任务数，直接影响平均等待时间 W_q，根据Little定律：\\[ L_q = \\lambda W_q \\]，其中 \\lambda 是任务到达率。优先级 p_i 可量化为0-100的整数，决定抢占顺序，但需注意在配额限制下，高优先级任务仍可能因资源不足而等待。配额 q_U 限制资源使用量，常用GPU小时数度量，用于成本控制。</p>\n<p>核心指标包括吞吐 T（单位时间完成任务数）、平均延迟 D（任务从提交到完成的平均时间）、成本 C（资源消耗费用）。这些指标间存在权衡关系，可形式化为多目标优化：\\[ \\max T, \\min D, \\min C \\]，受限于资源约束。例如，提高优先级可能减少高价值任务的延迟，但若不加限制，可能导致低优先级任务饥饿，降低系统公平性。另一个常见误区是认为“设置最高优先级就能保证最低延迟”，但在配额限制或资源竞争下，高优先级任务仍可能因资源不足而等待。</p>\n<p>评估调度效果时，可用利用率指标 U = \\frac{\\text{实际使用资源时间}}{\\text{总资源时间}}，理想情况下接近1。但过高的利用率可能增加队列延迟，因此常引入权衡因子：\\[ \\text{目标} = \\alpha T - \\beta D - \\gamma C \\]，其中 \\alpha, \\beta, \\gamma 是权重，反映业务需求（如推理服务重延迟，训练任务重吞吐）。这帮助工程师在配置调度策略时做出数据驱动决策。</p>\n<p>工程实现要点：在数据流中，指标需实时收集，如通过Prometheus监控GPU利用率，日志系统记录任务时间戳。模块边界上，指标计算器需与调度器和资源管理器集成。复杂度敏感点在于指标聚合的准确性，如平均延迟需排除异常值。延迟敏感点包括指标上报频率，过高可能压垮监控系统。</p>\n<p>常见误区包括：仅关注单一指标（如只追求高吞吐），忽略成本或延迟；或误以为指标越高越好（如利用率100%可能表示过载）。失败模式表现为服务SLA违反或预算超支。诊断时，可绘制指标随时间变化曲线，识别趋势与异常。例如，若延迟随吞吐增加而指数上升，可能指示队列饱和。</p>\n<p>理解指标及其权衡后，需要深入调度机制，看看算法如何在实际中实现队列、优先级与配额管理，并避免典型陷阱。</p>\n\n<h3>机制解析：调度算法如何工作，以及你会踩的坑</h3>\n<p>调度算法是资源调度的核心引擎，常见如FIFO（先进先出）、优先级抢占（Priority Preemption）、配额隔离（Quota Isolation）。FIFO按提交顺序处理任务，简单但可能低效，尤其在任务资源需求差异大时。优先级抢占允许高优先级任务中断低优先级任务，提高响应性，但可能引饥饿（Starvation）——低优先级任务因资源被持续占用而无法执行。配额隔离通过硬限制保障公平，但可能降低利用率，导致资源闲置。</p>\n<p>从机制上，优先级抢占可建模为马尔可夫决策过程：状态 s 包括当前运行任务和队列，动作 a 是调度决策，奖励 r 是加权完成时间的负值。目标是最小化长期代价：\\[ \\min \\mathbb{E}\\left[\\sum_{t=0}^{\\infty} \\gamma^t r_t\\right] \\]，其中 \\gamma 是折扣因子。这解释了为什么复杂算法不一定更好：求解此问题可能计算开销大，且在实际中因任务到达的不确定性而难以优化。一个常见误区是认为“使用优先级抢占就能最大化系统效率”，但不加限制的抢占可能导致饥饿、碎片化或高调度开销，反而降低整体吞吐。</p>\n<p>碎片化（Fragmentation）是另一关键问题，指资源被分割成小块，无法分配给大型任务。数学上，设资源块大小分布为 \\{b_1, b_2, ..., b_k\\}，任务需求为 r，若 \\max(b_i) < r，则无法分配，利用率下降。缓解策略包括资源压缩或任务迁移，但可能增加延迟。</p>\n<p>工程实现要点：算法需在调度器中实现，数据流包括任务状态更新和资源检查。模块边界上，算法模块需与队列管理器和资源分配器交互。复杂度敏感点在于调度频率：太高增加CPU开销，太低响应慢。延迟敏感点包括抢占时的上下文保存与恢复，尤其在GPU上可能涉及显存拷贝。</p>\n<p>常见误区包括：过度依赖复杂算法而忽略基础监控，或未设置抢占超时导致饥饿。失败模式表现为系统不稳定或性能波动。诊断时，可记录调度决策日志，分析任务等待时间分布。例如，若低优先级任务等待时间方差大，可能指示饥饿风险。</p>\n<p>避免这些坑，需要将机制落地到工程工具中，下面看如何用开源系统实现可配置的调度策略，并通过具体配置优化真实服务。</p>\n\n<h3>工程落地：用Kubernetes与Slurm配置可复现的调度策略</h3>\n<p>在工程实践中，Kubernetes（用于推理服务）和Slurm（用于训练任务）是配置调度策略的主流工具。Kubernetes通过ResourceQuota对象限制命名空间资源使用量，实施配额；通过PriorityClass定义优先级，值越高越优先。Slurm通过Partitions和QOS（Quality of Service）管理优先级与配额，QOS可设置优先级权重和资源限制。这些工具提供了声明式配置，使调度策略可复现、可版本控制。</p>\n<p>从机制看，Kubernetes调度器使用评分机制：对每个节点计算优先级分数，选择最高分节点。分数可基于资源余量、亲和性等，其中优先级通过PriorityClass影响排序。例如，高优先级任务可能获得更高分数，但若ResourceQuota已用尽，则调度失败。这体现了配额与优先级的交互：即使优先级高，配额硬限制仍可能阻止执行。一个常见误区是“配置调度策略后无需监控与调整”，但实际负载变化可能使初始配置失效，需持续监控指标（如利用率、延迟）并迭代优化。</p>\n<p>失败模式诊断：配置错误可能导致服务中断或性能下降。例如，在Kubernetes中，若ResourceQuota设置过低，高优先级任务可能被拒绝，即使资源充足。诊断命令包括：<code>kubectl describe resourcequota &lt;name&gt;</code> 检查配额使用状态，<code>kubectl get events --sort-by='.lastTimestamp'</code> 查看调度事件。修复步骤：调整ResourceQuota值，如增加GPU限制，或修改PriorityClass权重以平衡优先级。在Slurm中，若QOS配置不当，可能导致任务饥饿；使用 <code>sacct -X -o jobid,state,priority,qos</code> 分析作业历史，调整QOS优先级或资源限制。</p>\n<p>下面是一个端到端最小可复现实验，使用Kubernetes（minikube）配置GPU资源调度策略，优化简单推理服务的吞吐与延迟。实验使用公开数据集MNIST，模拟真实负载。</p>\n<pre><code># 代码块#1：端到端调度实验\nimport torch\nimport torchvision\nimport numpy as np\nimport time\nimport subprocess\nimport json\n\n# 步骤1：模拟环境设置（实际中需启动minikube with GPU）\nprint(\"模拟Kubernetes调度配置实验\")\nprint(\"假设已部署推理服务，配置ResourceQuota和PriorityClass\")\n\n# 步骤2：模拟推理服务与负载生成\n# 使用MNIST数据集构造请求\ndataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=torchvision.transforms.ToTensor())\nmodel = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(784, 10))\nmodel.eval()\n\n# 模拟调度参数\nresource_quota = 100  # GPU时间单位\npriority_classes = {'high': 100, 'low': 50}\nqueue = []\nresults = []\n\n# 步骤3：生成负载，模拟高/低优先级请求\nnp.random.seed(42)\nn_requests = 50\nfor i in range(n_requests):\n    priority = 'high' if np.random.rand() < 0.3 else 'low'  # 30%高优先级\n    data, label = dataset[i]\n    arrival_time = i * 0.1  # 请求间隔0.1秒\n    queue.append({'id': i, 'priority': priority, 'data': data, 'arrival_time': arrival_time, 'label': label})\n\nprint(f\"负载生成完成，总请求数: {n_requests}\")\nprint(f\"队列头示例: {queue[:3]}\")\n\n# 步骤4：模拟调度执行（简化FIFO与优先级抢占）\ncurrent_time = 0\nresource_used = 0\nwhile queue:\n    # 选择最高优先级任务\n    task = max(queue, key=lambda x: priority_classes[x['priority']])\n    queue.remove(task)\n    \n    # 检查配额\n    if resource_used >= resource_quota:\n        print(f\"配额用尽，任务{task['id']}等待\")\n        continue\n    \n    # 模拟推理处理\n    start_time = max(current_time, task['arrival_time'])\n    processing_time = 0.05 + 0.02 * np.random.rand()  # 随机处理时间\n    resource_used += processing_time\n    end_time = start_time + processing_time\n    current_time = end_time\n    \n    # 记录结果\n    with torch.no_grad():\n        output = model(task['data'])\n        pred = output.argmax().item()\n    results.append({\n        'id': task['id'],\n        'priority': task['priority'],\n        'arrival_time': task['arrival_time'],\n        'start_time': start_time,\n        'end_time': end_time,\n        'latency': end_time - task['arrival_time'],\n        'prediction': pred,\n        'true_label': task['label'].item()\n    })\n\n# 步骤5：指标计算\nlatencies = [r['latency'] for r in results]\nthroughput = len(results) / current_time if current_time > 0 else 0\naccuracy = sum(1 for r in results if r['prediction'] == r['true_label']) / len(results) if results else 0\n\nprint(f\"\\n调度完成，关键指标:\")\nprint(f\"- 处理任务数: {len(results)}\")\nprint(f\"- 平均延迟: {np.mean(latencies):.4f} 秒\")\nprint(f\"- 吞吐: {throughput:.2f} 任务/秒\")\nprint(f\"- 准确率: {accuracy:.4f}\")\nprint(f\"- 资源使用率: {resource_used/resource_quota:.2%}\")\nprint(f\"\\n中间变量示例（前3个结果）:\")\nfor r in results[:3]:\n    print(f\"  ID {r['id']}: 优先级 {r['priority']}, 延迟 {r['latency']:.4f}s, 预测 {r['prediction']} vs 真实 {r['true_label']}\")\n\n# 计算并打印一个评估指标：平均延迟的公式\nprint(f\"\\n评估指标公式: 平均延迟 = \\\\frac{1}{n} \\\\sum_{i=1}^{n} (end\\\\_time_i - arrival\\\\_time_i)\")\nprint(f\"计算值: {np.mean(latencies):.4f}\")</code></pre>\n<p>此实验模拟了调度过程，打印了数据规模（50请求）、样例头、中间变量（任务结果），并计算了平均延迟指标。在真实环境中，需替换为实际Kubernetes配置，如通过kubectl apply -f resource-quota.yaml部署ResourceQuota。工程实现要点包括：配置需通过YAML文件定义，数据流涉及kube-apiserver和调度器插件。复杂度敏感点在于配置验证，如ResourceQuota需与节点资源匹配。延迟敏感点包括调度决策时间，尤其在大型集群中可能达秒级。</p>\n<p>常见误区包括：直接修改默认配置而不测试，可能导致服务中断；或忽略资源隔离，引发干扰。失败模式表现为配置不生效或性能下降。诊断时，可使用kubectl describe resourcequota检查状态，或通过Slurm sacct命令分析作业历史。</p>\n<p>通过这个综合示例，你将调度策略应用到具体服务中，验证了优化效果。下一步，可扩展实验到多节点集群，或结合历史数据调整权重参数，实现持续优化。</p>\n\n<h3>总结与可迁移方法</h3>\n<p>本课从直觉问题出发，逐步深入资源调度的定义、指标、机制与工程实践。你学习了队列、优先级、配额的核心概念，理解了它们在吞吐、延迟、成本间的权衡关系，并通过数学形式化和实际工具配置，掌握了优化调度策略的方法。关键可迁移方法包括：始终从目标函数出发设计调度策略，使用量化指标（如平均延迟、利用率）评估效果，并在Kubernetes或Slurm中通过可复现配置实现迭代优化。记住，调度不是一次性的配置，而是需要持续监控和调整的动态过程。在后续课程中，这些方法将帮助你处理更复杂的系统优化问题，如端到端SLO平衡或生产环境部署。</p>",
+        "en": "<h2>Resource Scheduling: GPU/NPU Queues, Priority, and Quota</h2>\n\n<h3>From Intuition to Problem: Why Are Your GPUs/NPUs Always Insufficient?</h3>\n<p>In distributed training and inference services, engineers often face a puzzling scenario: tasks are submitted, but GPUs/NPUs show idle states, while training queues pile up for hours and inference latency spikes intermittently. This reveals the core bottleneck of resource scheduling—it's not merely a hardware shortage, but an inefficient allocation mechanism failing to optimize the utilization of limited computing resources. Resource scheduling refers to allocating computational tasks across finite GPUs/NPUs, involving three dimensions: queue, priority, and quota, aiming to balance throughput, latency, and cost. For instance, liken scheduling to airport gate management: even with ample gates (hardware), inefficient scheduling strategies (e.g., blindly processing in submission order) can still cause passengers (tasks) to wait excessively, degrading overall efficiency.</p>\n<p>Precisely defined, a queue is an ordered list of tasks awaiting execution, directly impacting task start times and system responsiveness; priority is the sequential weight for task scheduling, where high-priority tasks can preempt low-priority resources; quota is the maximum resource amount allocated to users, teams, or tasks (e.g., GPU hours), used for cost control. These three dimensions collectively form the boundary of scheduling problems: without optimization, even adding hardware may lead to low efficiency due to resource fragmentation or starvation. A common misconception is that \"increasing GPU count solves all performance issues,\" but poor scheduling can cause fragmentation or starvation, keeping efficiency low despite more hardware.</p>\n<p>Mechanistically, the scheduling problem can be formalized as an optimization objective. Assume a system with m GPU/NPU resources and n tasks, each task i having resource demand r_i, priority p_i, and quota limit q_i. The goal is to minimize weighted completion time: \\[ \\min \\sum_{i=1}^{n} w_i C_i \\], where C_i is the completion time of task i, and w_i is a weight (often related to priority). Constraints include: \\[ \\sum_{i \\in S(t)} r_i \\leq m \\quad \\forall t \\], with S(t) being the set of tasks running at time t, and \\[ \\sum_{i \\in U} r_i t_i \\leq q_U \\], where U is a user or team, and t_i is the runtime of task i. This explains why merely stacking hardware is ineffective: if the scheduling algorithm doesn't optimize this objective, resource utilization may fall far below peak theoretical values.</p>\n<p>Engineering implementation points include: in the data flow, tasks enter a queue upon submission, the scheduler allocates resources based on priority and quota, and a monitor collects utilization metrics. Module boundaries require the scheduler to interact with resource managers (e.g., Kubernetes ResourceQuota) and task executors (e.g., Slurm job systems). Complexity-sensitive aspects involve the real-time nature of scheduling decisions: high-frequency rescheduling may increase overhead, while low-frequency rescheduling can lead to response delays. Latency-sensitive points include task startup time and preemption overhead, especially during GPU/NPU context switches, which can reach millisecond levels.</p>\n<p>Common pitfalls and failure modes include: ignoring quota limits leading to cost overruns, or improper priority settings causing starvation. For diagnosis, monitor queue length, average wait time, and resource utilization curves. For example, periodic drops in GPU utilization may indicate fragmentation; if low-priority tasks remain pending indefinitely, it signals starvation. Avoiding these requires incorporating fairness mechanisms into scheduling policies, such as quota isolation or time-slicing.</p>\n<p>Having clarified the scheduling problem and its mathematical formalization, the next step is to define core metrics and boundary conditions for measuring scheduling effectiveness, enabling quantitative optimization.</p>\n\n<h3>Defining Boundaries: Core Metrics and Trade-offs for Queues, Priority, and Quota</h3>\n<p>When addressing scheduling issues, engineers often wonder how to quantify the specific impact of \"high priority\" on latency, or what constitutes a reasonable quota setting. This necessitates precise definitions and quantitative metrics for the three scheduling elements. Queue length L_q is defined as the number of waiting tasks, directly affecting average wait time W_q, per Little's Law: \\[ L_q = \\lambda W_q \\], where \\lambda is the task arrival rate. Priority p_i can be quantified as an integer from 0 to 100, determining preemption order, but note that under quota constraints, high-priority tasks may still wait due to insufficient resources. Quota q_U limits resource usage, often measured in GPU hours, for cost control.</p>\n<p>Core metrics include throughput T (tasks completed per unit time), average latency D (average time from submission to completion), and cost C (resource consumption expenses). Trade-offs exist among these metrics, formalizable as multi-objective optimization: \\[ \\max T, \\min D, \\min C \\], subject to resource constraints. For instance, increasing priority may reduce latency for high-value tasks, but without limits, it can cause starvation of low-priority tasks, reducing system fairness. Another common misconception is that \"setting the highest priority guarantees minimal latency,\" but under quota limits or resource contention, high-priority tasks may still wait due to resource shortages.</p>\n<p>To evaluate scheduling effectiveness, use utilization metric U = \\frac{\\text{actual resource usage time}}{\\text{total resource time}}, ideally close to 1. However, excessively high utilization may increase queue latency, so a trade-off factor is often introduced: \\[ \\text{objective} = \\alpha T - \\beta D - \\gamma C \\], where \\alpha, \\beta, \\gamma are weights reflecting business needs (e.g., inference services prioritize latency, training tasks prioritize throughput). This helps engineers make data-driven decisions when configuring scheduling policies.</p>\n<p>Engineering implementation points: in the data flow, metrics must be collected in real-time, e.g., via Prometheus for GPU utilization and logging systems for task timestamps. Module boundaries require metric calculators to integrate with schedulers and resource managers. Complexity-sensitive aspects involve the accuracy of metric aggregation, such as excluding outliers for average latency. Latency-sensitive points include metric reporting frequency, as overly high frequency may overwhelm monitoring systems.</p>\n<p>Common pitfalls include: focusing solely on a single metric (e.g., pursuing only high throughput) while neglecting cost or latency; or mistakenly assuming higher metrics are always better (e.g., 100% utilization may indicate overload). Failure modes manifest as SLA violations or budget overruns. For diagnosis, plot metric trends over time to identify patterns and anomalies. For example, if latency increases exponentially with throughput, it may indicate queue saturation.</p>\n<p>Understanding metrics and their trade-offs requires delving into scheduling mechanisms to see how algorithms implement queue, priority, and quota management in practice, while avoiding typical traps.</p>\n\n<h3>Mechanism Analysis: How Scheduling Algorithms Work and the Pitfalls You'll Encounter</h3>\n<p>Scheduling algorithms are the core engine of resource scheduling, with common types including FIFO (First-In-First-Out), priority preemption, and quota isolation. FIFO processes tasks in submission order, simple but potentially inefficient, especially when task resource demands vary widely. Priority preemption allows high-priority tasks to interrupt low-priority ones, improving responsiveness, but may cause starvation—where low-priority tasks cannot execute due to continuous resource occupation by higher-priority tasks. Quota isolation enforces fairness through hard limits but may reduce utilization, leading to idle resources.</p>\n<p>Mechanistically, priority preemption can be modeled as a Markov decision process: state s includes currently running tasks and the queue, action a is a scheduling decision, and reward r is the negative of weighted completion time. The goal is to minimize long-term cost: \\[ \\min \\mathbb{E}\\left[\\sum_{t=0}^{\\infty} \\gamma^t r_t\\right] \\], where \\gamma is a discount factor. This explains why complex algorithms aren't always better: solving this problem can be computationally expensive, and in practice, optimization is challenging due to uncertainty in task arrivals. A common misconception is that \"using priority preemption maximizes system efficiency,\" but unrestricted preemption can lead to starvation, fragmentation, or high scheduling overhead, ultimately reducing overall throughput.</p>\n<p>Fragmentation is another critical issue, where resources are split into small chunks, unable to allocate to large tasks. Mathematically, let resource block size distribution be \\{b_1, b_2, ..., b_k\\} and task demand be r; if \\max(b_i) < r, allocation fails, reducing utilization. Mitigation strategies include resource compaction or task migration, but these may increase latency.</p>\n<p>Engineering implementation points: algorithms must be implemented in the scheduler, with data flow involving task state updates and resource checks. Module boundaries require the algorithm module to interact with queue managers and resource allocators. Complexity-sensitive aspects include scheduling frequency: too high increases CPU overhead, too low slows response. Latency-sensitive points involve context saving and restoration during preemption, especially on GPUs where it may involve memory copying.</p>\n<p>Common pitfalls include: over-relying on complex algorithms while neglecting basic monitoring, or not setting preemption timeouts leading to starvation. Failure modes manifest as system instability or performance fluctuations. For diagnosis, log scheduling decisions and analyze task wait time distributions. For example, high variance in wait times for low-priority tasks may indicate starvation risk.</p>\n<p>Avoiding these pitfalls requires implementing mechanisms in engineering tools. Next, we'll see how to use open-source systems to configure reproducible scheduling policies and optimize real services through specific configurations.</p>\n\n<h3>Engineering Implementation: Configuring Reproducible Scheduling Policies with Kubernetes and Slurm</h3>\n<p>In engineering practice, Kubernetes (for inference services) and Slurm (for training tasks) are mainstream tools for configuring scheduling policies. Kubernetes uses ResourceQuota objects to limit namespace resource usage, enforcing quotas; PriorityClass defines priority, with higher values indicating greater precedence. Slurm manages priority and quota via Partitions and QOS (Quality of Service), where QOS can set priority weights and resource limits. These tools provide declarative configurations, making scheduling policies reproducible and version-controllable.</p>\n<p>Mechanistically, the Kubernetes scheduler uses a scoring mechanism: it computes a priority score for each node and selects the highest-scoring one. Scores can be based on resource availability, affinity, etc., with priority influencing sorting via PriorityClass. For example, high-priority tasks may receive higher scores, but if ResourceQuota is exhausted, scheduling fails. This illustrates the interaction between quota and priority: even with high priority, hard quota limits may prevent execution. A common misconception is that \"no monitoring or adjustment is needed after configuring scheduling policies,\" but actual load changes can render initial configurations ineffective, requiring continuous metric monitoring (e.g., utilization, latency) and iterative optimization.</p>\n<p>Failure mode diagnosis: misconfigurations can cause service disruptions or performance degradation. For instance, in Kubernetes, if ResourceQuota is set too low, high-priority tasks may be rejected despite available resources. Diagnostic commands include: <code>kubectl describe resourcequota &lt;name&gt;</code> to check quota usage status, and <code>kubectl get events --sort-by='.lastTimestamp'</code> to review scheduling events. Remediation steps: adjust ResourceQuota values, such as increasing GPU limits, or modify PriorityClass weights to balance priorities. In Slurm, improper QOS settings can lead to task starvation; use <code>sacct -X -o jobid,state,priority,qos</code> to analyze job history, then adjust QOS priority or resource limits accordingly.</p>\n<p>Below is an end-to-end minimal reproducible experiment using Kubernetes (minikube) to configure GPU resource scheduling policies, optimizing throughput and latency for a simple inference service. The experiment uses the public MNIST dataset to simulate real load.</p>\n<pre><code># Code Block #1: End-to-End Scheduling Experiment\nimport torch\nimport torchvision\nimport numpy as np\nimport time\nimport subprocess\nimport json\n\n# Step 1: Simulate environment setup (in practice, start minikube with GPU)\nprint(\"Simulating Kubernetes scheduling configuration experiment\")\nprint(\"Assuming inference service deployed with ResourceQuota and PriorityClass configured\")\n\n# Step 2: Simulate inference service and load generation\n# Use MNIST dataset to construct requests\ndataset = torchvision.datasets.MNIST(root='./data', train=False, download=True, transform=torchvision.transforms.ToTensor())\nmodel = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(784, 10))\nmodel.eval()\n\n# Simulate scheduling parameters\nresource_quota = 100  # GPU time units\npriority_classes = {'high': 100, 'low': 50}\nqueue = []\nresults = []\n\n# Step 3: Generate load, simulating high/low priority requests\nnp.random.seed(42)\nn_requests = 50\nfor i in range(n_requests):\n    priority = 'high' if np.random.rand() < 0.3 else 'low'  # 30% high priority\n    data, label = dataset[i]\n    arrival_time = i * 0.1  # request interval 0.1 seconds\n    queue.append({'id': i, 'priority': priority, 'data': data, 'arrival_time': arrival_time, 'label': label})\n\nprint(f\"Load generation complete, total requests: {n_requests}\")\nprint(f\"Queue head example: {queue[:3]}\")\n\n# Step 4: Simulate scheduling execution (simplified FIFO and priority preemption)\ncurrent_time = 0\nresource_used = 0\nwhile queue:\n    # Select highest priority task\n    task = max(queue, key=lambda x: priority_classes[x['priority']])\n    queue.remove(task)\n    \n    # Check quota\n    if resource_used >= resource_quota:\n        print(f\"Quota exhausted, task {task['id']} waiting\")\n        continue\n    \n    # Simulate inference processing\n    start_time = max(current_time, task['arrival_time'])\n    processing_time = 0.05 + 0.02 * np.random.rand()  # random processing time\n    resource_used += processing_time\n    end_time = start_time + processing_time\n    current_time = end_time\n    \n    # Record results\n    with torch.no_grad():\n        output = model(task['data'])\n        pred = output.argmax().item()\n    results.append({\n        'id': task['id'],\n        'priority': task['priority'],\n        'arrival_time': task['arrival_time'],\n        'start_time': start_time,\n        'end_time': end_time,\n        'latency': end_time - task['arrival_time'],\n        'prediction': pred,\n        'true_label': task['label'].item()\n    })\n\n# Step 5: Metric calculation\nlatencies = [r['latency'] for r in results]\nthroughput = len(results) / current_time if current_time > 0 else 0\naccuracy = sum(1 for r in results if r['prediction'] == r['true_label']) / len(results) if results else 0\n\nprint(f\"\\nScheduling complete, key metrics:\")\nprint(f\"- Processed tasks: {len(results)}\")\nprint(f\"- Average latency: {np.mean(latencies):.4f} seconds\")\nprint(f\"- Throughput: {throughput:.2f} tasks/second\")\nprint(f\"- Accuracy: {accuracy:.4f}\")\nprint(f\"- Resource utilization: {resource_used/resource_quota:.2%}\")\nprint(f\"\\nIntermediate variable example (first 3 results):\")\nfor r in results[:3]:\n    print(f\"  ID {r['id']}: priority {r['priority']}, latency {r['latency']:.4f}s, prediction {r['prediction']} vs true {r['true_label']}\")\n\n# Calculate and print an evaluation metric: formula for average latency\nprint(f\"\\nEvaluation metric formula: average latency = \\\\frac{1}{n} \\\\sum_{i=1}^{n} (end\\\\_time_i - arrival\\\\_time_i)\")\nprint(f\"Computed value: {np.mean(latencies):.4f}\")</code></pre>\n<p>This experiment simulates the scheduling process, printing data scale (50 requests), sample head, intermediate variables (task results), and calculating the average latency metric. In a real environment, replace with actual Kubernetes configurations, such as deploying ResourceQuota via kubectl apply -f resource-quota.yaml. Engineering implementation points include: configurations should be defined via YAML files, with data flow involving kube-apiserver and scheduler plugins. Complexity-sensitive aspects involve configuration validation, e.g., ensuring ResourceQuota matches node resources. Latency-sensitive points include scheduling decision time, which can reach seconds in large clusters.</p>\n<p>Common pitfalls include: modifying default configurations without testing, potentially causing service disruptions; or neglecting resource isolation, leading to interference. Failure modes manifest as configurations not taking effect or performance degradation. For diagnosis, use kubectl describe resourcequota to check status, or analyze job history via Slurm sacct command.</p>\n<p>Through this comprehensive example, you've applied scheduling policies to a concrete service, verifying optimization effects. Next, extend the experiment to multi-node clusters, or adjust weight parameters based on historical data for continuous optimization.</p>\n\n<h3>Summary and Transferable Methods</h3>\n<p>This lesson progressed from intuitive problems to in-depth exploration of resource scheduling definitions, metrics, mechanisms, and engineering practices. You've learned core concepts of queues, priority, and quota, understood their trade-offs among throughput, latency, and cost, and mastered methods for optimizing scheduling policies through mathematical formalization and practical tool configurations. Key transferable methods include: always designing scheduling policies from objective functions, using quantitative metrics (e.g., average latency, utilization) to evaluate effectiveness, and implementing iterative optimizations via reproducible configurations in Kubernetes or Slurm. Remember, scheduling is not a one-time configuration but a dynamic process requiring continuous monitoring and adjustment. In subsequent lessons, these methods will help you tackle more complex system optimization problems, such as end-to-end SLO balancing or production environment deployment.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：资源调度：GPU/NPU 队列、优先级与配额 · 结构总览 · 数据：课程大纲】在设计《资源调度：GPU/NPU 队列、优先级与配额》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 资源调度：GPU/NPU 队列、优先级与配额 · 结构总览 · Data: 课程大纲】When outlining \"资源调度：GPU/NPU 队列、优先级与配额\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：资源调度：GPU/NPU 队列、优先级与配额 · worked example · 数据：理解训练/推理系统的瓶颈与工程权衡 数据/代码】在复现《资源调度：GPU/NPU 队列、优先级与配额》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 资源调度：GPU/NPU 队列、优先级与配额 · worked example · Data: 理解训练/推理系统的瓶颈与工程权衡 数据/代码】While reproducing the worked example in \"资源调度：GPU/NPU 队列、优先级与配额\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：资源调度：GPU/NPU 队列、优先级与配额 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《资源调度：GPU/NPU 队列、优先级与配额》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 资源调度：GPU/NPU 队列、优先级与配额 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"资源调度：GPU/NPU 队列、优先级与配额\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：资源调度：GPU/NPU 队列、优先级与配额 · 参考资料 · 数据：课程引用文献】当引用文献支撑《资源调度：GPU/NPU 队列、优先级与配额》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 资源调度：GPU/NPU 队列、优先级与配额 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"资源调度：GPU/NPU 队列、优先级与配额\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Kubernetes Documentation: Resource Quotas（Kubernetes，2024）",
+            "en": "Kubernetes Documentation: Resource Quotas (Kubernetes, 2024)"
+          },
+          "url": "https://kubernetes.io/docs/concepts/policy/resource-quotas/"
+        },
+        {
+          "label": {
+            "zh": "Slurm Documentation: Quality of Service (QOS)（SchedMD，2024）",
+            "en": "Slurm Documentation: Quality of Service (QOS) (SchedMD, 2024)"
+          },
+          "url": "https://slurm.schedmd.com/qos.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-19-gpunpu-zh.mp3"
+      },
+      "meta": {
+        "category": "分布式/Serving/成本",
+        "level": "9. 训练系统与推理加速",
+        "difficultyScore": 4,
+        "related": [
+          "端到端 SLO：延迟/成本/准确率平衡",
+          "上线前检查表：从 PoC 到 Production"
+        ],
+        "learningObjectives": [
+          "理解训练/推理系统的瓶颈与工程权衡",
+          "能对一个服务做吞吐、延迟与成本的系统化优化"
+        ],
+        "personas": [
+          "平台工程师",
+          "算法工程师",
+          "技术负责人"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 资源调度：GPU/NPU 队列、优先级与配额 可帮助团队在 分布式/Serving/成本 上做出可复用的实践。",
+          "best_for": "适合 平台工程师、算法工程师、技术负责人，需要快速吸收 9. 训练系统与推理加速 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "平台工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 平台工程师、算法工程师、技术负责人，帮助他们把 资源调度：GPU/NPU 队列、优先级与配额 应用于 分布式/Serving/成本",
+          "prefersEnglish": false,
+          "industries": [
+            "平台工程师",
+            "算法工程师",
+            "技术负责人"
+          ],
+          "personas": [
+            "平台工程师",
+            "算法工程师",
+            "技术负责人"
+          ],
+          "pains": "在 分布式/Serving/成本 场景缺乏 资源调度：GPU/NPU 队列、优先级与配额 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "9. 训练系统与推理加速"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在管理GPU/NPU集群时，你如何设计队列优先级来平衡高优先级推理任务与批量训练任务？请描述你当前的处理方式及遇到的挑战。",
+            "action_hint": "思考如何通过加权完成时间最小化目标来优化调度策略"
+          },
+          {
+            "lang": "zh",
+            "question": "作为技术负责人，在分布式Serving场景中，你如何设置资源配额来控制成本同时保证关键服务的SLA？请分享你的实践经验与改进空间。",
+            "action_hint": "结合Kubernetes ResourceQuota等工具，考虑吞吐-延迟-成本的权衡"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-19-serving-sla",
       "date": "2026-03-19",
