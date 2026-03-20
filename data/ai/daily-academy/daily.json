@@ -1,6 +1,186 @@
 {
-  "generatedAt": "2026-03-20T02:41:11.308Z",
+  "generatedAt": "2026-03-20T14:10:40.199Z",
   "lessons": [
+    {
+      "id": "2026-03-20-mlflowwb",
+      "date": "2026-03-20",
+      "title": {
+        "zh": "实验追踪：MLflow/W&B 思路与模板",
+        "en": "Experiment Tracking: MLflow/W&B Approaches and Templates"
+      },
+      "summary": {
+        "zh": "本课程系统探讨实验追踪在MLOps中的关键作用，涵盖定义、机制与工程实践。首先解析实验追踪的必要性，阐述其如何通过结构化记录参数、指标和产物解决模型开发中的混乱问题。接着对比MLflow和W&B的架构差异，分析其存储机制与适用场景。最后提供一个端到端可复现模板，集成环境固化、数据版本化和自动化流水线，确保从实验到生产的可持续迭代。课程包含数学公式推导、代码示例及常见失败模式诊断，旨在帮助平台工程师和技术负责人建立可靠的实验管理标准。",
+        "en": "This course systematically explores the critical role of experiment tracking in MLOps, covering definitions, mechanisms, and engineering practices. It first analyzes the necessity of experiment tracking, explaining how structured logging of parameters, metrics, and artifacts addresses chaos in model development. Then, it compares the architectural differences between MLflow and W&B, examining their storage mechanisms and applicable scenarios. Finally, it provides an end-to-end reproducible template that integrates environment snapshots, data versioning, and automated pipelines to ensure sustainable iteration from experiment to production. The course includes mathematical formula derivations, code examples, and diagnostics of common failure modes, aiming to help platform engineers and technical leads establish reliable experiment management standards."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "mlops",
+        "experiment tracking"
+      ],
+      "content": {
+        "zh": "<h3>为什么实验追踪不是可选项：从混乱到秩序</h3>\n<p>在机器学习项目开发中，平台工程师和技术负责人常面临一个典型困境：经过多轮模型迭代后，无法准确追溯哪个超参数组合产生了最佳性能，导致团队重复实验、资源浪费。这种混乱源于缺乏系统性的实验记录机制。实验追踪（Experiment Tracking）正是为解决这一问题而设计的工程实践，它通过结构化记录实验元数据、参数、指标和产物，确保模型开发的可复现性、可比较性和可审计性。与传统的版本控制（Version Control）不同，实验追踪专注于机器学习特有的动态元素，如超参数调整、数据版本和环境依赖。</p>\n<p>精确定义是理解实验追踪的基础。一个实验（Experiment）指一组共享相同目标但参数或数据不同的模型运行；每次运行（Run）则记录单次训练过程的完整信息，包括参数、指标、产物和环境配置。例如，在图像分类任务中，调整学习率（0.01, 0.001）和批量大小（32, 64）会产生四个独立运行，每个运行需记录其超参数、训练损失曲线和验证准确率。常见误区是仅记录最终准确率，而忽略数据版本或环境依赖，这会导致生产部署时无法复现结果。</p>\n<p>从机制角度看，实验追踪的核心是建立可查询的元数据存储。设一个运行 \\(R_i\\) 包含参数集合 \\(P_i = \\{p_1, p_2, ..., p_n\\}\\)、指标序列 \\(M_i(t) = \\{m_1(t), m_2(t), ...\\}\\)（其中 \\(t\\) 为训练步数或轮次）、产物文件 \\(A_i\\) 和环境快照 \\(E_i\\)。追踪系统需确保 \\(R_i\\) 的完整性，即所有元素可被唯一标识和检索。一个关键数学目标是最大化实验信息的效用，可形式化为信息增益函数：\\[ \\mathcal{I}(R_i) = \\sum_{p \\in P_i} \\log \\frac{1}{\\Pr(p)} + \\sum_{m \\in M_i} \\mathcal{H}(m) \\]，其中 \\(\\Pr(p)\\) 是参数的先验分布，\\(\\mathcal{H}(m)\\) 是指标 \\(m\\) 的熵，衡量其信息量。这强调了记录高变异参数（如学习率）和动态指标（如损失曲线）的重要性。</p>\n<p>工程实现要点包括数据流设计和存储选型。典型流程为：代码执行 → 参数记录（如通过 mlflow.log_param） → 指标日志（如每轮记录准确率） → 产物上传（如模型文件保存到云存储）。模块边界需清晰分离追踪客户端（集成在训练脚本中）、后端存储（数据库或对象存储）和用户界面（如MLflow UI）。复杂度敏感点在于高频率指标记录可能带来存储开销，延迟敏感点则出现在产物上传阶段，尤其是大型模型文件。建议采用异步日志和压缩策略来优化。</p>\n<p>常见失败模式包括忽略随机种子导致结果不可复现、环境依赖记录不全（如Python包版本缺失）、以及存储系统单点故障。诊断方法包括检查运行元数据完整性（如验证所有参数是否已记录）、对比环境快照差异（使用工具如 conda list 或 pip freeze）、以及测试产物可访问性。例如，若一个运行在本地成功但生产失败，首先应核对环境变量和库版本是否一致。</p>\n<p>理解了实验追踪的必要性和构成要素后，我们需要深入工具如何实现这些记录。下一节将解析MLflow和W&B的架构差异，帮助您根据团队需求做出技术选型。</p>\n\n<h3>解剖追踪工具：MLflow与W&B的架构对比</h3>\n<p>选择适合的实验追踪工具是平台工程师和技术负责人的关键决策。MLflow和Weights & Biases（W&B）是当前主流选项，但它们在设计哲学、存储机制和协作特性上存在本质区别。MLflow采用模块化开源设计，允许灵活部署在本地或云端；W&B则强调云端优先和团队协作，提供强大的可视化功能。理解这些差异有助于避免误区，如认为MLflow仅适用于本地实验，或忽视W&B的数据隐私考量。</p>\n<p>精确定义工具核心组件。产物存储（Artifact Store）是用于保存模型文件、数据集和可视化图表等二进制文件的系统，如AWS S3或Azure Blob。参数记录（Parameter Logging）指捕获实验配置的过程，包括超参数、数据路径和随机种子。在MLflow中，这些通过Tracking API实现；在W&B中，则通过wandb.log集成。例如，使用MLflow记录一次训练时，可调用mlflow.log_param('learning_rate', 0.001)和mlflow.log_metric('val_accuracy', 0.85)，并在UI中查看结果。</p>\n<p>从机制层面，MLflow和W&B都基于运行（Run）的概念，但存储架构不同。MLflow使用后端存储（如SQLite或PostgreSQL）记录元数据，产物可存于本地文件系统或云存储；W&B则默认将数据上传到其云端服务。数学上，可评估工具的数据完整性通过校验和函数：\\[ C(R_i) = \\text{hash}(P_i \\parallel M_i \\parallel A_i) \\]，其中 \\(\\parallel\\) 表示拼接，hash为加密哈希函数（如SHA-256），确保运行内容未被篡改。此外，指标聚合功能允许比较多个运行，例如计算平均准确率：\\[ \\bar{M} = \\frac{1}{N} \\sum_{i=1}^{N} M_i \\]，其中 \\(N\\) 为运行数量。</p>\n<p>工程实现要点涉及集成复杂度和可扩展性。MLflow的模块化设计允许自定义组件，如替换默认存储后端为云数据库，适合需要严格控制基础设施的团队。W&B的强协作性体现在实时仪表盘和团队项目管理，但可能引入数据出境风险。实现时，需考虑网络延迟（云端上传可能影响训练速度）、存储成本（尤其是大量产物文件）、以及API稳定性（避免版本升级导致中断）。建议在原型阶段同时测试两者，评估性能指标如日志延迟和UI响应时间。</p>\n<p>常见失败模式包括工具配置错误（如MLflow服务器地址设置不当）、网络超时导致日志丢失、以及产物版本冲突。诊断方法包括监控日志输出（检查API调用是否成功）、验证存储连通性（测试数据库或云存储访问）、以及审计运行一致性（比较本地和远程记录）。例如，若W&B运行在UI中显示不全，应检查网络代理设置和wandb.init()参数。</p>\n<p>掌握了工具机制后，我们将通过一个端到端模板展示如何将实验追踪集成到机器学习流水线，确保从开发到生产的可复现性。</p>\n\n<h3>端到端模板：从实验到生产可复现性</h3>\n<p>确保实验结果在六个月后仍可复现是MLOps的核心挑战。可复现性（Reproducibility）指在相同环境、数据、参数下重新生成完全相同结果的能力，这与可重复性（Repeatability）——在相似条件下获得一致结果——有所区别。工程模板需集成环境固化（Environment Snapshot）、数据版本化（Data Versioning）和参数追踪，以支持持续迭代。常见误区是仅依赖代码版本控制，而忽略随机种子或系统依赖，导致生产部署失败。</p>\n<p>精确定义模板关键元素。环境固化涉及记录所有软件依赖，如Python包版本（通过requirements.txt或conda环境文件）和系统库；数据版本化可使用哈希函数（如MD5或SHA-256）标识数据集状态。例如，在鸢尾花分类实验中，记录数据哈希、scikit-learn版本、随机种子42和超参数（n_estimators=100），确保每次运行生成唯一ID并可复现准确率96.7%。</p>\n<p>从机制角度，可复现性依赖于确定性计算链。设实验输出 \\(O\\) 是输入数据 \\(D\\)、代码 \\(C\\)、参数 \\(P\\) 和环境 \\(E\\) 的函数：\\[ O = f(D, C, P, E) \\]。追踪系统需捕获所有变量，使得 \\(O\\) 可被重新计算。数学上，可使用联合概率分解来建模不确定性：\\[ \\Pr(O) = \\Pr(D) \\Pr(C) \\Pr(P) \\Pr(E) \\]，其中每个因子代表对应变量的分布，追踪旨在减少方差。评估指标如准确率（Accuracy）公式为：\\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\]，其中TP、TN、FP、FN分别代表真阳性、真阴性、假阳性、假阴性。</p>\n<p>工程实现要点包括流水线自动化和配置管理。模板应涵盖数据加载、预处理、模型训练、评估和记录步骤，使用容器化（如Docker）固化环境，并集成到CI/CD流水线。复杂度敏感点在于依赖解析（确保环境快照完整），延迟敏感点出现在模型序列化和产物上传。以下代码块展示一个最小可复现实验，使用MLflow追踪鸢尾花分类流程，并计算准确率指标。</p>\n<pre><code>import mlflow\nimport mlflow.sklearn\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport numpy as np\nimport pandas as pd\n\n# 步骤1：数据检查\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"数据shape:\", X.shape)  # 输出: (150, 4)\nprint(\"特征名:\", iris.feature_names)  # 输出: ['sepal length (cm)', ...]\nprint(\"类别分布:\", np.bincount(y))  # 输出: [50, 50, 50]\n\n# 步骤2：可复现切分\nX_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)\nprint(\"训练集shape:\", X_train.shape, \"验证集shape:\", X_val.shape)  # 输出: (120, 4) (30, 4)\n\n# 步骤3：pipeline与MLflow记录\nmlflow.set_experiment(\"iris_experiment\")\nwith mlflow.start_run():\n    # 记录参数\n    mlflow.log_param(\"random_state\", 42)\n    mlflow.log_param(\"test_size\", 0.2)\n    \n    # 构建并训练模型\n    pipeline = Pipeline([\n        ('scaler', StandardScaler()),\n        ('classifier', LogisticRegression(random_state=42, max_iter=200))\n    ])\n    pipeline.fit(X_train, y_train)\n    \n    # 预测与评估\n    y_pred = pipeline.predict(X_val)\n    accuracy = accuracy_score(y_val, y_pred)\n    f1 = f1_score(y_val, y_pred, average='weighted')\n    \n    # 记录指标\n    mlflow.log_metric(\"val_accuracy\", accuracy)\n    mlflow.log_metric(\"val_f1\", f1)\n    print(\"验证集准确率:\", accuracy)  # 输出: 约0.9667\n    print(\"验证集F1-score:\", f1)  # 输出: 约0.9667\n    \n    # 记录产物：混淆矩阵\n    cm = confusion_matrix(y_val, y_pred)\n    cm_df = pd.DataFrame(cm, index=iris.target_names, columns=iris.target_names)\n    cm_path = \"confusion_matrix.csv\"\n    cm_df.to_csv(cm_path)\n    mlflow.log_artifact(cm_path)\n    print(\"混淆矩阵:\\n\", cm)  # 输出: 对角线值高，如[[10,0,0],...]\n    \n    # 记录环境\n    import sklearn\n    mlflow.log_param(\"sklearn_version\", sklearn.__version__)\n    mlflow.log_param(\"mlflow_version\", mlflow.__version__)\n    \n    # 保存模型\n    mlflow.sklearn.log_model(pipeline, \"model\")\n\nprint(\"运行完成，可在MLflow UI查看详情。\")</code></pre>\n<p>常见失败模式包括环境漂移（生产环境与训练环境不一致）、数据泄漏（验证集被误用）、以及随机性未控制（如未设置numpy随机种子）。诊断方法包括运行完整性检查（验证所有步骤是否记录）、指标合理性分析（如准确率是否在预期范围内）、以及复现测试（使用相同ID重新运行实验）。例如，若复现时准确率下降，应检查数据切分随机种子和预处理参数。</p>\n<p>通过这个模板，您可以将实验追踪系统集成到生产流水线，支持模型版本管理和A/B测试。接下来，我们总结关键点并规划后续行动。</p>\n\n<p>narrative-intro: 本课程深入探讨实验追踪在MLOps中的核心作用，从定义、机制到工程实践，为您提供可迁移的方法论。无论您是平台工程师构建基础设施，还是技术负责人制定标准，都能通过系统化记录提升模型开发的可复现性和协作效率。</p>\n<p>narrative-outro: 掌握实验追踪不仅是工具应用，更是建立可持续迭代文化的基础。建议从一个小型项目开始，实施端到端模板，并逐步扩展到团队协作和生产监控。您的下一步行动可以是：在现有项目中集成MLflow或W&B，记录下一次实验的所有元数据，并验证其可复现性。</p>",
+        "en": "<h3>Why Experiment Tracking Is Not Optional: From Chaos to Order</h3>\n<p>In machine learning projects, platform engineers and technical leads often face a typical dilemma: after multiple model iterations, they cannot accurately trace which hyperparameter combination yielded the best performance, leading to redundant experiments and resource waste. This chaos stems from the lack of systematic experiment recording mechanisms. Experiment Tracking is an engineering practice designed to address this issue, which structures the recording of experiment metadata, parameters, metrics, and artifacts to ensure reproducibility, comparability, and auditability of model development. Unlike traditional Version Control, experiment tracking focuses on dynamic elements unique to machine learning, such as hyperparameter tuning, data versions, and environmental dependencies.</p>\n<p>Precise definitions are fundamental to understanding experiment tracking. An Experiment refers to a set of related model runs that share the same objective but differ in parameters or data; each Run records the complete information of a single training process, including parameters, metrics, artifacts, and environment configurations. For example, in an image classification task, adjusting learning rates (0.01, 0.001) and batch sizes (32, 64) generates four independent runs, each requiring logging of hyperparameters, training loss curves, and validation accuracy. A common misconception is to record only final accuracy while ignoring data versions or environmental dependencies, which can lead to irreproducible results in production deployment.</p>\n<p>From a mechanistic perspective, the core of experiment tracking is establishing a queryable metadata store. Let a run \\(R_i\\) contain a parameter set \\(P_i = \\{p_1, p_2, ..., p_n\\}\\), a metric sequence \\(M_i(t) = \\{m_1(t), m_2(t), ...\\}\\) (where \\(t\\) is the training step or epoch), artifact files \\(A_i\\), and an environment snapshot \\(E_i\\). The tracking system must ensure the integrity of \\(R_i\\), meaning all elements can be uniquely identified and retrieved. A key mathematical objective is to maximize the utility of experimental information, formalized as an information gain function: \\[ \\mathcal{I}(R_i) = \\sum_{p \\in P_i} \\log \\frac{1}{\\Pr(p)} + \\sum_{m \\in M_i} \\mathcal{H}(m) \\], where \\(\\Pr(p)\\) is the prior distribution of parameters, and \\(\\mathcal{H}(m)\\) is the entropy of metric \\(m\\), measuring its information content. This emphasizes the importance of logging high-variance parameters (e.g., learning rate) and dynamic metrics (e.g., loss curves).</p>\n<p>Engineering implementation points include data flow design and storage selection. A typical workflow is: code execution → parameter logging (e.g., via mlflow.log_param) → metric logging (e.g., recording accuracy per epoch) → artifact upload (e.g., saving model files to cloud storage). Module boundaries should clearly separate the tracking client (integrated into training scripts), backend storage (database or object storage), and user interface (e.g., MLflow UI). Complexity-sensitive points involve high-frequency metric logging that may incur storage overhead, while latency-sensitive points occur during artifact upload, especially for large model files. Asynchronous logging and compression strategies are recommended for optimization.</p>\n<p>Common failure modes include ignoring random seeds leading to irreproducible results, incomplete environmental dependency records (e.g., missing Python package versions), and single points of failure in storage systems. Diagnostic methods involve checking run metadata integrity (e.g., verifying all parameters are logged), comparing environment snapshot differences (using tools like conda list or pip freeze), and testing artifact accessibility. For instance, if a run succeeds locally but fails in production, first verify consistency in environment variables and library versions.</p>\n<p>Having understood the necessity and components of experiment tracking, we need to delve into how tools implement these records. The next section will analyze the architectural differences between MLflow and W&B to help you make technical choices based on team needs.</p>\n\n<h3>Dissecting Tracking Tools: Architectural Comparison of MLflow and W&B</h3>\n<p>Choosing the right experiment tracking tool is a critical decision for platform engineers and technical leads. MLflow and Weights & Biases (W&B) are current mainstream options, but they differ fundamentally in design philosophy, storage mechanisms, and collaboration features. MLflow adopts a modular open-source design, allowing flexible deployment on-premises or in the cloud; W&B emphasizes cloud-first and team collaboration, providing powerful visualization capabilities. Understanding these differences helps avoid misconceptions, such as thinking MLflow is only for local experiments or overlooking W&B's data privacy considerations.</p>\n<p>Precisely define the core components of the tools. An Artifact Store is a system for saving binary files like model files, datasets, and visualization charts, such as AWS S3 or Azure Blob. Parameter Logging refers to the process of capturing experiment configurations, including hyperparameters, data paths, and random seeds. In MLflow, this is implemented via the Tracking API; in W&B, it is integrated through wandb.log. For example, when logging a training run with MLflow, one can call mlflow.log_param('learning_rate', 0.001) and mlflow.log_metric('val_accuracy', 0.85), and view results in the UI.</p>\n<p>From a mechanistic level, both MLflow and W&B are based on the concept of a Run, but their storage architectures differ. MLflow uses backend storage (e.g., SQLite or PostgreSQL) to record metadata, with artifacts stored in local filesystems or cloud storage; W&B defaults to uploading data to its cloud service. Mathematically, tool data integrity can be evaluated via a checksum function: \\[ C(R_i) = \\text{hash}(P_i \\parallel M_i \\parallel A_i) \\], where \\(\\parallel\\) denotes concatenation, and hash is a cryptographic hash function (e.g., SHA-256), ensuring run content is untampered. Additionally, metric aggregation features allow comparison of multiple runs, e.g., computing average accuracy: \\[ \\bar{M} = \\frac{1}{N} \\sum_{i=1}^{N} M_i \\], where \\(N\\) is the number of runs.</p>\n<p>Engineering implementation points involve integration complexity and scalability. MLflow's modular design allows custom components, such as replacing the default storage backend with a cloud database, suitable for teams needing tight infrastructure control. W&B's strong collaboration is evident in real-time dashboards and team project management, but may introduce data sovereignty risks. During implementation, consider network latency (cloud uploads may affect training speed), storage costs (especially for numerous artifact files), and API stability (avoid disruptions from version upgrades). It is advisable to test both tools during prototyping, evaluating performance metrics like logging latency and UI response time.</p>\n<p>Common failure modes include tool configuration errors (e.g., incorrect MLflow server address settings), network timeouts causing log loss, and artifact version conflicts. Diagnostic methods include monitoring log outputs (checking if API calls succeed), verifying storage connectivity (testing database or cloud storage access), and auditing run consistency (comparing local and remote records). For example, if W&B runs display incompletely in the UI, check network proxy settings and wandb.init() parameters.</p>\n<p>Having grasped the tool mechanisms, we will demonstrate through an end-to-end template how to integrate experiment tracking into machine learning pipelines, ensuring reproducibility from development to production.</p>\n\n<h3>End-to-End Template: From Experiment to Production Reproducibility</h3>\n<p>Ensuring experimental results remain reproducible six months later is a core challenge in MLOps. Reproducibility refers to the ability to regenerate identical results under the same environment, data, and parameters, which differs from Repeatability—obtaining consistent results under similar conditions. Engineering templates must integrate Environment Snapshot, Data Versioning, and parameter tracking to support continuous iteration. A common misconception is relying solely on code version control while ignoring random seeds or system dependencies, leading to production deployment failures.</p>\n<p>Precisely define key elements of the template. Environment Snapshot involves recording all software dependencies, such as Python package versions (via requirements.txt or conda environment files) and system libraries; Data Versioning can use hash functions (e.g., MD5 or SHA-256) to identify dataset states. For example, in an iris classification experiment, logging data hash, scikit-learn version, random seed 42, and hyperparameters (n_estimators=100) ensures each run generates a unique ID and can reproduce an accuracy of 96.7%.</p>\n<p>From a mechanistic angle, reproducibility relies on deterministic computation chains. Let experimental output \\(O\\) be a function of input data \\(D\\), code \\(C\\), parameters \\(P\\), and environment \\(E\\): \\[ O = f(D, C, P, E) \\]. The tracking system must capture all variables so that \\(O\\) can be recomputed. Mathematically, joint probability decomposition can model uncertainty: \\[ \\Pr(O) = \\Pr(D) \\Pr(C) \\Pr(P) \\Pr(E) \\], where each factor represents the distribution of corresponding variables, and tracking aims to reduce variance. Evaluation metrics such as Accuracy are formulated as: \\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\], where TP, TN, FP, FN denote true positives, true negatives, false positives, and false negatives, respectively.</p>\n<p>Engineering implementation points include pipeline automation and configuration management. The template should cover steps from data loading, preprocessing, model training, evaluation, to logging, using containerization (e.g., Docker) to solidify environments, and integrating into CI/CD pipelines. Complexity-sensitive points involve dependency resolution (ensuring environment snapshot completeness), while latency-sensitive points appear during model serialization and artifact upload. The following code block demonstrates a minimal reproducible experiment using MLflow to track an iris classification pipeline and compute accuracy metrics.</p>\n<pre><code>import mlflow\nimport mlflow.sklearn\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, f1_score, confusion_matrix\nimport numpy as np\nimport pandas as pd\n\n# Step 1: Data inspection\niris = load_iris()\nX, y = iris.data, iris.target\nprint(\"Data shape:\", X.shape)  # Output: (150, 4)\nprint(\"Feature names:\", iris.feature_names)  # Output: ['sepal length (cm)', ...]\nprint(\"Class distribution:\", np.bincount(y))  # Output: [50, 50, 50]\n\n# Step 2: Reproducible split\nX_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)\nprint(\"Training set shape:\", X_train.shape, \"Validation set shape:\", X_val.shape)  # Output: (120, 4) (30, 4)\n\n# Step 3: Pipeline and MLflow logging\nmlflow.set_experiment(\"iris_experiment\")\nwith mlflow.start_run():\n    # Log parameters\n    mlflow.log_param(\"random_state\", 42)\n    mlflow.log_param(\"test_size\", 0.2)\n    \n    # Build and train model\n    pipeline = Pipeline([\n        ('scaler', StandardScaler()),\n        ('classifier', LogisticRegression(random_state=42, max_iter=200))\n    ])\n    pipeline.fit(X_train, y_train)\n    \n    # Prediction and evaluation\n    y_pred = pipeline.predict(X_val)\n    accuracy = accuracy_score(y_val, y_pred)\n    f1 = f1_score(y_val, y_pred, average='weighted')\n    \n    # Log metrics\n    mlflow.log_metric(\"val_accuracy\", accuracy)\n    mlflow.log_metric(\"val_f1\", f1)\n    print(\"Validation accuracy:\", accuracy)  # Output: ~0.9667\n    print(\"Validation F1-score:\", f1)  # Output: ~0.9667\n    \n    # Log artifact: confusion matrix\n    cm = confusion_matrix(y_val, y_pred)\n    cm_df = pd.DataFrame(cm, index=iris.target_names, columns=iris.target_names)\n    cm_path = \"confusion_matrix.csv\"\n    cm_df.to_csv(cm_path)\n    mlflow.log_artifact(cm_path)\n    print(\"Confusion matrix:\\n\", cm)  # Output: high diagonal values, e.g., [[10,0,0],...]\n    \n    # Log environment\n    import sklearn\n    mlflow.log_param(\"sklearn_version\", sklearn.__version__)\n    mlflow.log_param(\"mlflow_version\", mlflow.__version__)\n    \n    # Save model\n    mlflow.sklearn.log_model(pipeline, \"model\")\n\nprint(\"Run completed, view details in MLflow UI.\")</code></pre>\n<p>Common failure modes include environment drift (mismatch between production and training environments), data leakage (validation set misuse), and uncontrolled randomness (e.g., not setting numpy random seeds). Diagnostic methods involve run integrity checks (verifying all steps are logged), metric rationality analysis (e.g., whether accuracy is within expected range), and reproduction tests (rerunning experiments with the same ID). For instance, if accuracy drops during reproduction, check data split random seeds and preprocessing parameters.</p>\n<p>Through this template, you can integrate experiment tracking systems into production pipelines, supporting model version management and A/B testing. Next, we summarize key points and plan follow-up actions.</p>\n\n<p>narrative-intro: This course delves into the core role of experiment tracking in MLOps, from definitions and mechanisms to engineering practices, providing you with transferable methodologies. Whether you are a platform engineer building infrastructure or a technical lead setting standards, systematic recording can enhance the reproducibility and collaboration efficiency of model development.</p>\n<p>narrative-outro: Mastering experiment tracking is not just about tool application but establishing a foundation for sustainable iteration culture. It is recommended to start with a small project, implement an end-to-end template, and gradually expand to team collaboration and production monitoring. Your next action could be: integrate MLflow or W&B into an existing project, log all metadata for the next experiment, and verify its reproducibility.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：实验追踪：MLflow/W&B 思路与模板 · 结构总览 · 数据：课程大纲】在设计《实验追踪：MLflow/W&B 思路与模板》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 实验追踪：MLflow/W&B 思路与模板 · 结构总览 · Data: 课程大纲】When outlining \"实验追踪：MLflow/W&B 思路与模板\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：实验追踪：MLflow/W&B 思路与模板 · worked example · 数据：建立可持续迭代的工程机制与质量标准 数据/代码】在复现《实验追踪：MLflow/W&B 思路与模板》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 实验追踪：MLflow/W&B 思路与模板 · worked example · Data: 建立可持续迭代的工程机制与质量标准 数据/代码】While reproducing the worked example in \"实验追踪：MLflow/W&B 思路与模板\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：实验追踪：MLflow/W&B 思路与模板 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《实验追踪：MLflow/W&B 思路与模板》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 实验追踪：MLflow/W&B 思路与模板 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"实验追踪：MLflow/W&B 思路与模板\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：实验追踪：MLflow/W&B 思路与模板 · 参考资料 · 数据：课程引用文献】当引用文献支撑《实验追踪：MLflow/W&B 思路与模板》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 实验追踪：MLflow/W&B 思路与模板 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"实验追踪：MLflow/W&B 思路与模板\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "MLflow: A Platform for the Machine Learning Lifecycle（Linux Foundation，2023）",
+            "en": "MLflow: A Platform for the Machine Learning Lifecycle (Linux Foundation, 2023)"
+          },
+          "url": "https://mlflow.org/"
+        },
+        {
+          "label": {
+            "zh": "Weights & Biases Documentation（Weights & Biases，2023）",
+            "en": "Weights & Biases Documentation (Weights & Biases, 2023)"
+          },
+          "url": "https://docs.wandb.ai/"
+        },
+        {
+          "label": {
+            "zh": "Reproducibility in Machine Learning（PNAS，2019）",
+            "en": "Reproducibility in Machine Learning (PNAS, 2019)"
+          },
+          "url": "https://www.pnas.org/doi/10.1073/pnas.1900126116"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-20-mlflowwb-zh.mp3"
+      },
+      "meta": {
+        "category": "上线与持续迭代",
+        "level": "10. MLOps 与质量工程",
+        "difficultyScore": 3,
+        "related": [
+          "AI 产品化思维：需求→数据→模型→评测→上线→迭代",
+          "Online Monitoring：漂移、失败模式、自动报警"
+        ],
+        "learningObjectives": [
+          "建立可持续迭代的工程机制与质量标准",
+          "能把一个AI/LLM应用稳定运行在生产环境"
+        ],
+        "personas": [
+          "平台工程师",
+          "技术负责人",
+          "安全官",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering experiment tracking with MLflow/W&B helps teams establish reusable practices for deployment and continuous iteration.",
+          "best_for": "Suitable for platform engineers, technical leads, security officers, and product managers needing to quickly absorb MLOps and quality engineering topics.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+        },
+        "tone_profile": {
+          "persona": "平台工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 平台工程师、技术负责人、安全官、产品经理，帮助他们把 实验追踪：MLflow/W&B 思路与模板 应用于 上线与持续迭代",
+          "prefersEnglish": false,
+          "industries": [
+            "平台工程师",
+            "技术负责人",
+            "安全官"
+          ],
+          "personas": [
+            "平台工程师",
+            "技术负责人",
+            "安全官",
+            "产品经理"
+          ],
+          "pains": "在 上线与持续迭代 场景缺乏 实验追踪：MLflow/W&B 思路与模板 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "10. MLOps 与质量工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在部署新模型版本时，你如何确保实验参数、数据版本和代码环境被完整记录？请描述你当前追踪这些信息的方法及其局限性。",
+            "action_hint": "思考MLflow/W&B如何通过结构化模板解决你的追踪痛点。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为技术负责人，当团队同时运行多个A/B测试时，你如何评估不同实验对业务指标的影响？分享你现有的对比分析流程。",
+            "action_hint": "探索实验追踪工具如何提供统一的可视化界面来优化决策。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-20-1k-token",
       "date": "2026-03-20",
