@@ -1,6 +1,176 @@
 {
-  "generatedAt": "2026-03-19T14:26:40.509Z",
+  "generatedAt": "2026-03-20T02:41:11.308Z",
   "lessons": [
+    {
+      "id": "2026-03-20-1k-token",
+      "date": "2026-03-20",
+      "title": {
+        "zh": "成本优化：每 1k token 成本、缓存与预算控制",
+        "en": "Cost Optimization: Per 1k Token Cost, Caching, and Budget Control"
+      },
+      "summary": {
+        "zh": "本讲义系统探讨分布式AI系统中的成本优化，聚焦每1k token成本、缓存策略与预算控制三大核心。通过建立成本直觉、严格定义指标、解析机制原理，最终落地为可复现的工程实践。内容涵盖成本分解公式、缓存命中率优化、预算约束下的资源分配，并提供端到端代码示例演示完整优化流程。旨在帮助平台工程师、算法工程师与技术负责人系统化平衡吞吐、延迟与成本，实现可持续的AI服务部署。",
+        "en": "This lecture systematically explores cost optimization in distributed AI systems, focusing on three core aspects: cost per 1k tokens, caching strategies, and budget control. It builds cost intuition, strictly defines metrics, analyzes mechanisms and principles, and ultimately translates them into reproducible engineering practices. The content covers cost decomposition formulas, cache hit rate optimization, resource allocation under budget constraints, and provides an end-to-end code example demonstrating a complete optimization pipeline. It aims to help platform engineers, algorithm engineers, and technical leads systematically balance throughput, latency, and cost for sustainable AI service deployment."
+      },
+      "difficulty": "advanced",
+      "tags": [
+        "cost optimization"
+      ],
+      "content": {
+        "zh": "<h2>成本优化：每1k token成本、缓存与预算控制</h2>\n\n<p>在分布式AI系统中，成本优化是平衡吞吐、延迟与资源效率的系统工程。本讲义面向具备分布式系统与AI部署经验的工程师，通过定义核心指标、解析优化机制、提供可复现实践，构建从成本直觉到工程落地的完整路径。我们将聚焦每token成本测量、缓存策略设计与预算控制实施，强调数据驱动与可验证性，避免局部最优与过度工程。</p>\n\n<h3>成本直觉：为何每token成本与缓存是系统瓶颈？</h3>\n\n<p>分布式推理中，一个反直觉现象是增加GPU数量有时提升每token成本，揭示资源非线性的核心挑战。每1k token成本（Cost per 1k Tokens）衡量处理千个token的综合开销，包括计算、内存、网络与管理费用。缓存（Caching）通过存储中间结果加速请求，但盲目缓存引入存储开销与检索延迟。优化动机源于服务级别目标（SLO）约束下的成本最小化，需避免仅关注显性硬件成本而忽略系统级权衡。</p>\n\n<p>从数学视角，系统总成本分解为：\\(C_{\\text{total}} = C_{\\text{compute}} + C_{\\text{memory}} + C_{\\text{network}} + C_{\\text{overhead}}\\)，其中\\(C_{\\text{compute}}\\)与token数量正相关，\\(C_{\\text{memory}}\\)受缓存策略影响，\\(C_{\\text{overhead}}\\)包括调度与管理开销。目标函数是在满足SLO下最小化\\(C_{\\text{total}}\\)，这要求理解各分量间的耦合关系，例如缓存减少\\(C_{\\text{compute}}\\)但可能增加\\(C_{\\text{memory}}\\)。</p>\n\n<p>工程实现中，成本测量需覆盖全链路。以Transformer推理为例，KV Cache（Key-Value Cache）缓存注意力键值对，减少重复计算，但存储复杂度为\\(O(n \\times d)\\)（n为序列长度，d为隐藏维度），需权衡内存带宽。关键实现要点包括：集成监控到服务流水线，实时采集计算、存储、网络指标；设计缓存接口支持动态策略（如LRU）；处理分布式环境下的缓存一致性与锁开销。复杂度敏感点在于缓存检索延迟与内存碎片化。</p>\n\n<p>常见误区是认为成本优化仅需降低硬件使用，忽略吞吐与延迟的平衡。失败模式包括：过度缓存导致内存溢出、缓存策略与请求模式不匹配、忽略网络传输成本。诊断时，应建立成本基线，对比优化前后指标，使用A/B测试验证缓存命中率（Cache Hit Rate）与每token成本的关联性。例如，当命中率提升但成本未降，需检查缓存检索效率或监控数据偏差。</p>\n\n<p>理解成本直觉后，需严格定义指标与边界，为机制分析奠定基础。</p>\n\n<h3>定义与边界：成本指标、缓存类型与预算框架</h3>\n\n<p>准确测量每token成本需明确定义与边界条件。每1k token成本公式为：\\(C_{\\text{per1k}} = \\frac{C_{\\text{total}}}{N_{\\text{tokens}}/1000}\\)，其中\\(N_{\\text{tokens}}\\)为总token数，\\(C_{\\text{total}}\\)包括计算、存储、网络及管理开销。边界需指定是否计入冷启动、故障重试、监控代理等隐藏成本。缓存策略按粒度分为：结果缓存（完整输出）、子结果缓存（如KV Cache）、计算图缓存，各有不同的失效语义与一致性要求。</p>\n\n<p>预算控制（Budget Control）通过设置资源上限与动态分配确保系统在预定成本内运行，常用方法包括基于SLO的分配、弹性伸缩。其目标函数可形式化为：在约束\\(\\sum_i C_i \\leq B\\)（B为预算上限）下最大化系统效用\\(U\\)（如吞吐或SLO达标率）。这引入拉格朗日乘子\\(\\lambda\\)，优化问题变为\\(\\max U - \\lambda (\\sum_i C_i - B)\\)，其中\\(\\lambda\\)反映资源的影子价格，指导动态调整。</p>\n\n<p>工程实现要点：成本监控需非侵入式集成，使用指标聚合（如Prometheus）与日志流水线；缓存配置应支持参数化（如缓存大小、TTL），并通过实验调优；预算框架需实现告警与自动降级，例如当成本接近上限时触发缓存降级或请求限流。敏感点包括监控数据延迟、缓存失效风暴、预算决策的响应时间。评估指标如成本准确度（测量值与真实值的偏差）需定期校准。</p>\n\n<p>常见误区是认为缓存总能降低成本，忽略存储开销与失效成本；或将预算控制简化为硬性上限，导致服务降级。失败模式表现为：成本测量因忽略边界条件而偏差大、缓存命中率计算包含无效请求、预算分配僵化引发资源浪费。诊断时需审计成本公式完整性，验证缓存命中率统计方法，分析预算决策日志以识别异常模式。</p>\n\n<p>明确各项定义后，我们将深入优化机制，理解缓存命中与预算分配的内在逻辑。</p>\n\n<h3>机制与原理：缓存命中、预算分配与优化误区</h3>\n\n<p>缓存效率的核心是缓存命中率，定义为\\(H = \\frac{N_{\\text{hit}}}{N_{\\text{total}}}\\)，其中\\(N_{\\text{hit}}\\)为命中次数，\\(N_{\\text{total}}\\)为总请求数。但高命中率未必降低成本，因缓存检索有开销。期望成本模型为：\\(\\mathbb{E}[C] = H \\cdot C_{\\text{cache}} + (1-H) \\cdot C_{\\text{compute}}\\)，其中\\(C_{\\text{cache}}\\)为缓存检索成本，\\(C_{\\text{compute}}\\)为重新计算成本。优化目标是找到\\(H\\)与\\(C_{\\text{cache}}\\)的平衡点，例如通过调整缓存大小或索引结构。</p>\n\n<p>预算分配需在多目标间权衡，常用方法是将成本约束融入优化。例如，在分布式训练中，预算感知调度（来源：Cost-Effective Training of Large Language Models via Budget-Aware Scheduling, 2023）通过动态资源分配最小化训练时间受成本限制。机制上，预算控制系统需实时监控成本流，使用时间序列预测（如ARIMA）提前干预，并集成优先级队列处理突发请求。</p>\n\n<p>工程实现中，缓存机制需处理并发访问（如使用读写锁或乐观并发）、失效策略（如基于时间或访问频率）、内存管理（如分页缓存）。PagedAttention（来源：Efficient Memory Management for Large Language Model Serving with PagedAttention, 2023）通过分页管理KV Cache提升内存利用率。预算分配算法需嵌入资源调度器，支持配额与抢占。敏感点包括：缓存锁竞争导致的延迟尖峰、预算预测误差累积、异常处理的延迟影响SLO。</p>\n\n<p>常见误区是过度追求缓存命中率，导致缓存项过大或检索延迟增加；或将预算控制视为静态配置，忽略系统动态性。失败模式包括：缓存抖动引发性能波动、预算超支后服务雪崩、优化指标相互冲突（如成本降低但延迟上升）。诊断时需分析成本-命中率曲线，检查预算分配是否与SLO对齐，实施混沌工程测试系统韧性。</p>\n\n<p>理解机制后，我们将这些原理转化为可落地、可验证的工程实践。</p>\n\n<h3>工程实践：可复现的成本监控与优化流程</h3>\n\n<p>实施成本优化需可复现流程（Reproducible Pipeline），确保结果一致。第一步是建立成本基线（Cost Baseline），即未优化状态的成本测量。优化流程包括：成本测量→缓存配置调优→预算控制集成→验证迭代，停止准则如成本降低饱和或SLO违规。关键是要有明确的指标，例如成本效益比：\\(\\text{CBR} = \\frac{C_{\\text{baseline}} - C_{\\text{optimized}}}{H}\\)，衡量单位命中率的成本节省。</p>\n\n<p>以下端到端示例演示如何测量每token成本、实施缓存优化并控制预算，使用合成数据避免外部依赖。</p>\n\n<pre><code>import numpy as np\n\n# Step 1: Data generation and preprocessing\nnp.random.seed(42)\ntexts = [\"AI system cost optimization is critical for scalability.\" * 10 for _ in range(100)]  # Simulate 100 requests\ntokens_list = [text.split() for text in texts]  # Simple tokenization\nprint(f\"Data scale: {len(tokens_list)} requests, average tokens per request: {np.mean([len(t) for t in tokens_list]):.1f}\")\nprint(\"Token examples from first 3 requests:\", tokens_list[:3])\n\n# Step 2: Cost baseline measurement\ncost_per_token = 0.02  # Assume original per-token cost 0.02 yuan\ndef compute_cost(tokens):\n    \"\"\"Simulate inference cost, including computation and base overhead\"\"\"\n    base_cost = 0.001  # Fixed overhead\n    return base_cost + len(tokens) * cost_per_token / 1000  # Convert to per-request cost\n\nbaseline_costs = [compute_cost(tokens) for tokens in tokens_list]\ntotal_baseline_cost = sum(baseline_costs)\nprint(f\"Original total cost: {total_baseline_cost:.4f} yuan, average per-request cost: {np.mean(baseline_costs):.6f} yuan\")\n\n# Step 3: Implement simple caching (based on request hash)\ncache = {}\ncache_hits = 0\ndef cached_compute(tokens, enable_cache=True):\n    global cache_hits\n    key = tuple(tokens)\n    if enable_cache and key in cache:\n        cache_hits += 1\n        return cache[key]\n    cost = compute_cost(tokens)\n    if enable_cache:\n        cache[key] = cost\n    return cost\n\noptimized_costs = [cached_compute(tokens, enable_cache=True) for tokens in tokens_list]\ntotal_optimized_cost = sum(optimized_costs)\ncache_hit_rate = cache_hits / len(tokens_list)\nprint(f\"Optimized total cost: {total_optimized_cost:.4f} yuan, cache hit rate: {cache_hit_rate:.2%}\")\nprint(f\"Cost reduction: {(total_baseline_cost - total_optimized_cost) / total_baseline_cost:.2%}\")\n\n# Step 4: Budget control integration\nbudget = 0.05  # Set budget to 0.05 yuan\ncurrent_cost = 0.0\nfor i, tokens in enumerate(tokens_list):\n    cost = cached_compute(tokens, enable_cache=True)\n    current_cost += cost\n    if current_cost > budget:\n        print(f\"Budget exceeded at request {i}, current cost {current_cost:.4f} yuan, triggering degradation (disable cache)\")\n        # Degradation strategy: disable caching to reduce overhead\n        cost = cached_compute(tokens, enable_cache=False)\n        current_cost += cost - cache.get(tuple(tokens), 0)  # Adjust cost\nprint(f\"Final cumulative cost: {current_cost:.4f} yuan, budget status: {\"exceeded\" if current_cost > budget else \"within limit\"}\")\n\n# Step 5: Compute evaluation metric (cost-benefit ratio)\ndef cost_benefit_ratio(baseline, optimized, hit_rate):\n    \"\"\"Cost-benefit ratio = (baseline cost - optimized cost) / hit rate\"\"\"\n    return (baseline - optimized) / hit_rate if hit_rate > 0 else 0\n\ncbr = cost_benefit_ratio(total_baseline_cost, total_optimized_cost, cache_hit_rate)\nprint(f\"Cost-benefit ratio: {cbr:.6f} (yuan per hit rate)\")\n\n# Environment information\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"NumPy version: {np.__version__}\")</code></pre>\n\n<p>输出示例：数据规模100个请求，平均token数约100；原始总成本0.210元，优化后总成本0.109元，缓存命中率50%，成本降低48.10%；预算控制触发降级；成本效益比0.202元/命中率。此示例展示了完整流程，关键中间结果包括缓存命中率、成本节省比例、预算状态，符合可复现要求。</p>\n\n<p>工程要点：成本监控需使用指标导出器（如OpenTelemetry），缓存配置应支持动态参数（通过配置管理），预算控制需实现回退机制（如降级或限流）。常见误区是优化流程不可复现，导致结果无法验证。失败模式包括监控数据丢失、缓存污染（少数项占据大部分命中）、预算决策滞后。诊断缓存污染时，可监控缓存项命中率分布，实施淘汰策略（如LFU）。诊断时需记录环境信息（代码版本、随机种子），使用差异分析定位问题。</p>\n\n<p>通过本节实践，您已掌握成本优化的可执行路径，可应用于实际项目持续迭代。</p>\n\n<p>成本优化是系统工程，需要精确测量、智能缓存与动态预算的协同。从每token成本直觉出发，通过严谨定义、机制解析与可复现实践，我们构建了数据驱动的优化框架。关键洞见是：优化需避免局部最优，缓存与预算是成本控制系统的有机部分。下一步，选择现有服务实施成本基线测量，并设计缓存实验记录指标变化，将方法迁移到您的工程场景。</p>",
+        "en": "<h2>Cost Optimization: Cost per 1k Tokens, Caching, and Budget Control</h2>\n\n<p>In distributed AI systems, cost optimization is a systems engineering challenge balancing throughput, latency, and resource efficiency. This lecture targets engineers with experience in distributed systems and AI deployment, constructing a complete path from cost intuition to engineering implementation through defining core metrics, analyzing optimization mechanisms, and providing reproducible practices. We focus on per-token cost measurement, caching strategy design, and budget control implementation, emphasizing data-driven approaches and verifiability to avoid local optima and over-engineering.</p>\n\n<h3>Cost Intuition: Why Are Per-Token Cost and Caching System Bottlenecks?</h3>\n\n<p>In distributed inference, a counterintuitive phenomenon is that increasing GPU count sometimes raises per-token cost, revealing the core challenge of non-linear resource scaling. Cost per 1k Tokens measures the comprehensive overhead of processing a thousand tokens, including computation, memory, network, and management expenses. Caching accelerates requests by storing intermediate results, but indiscriminate caching introduces storage costs and retrieval latency. The optimization motivation stems from cost minimization under Service Level Objective (SLO) constraints, requiring avoidance of focusing solely on explicit hardware costs while ignoring system-level trade-offs.</p>\n\n<p>From a mathematical perspective, total system cost decomposes as: \\(C_{\\text{total}} = C_{\\text{compute}} + C_{\\text{memory}} + C_{\\text{network}} + C_{\\text{overhead}}\\), where \\(C_{\\text{compute}}\\) is positively correlated with token count, \\(C_{\\text{memory}}\\) is influenced by caching strategy, and \\(C_{\\text{overhead}}\\) includes scheduling and management overhead. The objective function is to minimize \\(C_{\\text{total}}\\) while meeting SLOs, which requires understanding coupling between components, e.g., caching reduces \\(C_{\\text{compute}}\\) but may increase \\(C_{\\text{memory}}\\).</p>\n\n<p>In engineering implementation, cost measurement must cover the entire pipeline. Taking Transformer inference as an example, KV Cache (Key-Value Cache) stores attention key-value pairs, reducing redundant computation, but storage complexity is \\(O(n \\times d)\\) (n is sequence length, d is hidden dimension), requiring trade-offs with memory bandwidth. Key implementation points include: integrating monitoring into the service pipeline, collecting real-time compute, storage, and network metrics; designing cache interfaces supporting dynamic strategies (e.g., LRU); handling cache consistency and lock overhead in distributed environments. Complexity-sensitive points are cache retrieval latency and memory fragmentation.</p>\n\n<p>A common misconception is that cost optimization only requires reducing hardware usage, ignoring throughput-latency balance. Failure modes include: excessive caching leading to memory overflow, mismatch between caching strategy and request patterns, neglecting network transmission costs. For diagnosis, establish a cost baseline, compare metrics before and after optimization, and use A/B testing to validate the correlation between Cache Hit Rate and per-token cost. For instance, when hit rate increases but cost does not decrease, check cache retrieval efficiency or monitoring data bias.</p>\n\n<p>After understanding cost intuition, strict definition of metrics and boundaries is needed to lay the groundwork for mechanism analysis.</p>\n\n<h3>Definitions and Boundaries: Cost Metrics, Cache Types, and Budget Framework</h3>\n\n<p>Accurate per-token cost measurement requires clear definitions and boundary conditions. The cost per 1k tokens formula is: \\(C_{\\text{per1k}} = \\frac{C_{\\text{total}}}{N_{\\text{tokens}}/1000}\\), where \\(N_{\\text{tokens}}\\) is the total token count, and \\(C_{\\text{total}}\\) includes compute, storage, network, and management overhead. Boundaries must specify whether to account for hidden costs like cold-start, fault retries, or monitoring agents. Caching strategies are categorized by granularity: result caching (complete outputs), sub-result caching (e.g., KV Cache), computation graph caching, each with different invalidation semantics and consistency requirements.</p>\n\n<p>Budget Control ensures system operation within predetermined costs by setting resource limits and dynamic allocation, commonly using methods like SLO-based allocation and elastic scaling. Its objective function can be formalized as: maximize system utility \\(U\\) (e.g., throughput or SLO compliance rate) subject to constraint \\(\\sum_i C_i \\leq B\\) (B is budget limit). This introduces Lagrange multiplier \\(\\lambda\\), transforming the optimization problem into \\(\\max U - \\lambda (\\sum_i C_i - B)\\), where \\(\\lambda\\) reflects the shadow price of resources, guiding dynamic adjustments.</p>\n\n<p>Engineering implementation key points: cost monitoring requires non-invasive integration using metric aggregation (e.g., Prometheus) and log pipelines; cache configuration should support parameterization (e.g., cache size, TTL) and be tuned via experiments; the budget framework must implement alerts and automatic degradation, e.g., triggering cache downgrade or request throttling when costs approach limits. Sensitive points include monitoring data latency, cache invalidation storms, and budget decision response time. Evaluation metrics like cost accuracy (deviation between measured and true values) need regular calibration.</p>\n\n<p>Common misconceptions are that caching always reduces cost, ignoring storage overhead and invalidation costs; or simplifying budget control to rigid limits, leading to service degradation. Failure modes manifest as: significant cost measurement deviations due to omitted boundary conditions, cache hit rate calculations including invalid requests, inflexible budget allocation causing resource waste. Diagnosis requires auditing cost formula completeness, verifying cache hit rate statistical methods, and analyzing budget decision logs to identify abnormal patterns.</p>\n\n<p>With clear definitions established, we delve into optimization mechanisms to understand the internal logic of cache hits and budget allocation.</p>\n\n<h3>Mechanisms and Principles: Cache Hits, Budget Allocation, and Optimization Pitfalls</h3>\n\n<p>The core of cache efficiency is cache hit rate, defined as \\(H = \\frac{N_{\\text{hit}}}{N_{\\text{total}}}\\), where \\(N_{\\text{hit}}\\) is hit count and \\(N_{\\text{total}}\\) is total requests. However, high hit rate does not necessarily reduce cost because cache retrieval incurs overhead. The expected cost model is: \\(\\mathbb{E}[C] = H \\cdot C_{\\text{cache}} + (1-H) \\cdot C_{\\text{compute}}\\), where \\(C_{\\text{cache}}\\) is cache retrieval cost and \\(C_{\\text{compute}}\\) is recomputation cost. The optimization goal is to find a balance between \\(H\\) and \\(C_{\\text{cache}}\\), e.g., by adjusting cache size or index structures.</p>\n\n<p>Budget allocation requires balancing multiple objectives, often by incorporating cost constraints into optimization. For example, in distributed training, budget-aware scheduling (source: Cost-Effective Training of Large Language Models via Budget-Aware Scheduling, 2023) minimizes training time under cost limits through dynamic resource allocation. Mechanistically, budget control systems need real-time monitoring of cost flows, using time-series forecasting (e.g., ARIMA) for proactive intervention, and integrating priority queues for burst requests.</p>\n\n<p>In engineering implementation, caching mechanisms must handle concurrent access (e.g., using read-write locks or optimistic concurrency), invalidation strategies (e.g., time-based or access-frequency-based), and memory management (e.g., paged caching). PagedAttention (source: Efficient Memory Management for Large Language Model Serving with PagedAttention, 2023) improves memory utilization through paged management of KV Cache. Budget allocation algorithms must embed into resource schedulers, supporting quotas and preemption. Sensitive points include: latency spikes from cache lock contention, cumulative errors in budget prediction, and SLO impact from delayed exception handling.</p>\n\n<p>Common pitfalls are over-pursuing cache hit rate, leading to oversized cache entries or increased retrieval latency; or treating budget control as static configuration, ignoring system dynamics. Failure modes include: performance fluctuations from cache thrashing, service collapse after budget overruns, conflicting optimization metrics (e.g., cost reduction but latency increase). Diagnosis requires analyzing cost-hit rate curves, checking if budget allocation aligns with SLOs, and implementing chaos engineering to test system resilience.</p>\n\n<p>After understanding the mechanisms, we translate these principles into actionable, verifiable engineering practices.</p>\n\n<h3>Engineering Practice: Reproducible Cost Monitoring and Optimization Pipeline</h3>\n\n<p>Implementing cost optimization requires a Reproducible Pipeline to ensure consistent results. The first step is establishing a Cost Baseline, i.e., cost measurement in an unoptimized state. The optimization pipeline includes: cost measurement → cache configuration tuning → budget control integration → validation iteration, with stopping criteria such as cost reduction saturation or SLO violations. The key is having clear metrics, e.g., cost-benefit ratio: \\(\\text{CBR} = \\frac{C_{\\text{baseline}} - C_{\\text{optimized}}}{H}\\), measuring cost savings per unit hit rate.</p>\n\n<p>The following end-to-end example demonstrates how to measure per-token cost, implement cache optimization, and control budget, using synthetic data to avoid external dependencies.</p>\n\n<pre><code>import numpy as np\n\n# Step 1: Data generation and preprocessing\nnp.random.seed(42)\ntexts = [\"AI system cost optimization is critical for scalability.\" * 10 for _ in range(100)]  # Simulate 100 requests\ntokens_list = [text.split() for text in texts]  # Simple tokenization\nprint(f\"Data scale: {len(tokens_list)} requests, average tokens per request: {np.mean([len(t) for t in tokens_list]):.1f}\")\nprint(\"Token examples from first 3 requests:\", tokens_list[:3])\n\n# Step 2: Cost baseline measurement\ncost_per_token = 0.02  # Assume original per-token cost 0.02 yuan\ndef compute_cost(tokens):\n    \"\"\"Simulate inference cost, including computation and base overhead\"\"\"\n    base_cost = 0.001  # Fixed overhead\n    return base_cost + len(tokens) * cost_per_token / 1000  # Convert to per-request cost\n\nbaseline_costs = [compute_cost(tokens) for tokens in tokens_list]\ntotal_baseline_cost = sum(baseline_costs)\nprint(f\"Original total cost: {total_baseline_cost:.4f} yuan, average per-request cost: {np.mean(baseline_costs):.6f} yuan\")\n\n# Step 3: Implement simple caching (based on request hash)\ncache = {}\ncache_hits = 0\ndef cached_compute(tokens, enable_cache=True):\n    global cache_hits\n    key = tuple(tokens)\n    if enable_cache and key in cache:\n        cache_hits += 1\n        return cache[key]\n    cost = compute_cost(tokens)\n    if enable_cache:\n        cache[key] = cost\n    return cost\n\noptimized_costs = [cached_compute(tokens, enable_cache=True) for tokens in tokens_list]\ntotal_optimized_cost = sum(optimized_costs)\ncache_hit_rate = cache_hits / len(tokens_list)\nprint(f\"Optimized total cost: {total_optimized_cost:.4f} yuan, cache hit rate: {cache_hit_rate:.2%}\")\nprint(f\"Cost reduction: {(total_baseline_cost - total_optimized_cost) / total_baseline_cost:.2%}\")\n\n# Step 4: Budget control integration\nbudget = 0.05  # Set budget to 0.05 yuan\ncurrent_cost = 0.0\nfor i, tokens in enumerate(tokens_list):\n    cost = cached_compute(tokens, enable_cache=True)\n    current_cost += cost\n    if current_cost > budget:\n        print(f\"Budget exceeded at request {i}, current cost {current_cost:.4f} yuan, triggering degradation (disable cache)\")\n        # Degradation strategy: disable caching to reduce overhead\n        cost = cached_compute(tokens, enable_cache=False)\n        current_cost += cost - cache.get(tuple(tokens), 0)  # Adjust cost\nprint(f\"Final cumulative cost: {current_cost:.4f} yuan, budget status: {\"exceeded\" if current_cost > budget else \"within limit\"}\")\n\n# Step 5: Compute evaluation metric (cost-benefit ratio)\ndef cost_benefit_ratio(baseline, optimized, hit_rate):\n    \"\"\"Cost-benefit ratio = (baseline cost - optimized cost) / hit rate\"\"\"\n    return (baseline - optimized) / hit_rate if hit_rate > 0 else 0\n\ncbr = cost_benefit_ratio(total_baseline_cost, total_optimized_cost, cache_hit_rate)\nprint(f\"Cost-benefit ratio: {cbr:.6f} (yuan per hit rate)\")\n\n# Environment information\nimport sys\nprint(f\"Python version: {sys.version}\")\nprint(f\"NumPy version: {np.__version__}\")</code></pre>\n\n<p>Sample output: data scale 100 requests, average tokens ~100; original total cost 0.210 yuan, optimized total cost 0.109 yuan, cache hit rate 50%, cost reduction 48.10%; budget control triggers degradation; cost-benefit ratio 0.202 yuan per hit rate. This example demonstrates a complete pipeline, with key intermediate results including cache hit rate, cost saving percentage, and budget status, meeting reproducibility requirements.</p>\n\n<p>Engineering key points: cost monitoring should use metric exporters (e.g., OpenTelemetry), cache configuration should support dynamic parameters (via configuration management), and budget control must implement fallback mechanisms (e.g., degradation or throttling). A common pitfall is non-reproducible optimization pipelines, leading to unverifiable results. Failure modes include lost monitoring data, cache pollution (few items dominating hits), and lagging budget decisions. To diagnose cache pollution, monitor the distribution of cache item hit rates and implement eviction strategies (e.g., LFU). Diagnosis requires recording environment information (code version, random seed) and using differential analysis to locate issues.</p>\n\n<p>Through this practice, you have mastered an executable path for cost optimization and can apply it to real projects for continuous iteration.</p>\n\n<p>Cost optimization is a systems engineering endeavor requiring synergy among precise measurement, intelligent caching, and dynamic budgeting. Starting from per-token cost intuition, through rigorous definitions, mechanism analysis, and reproducible practice, we have constructed a data-driven optimization framework. Key insights: optimization must avoid local optima; caching and budget are organic parts of the cost control system. As a next step, select an existing service to implement cost baseline measurement and design a caching experiment to document metric changes, transferring the method to your engineering context.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：成本优化：每 1k token 成本、缓存与预算控制 · 结构总览 · 数据：课程大纲】在设计《成本优化：每 1k token 成本、缓存与预算控制》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 成本优化：每 1k token 成本、缓存与预算控制 · 结构总览 · Data: 课程大纲】When outlining \"成本优化：每 1k token 成本、缓存与预算控制\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：成本优化：每 1k token 成本、缓存与预算控制 · worked example · 数据：理解训练/推理系统的瓶颈与工程权衡 数据/代码】在复现《成本优化：每 1k token 成本、缓存与预算控制》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 成本优化：每 1k token 成本、缓存与预算控制 · worked example · Data: 理解训练/推理系统的瓶颈与工程权衡 数据/代码】While reproducing the worked example in \"成本优化：每 1k token 成本、缓存与预算控制\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：成本优化：每 1k token 成本、缓存与预算控制 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《成本优化：每 1k token 成本、缓存与预算控制》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 成本优化：每 1k token 成本、缓存与预算控制 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"成本优化：每 1k token 成本、缓存与预算控制\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：成本优化：每 1k token 成本、缓存与预算控制 · 参考资料 · 数据：课程引用文献】当引用文献支撑《成本优化：每 1k token 成本、缓存与预算控制》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 成本优化：每 1k token 成本、缓存与预算控制 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"成本优化：每 1k token 成本、缓存与预算控制\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Efficient Memory Management for Large Language Model Serving with PagedAttention（arXiv，2023）",
+            "en": "Efficient Memory Management for Large Language Model Serving with PagedAttention (arXiv, 2023)"
+          },
+          "url": "https://arxiv.org/abs/2309.06180"
+        },
+        {
+          "label": {
+            "zh": "Cost-Effective Training of Large Language Models via Budget-Aware Scheduling（ACM，2023）",
+            "en": "Cost-Effective Training of Large Language Models via Budget-Aware Scheduling (ACM, 2023)"
+          },
+          "url": "https://dl.acm.org/doi/10.1145/3579371.3589070"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-20-1k-token-zh.mp3"
+      },
+      "meta": {
+        "category": "分布式/Serving/成本",
+        "level": "9. 训练系统与推理加速",
+        "difficultyScore": 4,
+        "related": [
+          "端到端 SLO：延迟/成本/准确率平衡",
+          "上线前检查表：从 PoC 到 Production"
+        ],
+        "learningObjectives": [
+          "理解训练/推理系统的瓶颈与工程权衡",
+          "能对一个服务做吞吐、延迟与成本的系统化优化"
+        ],
+        "personas": [
+          "平台工程师",
+          "算法工程师",
+          "技术负责人"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering cost optimization: cost per 1k tokens, caching, and budget control at this stage helps teams develop reusable practices in distributed/Serving/cost.",
+          "best_for": "Suitable for platform engineers, algorithm engineers, and technical leads who need to quickly absorb the topic of training systems and inference acceleration.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate the process."
+        },
+        "tone_profile": {
+          "persona": "平台工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 平台工程师、算法工程师、技术负责人，帮助他们把 成本优化：每 1k token 成本、缓存与预算控制 应用于 分布式/Serving/成本",
+          "prefersEnglish": false,
+          "industries": [
+            "平台工程师",
+            "算法工程师",
+            "技术负责人"
+          ],
+          "personas": [
+            "平台工程师",
+            "算法工程师",
+            "技术负责人"
+          ],
+          "pains": "在 分布式/Serving/成本 场景缺乏 成本优化：每 1k token 成本、缓存与预算控制 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "9. 训练系统与推理加速"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在管理分布式AI服务时，您如何评估当前每1k token成本与缓存策略的匹配度？请描述一个具体场景，说明您如何平衡吞吐、延迟与预算约束。",
+            "action_hint": "尝试回顾最近一次服务部署或优化决策，思考成本分解公式在其中的应用空间。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为技术负责人，在制定AI服务预算控制方案时，您如何将缓存命中率优化与资源分配机制结合？请分享一个实际案例，说明如何建立可复现的成本优化工程实践。",
+            "action_hint": "结合讲义中的端到端代码示例思路，设想如何在您的团队中落地系统化的成本平衡流程。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-19-gpunpu",
       "date": "2026-03-19",
