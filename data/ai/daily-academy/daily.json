@@ -1,6 +1,179 @@
 {
-  "generatedAt": "2026-03-20T14:10:40.199Z",
+  "generatedAt": "2026-03-21T02:40:02.106Z",
   "lessons": [
+    {
+      "id": "2026-03-21-model-registry",
+      "date": "2026-03-21",
+      "title": {
+        "zh": "模型版本管理：Model Registry、灰度与回滚",
+        "en": "Model Version Management: Model Registry, Canary Deployment, and Rollback"
+      },
+      "summary": {
+        "zh": "模型版本管理是确保AI系统在生产环境中稳定迭代的核心工程实践。本课程系统阐述了版本管理的必要性、Model Registry的元数据架构、灰度发布与回滚的风险控制机制。通过数学形式化定义与端到端代码示例，深入解析了版本可复现性目标函数、评估指标计算、工程实现要点及常见失败模式。学习者将掌握构建可持续版本管理流程的方法论，具备在生产环境中安全部署与回滚模型的能力。",
+        "en": "Model version management is a core engineering practice for ensuring stable iteration of AI systems in production. This course systematically explains the necessity of version management, the metadata architecture of Model Registry, and risk control mechanisms through canary release and rollback. Using mathematical formalizations and end-to-end code examples, it delves into version reproducibility objective functions, evaluation metric calculations, key engineering implementation points, and common failure modes. Learners will master methodologies for building sustainable version management pipelines, equipping them with the ability to safely deploy and roll back models in production environments."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "model registry",
+        "canary"
+      ],
+      "content": {
+        "zh": "<h3>为什么需要模型版本管理？</h3>\n<p>在机器学习系统从实验走向生产的过程中，模型迭代常伴随一个隐蔽风险：性能退化难以追溯。当线上模型准确率从0.92滑落至0.85时，工程师往往陷入多变量排查困境——是数据分布偏移、特征工程变更，还是超参数调整的副作用？这种不确定性源于模型生命周期的复杂性：一个可部署的模型不仅是训练完成的权重文件，而是代码、数据、配置与环境依赖的耦合体。传统软件版本管理（如Git）无法直接套用，因为模型版本涉及非结构化数据流与动态依赖图。</p>\n<p>精确定义模型版本为：在特定时间点，由确定代码、数据快照、超参数配置及环境依赖所生成的机器学习模型及其完整评估记录。版本管理则是对这些版本进行创建、存储、检索、比较、发布与回滚的系统化控制过程。其核心目标可形式化为双重优化问题：</p>\n<p>\\[ \\mathcal{L}_{version} = \\sum_{t=1}^{T} \\mathbb{I}(\\text{Reproducible}(v_t)) + \\lambda \\cdot \\text{RetrievalCost}(v_t) \\]</p>\n<p>其中\\(v_t\\)表示第t个版本，\\(\\mathbb{I}(\\cdot)\\)为可复现性指示函数，定义为\\(\\mathbb{I}(\\text{Reproducible}(v_t)) = I(\\text{metadata_complete}) \\times I(\\text{environment_reconstructible})\\)，\\(I(\\cdot)\\)是二元指示函数（条件满足时取1，否则为0）。\\(\\text{RetrievalCost}(v_t)\\)衡量检索延迟，可建模为\\(\\alpha \\cdot \\log(\\text{index_complexity}) + \\beta\\)，\\(\\alpha,\\beta\\)为系统常数。\\(\\lambda\\)为权衡系数，通常设为0.1以优先保证可复现性。该目标函数强调：版本管理系统必须在确保任意历史版本可精确复现的前提下，最小化查询开销。</p>\n<p>工程实现需建立标准化元数据schema。关键字段包括：模型哈希（SHA-256）、训练数据指纹（数据集MD5）、超参数JSON、评估指标字典（如准确率、F1分数）、环境快照（Python版本、库依赖列表）。数据流遵循原子性“训练→评估→注册”管道，防止部分写入导致版本不一致。复杂度敏感点在于元数据索引设计：常见查询如“查找最近30天accuracy>0.9且使用特定数据集的版本”需要复合B树索引支持。</p>\n<p>常见误区是仅保存模型文件而忽略关联上下文。例如，团队记录了ResNet-50权重但未保存数据增强代码，导致无法复现相同的输入预处理。失败模式表现为：生产环境性能下降时，无法通过版本对比定位根因。诊断方法需建立差异分析框架：计算数据分布的统计距离（如Jensen-Shannon散度）、比较特征重要性排序、检查评估指标时序趋势。示例：新数据导致模型A准确率下降5个百分点；版本分析显示数据分布的JS散度\\(D_{JS}(P_{new}||P_{old}) = 0.25\\)，超过阈值0.15，确认为数据偏移问题。</p>\n<p>理解版本混乱的根源后，需要专用基础设施来管理版本生命周期。Model Registry提供了结构化存储与元数据追踪的解决方案。</p>\n\n<h3>Model Registry：版本存储与元数据管理</h3>\n<p>面对数百个历史版本，如何快速检索特定迭代并横向比较性能指标？Model Registry（模型注册表）作为中心化目录系统，解决了模型资产的可发现性与可审计性挑战。其核心价值不在于存储模型文件本身，而在于维护版本间的谱系关系与描述性元数据。类比图书馆目录：Registry不是藏书库，而是记录每本书位置、作者、出版年份及关联关系的卡片系统。</p>\n<p>精确定义Model Registry为：集中化存储模型版本、元数据并管理其生命周期状态（如开发、预发、生产、归档）的系统。元数据是描述模型版本的结构化信息集合，形式化为键值映射：</p>\n<p>\\[ \\mathcal{M}(v) = \\{(k_i, v_i)\\}_{i=1}^{n} \\quad \\text{其中} \\quad k_i \\in \\mathcal{K}, \\mathcal{K} = \\{\\text{accuracy}, \\text{data_hash}, \\text{framework_version}, \\dots\\} \\]</p>\n<p>评估指标如准确率的计算公式为：</p>\n<p>\\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\]</p>\n<p>其中TP、TN、FP、FN分别代表真阳性、真阴性、假阳性、假阴性计数。Registry需为每个版本存储此类指标，以便执行跨版本性能比较。</p>\n<p>工程实现要点包括：1）版本标识采用语义化版本号（MAJOR.MINOR.PATCH）配合全局唯一UUID；2）元数据存储使用关系型数据库（如PostgreSQL）支持ACID事务与复杂查询；3）模型文件存储可与Registry解耦（如对象存储S3），通过指针关联；4）API设计需支持版本CRUD、阶段转移、差异比较等操作。延迟敏感点在于元数据查询优化：对常用过滤条件（如accuracy范围、创建时间）需建立复合索引，避免全表扫描。</p>\n<p>常见误区是将Registry等同于模型文件仓库。实际上，其核心是元数据关系图谱：例如，版本v1.2可能继承v1.1的特征工程流水线，但调整了学习率。失败模式包括：元数据字段缺失导致版本不可复现、依赖关系未记录引发升级冲突。诊断时需计算元数据完整性得分：</p>\n<p>\\[ \\text{CompletenessScore} = \\frac{|\\{k \\in \\mathcal{K}_{required} \\mid k \\in \\mathcal{M}(v)\\}|}{|\\mathcal{K}_{required}|} \\]</p>\n<p>当得分低于阈值（如0.8）时触发告警。示例：训练新模型后注册到Registry，记录accuracy=0.92、数据哈希abc123、PyTorch版本1.12；版本v1.2处于Staging阶段，可通过GraphQL接口查询其完整依赖链。</p>\n<p>Registry建立了版本治理基础，但将新版本推向生产环境需要渐进式验证机制。灰度发布与回滚构成了风险控制的双层防线。</p>\n\n<h3>灰度发布与回滚：风险控制机制</h3>\n<p>当新模型版本上线引发服务异常时，如何限制影响范围并快速恢复？灰度发布与回滚机制通过流量隔离与状态可逆性，将模型更新的爆炸半径控制在有限边界内。灰度发布（又称金丝雀发布）将新版本逐步暴露给部分用户或请求流量，通过实时监控验证稳定性后再全量推广。回滚则是在检测到问题时，自动切换回已知稳定的历史版本。这两种策略共同降低了生产环境变更的风险敞口。</p>\n<p>精确定义灰度发布为：将新模型版本逐步暴露给递增比例的用户或流量，基于监控指标动态决策是否继续扩大的部署策略。回滚定义为：当新版本在监控周期内触发预设异常条件时，系统自动恢复到先前稳定版本的操作。从决策理论视角，灰度发布的回滚概率可建模为：</p>\n<p>\\[ P(\\text{Rollback}) = 1 - \\prod_{t=1}^{T} \\left[1 - P\\left(\\text{Failure}_t \\mid \\rho_t, \\mathcal{M}_{monitor}\\right)\\right] \\]</p>\n<p>其中\\(\\rho_t\\)为第t时间段的流量比例，\\(\\mathcal{M}_{monitor}\\)为监控指标集合（如准确率、延迟百分位数），\\(P(\\text{Failure}_t)\\)基于指标偏离度计算。该模型表明，随着流量逐步增加，回滚概率呈累积上升趋势。</p>\n<p>工程实现需构建闭环发布流水线：1）流量分割：基于用户ID一致性哈希或随机抽样分配流量，确保样本无偏；2）并行执行：新旧版本同步处理分流请求，避免串行延迟干扰；3）指标收集：实时计算业务指标（如准确率、召回率）与系统指标（如P99延迟、吞吐量）；4）决策引擎：基于规则（如准确率下降>5%）或统计检验（如t-test p-value<0.05）自动触发回滚。延迟敏感点在于指标计算实时性：需采用流处理框架（如Apache Flink）计算滑动窗口统计量，决策延迟需控制在秒级。</p>\n<p>常见误区是仅切换模型而忽略上下游兼容性。实际上，灰度发布必须确保数据预处理管道、API契约、监控指标定义的一致性。失败模式包括：流量分割偏差导致评估失真、监控指标滞后错过回滚窗口、回滚过程状态不一致。诊断时需要验证A/B测试的统计功效：</p>\n<p>\\[ \\text{Power} = 1 - \\beta = P(\\text{Reject } H_0 \\mid H_1 \\text{ true}) \\]</p>\n<p>其中\\(H_0\\)为“新旧版本无差异”，\\(H_1\\)为“存在显著差异”。当功效低于0.8时，灰度结果不可作为决策依据。示例：新模型v2.0发布时，先分配5%流量，监控发现P99延迟从50ms升至75ms，超过阈值60ms；决策引擎立即触发回滚到v1.2，影响仅限5%用户。</p>\n<p>掌握核心机制后，我们将通过端到端示例展示如何将这些组件整合为可复现的工程流程。</p>\n\n<h3>综合示例：构建本地模型版本管理流程</h3>\n<p>以下端到端示例演示模型训练、版本注册、灰度评估与回滚决策的完整工作流。使用scikit-learn内置Iris数据集，避免外部依赖，确保可复现性。</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport hashlib\nimport json\nfrom datetime import datetime\n\n# 简化版Model Registry实现（教学用途）\nclass ModelRegistry:\n    def __init__(self):\n        self.versions = {}\n    \n    def register(self, version_id, metadata):\n        self.versions[version_id] = {\n            'metadata': metadata,\n            'timestamp': datetime.now().isoformat(),\n            'stage': 'Staging'\n        }\n        print(f\"[Registry] 版本 {version_id} 已注册，阶段: Staging\")\n        print(f\"元数据摘要: accuracy={metadata['accuracy']:.4f}, data_hash={metadata['data_hash']}\")\n    \n    def promote(self, version_id, stage):\n        if version_id in self.versions:\n            self.versions[version_id]['stage'] = stage\n            print(f\"[Registry] 版本 {version_id} 晋升至 {stage} 阶段\")\n    \n    def get_version(self, version_id):\n        return self.versions.get(version_id)\n\n# 步骤1-2：加载数据并分割\niris = load_iris()\nX, y = iris.data, iris.target\nprint(f\"数据shape: {X.shape}\")\nprint(f\"类别分布: setosa:{sum(y==0)}, versicolor:{sum(y==1)}, virginica:{sum(y==2)}\")\n\n# 计算数据哈希作为版本标识\ndata_hash = hashlib.md5(X.tobytes() + y.tobytes()).hexdigest()[:8]\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, stratify=y, random_state=42\n)\nprint(f\"训练集: {X_train.shape[0]} 样本, 测试集: {X_test.shape[0]} 样本\")\n\n# 步骤3-5：训练模型v1并注册\npipeline_v1 = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=42, max_iter=200))\n])\npipeline_v1.fit(X_train, y_train)\ny_pred_v1 = pipeline_v1.predict(X_test)\nacc_v1 = accuracy_score(y_test, y_pred_v1)\ncm_v1 = confusion_matrix(y_test, y_pred_v1)\n\nregistry = ModelRegistry()\nmetadata_v1 = {\n    'model_type': 'LogisticRegression',\n    'hyperparameters': {'C': 1.0, 'max_iter': 200},\n    'accuracy': float(acc_v1),\n    'confusion_matrix': cm_v1.tolist(),\n    'data_hash': data_hash,\n    'environment': {'python': '3.9', 'scikit-learn': '1.3.0'},\n    'training_samples': X_train.shape[0]\n}\nregistry.register('v1.0', metadata_v1)\nprint(f\"v1 准确率: {acc_v1:.4f} (公式: (TP+TN)/(TP+TN+FP+FN))\")\nprint(f\"混淆矩阵:\\n{cm_v1}\")\n\n# 步骤6：训练模型v2（调整超参数）并模拟灰度发布\npipeline_v2 = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=42, C=0.1, max_iter=200))  # 调整正则化强度\n])\npipeline_v2.fit(X_train, y_train)\n\n# 灰度发布：使用20%测试数据评估\nnp.random.seed(42)  # 固定随机种子确保可复现\ngray_indices = np.random.choice(len(X_test), size=int(0.2*len(X_test)), replace=False)\nX_gray, y_gray = X_test[gray_indices], y_test[gray_indices]\ny_pred_v2_gray = pipeline_v2.predict(X_gray)\nacc_v2_gray = accuracy_score(y_gray, y_pred_v2_gray)\n\n# 步骤7：比较性能并决定是否回滚\nthreshold = 0.03  # 允许性能下降3%\nrollback_decision = acc_v2_gray < (acc_v1 - threshold)\n\nprint(f\"\\n灰度评估结果:\")\nprint(f\"灰度数据量: {len(X_gray)} 样本\")\nprint(f\"v2 灰度准确率: {acc_v2_gray:.4f}\")\nprint(f\"v1 基线准确率: {acc_v1:.4f}\")\nprint(f\"回滚决策: {rollback_decision} (阈值: {threshold})\")\n\nif rollback_decision:\n    print(\"触发回滚: 恢复使用 v1.0 模型\")\n    registry.promote('v1.0', 'Production')\nelse:\n    # 全量评估v2\n    y_pred_v2_full = pipeline_v2.predict(X_test)\n    acc_v2_full = accuracy_score(y_test, y_pred_v2_full)\n    metadata_v2 = {\n        'model_type': 'LogisticRegression',\n        'hyperparameters': {'C': 0.1, 'max_iter': 200},\n        'accuracy': float(acc_v2_full),\n        'confusion_matrix': confusion_matrix(y_test, y_pred_v2_full).tolist(),\n        'data_hash': data_hash,\n        'environment': {'python': '3.9', 'scikit-learn': '1.3.0'},\n        'training_samples': X_train.shape[0]\n    }\n    registry.register('v2.0', metadata_v2)\n    registry.promote('v2.0', 'Production')\n    print(f\"v2 全量准确率: {acc_v2_full:.4f}\")\n    print(\"v2.0 已晋升至 Production 阶段\")</code></pre>\n<p>该示例打印的关键中间结果包括：数据shape (150, 4)、类别分布、训练/测试集大小、v1准确率（约0.97）、混淆矩阵、灰度评估结果及回滚决策。准确率计算公式如前所述，用于版本比较。流程模拟了真实场景：当v2在灰度测试中性能下降超过阈值时，自动触发回滚并恢复v1为生产版本。</p>\n<p>通过本课程，您已掌握模型版本管理的核心概念与实施框架。这些方法可迁移至任何AI系统，帮助构建可持续迭代的工程能力。</p>",
+        "en": "<h3>Why Model Version Management is Essential</h3>\n<p>As machine learning systems transition from experimentation to production, model iteration often introduces a hidden risk: performance degradation becomes difficult to trace. When an online model's accuracy drops from 0.92 to 0.85, engineers typically face a multivariate debugging dilemma—is the cause data distribution shift, feature engineering changes, or side effects of hyperparameter tuning? This uncertainty stems from the complexity of the model lifecycle: a deployable model is not merely a trained weight file but a coupled entity of code, data, configuration, and environmental dependencies. Traditional software version management (e.g., Git) cannot be directly applied because model versions involve unstructured data flows and dynamic dependency graphs.</p>\n<p>A model version is precisely defined as: a machine learning model generated at a specific point in time by deterministic code, data snapshot, hyperparameter configuration, and environmental dependencies, along with its complete evaluation record. Version management refers to the systematic process of creating, storing, retrieving, comparing, deploying, and rolling back these versions. Its core objective can be formalized as a dual optimization problem:</p>\n<p>\\[ \\mathcal{L}_{version} = \\sum_{t=1}^{T} \\mathbb{I}(\\text{Reproducible}(v_t)) + \\lambda \\cdot \\text{RetrievalCost}(v_t) \\]</p>\n<p>where \\(v_t\\) denotes the t-th version, \\(\\mathbb{I}(\\cdot)\\) is the reproducibility indicator function, defined as \\(\\mathbb{I}(\\text{Reproducible}(v_t)) = I(\\text{metadata_complete}) \\times I(\\text{environment_reconstructible})\\), with \\(I(\\cdot)\\) being a binary indicator function (returns 1 if condition holds, 0 otherwise). \\(\\text{RetrievalCost}(v_t)\\) measures retrieval latency, modeled as \\(\\alpha \\cdot \\log(\\text{index_complexity}) + \\beta\\), where \\(\\alpha,\\beta\\) are system constants. \\(\\lambda\\) is a trade-off coefficient, typically set to 0.1 to prioritize reproducibility. This objective function emphasizes that a version management system must ensure exact reproducibility of any historical version while minimizing query overhead.</p>\n<p>Engineering implementation requires establishing a standardized metadata schema. Key fields include: model hash (SHA-256), training data fingerprint (dataset MD5), hyperparameter JSON, evaluation metrics dictionary (e.g., accuracy, F1-score), and environment snapshot (Python version, library dependency list). The data flow follows an atomic \"train → evaluate → register\" pipeline to prevent inconsistencies from partial writes. Complexity-sensitive aspects involve metadata index design: common queries like \"find versions with accuracy > 0.9 using a specific dataset within the last 30 days\" require composite B-tree index support.</p>\n<p>A common misconception is saving only the model file while ignoring associated context. For instance, a team records ResNet-50 weights but fails to preserve data augmentation code, making it impossible to reproduce the same input preprocessing. Failure modes manifest as: when production performance declines, root cause localization through version comparison becomes infeasible. Diagnostic methods require establishing a differential analysis framework: computing statistical distances of data distributions (e.g., Jensen-Shannon divergence), comparing feature importance rankings, and examining evaluation metric time-series trends. Example: new data causes model A's accuracy to drop by 5 percentage points; version analysis reveals a JS divergence \\(D_{JS}(P_{new}||P_{old}) = 0.25\\), exceeding the threshold of 0.15, confirming data shift as the issue.</p>\n<p>Understanding the sources of version chaos necessitates dedicated infrastructure to manage the version lifecycle. Model Registry provides a structured solution for storage and metadata tracking.</p>\n\n<h3>Model Registry: Version Storage and Metadata Management</h3>\n<p>Faced with hundreds of historical versions, how can one quickly retrieve a specific iteration and horizontally compare performance metrics? Model Registry, as a centralized catalog system, addresses the challenges of model asset discoverability and auditability. Its core value lies not in storing model files themselves but in maintaining lineage relationships between versions and descriptive metadata. Analogous to a library catalog: the Registry is not the book repository but the card system recording each book's location, author, publication year, and relational links.</p>\n<p>Model Registry is precisely defined as: a centralized system for storing model versions, metadata, and managing their lifecycle states (e.g., development, staging, production, archived). Metadata is a structured collection of information describing a model version, formalized as a key-value mapping:</p>\n<p>\\[ \\mathcal{M}(v) = \\{(k_i, v_i)\\}_{i=1}^{n} \\quad \\text{where} \\quad k_i \\in \\mathcal{K}, \\mathcal{K} = \\{\\text{accuracy}, \\text{data_hash}, \\text{framework_version}, \\dots\\} \\]</p>\n<p>Evaluation metrics such as accuracy are calculated as:</p>\n<p>\\[ \\text{Accuracy} = \\frac{TP + TN}{TP + TN + FP + FN} \\]</p>\n<p>where TP, TN, FP, FN represent true positive, true negative, false positive, and false negative counts, respectively. The Registry must store such metrics for each version to enable cross-version performance comparison.</p>\n<p>Key engineering implementation points include: 1) Version identification using semantic versioning (MAJOR.MINOR.PATCH) combined with globally unique UUIDs; 2) Metadata storage in relational databases (e.g., PostgreSQL) supporting ACID transactions and complex queries; 3) Model file storage decoupled from the Registry (e.g., object storage like S3) linked via pointers; 4) API design supporting version CRUD, stage transitions, differential comparison, etc. Latency-sensitive aspects involve metadata query optimization: composite indexes must be built for common filter conditions (e.g., accuracy range, creation time) to avoid full table scans.</p>\n<p>A common misconception is equating Registry with a model file repository. In reality, its core is the metadata relationship graph: for example, version v1.2 may inherit feature engineering pipelines from v1.1 but with adjusted learning rates. Failure modes include: missing metadata fields rendering versions irreproducible, unrecorded dependencies causing upgrade conflicts. Diagnosis involves computing metadata completeness score:</p>\n<p>\\[ \\text{CompletenessScore} = \\frac{|\\{k \\in \\mathcal{K}_{required} \\mid k \\in \\mathcal{M}(v)\\}|}{|\\mathcal{K}_{required}|} \\]</p>\n<p>Alerts trigger when the score falls below a threshold (e.g., 0.8). Example: after training a new model, register it to the Registry, recording accuracy=0.92, data hash abc123, PyTorch version 1.12; version v1.2 is in Staging stage, queryable via GraphQL interface with its full dependency chain.</p>\n<p>The Registry establishes the foundation for version governance, but deploying new versions to production requires progressive validation mechanisms. Canary release and rollback form a dual-layer defense for risk control.</p>\n\n<h3>Canary Release and Rollback: Risk Control Mechanisms</h3>\n<p>When a new model version causes service anomalies upon deployment, how can impact scope be limited and recovery swift? Canary release and rollback mechanisms, through traffic isolation and state reversibility, confine the blast radius of model updates within bounded limits. Canary release (also known as canary deployment) gradually exposes a new version to a subset of users or request traffic, validating stability via real-time monitoring before full rollout. Rollback automatically reverts to a previously known stable historical version upon detecting issues. These two strategies collectively reduce the risk exposure of production environment changes.</p>\n<p>Canary release is precisely defined as: a deployment strategy that gradually exposes a new model version to incrementally increasing proportions of users or traffic, dynamically deciding whether to expand based on monitoring metrics. Rollback is defined as: the operation where the system automatically reverts to a prior stable version when the new version triggers predefined anomaly conditions during the monitoring period. From a decision theory perspective, the rollback probability in canary release can be modeled as:</p>\n<p>\\[ P(\\text{Rollback}) = 1 - \\prod_{t=1}^{T} \\left[1 - P\\left(\\text{Failure}_t \\mid \\rho_t, \\mathcal{M}_{monitor}\\right)\\right] \\]</p>\n<p>where \\(\\rho_t\\) is the traffic proportion at time t, \\(\\mathcal{M}_{monitor}\\) is the set of monitoring metrics (e.g., accuracy, latency percentiles), and \\(P(\\text{Failure}_t)\\) is computed based on metric deviation. This model indicates that rollback probability accumulates as traffic gradually increases.</p>\n<p>Engineering implementation requires building a closed-loop release pipeline: 1) Traffic splitting: allocate traffic via consistent hashing of user IDs or random sampling, ensuring unbiased samples; 2) Parallel execution: process split requests concurrently with old and new versions to avoid serial delay interference; 3) Metric collection: compute business metrics (e.g., accuracy, recall) and system metrics (e.g., P99 latency, throughput) in real-time; 4) Decision engine: automatically trigger rollback based on rules (e.g., accuracy drop > 5%) or statistical tests (e.g., t-test p-value < 0.05). Latency-sensitive aspects involve metric calculation real-time: streaming frameworks (e.g., Apache Flink) are needed to compute sliding window statistics, with decision latency constrained to seconds.</p>\n<p>A common misconception is switching only the model while ignoring upstream/downstream compatibility. In practice, canary release must ensure consistency in data preprocessing pipelines, API contracts, and monitoring metric definitions. Failure modes include: traffic splitting bias distorting evaluation, monitoring metric lag missing rollback windows, state inconsistency during rollback. Diagnosis requires verifying the statistical power of A/B testing:</p>\n<p>\\[ \\text{Power} = 1 - \\beta = P(\\text{Reject } H_0 \\mid H_1 \\text{ true}) \\]</p>\n<p>where \\(H_0\\) is \"no difference between old and new versions\" and \\(H_1\\) is \"significant difference exists.\" When power falls below 0.8, canary results cannot serve as decision basis. Example: when releasing new model v2.0, initially allocate 5% traffic; monitoring detects P99 latency rising from 50ms to 75ms, exceeding the threshold of 60ms; the decision engine immediately triggers rollback to v1.2, limiting impact to only 5% of users.</p>\n<p>Having grasped the core mechanisms, we now demonstrate how to integrate these components into a reproducible engineering workflow through an end-to-end example.</p>\n\n<h3>Comprehensive Example: Building a Local Model Version Management Pipeline</h3>\n<p>The following end-to-end example demonstrates the complete workflow of model training, version registration, canary evaluation, and rollback decision-making. It uses scikit-learn's built-in Iris dataset to avoid external dependencies and ensure reproducibility.</p>\n<pre><code>import numpy as np\nimport pandas as pd\nfrom sklearn.datasets import load_iris\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\nimport hashlib\nimport json\nfrom datetime import datetime\n\n# Simplified Model Registry implementation (for teaching purposes)\nclass ModelRegistry:\n    def __init__(self):\n        self.versions = {}\n    \n    def register(self, version_id, metadata):\n        self.versions[version_id] = {\n            'metadata': metadata,\n            'timestamp': datetime.now().isoformat(),\n            'stage': 'Staging'\n        }\n        print(f\"[Registry] Version {version_id} registered, stage: Staging\")\n        print(f\"Metadata summary: accuracy={metadata['accuracy']:.4f}, data_hash={metadata['data_hash']}\")\n    \n    def promote(self, version_id, stage):\n        if version_id in self.versions:\n            self.versions[version_id]['stage'] = stage\n            print(f\"[Registry] Version {version_id} promoted to {stage} stage\")\n    \n    def get_version(self, version_id):\n        return self.versions.get(version_id)\n\n# Steps 1-2: Load data and split\niris = load_iris()\nX, y = iris.data, iris.target\nprint(f\"Data shape: {X.shape}\")\nprint(f\"Class distribution: setosa:{sum(y==0)}, versicolor:{sum(y==1)}, virginica:{sum(y==2)}\")\n\n# Compute data hash for version identification\ndata_hash = hashlib.md5(X.tobytes() + y.tobytes()).hexdigest()[:8]\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, stratify=y, random_state=42\n)\nprint(f\"Training set: {X_train.shape[0]} samples, Test set: {X_test.shape[0]} samples\")\n\n# Steps 3-5: Train model v1 and register\npipeline_v1 = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=42, max_iter=200))\n])\npipeline_v1.fit(X_train, y_train)\ny_pred_v1 = pipeline_v1.predict(X_test)\nacc_v1 = accuracy_score(y_test, y_pred_v1)\ncm_v1 = confusion_matrix(y_test, y_pred_v1)\n\nregistry = ModelRegistry()\nmetadata_v1 = {\n    'model_type': 'LogisticRegression',\n    'hyperparameters': {'C': 1.0, 'max_iter': 200},\n    'accuracy': float(acc_v1),\n    'confusion_matrix': cm_v1.tolist(),\n    'data_hash': data_hash,\n    'environment': {'python': '3.9', 'scikit-learn': '1.3.0'},\n    'training_samples': X_train.shape[0]\n}\nregistry.register('v1.0', metadata_v1)\nprint(f\"v1 accuracy: {acc_v1:.4f} (formula: (TP+TN)/(TP+TN+FP+FN))\")\nprint(f\"Confusion matrix:\\n{cm_v1}\")\n\n# Step 6: Train model v2 (adjusted hyperparameters) and simulate canary release\npipeline_v2 = Pipeline([\n    ('scaler', StandardScaler()),\n    ('clf', LogisticRegression(random_state=42, C=0.1, max_iter=200))  # Adjusted regularization strength\n])\npipeline_v2.fit(X_train, y_train)\n\n# Canary release: evaluate using 20% of test data\nnp.random.seed(42)  # Fix random seed for reproducibility\ngray_indices = np.random.choice(len(X_test), size=int(0.2*len(X_test)), replace=False)\nX_gray, y_gray = X_test[gray_indices], y_test[gray_indices]\ny_pred_v2_gray = pipeline_v2.predict(X_gray)\nacc_v2_gray = accuracy_score(y_gray, y_pred_v2_gray)\n\n# Step 7: Compare performance and decide on rollback\nthreshold = 0.03  # Allowable performance drop of 3%\nrollback_decision = acc_v2_gray < (acc_v1 - threshold)\n\nprint(f\"\\nCanary evaluation results:\")\nprint(f\"Canary data size: {len(X_gray)} samples\")\nprint(f\"v2 canary accuracy: {acc_v2_gray:.4f}\")\nprint(f\"v1 baseline accuracy: {acc_v1:.4f}\")\nprint(f\"Rollback decision: {rollback_decision} (threshold: {threshold})\")\n\nif rollback_decision:\n    print(\"Rollback triggered: reverting to v1.0 model\")\n    registry.promote('v1.0', 'Production')\nelse:\n    # Full evaluation of v2\n    y_pred_v2_full = pipeline_v2.predict(X_test)\n    acc_v2_full = accuracy_score(y_test, y_pred_v2_full)\n    metadata_v2 = {\n        'model_type': 'LogisticRegression',\n        'hyperparameters': {'C': 0.1, 'max_iter': 200},\n        'accuracy': float(acc_v2_full),\n        'confusion_matrix': confusion_matrix(y_test, y_pred_v2_full).tolist(),\n        'data_hash': data_hash,\n        'environment': {'python': '3.9', 'scikit-learn': '1.3.0'},\n        'training_samples': X_train.shape[0]\n    }\n    registry.register('v2.0', metadata_v2)\n    registry.promote('v2.0', 'Production')\n    print(f\"v2 full accuracy: {acc_v2_full:.4f}\")\n    print(\"v2.0 promoted to Production stage\")</code></pre>\n<p>This example prints key intermediate results including: data shape (150, 4), class distribution, training/test set sizes, v1 accuracy (~0.97), confusion matrix, canary evaluation results, and rollback decision. The accuracy formula, as previously defined, is used for version comparison. The workflow simulates real-world scenarios: when v2 performance drops beyond the threshold during canary testing, rollback is automatically triggered, restoring v1 as the production version.</p>\n<p>Through this course, you have mastered the core concepts and implementation framework of model version management. These methods are transferable to any AI system, helping build sustainable iterative engineering capabilities.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：模型版本管理：Model Registry、灰度与回滚 · 结构总览 · 数据：课程大纲】在设计《模型版本管理：Model Registry、灰度与回滚》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 模型版本管理：Model Registry、灰度与回滚 · 结构总览 · Data: 课程大纲】When outlining \"模型版本管理：Model Registry、灰度与回滚\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：模型版本管理：Model Registry、灰度与回滚 · worked example · 数据：建立可持续迭代的工程机制与质量标准 数据/代码】在复现《模型版本管理：Model Registry、灰度与回滚》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 模型版本管理：Model Registry、灰度与回滚 · worked example · Data: 建立可持续迭代的工程机制与质量标准 数据/代码】While reproducing the worked example in \"模型版本管理：Model Registry、灰度与回滚\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：模型版本管理：Model Registry、灰度与回滚 · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《模型版本管理：Model Registry、灰度与回滚》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 模型版本管理：Model Registry、灰度与回滚 · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"模型版本管理：Model Registry、灰度与回滚\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：模型版本管理：Model Registry、灰度与回滚 · 参考资料 · 数据：课程引用文献】当引用文献支撑《模型版本管理：Model Registry、灰度与回滚》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 模型版本管理：Model Registry、灰度与回滚 · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"模型版本管理：Model Registry、灰度与回滚\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "MLflow: A Platform for the Machine Learning Lifecycle（MLflow，2023）",
+            "en": "MLflow: A Platform for the Machine Learning Lifecycle (MLflow, 2023)"
+          },
+          "url": "https://mlflow.org/"
+        },
+        {
+          "label": {
+            "zh": "Canary Releases in Machine Learning Systems（KDnuggets，2022）",
+            "en": "Canary Releases in Machine Learning Systems (KDnuggets, 2022)"
+          },
+          "url": "https://www.kdnuggets.com/2022/03/canary-releases-machine-learning-systems.html"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-21-model-registry-zh.mp3"
+      },
+      "meta": {
+        "category": "上线与持续迭代",
+        "level": "10. MLOps 与质量工程",
+        "difficultyScore": 3,
+        "related": [
+          "AI 产品化思维：需求→数据→模型→评测→上线→迭代",
+          "Online Monitoring：漂移、失败模式、自动报警"
+        ],
+        "learningObjectives": [
+          "建立可持续迭代的工程机制与质量标准",
+          "能把一个AI/LLM应用稳定运行在生产环境"
+        ],
+        "personas": [
+          "平台工程师",
+          "技术负责人",
+          "安全官",
+          "产品经理"
+        ],
+        "contextual_notes": {
+          "why_now": "当前阶段掌握 模型版本管理：Model Registry、灰度与回滚 可帮助团队在 上线与持续迭代 上做出可复用的实践。",
+          "best_for": "适合 平台工程师、技术负责人、安全官、产品经理，需要快速吸收 10. MLOps 与质量工程 主题。",
+          "visual_hint": "使用要点列表 + 流程箭头展示流转。"
+        },
+        "tone_profile": {
+          "persona": "平台工程师 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 平台工程师、技术负责人、安全官、产品经理，帮助他们把 模型版本管理：Model Registry、灰度与回滚 应用于 上线与持续迭代",
+          "prefersEnglish": false,
+          "industries": [
+            "平台工程师",
+            "技术负责人",
+            "安全官"
+          ],
+          "personas": [
+            "平台工程师",
+            "技术负责人",
+            "安全官",
+            "产品经理"
+          ],
+          "pains": "在 上线与持续迭代 场景缺乏 模型版本管理：Model Registry、灰度与回滚 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "10. MLOps 与质量工程"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "作为平台工程师，在部署新模型版本时，你如何设计灰度发布策略来平衡创新与系统稳定性？",
+            "action_hint": "思考当前团队在模型迭代中面临的风险控制挑战，并规划具体的灰度阶段划分标准。"
+          },
+          {
+            "lang": "zh",
+            "question": "作为技术负责人，当线上模型出现性能下降时，你如何通过Model Registry的元数据快速定位问题版本并执行回滚？",
+            "action_hint": "回顾最近一次模型更新过程，评估现有版本追踪机制的完整性和回滚操作的可操作性。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-20-mlflowwb",
       "date": "2026-03-20",
