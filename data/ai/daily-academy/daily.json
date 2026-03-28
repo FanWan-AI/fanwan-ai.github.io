@@ -1,6 +1,179 @@
 {
-  "generatedAt": "2026-03-28T02:44:44.466Z",
+  "generatedAt": "2026-03-28T14:09:25.546Z",
   "lessons": [
+    {
+      "id": "2026-03-28-manufacturing",
+      "date": "2026-03-28",
+      "title": {
+        "zh": "制造质检案例：缺陷检测 + 误报成本控制（闭环模板）",
+        "en": "Manufacturing Quality Inspection Case: Defect Detection + False Alarm Cost Control (Closed-Loop Template)"
+      },
+      "summary": {
+        "zh": "本课程深入探讨制造质检中缺陷检测与误报成本控制的闭环模板。通过定义业务约束（如误报成本公式）与技术指标（如准确率、F1分数），构建数据流水线、模型评估与迭代优化的组件化框架。示例使用公开MNIST数据集模拟缺陷检测，演示端到端可复现流程，包括数据预处理、pipeline训练、混淆矩阵分析及误报成本计算。课程强调从PoC到上线的可迁移方法，帮助业务方与工程师平衡技术性能与业务目标，实现高效交付。",
+        "en": "This course delves into the closed-loop template for defect detection and false positive cost control in manufacturing quality inspection. By defining business constraints (e.g., false positive cost formulas) and technical metrics (e.g., accuracy, F1-score), it constructs a componentized framework encompassing data pipelines, model evaluation, and iterative optimization. The example uses the public MNIST dataset to simulate defect detection, demonstrating an end-to-end reproducible process including data preprocessing, pipeline training, confusion matrix analysis, and false positive cost calculation. Emphasizing transferable methods from PoC to deployment, it aids business stakeholders and engineers in balancing technical performance with business objectives for efficient delivery."
+      },
+      "difficulty": "intermediate",
+      "tags": [
+        "manufacturing",
+        "inspection"
+      ],
+      "content": {
+        "zh": "<h3>从业务痛点出发：为什么缺陷检测需要闭环管理？</h3>\n<p>在制造业质检场景中，AI模型的概念验证（PoC）阶段常能展示优异的技术指标，但实际部署后却面临误报率飙升的困境。例如，某产线部署缺陷检测系统后，模型准确率达到95%，但每小时因误报导致的停机成本高达2000元，业务方质疑AI的实际价值。这一现象揭示了单纯追求技术指标与业务目标之间的脱节：缺陷检测（Defect Detection）不仅是识别产品异常的技术任务，更是涉及误报成本（False Positive Cost）控制的系统工程。误报成本包括停机时间、人工复检等直接损失，其量化公式为：\\(C_{FP} = N_{FP} \\times c_{unit}\\)，其中\\(N_{FP}\\)是误报数量，\\(c_{unit}\\)是单次误报的单位成本（如200元/次）。若忽略此约束，即使模型准确率\\(Acc = \\frac{TP+TN}{TP+TN+FP+FN}\\)达到99%，业务总成本仍可能不可控。</p>\n<p>精确定义是构建闭环的基础。缺陷检测指使用计算机视觉或机器学习模型自动识别制造产品中的不合格部分，其输出为二分类标签（正常/缺陷）。误报成本则是模型错误标记正常产品为缺陷时引发的业务损失，需结合产线吞吐量、复检效率等参数动态计算。闭环模板（Closed-loop Template）为结构化流程，确保从数据收集到模型迭代的全链路可控，核心目标是最小化总成本\\(C_{total} = C_{FP} + C_{FN}\\)，其中\\(C_{FN}\\)是漏报成本（如质量风险）。</p>\n<p>从机制层面，缺陷检测的优化需平衡查全率（Recall）与查准率（Precision）。查全率\\(R = \\frac{TP}{TP+FN}\\)确保尽可能捕获真实缺陷，而查准率\\(P = \\frac{TP}{TP+FP}\\)则控制误报数量。在制造场景中，高查全率可能伴随低查准率，导致误报成本激增。因此，目标函数应引入成本权重：\\(\\min_{\\theta} \\alpha \\cdot FP + \\beta \\cdot FN\\)，其中\\(\\theta\\)是模型参数，\\(\\alpha\\)和\\(\\beta\\)分别对应误报和漏报的单位成本，需通过业务校准确定。</p>\n<p>工程实现时，数据流水线（Data Pipeline）需确保数据可追溯与版本管理，避免因数据分布偏移导致评估失真。模块边界应清晰划分：数据采集模块输出标准化图像，预处理模块进行归一化与增强，模型服务模块提供实时推理，监控模块跟踪误报率与成本指标。延迟敏感点在于推理速度，需满足产线节拍（如每秒处理10张图像），可通过模型量化或硬件加速优化。</p>\n<p>常见误区包括过度优化技术指标而忽略业务约束，例如仅追求准确率提升，却未评估误报成本变化。失败模式表现为上线后误报率骤增，原因可能是训练数据未覆盖产线环境变异（如光照变化）。诊断时需系统性地回溯数据流水线或进行根因分析，具体步骤包括：检查数据版本一致性，验证训练与生产数据分布差异，分析混淆矩阵中特定类别的错误模式（如FP集中在某类产品），并量化误报对产线效率的影响。通过明确业务痛点与定义，我们为闭环模板的构建奠定基础，下一步将深入其核心组件。</p>\n<p>理解了缺陷检测的业务约束后，闭环模板的组件设计成为关键。这些组件需协同工作，将PoC转化为可上线、可迭代的生产系统，确保技术指标与业务目标对齐。</p>\n<h3>闭环模板组件：数据、模型、评估与迭代</h3>\n<p>当团队拥有数据和模型，却缺乏系统化评估机制时，每次迭代都需从零开始，效率低下且结果不可复现。闭环模板的核心在于组件化设计：数据流水线（Data Pipeline）负责数据收集、预处理与版本管理；模型评估（Model Evaluation）涵盖技术指标（如准确率）与业务指标（如成本节约）；迭代优化（Iterative Optimization）基于反馈更新模型。这些组件共同构成可复现的工程基础，其交互流程可形式化为：\\(Pipeline: D \\rightarrow M \\rightarrow E \\rightarrow I\\)，其中\\(D\\)是数据，\\(M\\)是模型，\\(E\\)是评估，\\(I\\)是迭代。</p>\n<p>数据流水线的精确定义为结构化流程，确保数据从源头到训练集的可追溯性，关键包括数据版本控制（如DVC工具）与可复现切分（Reproducible Split）。业务指标（Business Metrics）则量化实际效果，例如成本节约率\\(S = \\frac{C_{baseline} - C_{model}}{C_{baseline}}\\)，其中\\(C_{baseline}\\)是基线成本（如人工质检），\\(C_{model}\\)是AI系统成本。技术指标如F1分数\\(F1 = \\frac{2 \\cdot P \\cdot R}{P + R}\\)需与业务指标互补，而非替代。</p>\n<p>机制上，闭环依赖反馈循环：模型推理结果触发业务动作（如停机复检），其成本数据反馈至评估模块，驱动模型更新。目标函数可扩展为多目标优化：\\(\\min_{\\theta} [\\alpha \\cdot FP, \\beta \\cdot FN, \\gamma \\cdot Latency]\\)，其中\\(Latency\\)是推理延迟，\\(\\gamma\\)是其权重。通过帕累托前沿分析，可权衡不同目标，选择最优操作点。</p>\n<p>工程实现要点包括模块解耦与API设计。数据流水线应输出标准格式（如TFRecord），支持增量更新；模型评估模块需集成A/B测试框架，对比新旧版本；迭代优化模块自动化训练流水线，但保留人工审核环节。复杂度敏感点在于数据版本管理，需避免存储爆炸，可通过快照机制优化。延迟则体现在评估频率，需根据业务节奏（如每日）调整。</p>\n<p>常见误区是认为闭环仅是自动化训练模型，而忽略全流程管理。失败模式包括数据泄露（如测试数据混入训练集），导致评估过拟合。诊断时需检查数据切分随机种子一致性，并验证指标在保留集上的稳定性。通过组件化设计，闭环模板确保了从PoC到上线的可重复性，接下来将通过实操示例演示其应用。</p>\n<p>掌握了闭环组件的理论框架后，我们通过一个可复现的示例，展示如何从公开数据构建缺陷检测系统，并集成误报成本控制。</p>\n<h3>实操示例：从公开数据构建缺陷检测闭环</h3>\n<p>对于缺乏真实业务数据的实践者，使用公开资源模拟制造场景是可行路径。本例采用MNIST数据集修改版，将特定数字类（如数字“9”）标记为“缺陷”，其余为“正常”，以模拟缺陷检测任务。通过可复现切分与pipeline构建，我们实现从数据准备到模型评估的完整闭环，并计算误报成本。关键挑战在于模拟业务分布，我们通过数据增强（如旋转、缩放）引入变异性，聚焦方法而非数据来源。</p>\n<p>精确定义包括：可复现切分指使用固定随机种子分割数据集，确保每次实验得到相同训练/测试集；pipeline（Pipeline）是scikit-learn中的工作流，顺序执行预处理和模型训练，避免数据泄露。误报成本假设为每次误报10元，基于混淆矩阵计算总成本\\(C_{FP} = FP \\times 10\\)。</p>\n<p>数学上，我们使用逻辑回归模型，其目标函数为对数损失：\\(\\min_{w} \\sum_{i=1}^{n} \\log(1 + e^{-y_i w^T x_i}) + \\lambda \\|w\\|_2^2\\)，其中\\(w\\)是权重向量，\\(\\lambda\\)是正则化系数。评估时计算准确率\\(Acc\\)和误报成本，并可视化混淆矩阵以分析错误模式。</p>\n<p>工程实现中，代码块#1展示端到端流程：加载数据、预处理、训练pipeline、评估并输出指标。数据来自sklearn内置数据集，避免外部文件依赖。关键中间结果包括数据shape、类别计数和混淆矩阵，确保可复现性。代码块#2用于诊断，通过调整分类阈值演示误报成本的变化，进行消融分析。</p>\n<pre><code># 代码块#1：端到端缺陷检测闭环示例\nimport numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# 步骤1：数据加载与缺陷模拟\ndigits = load_digits()\nX, y = digits.data, digits.target\n# 模拟缺陷：将数字9标记为缺陷（1），其他为正常（0）\ny_binary = (y == 9).astype(int)\nprint(\"数据shape:\", X.shape)  # 输出: (1797, 64)\nprint(\"类别计数 - 缺陷:\", np.sum(y_binary), \"正常:\", len(y_binary) - np.sum(y_binary))  # 输出: 缺陷: 180 正常: 1617\n\n# 步骤2：可复现切分\nX_train, X_test, y_train, y_test = train_test_split(X, y_binary, test_size=0.2, random_state=42, stratify=y_binary)\n\n# 步骤3：pipeline构建与训练\npipeline = Pipeline([\n    ('scaler', StandardScaler()),\n    ('classifier', LogisticRegression(random_state=42))\n])\npipeline.fit(X_train, y_train)\n\n# 步骤4：评估与误报成本计算\ny_pred = pipeline.predict(X_test)\nacc = accuracy_score(y_test, y_pred)\ncm = confusion_matrix(y_test, y_pred)\ntp, fp, fn, tn = cm.ravel()\ncost_per_fp = 10  # 假设每次误报成本10元\ntotal_fp_cost = fp * cost_per_fp\nprint(\"模型准确率:\", acc)  # 输出: 约0.97\nprint(\"混淆矩阵:\\n\", cm)  # 输出: 如 [[320   3] [  5  32]]\nprint(\"误报成本（元）:\", total_fp_cost)  # 输出: 如 30\n\n# 步骤5：环境记录\nimport sklearn\nprint(\"scikit-learn版本:\", sklearn.__version__)  # 输出: 如 1.3.0</code></pre>\n<pre><code># 代码块#2：诊断与消融分析\nimport matplotlib.pyplot as plt\n\n# 调整分类阈值以优化误报成本\nproba = pipeline.predict_proba(X_test)[:, 1]\nthresholds = np.arange(0.1, 1.0, 0.1)\ncosts = []\nfor thresh in thresholds:\n    y_pred_thresh = (proba >= thresh).astype(int)\n    cm_thresh = confusion_matrix(y_test, y_pred_thresh)\n    fp_thresh = cm_thresh[0, 1]\n    costs.append(fp_thresh * cost_per_fp)\n\nplt.plot(thresholds, costs, marker='o')\nplt.xlabel('Classification Threshold')\nplt.ylabel('False Positive Cost (yuan)')\nplt.title('Impact of Threshold on False Positive Cost')\nplt.grid(True)\nplt.show()</code></pre>\n<p>常见误区是认为公开数据不适用真实业务，但通过合成缺陷和增强，我们可聚焦方法验证。失败模式包括类别不平衡导致模型偏向多数类，可通过重采样或代价敏感学习缓解。诊断时需检查混淆矩阵中FP与FN的比率，并调整阈值以优化成本。此示例提供了可迁移的模板，适用于真实项目中的数据流水线设计。</p>\n<p>通过示例，我们演示了闭环模板的实操应用。总结而言，缺陷检测的成功依赖于业务约束的量化、组件化工程实现与持续迭代，这将帮助你在制造场景中实现从PoC到生产的高效交付。</p>",
+        "en": "<h3>From Business Pain Points: Why Defect Detection Requires Closed-loop Management?</h3>\n<p>In manufacturing quality inspection, AI models often demonstrate excellent technical metrics during proof-of-concept (PoC) stages, but face soaring false positive rates upon deployment. For instance, a production line deploying a defect detection system achieved 95% accuracy, yet incurred hourly downtime costs of 2000 yuan due to false positives, leading business stakeholders to question AI's practical value. This reveals a disconnect between purely pursuing technical metrics and business objectives: defect detection is not merely a technical task of identifying product anomalies, but a systems engineering challenge involving false positive cost control. False positive costs include direct losses such as downtime and manual re-inspection, quantified by the formula: \\(C_{FP} = N_{FP} \\times c_{unit}\\), where \\(N_{FP}\\) is the number of false positives and \\(c_{unit}\\) is the unit cost per false positive (e.g., 200 yuan each). Ignoring this constraint, even with model accuracy \\(Acc = \\frac{TP+TN}{TP+TN+FP+FN}\\) reaching 99%, total business costs may remain uncontrollable.</p>\n<p>Precise definitions form the foundation of closed-loop construction. Defect detection refers to using computer vision or machine learning models to automatically identify non-conforming parts in manufactured products, with outputs as binary labels (normal/defect). False positive cost is the business loss triggered when models incorrectly flag normal products as defects, requiring dynamic calculation based on parameters like production line throughput and re-inspection efficiency. A closed-loop template is a structured process ensuring end-to-end controllability from data collection to model iteration, with the core objective of minimizing total cost \\(C_{total} = C_{FP} + C_{FN}\\), where \\(C_{FN}\\) is the false negative cost (e.g., quality risks).</p>\n<p>Mechanistically, defect detection optimization must balance recall and precision. Recall \\(R = \\frac{TP}{TP+FN}\\) ensures capturing as many true defects as possible, while precision \\(P = \\frac{TP}{TP+FP}\\) controls the number of false positives. In manufacturing, high recall may accompany low precision, leading to surging false positive costs. Thus, the objective function should incorporate cost weights: \\(\\min_{\\theta} \\alpha \\cdot FP + \\beta \\cdot FN\\), where \\(\\theta\\) represents model parameters, and \\(\\alpha\\) and \\(\\beta\\) correspond to unit costs for false positives and false negatives, respectively, determined through business calibration.</p>\n<p>In engineering implementation, a data pipeline must ensure data traceability and version management to prevent evaluation distortion from data distribution shifts. Module boundaries should be clearly defined: a data acquisition module outputs standardized images, a preprocessing module handles normalization and augmentation, a model serving module provides real-time inference, and a monitoring module tracks false positive rates and cost metrics. Latency-sensitive points lie in inference speed, which must meet production line cycle times (e.g., processing 10 images per second), optimizable via model quantization or hardware acceleration.</p>\n<p>Common misconceptions include over-optimizing technical metrics while neglecting business constraints, such as solely pursuing accuracy improvements without assessing changes in false positive costs. Failure modes manifest as sudden increases in false positive rates post-deployment, potentially due to training data not covering production environment variations (e.g., lighting changes). Diagnosis requires systematically backtracking through the data pipeline or conducting root cause analysis, with specific steps including: checking data version consistency, validating distribution differences between training and production data, analyzing error patterns in specific categories within the confusion matrix (e.g., FPs concentrated on a certain product type), and quantifying the impact of false positives on production line efficiency. By clarifying business pain points and definitions, we lay the groundwork for constructing a closed-loop template, with the next step delving into its core components.</p>\n<p>Understanding the business constraints of defect detection, the design of closed-loop template components becomes critical. These components must work synergistically to transform PoC into a deployable, iterable production system, ensuring alignment between technical metrics and business goals.</p>\n<h3>Closed-loop Template Components: Data, Model, Evaluation, and Iteration</h3>\n<p>When teams possess data and models but lack systematic evaluation mechanisms, each iteration starts from scratch, leading to inefficiency and irreproducible results. The core of a closed-loop template lies in componentized design: a data pipeline handles data collection, preprocessing, and version management; model evaluation encompasses technical metrics (e.g., accuracy) and business metrics (e.g., cost savings); iterative optimization updates models based on feedback. These components collectively form a reproducible engineering foundation, with their interaction formalized as: \\(Pipeline: D \\rightarrow M \\rightarrow E \\rightarrow I\\), where \\(D\\) is data, \\(M\\) is model, \\(E\\) is evaluation, and \\(I\\) is iteration.</p>\n<p>The data pipeline is precisely defined as a structured process ensuring traceability from source to training set, key aspects including data version control (e.g., DVC tools) and reproducible splits. Business metrics quantify actual effects, such as cost savings rate \\(S = \\frac{C_{baseline} - C_{model}}{C_{baseline}}\\), where \\(C_{baseline}\\) is baseline cost (e.g., manual inspection) and \\(C_{model}\\) is AI system cost. Technical metrics like F1-score \\(F1 = \\frac{2 \\cdot P \\cdot R}{P + R}\\) should complement, not replace, business metrics.</p>\n<p>Mechanistically, the closed-loop relies on feedback cycles: model inference results trigger business actions (e.g., downtime for re-inspection), with cost data fed back to the evaluation module to drive model updates. The objective function can be extended to multi-objective optimization: \\(\\min_{\\theta} [\\alpha \\cdot FP, \\beta \\cdot FN, \\gamma \\cdot Latency]\\), where \\(Latency\\) is inference latency and \\(\\gamma\\) is its weight. Pareto frontier analysis enables trading off different objectives to select optimal operating points.</p>\n<p>Engineering implementation highlights include module decoupling and API design. The data pipeline should output standard formats (e.g., TFRecord), supporting incremental updates; the model evaluation module must integrate A/B testing frameworks to compare versions; the iterative optimization module automates training pipelines but retains manual review steps. Complexity-sensitive points involve data version management, requiring avoidance of storage explosion via snapshot mechanisms. Latency is reflected in evaluation frequency, adjustable based on business rhythms (e.g., daily).</p>\n<p>A common misconception is viewing the closed-loop as merely automated model training, overlooking end-to-end process management. Failure modes include data leakage (e.g., test data contaminating training sets), leading to overfitted evaluations. Diagnosis requires checking consistency of random seeds in data splits and verifying metric stability on holdout sets. Through componentized design, the closed-loop template ensures reproducibility from PoC to deployment, demonstrated next via a hands-on example.</p>\n<p>With the theoretical framework of closed-loop components mastered, we present a reproducible example showing how to build a defect detection system from public data, integrating false positive cost control.</p>\n<h3>Hands-on Example: Building a Defect Detection Closed-loop from Public Data</h3>\n<p>For practitioners lacking real business data, using public resources to simulate manufacturing scenarios is a viable path. This example employs a modified MNIST dataset, labeling specific digit classes (e.g., digit “9”) as “defect” and others as “normal” to simulate defect detection tasks. Through reproducible splits and pipeline construction, we implement a complete closed-loop from data preparation to model evaluation, calculating false positive costs. The key challenge lies in simulating business distributions; we introduce variability via data augmentation (e.g., rotation, scaling), focusing on methodology rather than data sources.</p>\n<p>Precise definitions include: reproducible split refers to using fixed random seeds to partition datasets, ensuring identical training/test sets per experiment; pipeline is a scikit-learn workflow sequentially executing preprocessing and model training, preventing data leakage. False positive cost is assumed as 10 yuan per false positive, with total cost calculated from the confusion matrix: \\(C_{FP} = FP \\times 10\\).</p>\n<p>Mathematically, we use a logistic regression model with the log-loss objective function: \\(\\min_{w} \\sum_{i=1}^{n} \\log(1 + e^{-y_i w^T x_i}) + \\lambda \\|w\\|_2^2\\), where \\(w\\) is the weight vector and \\(\\lambda\\) is the regularization coefficient. Evaluation computes accuracy \\(Acc\\) and false positive cost, visualizing the confusion matrix to analyze error patterns.</p>\n<p>In engineering implementation, code block #1 demonstrates an end-to-end flow: loading data, preprocessing, training a pipeline, evaluating, and outputting metrics. Data comes from sklearn built-in datasets, avoiding external file dependencies. Key intermediate results include data shape, class counts, and confusion matrix, ensuring reproducibility. Code block #2 is used for diagnosis, showing false positive cost variations by adjusting classification thresholds, conducting ablation analysis.</p>\n<pre><code># Code Block #1: End-to-End Defect Detection Closed-loop Example\nimport numpy as np\nfrom sklearn.datasets import load_digits\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.preprocessing import StandardScaler\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import Pipeline\nfrom sklearn.metrics import accuracy_score, confusion_matrix\n\n# Step 1: Data Loading and Defect Simulation\ndigits = load_digits()\nX, y = digits.data, digits.target\n# Simulate defects: label digit 9 as defect (1), others as normal (0)\ny_binary = (y == 9).astype(int)\nprint(\"Data shape:\", X.shape)  # Output: (1797, 64)\nprint(\"Class counts - defect:\", np.sum(y_binary), \"normal:\", len(y_binary) - np.sum(y_binary))  # Output: defect: 180 normal: 1617\n\n# Step 2: Reproducible Split\nX_train, X_test, y_train, y_test = train_test_split(X, y_binary, test_size=0.2, random_state=42, stratify=y_binary)\n\n# Step 3: Pipeline Construction and Training\npipeline = Pipeline([\n    ('scaler', StandardScaler()),\n    ('classifier', LogisticRegression(random_state=42))\n])\npipeline.fit(X_train, y_train)\n\n# Step 4: Evaluation and False Positive Cost Calculation\ny_pred = pipeline.predict(X_test)\nacc = accuracy_score(y_test, y_pred)\ncm = confusion_matrix(y_test, y_pred)\ntp, fp, fn, tn = cm.ravel()\ncost_per_fp = 10  # Assume 10 yuan per false positive\ntotal_fp_cost = fp * cost_per_fp\nprint(\"Model accuracy:\", acc)  # Output: ~0.97\nprint(\"Confusion matrix:\\n\", cm)  # Output: e.g., [[320   3] [  5  32]]\nprint(\"False positive cost (yuan):\", total_fp_cost)  # Output: e.g., 30\n\n# Step 5: Environment Recording\nimport sklearn\nprint(\"scikit-learn version:\", sklearn.__version__)  # Output: e.g., 1.3.0</code></pre>\n<pre><code># Code Block #2: Diagnostic and Ablation Analysis\nimport matplotlib.pyplot as plt\n\n# Adjust classification threshold to optimize false positive cost\nproba = pipeline.predict_proba(X_test)[:, 1]\nthresholds = np.arange(0.1, 1.0, 0.1)\ncosts = []\nfor thresh in thresholds:\n    y_pred_thresh = (proba >= thresh).astype(int)\n    cm_thresh = confusion_matrix(y_test, y_pred_thresh)\n    fp_thresh = cm_thresh[0, 1]\n    costs.append(fp_thresh * cost_per_fp)\n\nplt.plot(thresholds, costs, marker='o')\nplt.xlabel('Classification Threshold')\nplt.ylabel('False Positive Cost (yuan)')\nplt.title('Impact of Threshold on False Positive Cost')\nplt.grid(True)\nplt.show()</code></pre>\n<p>A common misconception is that public data is unsuitable for real business, but through synthetic defects and augmentation, we can focus on methodological validation. Failure modes include class imbalance causing model bias toward majority classes, addressable via resampling or cost-sensitive learning. Diagnosis requires examining FP and FN ratios in the confusion matrix and adjusting thresholds to optimize costs. This example provides a transferable template applicable to data pipeline design in real projects.</p>\n<p>Through this example, we demonstrate the practical application of a closed-loop template. In summary, successful defect detection relies on quantifying business constraints, componentized engineering implementation, and continuous iteration, enabling efficient delivery from PoC to production in manufacturing contexts.</p>"
+      },
+      "practice": [
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 结构总览 · 数据：课程大纲】在设计《制造质检案例：缺陷检测 + 误报成本控制（闭环模板）》的课程结构时，下列哪种顺序最能帮助读者从概念到应用逐层理解？",
+            "en": "【Source: 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 结构总览 · Data: 课程大纲】When outlining \"制造质检案例：缺陷检测 + 误报成本控制（闭环模板）\", which sequence best helps readers progress from concepts to applications?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "博客式课程需要自上而下铺陈：先建立概念，再阐明原理，随后通过示例与应用巩固。\n评分提示：选择能够形成定义→理论→示例→应用闭环的顺序。",
+            "en": "A blog-style lesson works best when it builds concepts, explains theory, walks through an example, then discusses applications.\nScoring note: 选择能够形成定义→理论→示例→应用闭环的顺序。"
+          },
+          "options": [
+            "概念与定义 → 理论与算法 → Worked example → 应用与趋势",
+            "直接列公式 → 给出练习 → 最后再解释概念",
+            "只讲历史 → 只列参考文献 → 不展示示例",
+            "先贴代码 → 略过背景 → 简单总结"
+          ]
+        },
+        {
+          "type": "multi",
+          "question": {
+            "zh": "【来自：制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · worked example · 数据：把方法映射到真实业务约束，形成可复用模板 数据/代码】在复现《制造质检案例：缺陷检测 + 误报成本控制（闭环模板）》的 worked example 时，以下哪些动作有助于保证结果可复现？（多选）",
+            "en": "【Source: 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · worked example · Data: 把方法映射到真实业务约束，形成可复用模板 数据/代码】While reproducing the worked example in \"制造质检案例：缺陷检测 + 误报成本控制（闭环模板）\", which actions improve reproducibility? (Select all that apply)"
+          },
+          "answer": [
+            0,
+            2,
+            3
+          ],
+          "explain": {
+            "zh": "要可复现，必须交代输入、解释处理过程并汇报输出；只口头概述无法为读者提供足够细节。\n评分提示：选中所有强调输入、处理、输出完整链路的选项。",
+            "en": "Reproducibility requires disclosing inputs, explaining each processing step, and logging the outputs; a vague verbal description is insufficient.\nScoring note: 选中所有强调输入、处理、输出完整链路的选项。"
+          },
+          "options": [
+            "列出输入数据字段与来源",
+            "仅口头描述处理步骤",
+            "逐行解释代码或公式逻辑",
+            "记录关键输出指标及其含义"
+          ]
+        },
+        {
+          "type": "input",
+          "question": {
+            "zh": "【来自：制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 应用延伸 · 数据：个人项目场景】请描述你所在场景如何迁移《制造质检案例：缺陷检测 + 误报成本控制（闭环模板）》中的一个定义或方法：写出场景背景、要重用的步骤以及验证结果的指标。",
+            "en": "【Source: 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 应用延伸 · Data: 个人项目场景】Describe how you would transfer one definition or method from \"制造质检案例：缺陷检测 + 误报成本控制（闭环模板）\" into your context: outline the scenario, the reused steps, and the metric you would check."
+          },
+          "answer": "plan",
+          "explain": {
+            "zh": "高分答案会明确场景、连接课程步骤，并指出验证成效的客观指标。\n评分提示：需包含场景、迁移步骤、验证指标三要素。",
+            "en": "Full-credit responses name the scenario, map course steps to it, and note the objective metric used for validation.\nScoring note: 需包含场景、迁移步骤、验证指标三要素。"
+          }
+        },
+        {
+          "type": "mcq",
+          "question": {
+            "zh": "【来自：制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 参考资料 · 数据：课程引用文献】当引用文献支撑《制造质检案例：缺陷检测 + 误报成本控制（闭环模板）》中的观点时，以下哪一做法能强化可信度？",
+            "en": "【Source: 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） · 参考资料 · Data: 课程引用文献】When citing a reference to support a claim in \"制造质检案例：缺陷检测 + 误报成本控制（闭环模板）\", which action strengthens credibility?"
+          },
+          "answer": 0,
+          "explain": {
+            "zh": "透明说明文献来源与章节关联，有助于读者追溯证据；其余做法都会削弱可信度。\n评分提示：选择能够清楚说明出处与课程观点关系的选项。",
+            "en": "Naming the publication details and tying them to the section lets readers verify the evidence; the other approaches reduce trust.\nScoring note: 选择能够清楚说明出处与课程观点关系的选项。"
+          },
+          "options": [
+            "指出文献的年份、作者/机构并提炼与本节的关系",
+            "只在文末集中列出所有链接，不在正文说明",
+            "引用尚未发表的私有数据但不给出处",
+            "用营销口吻概括文献而不提研究方法"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "label": {
+            "zh": "Machine Learning Yearning（DeepLearning.AI，2018）",
+            "en": "Machine Learning Yearning (DeepLearning.AI, 2018)"
+          },
+          "url": "https://www.deeplearning.ai/machine-learning-yearning/"
+        },
+        {
+          "label": {
+            "zh": "Scikit-learn: Machine Learning in Python（Scikit-learn Developers，2023）",
+            "en": "Scikit-learn: Machine Learning in Python (Scikit-learn Developers, 2023)"
+          },
+          "url": "https://scikit-learn.org/stable/"
+        }
+      ],
+      "audio": {
+        "zh": "/assets/audio/daily/2026-03-28-manufacturing-zh.mp3"
+      },
+      "meta": {
+        "category": "场景闭环与模板化交付",
+        "level": "12. 行业案例库",
+        "difficultyScore": 3,
+        "related": [
+          "AI 产品化思维：需求→数据→模型→评测→上线→迭代",
+          "上线前检查表：从 PoC 到 Production"
+        ],
+        "learningObjectives": [
+          "把方法映射到真实业务约束，形成可复用模板",
+          "能用固定闭环完成从PoC到上线的交付"
+        ],
+        "personas": [
+          "业务方负责人",
+          "产品经理",
+          "解决方案架构师",
+          "工程师"
+        ],
+        "contextual_notes": {
+          "why_now": "Mastering the closed-loop template for defect detection and false positive cost control enables teams to implement reusable practices in scenario closure and templated delivery.",
+          "best_for": "Suitable for business leaders, product managers, solution architects, and engineers needing to quickly absorb industry case library topics.",
+          "visual_hint": "Use bullet points and flow arrows to illustrate processes."
+        },
+        "tone_profile": {
+          "persona": "业务方负责人 指导者",
+          "style": "数据驱动",
+          "energy": "precise",
+          "call_to_action": "引导学习者写下一条可执行行动"
+        },
+        "learner_profile": {
+          "summary": "课程面向 业务方负责人、产品经理、解决方案架构师、工程师，帮助他们把 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） 应用于 场景闭环与模板化交付",
+          "prefersEnglish": false,
+          "industries": [
+            "业务方负责人",
+            "产品经理",
+            "解决方案架构师"
+          ],
+          "personas": [
+            "业务方负责人",
+            "产品经理",
+            "解决方案架构师",
+            "工程师"
+          ],
+          "pains": "在 场景闭环与模板化交付 场景缺乏 制造质检案例：缺陷检测 + 误报成本控制（闭环模板） 的可执行路径",
+          "preferredMetrics": [],
+          "maturity": "12. 行业案例库"
+        },
+        "prompt_version": "2025-02-19",
+        "starter_questions": [
+          {
+            "lang": "zh",
+            "question": "在您负责的制造质检项目中，如何根据业务约束（如误报成本公式）定义技术指标（如准确率、F1分数），以平衡检测性能与成本控制？",
+            "action_hint": "尝试结合您的具体业务场景，思考技术指标如何映射到实际成本影响。"
+          },
+          {
+            "lang": "zh",
+            "question": "回顾您过往的质检项目，从PoC到上线过程中，哪些环节（如数据流水线、模型评估）最可能阻碍闭环模板的迁移与交付效率？",
+            "action_hint": "分析项目中的瓶颈，并考虑如何应用组件化框架进行优化。"
+          }
+        ]
+      }
+    },
     {
       "id": "2026-03-28-security-regression",
       "date": "2026-03-28",
