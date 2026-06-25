@@ -50,14 +50,14 @@
   const providerModels = Object.keys(providerMap).filter(key => key && key !== 'default');
   const MODEL_OPTIONS = Array.isArray(windowConfig.modelOptions) && windowConfig.modelOptions.length
     ? windowConfig.modelOptions.slice()
-    : (providerModels.length ? providerModels.slice() : ['deepseek-chat']);
+    : (providerModels.length ? providerModels.slice() : ['deepseek-v4-flash']);
   providerModels.forEach(modelKey => {
     if (MODEL_OPTIONS.indexOf(modelKey) === -1) {
       MODEL_OPTIONS.push(modelKey);
     }
   });
   if (!MODEL_OPTIONS.length) {
-    MODEL_OPTIONS.push('deepseek-chat');
+    MODEL_OPTIONS.push('deepseek-v4-flash');
   }
   const rawDefaultModel = typeof windowConfig.defaultModel === 'string' && windowConfig.defaultModel.trim()
     ? windowConfig.defaultModel.trim()

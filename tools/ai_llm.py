@@ -89,7 +89,7 @@ def _call_openai(messages, temperature, max_tokens, want_json: bool = False) -> 
     key = _env("OPENAI_API_KEY")
     if not key:
         raise LLMError("OPENAI_API_KEY missing")
-    model = _env("OPENAI_MODEL", "gpt-4o-mini")
+    model = _env("OPENAI_MODEL", "deepseek-v4-flash")
     base = _env("OPENAI_BASE_URL", "https://api.openai.com/v1")
     base_s = str(base)
     url = f"{base_s.rstrip('/')}/chat/completions"
@@ -110,7 +110,7 @@ def _call_openrouter(messages, temperature, max_tokens, want_json: bool = False)
     key = _env("OPENROUTER_API_KEY")
     if not key:
         raise LLMError("OPENROUTER_API_KEY missing")
-    model = _env("OPENROUTER_MODEL", "openai/gpt-4o-mini")
+    model = _env("OPENROUTER_MODEL", "deepseek-v4-flash")
     base = _env("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     base_s = str(base)
     url = f"{base_s.rstrip('/')}/chat/completions"
@@ -157,7 +157,7 @@ def _call_deepseek(messages, temperature, max_tokens, want_json: bool = False) -
     key = _env("DEEPSEEK_API_KEY")
     if not key:
         raise LLMError("DEEPSEEK_API_KEY missing")
-    model = _env("DEEPSEEK_MODEL", "deepseek-chat")
+    model = _env("DEEPSEEK_MODEL", "deepseek-v4-flash")
     # DeepSeek requires the "/v1" prefix for the OpenAI-compatible endpoint.
     # Default to the correct base and append "/v1" if the provided env var misses it.
     base = _env("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1") or "https://api.deepseek.com/v1"

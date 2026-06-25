@@ -8,9 +8,9 @@
     dataPath: '/data/ai/siteAI/bus/doc_chunk.jsonl',
     proxyEndpoint: 'https://deepseek-proxy.fan-wan-uk.workers.dev/chat',
     webSearchEndpoint: 'https://websearch-proxy.fan-wan-uk.workers.dev/search',
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'deepseek-v4-flash',
     models: [
-      { id: 'deepseek-chat', name: 'DeepSeek V3' },
+      { id: 'deepseek-v4-flash', name: 'DeepSeek V4 Flash' },
       { id: 'gpt-4.1', name: 'OpenAI GPT-4.1' }
     ],
     maxContextChars: 12000,

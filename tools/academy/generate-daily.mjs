@@ -332,7 +332,7 @@ async function callLLM({ messages, temperature = 0.35, responseFormat = { type: 
     throw new Error("Missing LLM_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY");
   }
   const baseURL = process.env.LLM_BASE_URL || process.env.OPENAI_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.openai.com/v1";
-  const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || "gpt-4.1-mini";
+  const model = process.env.LLM_MODEL || process.env.OPENAI_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
   const rawMaxTokens = Number(
     process.env.LLM_MAX_TOKENS ||

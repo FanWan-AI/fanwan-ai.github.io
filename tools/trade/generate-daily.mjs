@@ -21,7 +21,7 @@ async function callLLM(prompt) {
   const apiKey = process.env.LLM_API_KEY || process.env.DEEPSEEK_API_KEY;
   if (!apiKey) throw new Error("Missing LLM_API_KEY");
   const baseURL = process.env.LLM_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
-  const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
   const response = await fetch(`${baseURL}/chat/completions`, {
     method: "POST",

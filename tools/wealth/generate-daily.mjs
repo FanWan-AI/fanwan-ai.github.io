@@ -28,7 +28,7 @@ async function callLLM(prompt, systemPrompt) {
     throw new Error("Missing LLM_API_KEY or DEEPSEEK_API_KEY environment variable");
   }
   const baseURL = process.env.LLM_BASE_URL || process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
-  const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-chat";
+  const model = process.env.LLM_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
   const isReasoner = model.includes("reasoner");
   

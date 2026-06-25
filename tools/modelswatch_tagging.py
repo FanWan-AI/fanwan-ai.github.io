@@ -148,7 +148,7 @@ def deepseek_classify(prompt: str, max_tokens: int = 256) -> Optional[List[str]]
     url = 'https://api.deepseek.com/chat/completions'
     headers = {'Authorization': f'Bearer {api_key}', 'Content-Type': 'application/json'}
     payload = {
-        'model': 'deepseek-chat',
+        'model': 'deepseek-v4-flash',
         'messages': [
             { 'role': 'system', 'content': 'You are a precise classifier. Only output valid task keys in JSON array.' },
             { 'role': 'user', 'content': prompt }

@@ -84,7 +84,7 @@ function getProvider() {
 
 async function translateWithDeepSeek(text, target) {
   const key = process.env.DEEPSEEK_API_KEY;
-  const model = process.env.DEEPSEEK_MODEL || 'deepseek-chat';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
   const url = (process.env.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1').replace(/\/?$/, '') + '/chat/completions';
   const sys = `You are a professional technical translator. Translate Chinese to ${target}.
 Preserve Markdown structure exactly: headings, lists, code blocks, links, images, math ($...$), tables.
@@ -116,7 +116,7 @@ Do not translate code or URLs. Keep inline formatting. Do not add extra commenta
 
 async function translateWithOpenAI(text, target) {
   const key = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const model = process.env.OPENAI_MODEL || 'deepseek-v4-flash';
   const url = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1/chat/completions';
   const sys = `You are a professional technical translator. Translate Chinese to ${target}.
 Preserve Markdown structure exactly: headings, lists, code blocks, links, images, math ($...$), tables.

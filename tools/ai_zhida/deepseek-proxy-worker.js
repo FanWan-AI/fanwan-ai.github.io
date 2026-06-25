@@ -7,7 +7,7 @@
 //   DEEPSEEK_API_KEY   -> required, your DeepSeek API key (Bearer)
 // Env (Vars - wrangler.toml [vars]):
 //   UPSTREAM_URL       -> default "https://api.deepseek.com/chat/completions" (or vendor-compatible endpoint)
-//   DEFAULT_MODEL      -> default "deepseek-reasoner" (override to your chosen model)
+//   DEFAULT_MODEL      -> default "deepseek-v4-flash" (override to your chosen model)
 //   ALLOWED_ORIGINS    -> comma-separated list of allowed origins for CORS (e.g., "https://fanwan-ai.github.io,https://yourdomain.com")
 //   ALLOW_DEV_ORIGINS  -> set to "1" to allow localhost/private-network origins while debugging
 //   MAX_TOKENS         -> optional cap for max_tokens (e.g., "2048")
@@ -54,7 +54,7 @@ export default {
         }
 
         const upstreamUrl = env.UPSTREAM_URL || 'https://api.deepseek.com/chat/completions';
-        const model = (payload && payload.model) || env.DEFAULT_MODEL || 'deepseek-reasoner';
+        const model = (payload && payload.model) || env.DEFAULT_MODEL || 'deepseek-v4-flash';
         const temperature = clampNumber(payload?.temperature, 0, 1, 0.7);
         const maxTokensCap = env.MAX_TOKENS ? parseInt(env.MAX_TOKENS, 10) : undefined;
         const maxTokens = clampNumber(payload?.max_tokens, 1, maxTokensCap || 4096, Math.min(payload?.max_tokens || 1024, maxTokensCap || 4096));
