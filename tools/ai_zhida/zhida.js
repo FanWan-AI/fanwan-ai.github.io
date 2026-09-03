@@ -157,7 +157,6 @@
     modelswatch_hf: 'Modelswatch · Hugging Face',
     modelswatch_gh: 'Modelswatch · GitHub',
     airadar: 'AI Radar News',
-    wealth_pulse: 'Market Pulse',
     site_docs: 'Site Pages'
   });
   const SITE_SOURCE_TAGS = Object.freeze({
@@ -165,7 +164,6 @@
     modelswatch_hf: 'models',
     modelswatch_gh: 'repos',
     airadar: 'news_ai',
-    wealth_pulse: 'news_finance',
     site_docs: 'pages'
   });
   const SITE_SOURCE_BASE_WEIGHTS = Object.freeze({
@@ -173,15 +171,13 @@
     modelswatch_hf: 1.08,
     modelswatch_gh: 1.05,
     airadar: 1.1,
-    wealth_pulse: 1.05,
     site_docs: 0.92
   });
   const SITE_SCOPE_DEFINITIONS = Object.freeze({
-    all: ['scholarpush', 'modelswatch_hf', 'modelswatch_gh', 'airadar', 'wealth_pulse', 'site_docs'],
+    all: ['scholarpush', 'modelswatch_hf', 'modelswatch_gh', 'airadar', 'site_docs'],
     papers: ['scholarpush'],
     models: ['modelswatch_hf', 'modelswatch_gh'],
     news_ai: ['airadar'],
-    news_finance: ['wealth_pulse'],
     pages: ['site_docs']
   });
   const SITE_SCOPE_DEFAULT = 'all';

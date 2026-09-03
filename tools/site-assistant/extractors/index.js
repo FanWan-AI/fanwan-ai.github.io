@@ -1,7 +1,6 @@
 import { extractScholarpush } from "./scholarpush.js";
 import { extractModelswatch } from "./modelswatch.js";
 import { extractAiradar } from "./airadar.js";
-import { extractWealthPulse } from "./wealth-pulse.js";
 import { extractSiteDocs } from "./site-docs.js";
 
 const EXTRACTORS = {
@@ -9,7 +8,6 @@ const EXTRACTORS = {
   modelswatch_gh: (ctx) => extractModelswatch({ ...ctx, flavour: "github" }),
   modelswatch_hf: (ctx) => extractModelswatch({ ...ctx, flavour: "huggingface" }),
   airadar: extractAiradar,
-  wealth_pulse: extractWealthPulse,
   site_docs: extractSiteDocs,
 };
 
