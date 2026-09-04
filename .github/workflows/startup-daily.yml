@@ -1,0 +1,72 @@
+name: AI Startup Opportunity Daily
+
+on:
+  schedule:
+    - cron: "17 23 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: startup-daily
+  cancel-in-progress: true
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Singapore
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL || 'https://api.deepseek.com/v1' }}
+      DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL || 'deepseek-v4-flash' }}
+      BRAVE_SEARCH_API_KEY: ${{ secrets.BRAVE_SEARCH_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        run: npm run startup:test
+
+      - name: Generate and verify daily opportunities
+        run: npm run startup:daily
+
+      - name: Validate public startup data
+        run: npm run startup:validate
+
+      - name: Upload generation logs and output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: startup-daily-${{ github.run_id }}
+          path: |
+            data/ai/startup/opportunities
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Commit only startup opportunity data
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          git config user.name "$GIT_AUTHOR_NAME"
+          git config user.email "$GIT_AUTHOR_EMAIL"
+          git add data/ai/startup/opportunities/latest.json data/ai/startup/opportunities/archive
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(startup): update opportunity daily"
+            git pull --rebase origin "${GITHUB_REF_NAME:-main}"
+            git push origin "HEAD:${GITHUB_REF_NAME:-main}"
+          else
+            echo "No startup opportunity data changes."
+          fi
