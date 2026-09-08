@@ -8,7 +8,7 @@ import { dedupeSources, selectEvidenceSources } from "../lib/collect.mjs";
 import { collectBraveSearch, enrichSources, extractReadableContent } from "../lib/collect.mjs";
 import { gateCase, gateDaily, retainPassingOpportunities } from "../lib/gates.mjs";
 import { publishDaily, promoteCase, validatePublicPaths, writeCaseDraft } from "../lib/publish.mjs";
-import { assertSchema, validateSchema } from "../lib/schemas.mjs";
+import { assertSchema, validateSchema, retainSchemaValidOpportunities } from "../lib/schemas.mjs";
 import { hasIndependentSources, scoreOpportunity } from "../lib/scoring.mjs";
 import { isSafeUrl, normalizeUrl, assertPublicUrl } from "../lib/url-security.mjs";
 import { todayInTimeZone, writeJsonAtomic } from "../lib/utils.mjs";
@@ -113,6 +113,16 @@ test("offline fixture runs through draft, promotion, index and public validation
   const promoted = await promoteCase({ draftPath, caseRoot: path.join(root, "cases"), indexPath: path.join(root, "cases/index.json") });
   assert.equal(promoted.published.status, "published");
   assert.deepEqual(await validatePublicPaths({ opportunityPath: path.join(root, "opportunities/latest.json"), indexPath: path.join(root, "cases/index.json"), caseRoot: path.join(root, "cases") }), [path.join(root, "opportunities/latest.json"), path.join(root, "cases/index.json"), path.join(root, "cases/cursor-workflow-wedge.json")]);
+});
+
+test("one schema-invalid candidate does not discard a valid edition", async () => {
+  const { daily } = buildFixture();
+  const broken = structuredClone(daily.opportunities[0]);
+  broken.business_model = "short";
+  const result = await retainSchemaValidOpportunities({ ...daily, opportunities: [broken, daily.opportunities[0]] });
+  assert.equal(result.opportunities.length, 1);
+  assert.equal(result.opportunities[0].rank, 1);
+  assert.equal(result.opportunities[0].depth, "deep");
 });
 
 test("public validation is fail-closed for missing public files, with explicit empty mode", async () => {

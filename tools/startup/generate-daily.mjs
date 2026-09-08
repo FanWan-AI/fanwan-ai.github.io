@@ -8,7 +8,7 @@ import { publishDaily } from "./lib/publish.mjs";
 import { formatError, StartupError } from "./lib/errors.mjs";
 import { todayInTimeZone, writeJsonAtomic } from "./lib/utils.mjs";
 import { verifyDaily } from "./lib/verify.mjs";
-import { assertSchema } from "./lib/schemas.mjs";
+import { assertSchema, retainSchemaValidOpportunities } from "./lib/schemas.mjs";
 
 function arg(name, fallback = undefined) { const index = process.argv.indexOf(name); return index >= 0 ? process.argv[index + 1] : fallback; }
 const dryRun = process.argv.includes("--dry-run");
@@ -36,6 +36,7 @@ async function main() {
       const candidates = gateDaily(document);
       await writeJsonAtomic(path.join(logRoot, "candidate-checks.json"), candidates);
       document = retainPassingOpportunities(document);
+      document = await retainSchemaValidOpportunities(document);
       const gate = gateDaily(document);
       if (!gate.pass || gate.passingCount === 0) throw new StartupError(`No publishable daily opportunities: ${candidates.reasons.join("; ") || "writer returned no supported opportunities"}`, "QUALITY_GATE", candidates);
       const used = new Set(document.opportunities.flatMap(item => item.evidence.flatMap(e => e.source_ids)));

@@ -36,3 +36,13 @@ export async function assertSchema(value, schemaName) {
   if (!result.valid) throw new StartupError(`Schema validation failed for ${schemaName}`, "SCHEMA_INVALID", result.errors);
   return value;
 }
+
+export async function retainSchemaValidOpportunities(document) {
+  await assertSchema({ ...document, opportunities: [] }, "opportunity-daily.schema.json");
+  const valid = [];
+  for (const item of document.opportunities) {
+    const result = await validateSchema({ ...document, opportunities: [item] }, "opportunity-daily.schema.json");
+    if (result.valid) valid.push(item);
+  }
+  return { ...document, opportunities: valid.map((item, i) => ({ ...item, rank: i + 1, depth: i < 3 ? "deep" : "brief" })) };
+}

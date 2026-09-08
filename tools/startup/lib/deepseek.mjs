@@ -18,7 +18,7 @@ function config() {
 function jsonMode() { return { type: "json_object" }; }
 
 function schemaInstruction(schemaName, schema) {
-  return `\nReturn only one valid JSON object named ${schemaName}; do not use Markdown or code fences. The object must follow this shape:\n${JSON.stringify(schema)}`;
+  return `\nReturn only one valid JSON object; do not use Markdown, code fences or a wrapper key. ${schemaName} is the contract name, NOT an object key. Follow this JSON Schema exactly:\n${JSON.stringify(schema)}`;
 }
 
 async function request(url, body, apiKey, timeoutMs) {
@@ -89,7 +89,8 @@ export async function callStructured({ system, user, schemaName, schema, verify 
       messages
     }, apiKey, timeoutMs), retries);
     if (process.env.STARTUP_LOG_USAGE === "1") console.log(`[startup] ${schemaName}: input=${payload.usage?.prompt_tokens ?? "?"}, output=${payload.usage?.completion_tokens ?? "?"}`);
-    return parseJsonText(contentFromCompletion(payload));
+    const result = parseJsonText(contentFromCompletion(payload));
+    return result && Object.keys(result).length === 1 && Object.hasOwn(result, schemaName) ? result[schemaName] : result;
   } catch (error) {
     throw new StartupError(redactError(error, apiKey), error.code || "LLM_ERROR", error.details);
   }
