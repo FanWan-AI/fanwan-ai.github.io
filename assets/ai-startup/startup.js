@@ -244,11 +244,9 @@ function evidenceDrawer(opportunity, sources) {
 
 function opportunityCard(opportunity, sources) {
   const failures = asList(opportunity.failure_modes || opportunity.risks);
-  const score = opportunity.score?.total ?? opportunity.total_score ?? "—";
   return el("article", { class: "opportunity-card" },
     el("div", { class: "opportunity-card__top" },
-      el("span", { class: "opportunity-rank", text: `NO. ${String(opportunity.rank || 0).padStart(2, "0")}` }),
-      el("span", { class: "opportunity-score", text: `${score}/100` })
+      el("span", { class: "opportunity-rank", text: `NO. ${String(opportunity.rank || 0).padStart(2, "0")}` })
     ),
     el("h3", { text: localize(opportunity.title) }),
     el("p", { class: "opportunity-card__verdict", text: localize(opportunity.verdict || opportunity.one_liner) }),
@@ -269,12 +267,10 @@ function opportunityCard(opportunity, sources) {
 }
 
 function briefCard(opportunity, sources) {
-  const score = opportunity.score?.total ?? opportunity.total_score ?? "—";
   const risk = asList(opportunity.failure_modes || opportunity.risks)[0] || "—";
   return el("article", { class: "brief-card" },
     el("div", { class: "brief-card__top" },
-      el("span", { class: "opportunity-rank", text: `NO. ${String(opportunity.rank || 0).padStart(2, "0")}` }),
-      el("span", { class: "opportunity-score", text: `${score}/100` })
+      el("span", { class: "opportunity-rank", text: `NO. ${String(opportunity.rank || 0).padStart(2, "0")}` })
     ),
     el("h4", { text: localize(opportunity.title) }),
     el("p", { text: localize(opportunity.verdict || opportunity.one_liner) }),

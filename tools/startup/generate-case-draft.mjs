@@ -13,7 +13,7 @@ const topic = arg("--topic", process.env.STARTUP_CASE_TOPIC);
 if (!topic) { console.error("Usage: npm run startup:case -- --topic \"company or question\""); process.exitCode = 2; }
 const dryRun = process.argv.includes("--dry-run");
 const outputRoot = arg("--output-root");
-const logRoot = path.resolve(outputRoot || "data/ai/startup", "logs/case");
+const logRoot = path.resolve(outputRoot || "data/ai/startup", `logs/case-${new Date().toISOString().replace(/[:.]/g, "-")}`);
 
 async function main() {
   if (!topic) return;
@@ -34,6 +34,7 @@ async function main() {
   if (dryRun) { console.log(JSON.stringify(document, null, 2)); return; }
   const draftPath = outputRoot ? path.resolve(outputRoot, "cases/drafts", `${slugify(document.slug)}.json`) : path.resolve("data/ai/startup/cases/drafts", `${slugify(document.slug)}.json`);
   await writeCaseDraft(document, draftPath);
+  await writeJsonAtomic(path.join(logRoot, "result.json"), { status: "draft", slug: document.slug });
   console.log(`Case draft written (not published): ${draftPath}`);
 }
 

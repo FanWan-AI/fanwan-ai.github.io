@@ -45,10 +45,10 @@ export const BANNED_PHRASES = [
 
 export const CURATED_FEEDS = [
   { url: "https://openai.com/news/rss.xml", publisher: "OpenAI", tier: "primary" },
-  { url: "https://www.anthropic.com/rss.xml", publisher: "Anthropic", tier: "primary" },
-  { url: "https://www.ftc.gov/feeds/press-release-consumer-protection.xml", publisher: "FTC", tier: "primary" },
-  { url: "https://www.federalregister.gov/api/v1/documents.rss", publisher: "Federal Register", tier: "primary" },
-  { url: "https://techcrunch.com/category/artificial-intelligence/feed/", publisher: "TechCrunch", tier: "reputable_secondary" },
+  { url: "https://huggingface.co/blog/feed.xml", publisher: "Hugging Face", tier: "primary" },
+  { url: "https://aws.amazon.com/blogs/machine-learning/feed/", publisher: "AWS", tier: "primary" },
+  { url: "https://blogs.nvidia.com/feed/", publisher: "NVIDIA", tier: "primary" },
+  { url: "https://techcrunch.com/tag/artificial-intelligence/feed/", publisher: "TechCrunch", tier: "reputable_secondary" },
   { url: "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml", publisher: "The Verge", tier: "reputable_secondary" },
   { url: "https://www.technologyreview.com/feed/", publisher: "MIT Technology Review", tier: "reputable_secondary" }
 ];

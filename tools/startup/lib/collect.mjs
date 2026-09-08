@@ -177,7 +177,14 @@ export async function collectBraveSearch({ apiKey = process.env.BRAVE_SEARCH_API
 export async function collectSources(options = {}) {
   const rss = await collectCuratedRss(options);
   const brave = options.brave === false ? { sources: [], warnings: [] } : await collectBraveSearch(options);
-  const selected = selectEvidenceSources([...rss.sources, ...brave.sources]);
+  const now = Date.now();
+  const relevant = rss.sources.filter(source => {
+    const age = now - Date.parse(source.published_at || "");
+    return (!Number.isFinite(age) || (age >= -86_400_000 && age <= 90 * 86_400_000)) &&
+      !/^The Download:/i.test(source.title) &&
+      /\bAI\b|\bLLM\b|agent|model|人工智能|机器学习|ChatGPT|Claude|GPT-|inference|生成式|transformer/i.test(`${source.title} ${source.snippet}`);
+  });
+  const selected = selectEvidenceSources([...relevant, ...brave.sources]);
   const enriched = options.enrich === false ? { sources: selected, warnings: [] } : await enrichSources(selected, options);
   return { sources: enriched.sources, warnings: [...rss.warnings, ...brave.warnings, ...enriched.warnings] };
 }
