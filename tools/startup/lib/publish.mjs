@@ -42,12 +42,30 @@ export async function promoteCase({ draftPath, caseRoot = DEFAULT_CASE_ROOT, ind
   return { published, index: nextIndex, finalPath };
 }
 
-export async function validatePublicPaths({ opportunityPath = DEFAULT_OPPORTUNITY_PATH, indexPath = DEFAULT_CASE_INDEX_PATH, caseRoot = DEFAULT_CASE_ROOT } = {}) {
+export async function validatePublicPaths({ opportunityPath = DEFAULT_OPPORTUNITY_PATH, indexPath = DEFAULT_CASE_INDEX_PATH, caseRoot = DEFAULT_CASE_ROOT, allowEmpty = false } = {}) {
   const checked = [];
-  try { const daily = await readJson(opportunityPath); await assertSchema(daily, "opportunity-daily.schema.json"); const gate = gateDaily(daily); if (!gate.pass) throw new StartupError("Daily business gate failed", "QUALITY_GATE", gate); checked.push(opportunityPath); } catch (error) { if (error.code !== "ENOENT") throw error; }
-  try {
-    const index = await readJson(indexPath); await assertSchema(index, "cases-index.schema.json"); checked.push(indexPath);
-    for (const entry of index.cases) { const casePath = path.join(caseRoot, path.basename(entry.case_path)); const detail = await readJson(casePath); await assertSchema(detail, "case-detail.schema.json"); const gate = gateCase(detail); if (!gate.pass || detail.status !== "published") throw new StartupError(`Case ${entry.slug} business gate failed`, "QUALITY_GATE", gate); checked.push(casePath); }
-  } catch (error) { if (error.code !== "ENOENT") throw error; }
+  let daily;
+  try { daily = await readJson(opportunityPath); } catch (error) { if (!allowEmpty || error.code !== "ENOENT") throw error; }
+  if (daily !== undefined) {
+    await assertSchema(daily, "opportunity-daily.schema.json");
+    const gate = gateDaily(daily);
+    if (!gate.pass) throw new StartupError("Daily business gate failed", "QUALITY_GATE", gate);
+    checked.push(opportunityPath);
+  }
+
+  let index;
+  try { index = await readJson(indexPath); } catch (error) { if (!allowEmpty || error.code !== "ENOENT") throw error; }
+  if (index !== undefined) {
+    await assertSchema(index, "cases-index.schema.json");
+    checked.push(indexPath);
+    for (const entry of index.cases) {
+      const casePath = path.join(caseRoot, path.basename(entry.case_path));
+      const detail = await readJson(casePath);
+      await assertSchema(detail, "case-detail.schema.json");
+      const gate = gateCase(detail);
+      if (!gate.pass || detail.status !== "published") throw new StartupError(`Case ${entry.slug} business gate failed`, "QUALITY_GATE", gate);
+      checked.push(casePath);
+    }
+  }
   return checked;
 }

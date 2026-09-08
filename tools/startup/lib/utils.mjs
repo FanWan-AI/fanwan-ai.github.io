@@ -103,8 +103,10 @@ export function cleanStringArray(value, maxItems = 8, maxLength = 500) {
   return value.map((entry) => cleanString(entry, maxLength)).filter(Boolean).slice(0, maxItems);
 }
 
-export function redactError(error) {
-  return String(error?.message || error)
+export function redactError(error, ...secrets) {
+  let message = String(error?.message || error);
+  for (const secret of secrets.filter(Boolean)) message = message.split(String(secret)).join("[REDACTED]");
+  return message
     .replace(/Bearer\s+[A-Za-z0-9._-]+/giu, "Bearer [REDACTED]")
     .replace(/DEEPSEEK_API_KEY\s*[=:]\s*[^\s]+/giu, "DEEPSEEK_API_KEY=[REDACTED]");
 }

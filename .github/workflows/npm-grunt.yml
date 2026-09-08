@@ -2,8 +2,12 @@ name: Deploy static site to GitHub Pages
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows: [AI Startup Opportunity Daily, AI Startup Publish Case, ai-radar-pipeline, ModelWatch Tagging, ModelSwatch Daily · Full Pipeline, Build Blog from Markdown, AI Daily Blog]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -12,38 +16,45 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   deploy:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository)
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout latest site without retired audio
         uses: actions/checkout@v4
+        with:
+          ref: main
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/assets/audio/daily/
+            !/assets/test-og.svg
+            !/lab/games.disabled/
+            !/data/ai/daily-academy/
+            !/data/ai/wealth/
+            !/data/ai/trade/
+            !/data/ai/games/
 
-      # 如果你的站点不需要构建，直接把仓库根目录作为工件上传即可
-      - name: Prepare Pages upload directory
-        run: |
-          set -e
-          rm -rf pages_upload || true
-          mkdir -p pages_upload
-          # Copy only existing site files and directories into pages_upload
-          for p in index.html about.html blog.html contact.html manifest.webmanifest rss.xml rss-en.xml rss-es.xml style.css script.js sw.js assets blog data; do
-            if [ -e "$p" ]; then
-              echo "Including: $p"
-              cp -R "$p" pages_upload/
-            else
-              echo "Skipping missing: $p"
-            fi
-          done
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
-      - name: Upload artifact (pages_upload)
+      - name: Prepare public files only
+        run: node scripts/prepare-pages.mjs
+
+      - uses: actions/configure-pages@v5
+
+      - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
-          path: pages_upload
+          path: .tmp/pages-upload
 
       - name: Deploy to GitHub Pages
         id: deployment

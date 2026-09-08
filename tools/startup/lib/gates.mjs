@@ -11,6 +11,8 @@ export function gateOpportunity(item, sourcesById) {
   if (!Array.isArray(item.failure_modes) || item.failure_modes.length < 1) reasons.push("failure_modes missing");
   if (!Array.isArray(item.evidence) || item.evidence.length < 1) reasons.push("evidence missing");
   const ids = [...new Set((item.evidence || []).flatMap((entry) => entry?.source_ids || []))];
+  if (ids.some(id => !sourcesById.has(id))) reasons.push("unknown source reference");
+  if ((item.evidence || []).some(entry => !nonEmpty(entry?.claim) || !entry.source_ids?.length)) reasons.push("unsupported evidence claim");
   if (ids.length < MIN_SOURCE_COUNT || !hasIndependentSources(item, sourcesById)) reasons.push("fewer than two independent usable sources");
   const coverage = sourceCoverage(item, sourcesById);
   if (coverage < MIN_SOURCE_COVERAGE) reasons.push(`source coverage ${coverage.toFixed(2)} below ${MIN_SOURCE_COVERAGE}`);
@@ -31,6 +33,16 @@ export function gateDaily(document) {
   if (items.some((item, index) => index > 0 && item.score.total > items[index - 1].score.total)) reasons.push("opportunities must be sorted by descending score");
   if (items.length > 0 && results.every((result) => !result.pass)) reasons.push("zero passing opportunities");
   return { pass: reasons.length === 0, reasons, itemResults: results, passingCount: results.filter((result) => result.pass).length };
+}
+
+export function retainPassingOpportunities(document) {
+  const sourcesById = new Map((document.sources || []).map((source) => [source.id, source]));
+  const passing = (document.opportunities || [])
+    .filter((item) => gateOpportunity(item, sourcesById).pass)
+    .sort((a, b) => b.score.total - a.score.total)
+    .slice(0, 10)
+    .map((item, index) => ({ ...item, rank: index + 1, depth: index < 3 ? "deep" : "brief" }));
+  return { ...document, opportunities: passing };
 }
 
 export function gateCase(document) {

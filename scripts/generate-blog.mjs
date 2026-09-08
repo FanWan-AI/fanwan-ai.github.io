@@ -511,6 +511,8 @@ function buildHtml({lang, slug, title, description, date, bodyHtml, heroSrc, ogI
             <li><a href="/lab/ai-paperhub.html"><span class="i18n l-zh">AI 论文中心</span><span class="i18n l-en">AI Paper Hub</span><span class="i18n l-es">Centro de Papers IA</span></a></li>
             <li><a href="/lab/modelswatch.html"><span class="i18n l-zh">AI 模型雷达</span><span class="i18n l-en">AI Model Radar</span><span class="i18n l-es">Radar de Modelos IA</span></a></li>
             <li><a href="/lab/ai-radar.html"><span class="i18n l-zh">AI 前沿要闻</span><span class="i18n l-en">AI Frontier News</span><span class="i18n l-es">Noticias de Frontera IA</span></a></li>
+
+            <li><a href="/lab/ai-startup.html"><span class="i18n l-zh">AI 创业</span><span class="i18n l-en">AI Venture</span><span class="i18n l-es">Emprendimiento IA</span></a></li>
           </ul>
         </li>
         <li><a href="../contact.html"><span class="i18n l-zh">联系</span><span class="i18n l-en">Contact</span><span class="i18n l-es">Contacto</span></a></li>

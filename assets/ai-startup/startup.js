@@ -7,62 +7,62 @@ const CACHE_PREFIX = "fanwan-ai-startup:v1:";
 const UI = {
   zh: {
     heroEyebrow: "AI VENTURE INTELLIGENCE",
-    heroTitle: "让证据先说话，再谈创业。",
+    heroTitle: "发现 AI 商机，读懂创业成败。",
     heroLede: "每天筛出值得验证的 AI 商机；每周拆开一家公司的增长逻辑、关键取舍与隐性风险。",
     dailyLabel: "日报", dailyCadence: "每日最多 10 条",
     caseLabel: "解剖", caseCadence: "每周 1 个案例",
     evidenceLabel: "证据", evidenceCadence: "关键结论可追溯",
     heroCaption: "从噪声中识别可验证信号",
-    opportunityTab: "AI 创业机会日报", opportunityTabHint: "今日最值得验证的商业窗口",
+    opportunityTab: "AI 创业机会日报", opportunityTabHint: "值得尝试的商业机会",
     caseTab: "AI 创业案例解剖", caseTabHint: "理解增长背后的选择与代价",
-    loading: "今日内容加载中…", ready: "", partial: "部分数据更新失败，已显示最近一期内容", error: "今日内容暂不可用，请稍后再试",
-    edition: "今日判断", opportunities: "今日精选", sources: "参考来源", verified: "更新于",
-    topSignals: "前三个强信号", otherSignals: "其他值得观察", otherHint: "更短，但同样保留风险与证伪动作",
+    loading: "内容加载中…", ready: "", partial: "部分数据更新失败，已显示最近一期内容", error: "今日内容暂不可用，请稍后再试",
+    edition: "本期观察", opportunities: "本期精选", sources: "参考来源", verified: "更新于",
+    topSignals: "重点机会", otherSignals: "其他值得观察", otherHint: "留意变化，先从小实验开始",
     customer: "谁会买", pain: "正在付出的代价", whyNow: "为什么是现在", aiFit: "AI 的必要性", msp: "最小可售产品", businessModel: "商业模式", risk: "最可能失败", falsify: "最快证伪",
     evidence: "查看证据与来源", evidenceBoundary: "本节证据边界", confidence: "置信度", sourceFallback: "原始来源",
     noDailyTitle: "今日暂无新机会", noDailyBody: "下一期内容更新后会在这里出现。",
-    caseEyebrow: "WEEKLY CASE ANATOMY", caseHeading: "把增长故事拆成可以验证的选择。", caseIntro: "围绕一个关键决策，拆解增长逻辑、适用边界和下一步可执行实验。",
-    latestCase: "本周案例", readCase: "阅读全文", minutes: "分钟", casesEmpty: "新案例准备中", casesEmptyBody: "下一篇案例完成后会在这里发布。",
+    caseEyebrow: "WEEKLY CASE ANATOMY", caseHeading: "读懂一家公司的关键选择。", caseIntro: "围绕一个关键决策，拆解增长逻辑、适用边界和下一步可执行实验。",
+    latestCase: "最新案例", readCase: "阅读全文", minutes: "分钟", casesEmpty: "新案例准备中", casesEmptyBody: "下一篇案例完成后会在这里发布。",
     verdict: "核心判断", centralQuestion: "中心问题", timeline: "关键时间线", copy: "可以抄什么", avoid: "不要抄什么", experiment: "下一步实验", unknowns: "仍然未知", sourcesTitle: "来源与证据", back: "返回案例列表", copyLink: "复制链接", copied: "链接已复制", companyClaim: "公司自述", fact: "事实", inference: "编辑推断", unknown: "未知"
   },
   en: {
     heroEyebrow: "AI VENTURE INTELLIGENCE",
-    heroTitle: "Evidence first. Entrepreneurship second.",
+    heroTitle: "Discover AI opportunities. Understand what makes ventures work.",
     heroLede: "A daily shortlist of AI opportunities worth testing, plus one weekly case that exposes the choices and risks beneath the growth story.",
     dailyLabel: "Daily", dailyCadence: "Up to 10 signals",
     caseLabel: "Anatomy", caseCadence: "One case weekly",
     evidenceLabel: "Evidence", evidenceCadence: "Claims trace to sources",
     heroCaption: "Turning noise into testable signals",
-    opportunityTab: "AI Opportunity Daily", opportunityTabHint: "Commercial windows worth testing today",
+    opportunityTab: "AI Opportunity Daily", opportunityTabHint: "Business opportunities worth exploring",
     caseTab: "AI Venture Case Anatomy", caseTabHint: "The choices and costs behind growth",
-    loading: "Loading today’s edition…", ready: "", partial: "Some data could not refresh; showing the latest available edition", error: "Today’s edition is temporarily unavailable. Please try again later.",
-    edition: "Today’s call", opportunities: "Selected", sources: "Sources", verified: "Updated",
-    topSignals: "Top three signals", otherSignals: "More to watch", otherHint: "Shorter, with the same risk and falsification discipline",
+    loading: "Loading the latest edition…", ready: "", partial: "Some data could not refresh; showing the latest available edition", error: "Today’s edition is temporarily unavailable. Please try again later.",
+    edition: "In this edition", opportunities: "Selected", sources: "Sources", verified: "Updated",
+    topSignals: "Featured opportunities", otherSignals: "More to watch", otherHint: "Watch the changes. Start with a small experiment.",
     customer: "Buyer", pain: "Costly pain", whyNow: "Why now", aiFit: "Why AI", msp: "Smallest sellable product", businessModel: "Business model", risk: "Failure mode", falsify: "Fastest falsification",
     evidence: "Evidence and sources", evidenceBoundary: "Evidence boundary", confidence: "Confidence", sourceFallback: "Original source",
     noDailyTitle: "No new opportunity today", noDailyBody: "The next edition will appear here when it is ready.",
-    caseEyebrow: "WEEKLY CASE ANATOMY", caseHeading: "Turn a growth story into testable choices.", caseIntro: "Each case follows one pivotal decision and explains the growth logic, limits, and next practical experiment.",
+    caseEyebrow: "WEEKLY CASE ANATOMY", caseHeading: "Understand the choices behind a company.", caseIntro: "Each case follows one pivotal decision and explains the growth logic, limits, and next practical experiment.",
     latestCase: "Latest case", readCase: "Read case", minutes: "min", casesEmpty: "A new case is in progress", casesEmptyBody: "The next completed case will appear here.",
     verdict: "Verdict", centralQuestion: "Central question", timeline: "Timeline", copy: "What to copy", avoid: "What not to copy", experiment: "Next experiment", unknowns: "Still unknown", sourcesTitle: "Sources and evidence", back: "Back to cases", copyLink: "Copy link", copied: "Link copied", companyClaim: "Company claim", fact: "Fact", inference: "Editorial inference", unknown: "Unknown"
   },
   es: {
     heroEyebrow: "INTELIGENCIA PARA EMPRENDER CON IA",
-    heroTitle: "Primero la evidencia. Después, emprender.",
+    heroTitle: "Descubre oportunidades de IA y aprende de negocios reales.",
     heroLede: "Una selección diaria de oportunidades de IA que merecen validarse y un caso semanal que revela decisiones, ventajas y riesgos.",
     dailyLabel: "Diario", dailyCadence: "Hasta 10 señales",
     caseLabel: "Anatomía", caseCadence: "Un caso semanal",
     evidenceLabel: "Evidencia", evidenceCadence: "Conclusiones rastreables",
     heroCaption: "Convertir ruido en señales comprobables",
-    opportunityTab: "Oportunidades IA del día", opportunityTabHint: "Ventanas comerciales para validar hoy",
+    opportunityTab: "Oportunidades IA del día", opportunityTabHint: "Oportunidades comerciales para explorar",
     caseTab: "Anatomía de casos IA", caseTabHint: "Decisiones y costes detrás del crecimiento",
-    loading: "Cargando la edición de hoy…", ready: "", partial: "Algunos datos no se actualizaron; mostramos la última edición disponible", error: "La edición de hoy no está disponible. Inténtalo de nuevo más tarde.",
-    edition: "Selección de hoy", opportunities: "Elegidas", sources: "Fuentes", verified: "Actualizado",
-    topSignals: "Tres señales principales", otherSignals: "Otras señales", otherHint: "Más breves, con el mismo rigor sobre riesgo y refutación",
+    loading: "Cargando la última edición…", ready: "", partial: "Algunos datos no se actualizaron; mostramos la última edición disponible", error: "La edición de hoy no está disponible. Inténtalo de nuevo más tarde.",
+    edition: "En esta edición", opportunities: "Elegidas", sources: "Fuentes", verified: "Actualizado",
+    topSignals: "Oportunidades destacadas", otherSignals: "Otras señales", otherHint: "Observa los cambios y empieza con una prueba pequeña.",
     customer: "Comprador", pain: "Problema costoso", whyNow: "Por qué ahora", aiFit: "Por qué IA", msp: "Producto mínimo vendible", businessModel: "Modelo de negocio", risk: "Riesgo principal", falsify: "Prueba de refutación",
     evidence: "Evidencia y fuentes", evidenceBoundary: "Límite de la evidencia", confidence: "Confianza", sourceFallback: "Fuente original",
     noDailyTitle: "Hoy no hay una oportunidad nueva", noDailyBody: "La próxima edición aparecerá aquí cuando esté lista.",
-    caseEyebrow: "ANATOMÍA SEMANAL", caseHeading: "Convertir crecimiento en decisiones comprobables.", caseIntro: "Cada caso sigue una decisión clave y explica la lógica de crecimiento, sus límites y el siguiente experimento práctico.",
-    latestCase: "Caso de la semana", readCase: "Leer caso", minutes: "min", casesEmpty: "Hay un nuevo caso en preparación", casesEmptyBody: "El próximo caso aparecerá aquí cuando esté terminado.",
+    caseEyebrow: "ANATOMÍA SEMANAL", caseHeading: "Entiende las decisiones de una empresa.", caseIntro: "Cada caso sigue una decisión clave y explica la lógica de crecimiento, sus límites y el siguiente experimento práctico.",
+    latestCase: "Último caso", readCase: "Leer caso", minutes: "min", casesEmpty: "Hay un nuevo caso en preparación", casesEmptyBody: "El próximo caso aparecerá aquí cuando esté terminado.",
     verdict: "Veredicto", centralQuestion: "Pregunta central", timeline: "Cronología", copy: "Qué copiar", avoid: "Qué no copiar", experiment: "Siguiente experimento", unknowns: "Aún desconocido", sourcesTitle: "Fuentes y evidencia", back: "Volver a casos", copyLink: "Copiar enlace", copied: "Enlace copiado", companyClaim: "Afirmación empresarial", fact: "Hecho", inference: "Inferencia editorial", unknown: "Desconocido"
   }
 };
@@ -76,7 +76,8 @@ const STORY_TYPE_LABELS = {
 const state = { daily: null, cases: null, detail: null, view: "opportunities", failures: 0, cacheFallbacks: 0 };
 
 function lang() {
-  const raw = localStorage.getItem("lang") || document.documentElement.lang || "zh";
+  let raw = document.documentElement.lang || "zh";
+  try { raw = localStorage.getItem("lang") || raw; } catch { /* Private mode may block storage. */ }
   return Object.hasOwn(UI, raw) ? raw : "zh";
 }
 
@@ -165,9 +166,12 @@ async function fetchJSON(path, timeoutMs = 10000) {
 
 function validPayload(path, value) {
   if (!value || typeof value !== "object") return false;
-  if (path === PATHS.daily) return value.kind === "startup_opportunity_daily" && Array.isArray(value.opportunities) && Array.isArray(value.sources);
-  if (path === PATHS.cases) return value.kind === "startup_case_index" && Array.isArray(value.cases);
-  return value.kind === "startup_case_analysis" && value.status === "published" && Array.isArray(value.sections) && Array.isArray(value.sources);
+  const text = v => typeof v === "string" ? v.trim().length > 0 : v && typeof v === "object" && typeof v.zh === "string" && v.zh.trim().length > 0;
+  const sourcesValid = Array.isArray(value.sources) && value.sources.every(s => s && typeof s.id === "string" && safeExternalLink(s.url));
+  const dateValid = v => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(Date.parse(v));
+  if (path === PATHS.daily) return value.kind === "startup_opportunity_daily" && dateValid(value.date) && text(value.headline) && sourcesValid && Array.isArray(value.opportunities) && value.opportunities.length <= 10 && value.opportunities.every(o => o && text(o.title) && text(o.customer) && text(o.pain) && Array.isArray(o.evidence));
+  if (path === PATHS.cases) return value.kind === "startup_case_index" && Array.isArray(value.cases) && value.cases.every(c => c && text(c.title) && /^[a-z0-9][a-z0-9-]*$/.test(c.slug) && safeCasePath(c.case_path || `/data/ai/startup/cases/${c.slug}.json`));
+  return value.kind === "startup_case_analysis" && value.status === "published" && path.endsWith(`/${value.slug}.json`) && text(value.title) && sourcesValid && Array.isArray(value.sections) && value.sections.length > 0 && value.sections.every(s => s && text(s.heading) && Array.isArray(s.paragraphs));
 }
 
 async function fetchJSONWithCache(path) {
@@ -192,6 +196,8 @@ function applyShellTranslations() {
   });
   const title = lang() === "zh" ? "AI 创业 · 机会日报与案例解剖" : lang() === "es" ? "Emprendimiento IA · Oportunidades y casos" : "AI Venture · Opportunities and cases";
   document.title = title;
+  const status = document.getElementById("startup-status")?.dataset.state;
+  if (status) setStatus(status, status);
 }
 
 function setStatus(status, key) {
@@ -369,8 +375,8 @@ function claimEvidence(section, sources) {
   if (!entries.length) return null;
   const lookup = sourceMap(sources);
   const labels = { fact: t("fact"), company_claim: t("companyClaim"), editorial_inference: t("inference"), unknown: t("unknown") };
-  return el("aside", { class: "claim-evidence", "aria-label": t("evidenceBoundary") },
-    el("h4", { text: t("evidenceBoundary") }),
+  return el("details", { class: "claim-evidence" },
+    el("summary", { text: t("sources") }),
     ...entries.map(entry => {
       const row = el("div", { class: "claim-evidence__row" },
         el("span", { class: `claim-tag claim-tag--${entry.label || "unknown"}`, text: labels[entry.label] || entry.label }),
@@ -418,7 +424,6 @@ function renderCaseDetail(detail) {
     el("h3", { text: localize(section.heading) }),
     section.thesis ? el("p", { class: "case-section__thesis", text: localize(section.thesis) }) : null,
     el("div", { class: "case-section__body" }, ...asList(section.paragraphs || section.body).map(paragraph => el("p", { text: paragraph }))),
-    claimTags(section),
     claimEvidence(section, sources)
   ));
   const unknowns = asList(detail.unknowns);
@@ -437,12 +442,15 @@ function renderCaseDetail(detail) {
   root.querySelector("h2")?.focus?.();
 }
 
+let caseRequest = 0;
 async function openCase(item, { updateHistory = true, scroll = true } = {}) {
+  const request = ++caseRequest;
   const path = safeCasePath(item.case_path || `/data/ai/startup/cases/${item.slug}.json`);
   if (!path) { setStatus("error", "error"); return; }
   setStatus("loading", "loading");
   try {
     const loaded = await fetchJSONWithCache(path);
+    if (request !== caseRequest) return false;
     state.detail = loaded.data;
     if (updateHistory) {
       const url = new URL(window.location.href);
@@ -456,6 +464,7 @@ async function openCase(item, { updateHistory = true, scroll = true } = {}) {
     if (scroll) document.getElementById("case-root")?.scrollIntoView({ behavior: "smooth", block: "start" });
     return true;
   } catch (error) {
+    if (request !== caseRequest) return false;
     console.error("[ai-startup] case load failed", error);
     setStatus("error", "error");
     return false;
@@ -463,6 +472,7 @@ async function openCase(item, { updateHistory = true, scroll = true } = {}) {
 }
 
 function closeCase() {
+  caseRequest += 1;
   state.detail = null;
   const url = new URL(window.location.href);
   url.searchParams.delete("case");
@@ -482,8 +492,10 @@ function selectView(view, updateURL = true) {
   document.getElementById("panel-opportunities").hidden = state.view !== "opportunities";
   document.getElementById("panel-cases").hidden = state.view !== "cases";
   if (updateURL) {
+    caseRequest += 1;
     const url = new URL(window.location.href);
     if (state.view !== "cases") url.searchParams.delete("case");
+    else if (state.detail) url.searchParams.set("case", state.detail.slug);
     url.hash = state.view;
     history.pushState({}, "", url);
   }
@@ -540,6 +552,7 @@ window.addEventListener("language-changed", () => {
 });
 
 window.addEventListener("popstate", async () => {
+  caseRequest += 1;
   const view = window.location.hash === "#cases" ? "cases" : "opportunities";
   selectView(view, false);
   const slug = new URL(window.location.href).searchParams.get("case");
