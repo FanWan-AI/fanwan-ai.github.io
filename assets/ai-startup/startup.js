@@ -6,13 +6,8 @@ const CACHE_PREFIX = "fanwan-ai-startup:v1:";
 
 const UI = {
   zh: {
-    heroEyebrow: "AI VENTURE INTELLIGENCE",
-    heroTitle: "发现 AI 商机，读懂创业成败。",
-    heroLede: "每天筛出值得验证的 AI 商机；每周拆开一家公司的增长逻辑、关键取舍与隐性风险。",
-    dailyLabel: "日报", dailyCadence: "每日最多 10 条",
-    caseLabel: "解剖", caseCadence: "每周 1 个案例",
-    evidenceLabel: "证据", evidenceCadence: "关键结论可追溯",
-    heroCaption: "从噪声中识别可验证信号",
+    heroTitle: "AI 创业观察",
+    heroLede: "发现值得验证的 AI 商机，拆解真实创业案例，让技术洞察成为商业行动的起点。",
     opportunityTab: "AI 创业机会日报", opportunityTabHint: "值得尝试的商业机会",
     caseTab: "AI 创业案例解剖", caseTabHint: "理解增长背后的选择与代价",
     loading: "内容加载中…", ready: "", partial: "部分数据更新失败，已显示最近一期内容", error: "今日内容暂不可用，请稍后再试",
@@ -26,13 +21,8 @@ const UI = {
     verdict: "核心判断", centralQuestion: "中心问题", timeline: "关键时间线", copy: "可以抄什么", avoid: "不要抄什么", experiment: "下一步实验", unknowns: "仍然未知", sourcesTitle: "来源与证据", back: "返回案例列表", copyLink: "复制链接", copied: "链接已复制", companyClaim: "公司自述", fact: "事实", inference: "编辑推断", unknown: "未知"
   },
   en: {
-    heroEyebrow: "AI VENTURE INTELLIGENCE",
-    heroTitle: "Discover AI opportunities. Understand what makes ventures work.",
-    heroLede: "A daily shortlist of AI opportunities worth testing, plus one weekly case that exposes the choices and risks beneath the growth story.",
-    dailyLabel: "Daily", dailyCadence: "Up to 10 signals",
-    caseLabel: "Anatomy", caseCadence: "One case weekly",
-    evidenceLabel: "Evidence", evidenceCadence: "Claims trace to sources",
-    heroCaption: "Turning noise into testable signals",
+    heroTitle: "AI Venture Insights",
+    heroLede: "Discover AI opportunities worth testing and learn from real ventures, turning technical insight into business action.",
     opportunityTab: "AI Opportunity Daily", opportunityTabHint: "Business opportunities worth exploring",
     caseTab: "AI Venture Case Anatomy", caseTabHint: "The choices and costs behind growth",
     loading: "Loading the latest edition…", ready: "", partial: "Some data could not refresh; showing the latest available edition", error: "Today’s edition is temporarily unavailable. Please try again later.",
@@ -46,13 +36,8 @@ const UI = {
     verdict: "Verdict", centralQuestion: "Central question", timeline: "Timeline", copy: "What to copy", avoid: "What not to copy", experiment: "Next experiment", unknowns: "Still unknown", sourcesTitle: "Sources and evidence", back: "Back to cases", copyLink: "Copy link", copied: "Link copied", companyClaim: "Company claim", fact: "Fact", inference: "Editorial inference", unknown: "Unknown"
   },
   es: {
-    heroEyebrow: "INTELIGENCIA PARA EMPRENDER CON IA",
-    heroTitle: "Descubre oportunidades de IA y aprende de negocios reales.",
-    heroLede: "Una selección diaria de oportunidades de IA que merecen validarse y un caso semanal que revela decisiones, ventajas y riesgos.",
-    dailyLabel: "Diario", dailyCadence: "Hasta 10 señales",
-    caseLabel: "Anatomía", caseCadence: "Un caso semanal",
-    evidenceLabel: "Evidencia", evidenceCadence: "Conclusiones rastreables",
-    heroCaption: "Convertir ruido en señales comprobables",
+    heroTitle: "Observatorio de Emprendimiento IA",
+    heroLede: "Descubre oportunidades de IA y aprende de negocios reales para convertir el conocimiento técnico en acción empresarial.",
     opportunityTab: "Oportunidades IA del día", opportunityTabHint: "Oportunidades comerciales para explorar",
     caseTab: "Anatomía de casos IA", caseTabHint: "Decisiones y costes detrás del crecimiento",
     loading: "Cargando la última edición…", ready: "", partial: "Algunos datos no se actualizaron; mostramos la última edición disponible", error: "La edición de hoy no está disponible. Inténtalo de nuevo más tarde.",
@@ -194,8 +179,8 @@ function applyShellTranslations() {
     const key = node.dataset.suI18n;
     if (UI[lang()]?.[key]) node.textContent = UI[lang()][key];
   });
-  const title = lang() === "zh" ? "AI 创业 · 机会日报与案例解剖" : lang() === "es" ? "Emprendimiento IA · Oportunidades y casos" : "AI Venture · Opportunities and cases";
-  document.title = title;
+  document.title = `${t("heroTitle")} · Fan Wan`;
+  document.querySelector('meta[property="og:title"]')?.setAttribute("content", t("heroTitle"));
   const status = document.getElementById("startup-status")?.dataset.state;
   if (status) setStatus(status, status);
 }
@@ -286,7 +271,6 @@ function renderDaily() {
   root.replaceChildren();
   const daily = state.daily;
   const opportunities = Array.isArray(daily?.opportunities) ? daily.opportunities : [];
-  document.getElementById("startup-edition-date").textContent = formatDate(daily?.date);
   if (!daily || !opportunities.length) {
     root.append(el("div", { class: "startup-empty" }, el("h2", { text: t("noDailyTitle") }), el("p", { text: t("noDailyBody") })));
     return;
