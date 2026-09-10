@@ -1,101 +1,61 @@
-name: AI Daily Blog
+name: AI Paper Hub Daily
 'on':
   schedule:
-    - cron: "0 0 */2 * *"      # UTC 00:00 = 北京时间 08:00，每 2 天一次
+    - cron: '0 0 * * *' # Every day, 08:00 Asia/Shanghai; Actions may queue.
   workflow_dispatch:
 
+concurrency:
+  group: paperhub-daily-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
 jobs:
-  run:
+  publish:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y librsvg2-bin    # SVG→PNG 转换（生成OG图）
-          pip install feedparser requests python-dateutil markdown2 beautifulsoup4 'dashscope>=1.24.6'
-
-      - name: Generate AI Daily Blog
+          fetch-depth: 0
+          sparse-checkout: |
+            .github/workflows
+            tools/paperhub
+            assets/paperhub
+            tests/paperhub
+            data/ai/scholarpush
+            lab
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Offline publication and rendering tests
+        run: node --test tests/paperhub/*.test.mjs
+      - name: Generate and validate before publication
         env:
-          SOURCES_JSON:        tools/sources.ai.json
-          ARXIV_MODE:          ${{ vars.ARXIV_MODE }}
-          ARXIV_FALLBACK:      ${{ vars.ARXIV_FALLBACK }}
-          PREFERRED_PROVIDER:  deepseek
-
-          OPENAI_API_KEY:      ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL:        deepseek-v4-flash
-
-          OPENROUTER_API_KEY:  ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL:    deepseek-v4-flash
-
-          TOGETHER_API_KEY:    ${{ secrets.TOGETHER_API_KEY }}
-          TOGETHER_MODEL:      deepseek-v4-flash
-
-          DEEPSEEK_API_KEY:    ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_MODEL:      deepseek-v4-flash
-
-          DASHSCOPE_API_KEY:   ${{ secrets.DASHSCOPE_API_KEY }}
-          DASHSCOPE_MODEL:     ${{ vars.DASHSCOPE_MODEL }}
-          VOICE:               ${{ vars.VOICE_BLOG }}
-
-          OPENAI_BASE_URL:     ${{ vars.OPENAI_BASE_URL }}
-          OPENROUTER_BASE_URL: ${{ vars.OPENROUTER_BASE_URL }}
-          TOGETHER_BASE_URL:   ${{ vars.TOGETHER_BASE_URL }}
-          DEEPSEEK_BASE_URL:   ${{ vars.DEEPSEEK_BASE_URL }}
-          DASHSCOPE_BASE_URL:  ${{ vars.DASHSCOPE_BASE_URL }}
-
-          MIN_ITEMS:           6
-          LANGS:               zh,en,es
-          MAX_WORDS:           1100
-
-          BUTTONDOWN_API_KEY:  ${{ secrets.BUTTONDOWN_API_KEY }}
-          BUTTONDOWN_STATUS:   draft
-        run: |
-          python tools/scholarpush/ai_blog_pipeline.py
-
-      - name: Commit changes
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_MODEL: deepseek-v4-flash
+          DEEPSEEK_BASE_URL: ${{ vars.DEEPSEEK_BASE_URL }}
+          PAPERHUB_MAX_ITEMS: '5'
+          PAPERHUB_MAX_CANDIDATES: '8'
+          PAPERHUB_MAX_CALLS: '1'
+          PAPERHUB_LOOKBACK_DAYS: '7'
+          PAPERHUB_OUTPUT_DIR: data/ai/scholarpush
+        run: node tools/paperhub/generate.mjs --publish
+      - name: Commit only validated paper editions
         env:
           TARGET_BRANCH: ${{ github.ref_name }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Stage ScholarPush changes first (always present when pipeline runs)
-          git add -A data/ai/scholarpush || true
-          # Stage blog HTML if generated (Daily may be disabled some days)
-          if [ -d "blog" ]; then git add -A blog || true; fi
-          # Stage blog data folder if present
-          if [ -d "data/ai/blog" ]; then git add -A data/ai/blog || true; fi
-          # Stage OG assets if present
-          if [ -d "assets/og" ]; then git add -A assets/og || true; fi
-
-          git status --short
-          if git diff --cached --quiet; then
-            echo "[ai-blog] No changes produced; skipping commit"
-            exit 0
-          fi
-
-          git commit -m "chore(ai): daily blog $(date -u +'%Y-%m-%d')"
-
-          if [ -z "${TARGET_BRANCH}" ]; then
-            TARGET_BRANCH="${GITHUB_REF##refs/heads/}"
-          fi
-          git fetch origin "${TARGET_BRANCH}" || true
-          if git rebase --autostash "origin/${TARGET_BRANCH}"; then
-            git push origin HEAD:"${TARGET_BRANCH}"
-          else
-            git rebase --abort || true
-            if git merge --no-edit "origin/${TARGET_BRANCH}"; then
-              git push origin HEAD:"${TARGET_BRANCH}"
-            else
-              echo "[ai-blog] Merge with origin/${TARGET_BRANCH} failed"
-              exit 1
-            fi
-          fi
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          EDITION_DATE=$(node -e "process.stdout.write(JSON.parse(require('fs').readFileSync('data/ai/scholarpush/index.json','utf8')).date)")
+          git add -- data/ai/scholarpush/index.json data/ai/scholarpush/dates.json "data/ai/scholarpush/${EDITION_DATE}.json"
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "chore(paperhub): research edition ${EDITION_DATE}"
+          git fetch origin "$TARGET_BRANCH"
+          git rebase "origin/$TARGET_BRANCH"
+          git push origin "HEAD:$TARGET_BRANCH"

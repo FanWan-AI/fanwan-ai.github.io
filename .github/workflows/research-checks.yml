@@ -1,0 +1,68 @@
+name: Research modules checks
+
+on:
+  pull_request:
+    paths:
+      - 'lab/ai-paperhub.html'
+      - 'lab/modelswatch.html'
+      - 'assets/paperhub/**'
+      - 'assets/modelswatch/**'
+      - 'tools/paperhub/**'
+      - 'tools/modelswatch/**'
+      - 'tools/research/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/research-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'lab/ai-paperhub.html'
+      - 'lab/modelswatch.html'
+      - 'assets/paperhub/**'
+      - 'assets/modelswatch/**'
+      - 'tools/paperhub/**'
+      - 'tools/modelswatch/**'
+      - 'tools/research/**'
+      - 'tests/**'
+      - 'package*.json'
+      - '.github/workflows/research-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: research-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /*
+            !/*/
+            /.github/
+            /tools/
+            /scripts/
+            /tests/
+            /lab/
+            /assets/paperhub/
+            /assets/modelswatch/
+            /assets/css/
+            /assets/js/
+            /data/ai/modelswatch/schemas/
+            /data/ai/ai_categories.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+      - name: Offline regression tests (no API keys)
+        run: npm run research:test

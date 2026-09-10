@@ -43,6 +43,9 @@ function normalizeCommon(raw, source, nowIso) {
     promptHash,
     stats: raw.stats || {},
     metadata: {
+      ...(raw.metadata || {}),
+      description: raw.summary || raw.description || '',
+      source_updated_at: raw.updated_at || null,
       license: raw.license || null,
       lang: raw.lang || null,
       categories: raw.categories || null

@@ -4,7 +4,7 @@ import path from 'path';
 import { info, warn, error as logError } from './log.js';
 import { PIPELINE_VERSION, SCHEMA_VERSION } from './lib/constants.mjs';
 import { resolveDataPath, resolveTempDataPath, resolveAuditPath, ROOT_DIR } from './lib/paths.mjs';
-import { atomicWriteJson } from './lib/atomic.mjs';
+import { atomicWriteJson, beginWriteBatch, commitWriteBatch, discardWriteBatch, readStagedFile } from './lib/atomic.mjs';
 import { validateArtifact } from './lib/schema.mjs';
 import { PipelineLock } from './lib/lock.mjs';
 import { generateRunId } from './lib/run_id.mjs';
@@ -12,6 +12,8 @@ import { RunlogWriter } from './lib/runlog.mjs';
 import { nowUtcISOString, formatDateKey } from './lib/time.mjs';
 import { readState, writeState } from './lib/state.mjs';
 import { computeSha256 } from './lib/hash.mjs';
+import { chineseSummary, publishable } from '../../assets/modelswatch/content.mjs';
+import { selectRelease, boundedInt } from './lib/release.mjs';
 
 const TASK_THRESHOLD = Number(process.env.MODELSWATCH_TASK_THRESHOLD || '0.5');
 const TASK_TOP_K = Number(process.env.MODELSWATCH_TASK_TOP_K || '3');
@@ -204,7 +206,7 @@ function selectSources(args) {
 
 async function readJsonIfExists(filePath) {
   try {
-    const raw = await fs.readFile(filePath, 'utf8');
+    const raw = await readStagedFile(filePath, 'utf8');
     return JSON.parse(raw);
   } catch (err) {
     if (err.code === 'ENOENT') return null;
@@ -354,7 +356,7 @@ function computePopularityScore(stats = {}) {
 }
 
 function sanitizeSummaryShort(input = {}, fallback = {}) {
-  const zh = sanitizeText(input.zh) || sanitizeText(fallback.zh) || sanitizeText(fallback.en);
+  const zh = sanitizeText(input.zh) || sanitizeText(fallback.zh);
   const en = sanitizeText(input.en) || sanitizeText(fallback.en) || sanitizeText(fallback.zh);
   const es = sanitizeText(input.es) || sanitizeText(fallback.es);
   return { zh, en, es };
@@ -397,7 +399,7 @@ function buildSummaryCacheMap(summaryCache) {
       map.set(`huggingface:${key.slice(3)}`, entry);
     }
     if (key.startsWith('huggingface:')) {
-      map.set(`hf:${key.slice(11)}`, entry);
+      map.set(`hf:${key.slice(12)}`, entry);
     }
   }
   return map;
@@ -566,7 +568,7 @@ function buildHotlists(taskBuckets, categoryBuckets, generatedAt, dateKey) {
 }
 
 async function computeFileChecksum(filePath) {
-  const data = await fs.readFile(filePath);
+  const data = await readStagedFile(filePath);
   return `sha256:${computeSha256(data)}`;
 }
 
@@ -612,6 +614,8 @@ function buildFinalItem(raw, { status, summaryCacheMap, generatedAt }) {
     stats,
     metadata,
     summary_flags: summaryFlags,
+    evidence: raw?.evidence || cacheEntry?.evidence,
+    insights: raw?.insights || cacheEntry?.insights,
     created_at: raw?.created_at || cacheEntry?.created_at,
     updated_at: raw?.updated_at || cacheEntry?.updated_at,
     first_seen: firstSeenCandidates.length ? firstSeenCandidates[0] : undefined,
@@ -638,6 +642,8 @@ function mergeSourceCollections({ source, passonceItems, qualifiedItems, summary
 
   function insert(raw, status) {
     const item = buildFinalItem(raw, { status, summaryCacheMap, generatedAt });
+    if (!publishable(item)) return;
+    item.description = chineseSummary(item);
     if (!item.canonical_id && !item.promptHash) {
       warn(`[qualify_publish] skipped ${source} item without canonical_id/promptHash`);
       return;
@@ -1360,6 +1366,9 @@ async function main() {
   const noLock = Boolean(args['no-lock']);
   const allowMissing = args['allow-missing'] === undefined ? true : Boolean(args['allow-missing']);
   const sources = selectSources(args);
+  if (sources.length !== 2) throw new Error('Publish requires github and huggingface together; previous release retained');
+  const releaseLimit = boundedInt(args.limit ?? process.env.MODELSWATCH_DAILY_LIMIT, 4, 5);
+  if (!releaseLimit) throw new Error('Daily release limit must be at least one');
 
   const resolvedLatest = await resolveLatestDate();
   const dateKey = args.date || args.d || resolvedLatest || formatDateKey();
@@ -1379,6 +1388,7 @@ async function main() {
   }
 
   try {
+    if (!dryRun) beginWriteBatch();
     const summaryCacheRaw = (await readJsonIfExists(resolveDataPath('summary_cache.json'))) || {};
     const summaryCacheMap = buildSummaryCacheMap(summaryCacheRaw);
     const taskContext = await buildTaskContext();
@@ -1423,6 +1433,20 @@ async function main() {
     const corpusGhCanonicals = buildCorpusCanonicalSet(corpusGhPayload);
     const corpusHfCanonicals = buildCorpusCanonicalSet(corpusHfPayload);
 
+    // Corpus membership is not publication history: an existing project may be newly
+    // featured, or feature again when its source content changes meaningfully.
+    const history = [];
+    for (const file of await fs.readdir(resolveDataPath('daily')).catch(() => [])) {
+      if (!/^\d{4}-\d{2}-\d{2}\.(github|huggingface|legacy)\.json$/.test(file)) continue;
+      const prior = await readJsonIfExists(resolveDataPath('daily', file));
+      history.push(...(prior?.items || []));
+    }
+    for (const alias of ['daily_github.json', 'daily_hf.json']) {
+      const prior = await readJsonIfExists(resolveDataPath(alias));
+      history.push(...(prior?.items || []));
+    }
+    const releases = {};
+
     const artifacts = [];
     const artifactGroups = {
       daily: [],
@@ -1449,6 +1473,7 @@ async function main() {
       itemsWithCategories: 0
     };
     const allItems = [];
+    const selectedItems = [];
     let totalPublished = 0;
     let totalQualified = 0;
 
@@ -1475,6 +1500,11 @@ async function main() {
 
       const passonceData = await readJsonIfExists(passoncePath);
       const qualifiedData = await readJsonIfExists(qualifiedPath);
+      for (const input of [passonceData, qualifiedData].filter(Boolean)) {
+        if (input.date !== dateKey || input.source !== source || !Array.isArray(input.items)) {
+          throw new Error(`Stale or invalid ${source} analysis inputs; previous release retained`);
+        }
+      }
 
       const passonceItems = Array.isArray(passonceData?.items) ? passonceData.items : [];
       const qualifiedItems = Array.isArray(qualifiedData?.items) ? qualifiedData.items : [];
@@ -1482,14 +1512,10 @@ async function main() {
       const inputsMissing = !passonceData && !qualifiedData;
       if (!passonceItems.length && !qualifiedItems.length && inputsMissing) {
         const message = `[qualify_publish] no passonce/qualified items for ${source} on ${dateKey} (expected ${path.basename(passoncePath)} & ${path.basename(qualifiedPath)})`;
-        if (allowMissing) {
-          warn(message);
-          continue;
-        }
         throw new Error(message);
       }
       if (!passonceItems.length && !qualifiedItems.length) {
-        warn(`[qualify_publish] ${source} has zero publishable items on ${dateKey}; writing empty daily release`);
+        throw new Error(`${source}: no publishable candidates; previous release retained`);
       }
 
       const { items: mergedItems, stats } = mergeSourceCollections({
@@ -1500,33 +1526,11 @@ async function main() {
         generatedAt
       });
 
-      // First drop any entries whose canonicals already exist in the historical corpus.
-      const corpusSet = source === 'github' ? corpusGhCanonicals : corpusHfCanonicals;
-      const corpusFilterResult = filterReleaseItems(mergedItems, corpusSet);
-      const corpusFilteredItems = corpusFilterResult.items;
-
-      // Then filter daily outputs to de-duplicate against previous hotlists for the same source.
-      // Keep qualified items; drop pass-once items that already appear in hotlists.
-      const hotSet = source === 'github' ? hotGHCanonicals : hotHFCanonicals;
-      const filteredItems = [];
-      let hotlistDropped = 0;
-      if (Array.isArray(corpusFilteredItems)) {
-        for (const item of corpusFilteredItems) {
-          if (!item?.canonical_id) {
-            filteredItems.push(item);
-            continue;
-          }
-          if (item.status === 'qualified') {
-            filteredItems.push(item);
-            continue;
-          }
-          if (hotSet.has(item.canonical_id)) {
-            hotlistDropped += 1;
-            continue;
-          }
-          filteredItems.push(item);
-        }
-      }
+      const corpusFilterResult = selectRelease(mergedItems, history, { date: dateKey, limit: releaseLimit });
+      const filteredItems = corpusFilterResult.items;
+      selectedItems.push(...filteredItems);
+      const hotlistDropped = 0;
+      if (!filteredItems.length) throw new Error(`${source}: no new readable Chinese content; previous release retained`);
       const filteredQualified = filteredItems.filter((it) => it.status === 'qualified').length;
       const filteredPassonce = filteredItems.filter((it) => it.status === 'passonce').length;
       const filteredCoverage = filteredItems.length
@@ -1611,6 +1615,7 @@ async function main() {
       const releasePath = resolveDataPath('daily', `${dateKey}.${source}.json`);
       const aliasPath = resolveDataPath(source === 'github' ? 'daily_github.json' : 'daily_hf.json');
 
+      releases[source] = payload;
       const wroteRelease = await writeJsonArtifact('daily_release', releasePath, payload, { dryRun, logLabel: `${dateKey}.${source}.json` });
       const wroteAlias = await writeJsonArtifact('daily_release', aliasPath, payload, { dryRun, logLabel: path.basename(aliasPath) });
 
@@ -1623,13 +1628,7 @@ async function main() {
       // Also ensure summaries.es falls back to summaries.en when missing.
       try {
         const qualifiedOnly = mergedItems.filter((it) => it.status === 'qualified');
-        const corpusCandidates = qualifiedOnly.map((it) => {
-          const copy = { ...it };
-          if (copy.summaries && typeof copy.summaries === 'object' && copy.summaries.en) {
-            copy.summaries.es = copy.summaries.es || copy.summaries.en;
-          }
-          return copy;
-        });
+        const corpusCandidates = qualifiedOnly.map((it) => ({ ...it }));
         const corpusFile = resolveDataPath(source === 'github' ? 'corpus.gh.json' : 'corpus.hf.json');
         const existingCorpus = (await readJsonIfExists(corpusFile)) || {};
         const existingItems = Array.isArray(existingCorpus.items) ? existingCorpus.items : [];
@@ -1695,9 +1694,7 @@ async function main() {
             pruned
           );
         }
-      } catch (e) {
-        warn(`[qualify_publish] failed to write corpus for ${source}: ${e?.message || e}`);
-      }
+      } catch (e) { throw new Error(`Corpus preparation failed for ${source}`, { cause: e }); }
 
       perSourceResults.push({
         source,
@@ -1763,7 +1760,7 @@ async function main() {
       await recordArtifact('planning', coveragePlanPath);
     }
 
-    const legacyPayload = buildLegacyDailyPayload(allItems, dateKey, generatedAt, {
+    const legacyPayload = buildLegacyDailyPayload(selectedItems, dateKey, generatedAt, {
       taskScores,
       categoryScores
     });
@@ -2000,11 +1997,18 @@ async function main() {
     }
 
     if (!dryRun) {
-      await cleanupIntermediateFiles(3);
+      // The page reads this single snapshot. Aliases and archives retain their URLs.
+      // Files are buffered until BOTH sources, schemas and all derivatives pass.
+      const snapshot = { schema_version: SCHEMA_VERSION, date: dateKey, published_at: generatedAt,
+        github: releases.github, huggingface: releases.huggingface };
+      await atomicWriteJson(resolveDataPath('daily', `${dateKey}.release.json`), snapshot);
+      await atomicWriteJson(resolveDataPath('latest_release.json'), snapshot);
+      await commitWriteBatch();
     }
 
     info('[qualify_publish] done');
   } catch (err) {
+    discardWriteBatch();
     warn('[qualify_publish] failed', err.message);
     if (!dryRun && runlog) {
       await runlog

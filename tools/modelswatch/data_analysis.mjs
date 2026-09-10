@@ -11,6 +11,8 @@ import { generateRunId } from './lib/run_id.mjs';
 import { RunlogWriter } from './lib/runlog.mjs';
 import { formatDateKey, nowUtcISOString } from './lib/time.mjs';
 import { readState, writeState } from './lib/state.mjs';
+import { readableZh, chineseSummary, publishable } from '../../assets/modelswatch/content.mjs';
+import { identity } from './lib/release.mjs';
 
 const QUALIFIED_MIN_EN = Number(process.env.TRI_ACCEPT_MIN_EN || '220');
 const QUALIFIED_MIN_ZH = Number(process.env.TRI_ACCEPT_MIN_ZH || '150');
@@ -111,14 +113,14 @@ function ensureSummaryLocales(entry) {
 function inferSummaryShort(entry, fallbackShort) {
   if (entry?.summary_short && typeof entry.summary_short === 'object') {
     return {
-      zh: sanitizeText(entry.summary_short.zh) || sanitizeText(entry.summary_short.en) || '',
+      zh: sanitizeText(entry.summary_short.zh),
       en: sanitizeText(entry.summary_short.en) || sanitizeText(entry.summary_short.zh) || '',
       es: sanitizeText(entry.summary_short.es) || ''
     };
   }
   if (fallbackShort) {
     return {
-      zh: sanitizeText(fallbackShort.zh) || sanitizeText(fallbackShort.en) || '',
+      zh: sanitizeText(fallbackShort.zh),
       en: sanitizeText(fallbackShort.en) || sanitizeText(fallbackShort.zh) || '',
       es: sanitizeText(fallbackShort.es) || ''
     };
@@ -126,39 +128,18 @@ function inferSummaryShort(entry, fallbackShort) {
   return { zh: '', en: '', es: '' };
 }
 
-function evaluateQualified(cacheEntry) {
+export function evaluateQualified(cacheEntry) {
   if (!cacheEntry) return false;
   const summaries = ensureSummaryLocales(cacheEntry);
   const en = sanitizeText(summaries.en).length;
   const zh = sanitizeText(summaries.zh).length;
   if (cacheEntry.quality?.fallback) return false;
-  return en >= QUALIFIED_MIN_EN || zh >= QUALIFIED_MIN_ZH;
+  return !cacheEntry.fallback && readableZh(summaries.zh);
 }
 
-function evaluatePassonce(item) {
-  if (!item) return false;
-  const summaryShort = item.summary_short || {};
-  const en = sanitizeText(summaryShort.en).length;
-  const zh = sanitizeText(summaryShort.zh).length;
-  const tagsCount = Array.isArray(item.tags) ? item.tags.filter(Boolean).length : 0;
-  // Stars proxy: for huggingface, treat likes_total or scaled downloads_total as stars proxy
-  const isHF = (item.source||'').toLowerCase() === 'huggingface' || (item.canonical_id||'').startsWith('huggingface:');
-  const likesTotal = Number(item.stats?.likes_total || 0);
-  const downloadsTotal = Number(item.stats?.downloads_total || 0);
-  const starsProxyHF = likesTotal || Math.round(downloadsTotal / 2000);
-  const stars = isHF ? starsProxyHF : Number(item.stats?.stars || 0);
-  const statusOk = item.status === 'passonce' || (isHF && (item.status === 'pending' || item.status === 'unqualified'));
-  if (!statusOk) return false;
-  // Popularity fast-path for HF: if extremely popular, allow passonce even if short summary is thin
-  if (isHF && HF_PASSONCE_FAST_ENABLE) {
-    if (likesTotal >= HF_PASSONCE_FAST_LIKES || downloadsTotal >= HF_PASSONCE_FAST_DOWNLOADS) {
-      return true;
-    }
-  }
-  if (en >= PASSONCE_MIN_EN || zh >= PASSONCE_MIN_ZH) return true;
-  if (tagsCount >= PASSONCE_MIN_TAGS && stars >= PASSONCE_MIN_STARS) return true;
-  if (item.summary_flags?.fast_first) return true;
-  return false;
+export function evaluatePassonce(item) {
+  // Popularity and fast_first are ranking hints only; Chinese prose is mandatory.
+  return publishable(item);
 }
 
 function buildQualifiedItem({ item, cacheEntry }) {
@@ -182,6 +163,8 @@ function buildQualifiedItem({ item, cacheEntry }) {
     quality: cacheEntry.quality || null,
     stats: item.stats || {},
     metadata: item.metadata || {},
+    evidence: cacheEntry.evidence || item.evidence,
+    insights: cacheEntry.insights || item.insights,
     created_at: cacheEntry.created_at || cacheEntry.first_generated_at || item.created_at || null,
     updated_at: cacheEntry.updated_at || cacheEntry.first_generated_at || item.updated_at || null,
     first_generated_at: cacheEntry.first_generated_at || cacheEntry.created_at || cacheEntry.updated_at || null,
@@ -431,13 +414,12 @@ async function main() {
       const qualifiedPath = resolveTempDataPath(`${dateKey}_qualified_${suffix}.json`);
 
       const draftData = await readJsonIfExists(draftPath);
-      if (!draftData || !Array.isArray(draftData.items)) {
-        warn(`[data_analysis] draft not found for ${source} (${draftPath}) - skipping source`);
-        continue;
+      if (!draftData || draftData.date !== dateKey || !Array.isArray(draftData.items)) {
+        throw new Error(`Missing or stale draft for ${source}: ${draftPath}`);
       }
 
       const items = draftData.items;
-      const candidateItems = items.filter((item) => item.status === 'pending' || item.status === 'passonce');
+      const candidateItems = items;
       totalCandidates += candidateItems.length;
 
       const passonceItems = [];
@@ -451,11 +433,12 @@ async function main() {
       let mismatchedPrompt = 0;
 
       for (const item of items) {
-        const cacheEntry = cacheModels[item.canonical_id];
+        const cacheEntry = cacheModels[item.canonical_id] || cacheModels[identity(item)];
         const promptMatch = cacheEntry && cacheEntry.promptHash === item.promptHash;
         // Fallback guard: accept qualified when canonical_id matches and cache was updated this run (minor prompt hash drift)
         const recentlyUpdated = cacheEntry && typeof cacheEntry.updated_at === 'string' && cacheEntry.updated_at.slice(0,10) === dateKey;
-        const qualifiedOk = (promptMatch || recentlyUpdated) && evaluateQualified(cacheEntry);
+        const qualifiedOk = evaluateQualified(cacheEntry) && cacheEntry.reviewed_for_date === dateKey &&
+          publishable({ ...item, ...cacheEntry, url: item.url, source: item.source });
         if (qualifiedOk) {
           const qualifiedItem = buildQualifiedItem({ item, cacheEntry });
           qualifiedItems.push(qualifiedItem);
@@ -469,7 +452,7 @@ async function main() {
         if (cacheEntry && !promptMatch) {
           mismatchedPrompt += 1;
         }
-        if (evaluatePassonce(item)) {
+        if (item.reviewed_for_date === dateKey && evaluatePassonce(item)) {
           const passonceItem = buildPassonceItem(item);
           passonceItems.push(passonceItem);
           passoncePromptHashes.add(passonceItem.promptHash);
@@ -480,7 +463,7 @@ async function main() {
           );
           continue;
         }
-        if (item.status === 'pending' || item.status === 'unqualified') {
+        if (item.status === 'pending' || item.status === 'unqualified' || item.status === 'passonce') {
           unqualifiedItems.push(buildUnqualifiedItem(item));
         }
       }
@@ -706,7 +689,7 @@ async function main() {
   }
 }
 
-main().catch((err) => {
+if (process.argv[1] && import.meta.url === (await import('node:url')).pathToFileURL(path.resolve(process.argv[1])).href) main().catch((err) => {
   logError(err.stack || err.message || err);
   process.exitCode = 1;
 });

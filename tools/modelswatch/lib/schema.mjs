@@ -65,6 +65,18 @@ async function loadSchema(name) {
   const fullPath = resolveSchemaPath(fileName);
   const text = await fs.readFile(fullPath, 'utf8');
   const schema = JSON.parse(text);
+  // Version-2 interpretation fields live in code so legacy on-disk schemas and
+  // historical data stay intact. Keep strict additionalProperties elsewhere.
+  function extend(node) {
+    if (!node || typeof node !== 'object') return;
+    if (node.properties?.canonical_id) Object.assign(node.properties, {
+      evidence: { type: 'object' }, insights: { type: 'object' },
+      description: { type: 'string' }, family_id: { type: 'string' }, content_signature: { type: 'string' },
+      featured_at: { type: 'string' }, feature_kind: { type: 'string', enum: ['updated', 'discovery'] }
+    });
+    for (const value of Object.values(node)) if (value && typeof value === 'object') extend(value);
+  }
+  extend(schema);
   schemaCache.set(name, schema);
   return schema;
 }

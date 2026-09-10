@@ -3,9 +3,9 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT_DIR = path.resolve(__dirname, '../../..');
-export const MODEL_SWATCH_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch');
-export const AUDIT_DIR = path.join(ROOT_DIR, 'tools/modelswatch/audit');
-export const SCHEMA_DIR = path.join(ROOT_DIR, 'data/ai/modelswatch/schemas');
+export const MODEL_SWATCH_DIR = process.env.MODELSWATCH_DATA_DIR ? path.resolve(process.env.MODELSWATCH_DATA_DIR) : path.join(ROOT_DIR, 'data/ai/modelswatch');
+export const AUDIT_DIR = process.env.MODELSWATCH_AUDIT_DIR ? path.resolve(process.env.MODELSWATCH_AUDIT_DIR) : path.join(ROOT_DIR, 'tools/modelswatch/audit');
+export const SCHEMA_DIR = process.env.MODELSWATCH_SCHEMA_DIR ? path.resolve(process.env.MODELSWATCH_SCHEMA_DIR) : path.join(ROOT_DIR, 'data/ai/modelswatch/schemas');
 export const DAILY_TEMP_DIR = path.join(MODEL_SWATCH_DIR, 'daily_temp_data');
 
 export function resolveDataPath(...segments) {

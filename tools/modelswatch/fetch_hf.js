@@ -180,15 +180,16 @@ function mapModel(m){
     source: 'hf',
     name: m.id.split('/').pop(),
     url: `https://huggingface.co/${m.id}`,
-    license: m.license || 'N/A',
+    license: m.cardData?.license || m.license || 'N/A',
+    metadata: { base_model: m.cardData?.base_model, base_model_relation: m.cardData?.base_model_relation, pipeline_tag: m.pipeline_tag },
     lang: 'N/A',
     tags: m.tags || [],
     categories: { capabilities: [], scenes: [], lifecycle: [] },
     stats: {
-      // Canonical cumulative fields (Phase 1 schema)
-      downloads_total: downloads,
+      downloads: downloads,
+      downloads_period: 'last_month',
+      ...(Number.isFinite(m.downloadsAllTime) ? { downloads_all_time: m.downloadsAllTime } : {}),
       likes_total: likes
-      // NOTE: Removed pseudo fields hf_downloads_7d / hf_likes (were misleading totals masquerading as 7d). Front-end now normalizes.
     },
     score: 0,
     timeline: { t: [], stars: [], downloads: [] },
@@ -198,7 +199,7 @@ function mapModel(m){
 }
 
 function scoreModel(it){
-  const dl = it.stats.downloads_total || 0;
+  const dl = it.stats.downloads || 0;
   const likes = it.stats.likes_total || 0;
   return dl*0.002 + likes*0.5;
 }

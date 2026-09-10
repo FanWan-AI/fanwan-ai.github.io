@@ -523,6 +523,7 @@
     }
     @keyframes mwFadeIn { from { opacity: 0; } to { opacity: 1; } }
   </style>
+  <link rel="stylesheet" href="../assets/modelswatch/reading.css?v=20260910">
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -748,7 +749,8 @@
     </div>
   </div>
 
-  <script>
+  <script type="module">
+  import { renderCard as renderReadingCard, readableDailyItems, validateSnapshot as validateReadingSnapshot } from '../assets/modelswatch/render.mjs?v=20260910';
   (function(){
     const modesEl = document.getElementById('mw-modes');
     const sortEl = document.getElementById('mw-sort');
@@ -1530,101 +1532,7 @@
       return metrics.slice(0,4);
     }
 
-    function card(it){
-      const source = (it.source === 'github') ? 'github' : 'hf';
-      const sourceClass = source === 'github' ? 'mw-card--gh' : 'mw-card--hf';
-      const lang = getLang();
-      const sourceLabel = SOURCE_LABELS[source]?.[lang] || SOURCE_LABELS[source]?.en || source.toUpperCase();
-      const accentColor = CARD_ACCENT_COLORS[source] || '#0ea5e9';
-      const tms = (it.timeline?.t||[]).map(x=>Date.parse(x));
-      const starSeries = it.timeline?.stars || [];
-      const dlSeries = it.timeline?.downloads || [];
-      const series = source === 'github' ? starSeries : dlSeries;
-      const sgv = sparkline(tms, series, accentColor);
-      const url = it.url || (source==='github'?`https://github.com/${esc(it.id)}`:`https://huggingface.co/${esc(it.id)}`);
-      let summary = pickSummary(it);
-      if(!summary){
-        summary = it.summary || it.description || '';
-        if(summary){
-          const indicators = { zh: '（暂无本地化摘要，显示通用版本）', en: '(No localized summary)', es: '(Sin resumen localizado)' };
-          summary = (indicators[lang] || indicators.en) + ' ' + summary;
-        }
-      }
-      function reasonLabel(key){
-        if(!key) return '';
-        const mapKey = 'mw_reason_'+key.replace(/[^a-z0-9_]/g,'');
-        return (window.translations?.[lang]?.[mapKey]) || key;
-      }
-      function taskLabel(key){
-        const meta = (TASK_LABELS_BY_KEY && TASK_LABELS_BY_KEY[key]) || {};
-        if(meta[lang]) return meta[lang];
-        const tKey = 'mw_task_'+key.replace(/[^a-z0-9_]/g,'');
-        const trans = window.translations?.[lang]?.[tKey];
-        if(trans) return trans;
-        if(lang !== 'en' && meta.en) return meta.en;
-        if(meta.zh) return meta.zh;
-        if(meta.es) return meta.es;
-        return meta.en || key;
-      }
-      const badgeItems = [];
-      const taskLabels = [];
-      if(it.reason_label){
-        badgeItems.push(`<span class="mw-badge" data-type="reason" title="${esc(it.reason_text||'')}">${esc(reasonLabel(it.reason_label))}</span>`);
-      }
-      try{
-        if(Array.isArray(it.task_keys) && it.task_keys.length){
-          for(const key of it.task_keys){
-            const label = taskLabel(key);
-            taskLabels.push({ key, label });
-          }
-          const display = taskLabels.slice(0,3);
-          display.forEach(entry=>{
-            if(!entry || !entry.label) return;
-            badgeItems.push(`<span class="mw-badge" data-type="multi" title="${esc(entry.key)}">${esc(entry.label)}</span>`);
-          });
-          const remaining = taskLabels.length - display.length;
-          if(remaining>0){
-            const hiddenLabels = taskLabels.slice(3).map(t=>t.label).filter(Boolean);
-            badgeItems.push(`<span class="mw-badge" data-type="multi" title="${esc(hiddenLabels.join(', '))}">+${remaining}</span>`);
-          }
-        }
-      }catch{}
-      const taskLabelSet = new Set(taskLabels.map(t=> (t.label||'').toString().trim().toLowerCase()).filter(Boolean));
-      // tags intentionally hidden in card list view (redundant with task badges)
-      let tagsHtml = '';
-  const metricsList = buildMetricEntries(it);
-  const metricsHtml = metricsList.length ? `<ul class="mw-card-metrics">${metricsList.map(m=>`<li class="mw-card-metric"><div class="mw-card-metric-top"><span class="mw-card-metric-icon">${esc(m.icon)}</span><span>${esc(metricLabel(m.key, lang))}</span></div><span class="mw-card-metric-value">${esc(m.value)}</span></li>`).join('')}</ul>` : '';
-  const badgeHtml = badgeItems.length ? `<div class="mw-badges">${badgeItems.join('')}</div>` : '';
-  const summaryHtml = summary ? `<p class="mw-card-summary">${esc(summary)}</p>` : '';
-  const trendHtml = sgv ? `<div class="mw-card-trend" aria-hidden="true">${sgv}</div>` : '';
-  // meta chips (updated/license/lang) intentionally omitted per user request
-  const metaHtml = '';
-      const staticParts = [];
-      if(metaHtml) staticParts.push(metaHtml);
-      if(badgeHtml) staticParts.push(badgeHtml);
-      if(tagsHtml) staticParts.push(tagsHtml);
-  const detailsSections = [summaryHtml, trendHtml, metricsHtml].filter(Boolean).join('');
-  const hasDetails = !!detailsSections;
-  // Show details by default (no collapse)
-  const detailsHtml = hasDetails ? `<div class="mw-card-details">${detailsSections}</div>` : '';
-      if(detailsHtml) staticParts.push(detailsHtml);
-      const bodyHtml = staticParts.join('');
-      const visitLabel = (CARD_ACTION_LABELS.visit?.[lang]) || CARD_ACTION_LABELS.visit.en;
-      const expandLabel = (CARD_ACTION_LABELS.expand?.[lang]) || CARD_ACTION_LABELS.expand.en;
-      const collapseLabel = (CARD_ACTION_LABELS.collapse?.[lang]) || CARD_ACTION_LABELS.collapse.en;
-  // Remove expand/collapse toggle; show full content
-  const toggleHtml = '';
-  const actionsHtml = `<div class="mw-card-actions"><a class="btn primary small mw-card-visit" href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(visitLabel)}</a></div>`;
-  const dk = (it.task_keys && it.task_keys.length) ? esc((it.task_keys||[]).join(' ')) : '';
-  const collapsedClass = '';
-      return `<article class="card mw-card mw-card-entry ${sourceClass}${collapsedClass}" data-id="${esc(it.id)}" data-source="${esc(source)}" data-task-keys="${dk}">
-        <header class="mw-card-head">
-          <h4 class="mw-title"><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(it.name||it.id)}</a></h4>
-        </header>
-        ${bodyHtml}
-        ${actionsHtml}
-      </article>`;
-    }
+    function card(it){ return renderReadingCard(it, getLang()); }
 
     // Build searchable text and score by query tokens
     function buildSearchIndex(it){
@@ -1740,6 +1648,7 @@
   const applyAllDates = useAllDatesForFilter && itemsAll && itemsAll.length;
   let baseArr = (applyAllDates && (currentMode === 'daily' || currentMode === 'hf')) ? itemsAll : items;
   let arr = Array.isArray(baseArr)? filterSort(baseArr) : [];
+  if(currentMode === 'daily') arr = readableDailyItems({ items: arr });
   // Data-layer filtering: when tasks selected, filter the array itself for HF (and for Daily when global mode active)
   try{
     if(selectedTasks && selectedTasks.size>0){
@@ -1787,12 +1696,16 @@
         if (lang==='en') subEl.textContent = `${modeLabel} · Items ${arr.length}${allSuffix}`;
         else if (lang==='es') subEl.textContent = `${modeLabel} · Elementos ${arr.length}${allSuffix}`;
         else subEl.textContent = `${modeLabel} · 共 ${arr.length} 项${allSuffix}`;
+        if (MODE === 'daily' && !useAllDatesForFilter && window.__mw_release_date) subEl.textContent += ' · ' + window.__mw_release_date;
+        if (MODE === 'daily' && window.__mw_load_error) subEl.textContent += lang === 'zh' ? ' · 该期暂不可用' : ' · Edition unavailable';
         const baseText = subEl.textContent || '';
         subEl.dataset.baseOriginal = baseText;
         subEl.setAttribute('data-base', baseText);
       }
 
       // Disable/hide irrelevant sort options per mode (hide by disabling + style)
+      sortEl.closest('[data-toolbar-key="sort"]').hidden = MODE === 'daily';
+      if (MODE === 'daily') sortEl.value = 'score';
       const hideMatrix = {
         gh: new Set(['downloads','downloads7','likes7']),
         hf: new Set(['stars','stars7','forks7']),
@@ -1920,61 +1833,53 @@
       }catch{ catsLoaded = false; }
     }
 
+    let dailyRequest = 0;
     async function loadDaily(dateStr){
-      try{
-        let targetDate = dateStr;
-        if(!targetDate){
-          const latest = Array.isArray(availableDates) && availableDates.length>0 ? availableDates[0] : '';
-          if(latest){
-            targetDate = latest;
-            selectedDate = latest;
-            if(dateInput){
-              try{ dateInput.value = latest; }catch{}
-            }
-          }
+      const request = ++dailyRequest;
+      const target = dateStr || '';
+      const isLatest = !target || target === availableDates[0];
+      async function read(url) {
+        const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error('Release request failed');
+        return response.json();
+      }
+      try {
+        const snapshot = await read(isLatest ? '../data/ai/modelswatch/latest_release.json' : '../data/ai/modelswatch/daily/' + target + '.release.json');
+        let date, merged, stamp;
+        if (snapshot) {
+          if (!validateReadingSnapshot(snapshot, isLatest ? undefined : target)) throw new Error('Incomplete release');
+          date = snapshot.date;
+          merged = [...snapshot.github.items, ...snapshot.huggingface.items].map(shallowNormalize);
+          stamp = snapshot.published_at;
+        } else {
+          // Compatibility for pre-upgrade archives. Never combine mismatched dates.
+          const pair = target ? await Promise.all([fetchDailySource(target, 'github'), fetchDailySource(target, 'huggingface')])
+            : await Promise.all([read('../data/ai/modelswatch/daily_github.json'), read('../data/ai/modelswatch/daily_hf.json')]);
+          const [g, h] = pair;
+          if (!g || !h || g.date !== h.date || (target && g.date !== target)) throw new Error('Archive is incomplete');
+          date = g.date;
+          merged = [...readableDailyItems(g), ...readableDailyItems(h)].map(shallowNormalize);
+          stamp = g.published_at || g.generated_at;
         }
-        if(targetDate){
-          try{
-            const [ghData, hfData] = await Promise.all([
-              fetchDailySource(targetDate, 'github'),
-              fetchDailySource(targetDate, 'huggingface')
-            ]);
-            const gi = (ghData?.items || []).map(shallowNormalize);
-            const hi = (hfData?.items || []).map(shallowNormalize);
-            const seen = new Set(); const merged = [];
-            for(const it of [...gi, ...hi]){
-              const nk = normalizeKey(it);
-              const key = nk ? `norm::${nk}` : `${it.source||''}::${it.id||it.url||it.name||''}`;
-              if(seen.has(key)) continue;
-              seen.add(key);
-              merged.push(it);
-            }
-            if(merged.length){
-              items = merged;
-              const metaCandidate = ghData?.updated_at || hfData?.updated_at || ghData?.published_at || hfData?.published_at || ghData?.generated_at || hfData?.generated_at || '';
-              window.__mw_updated_at = computeUpdatedAt(metaCandidate, merged, targetDate);
-              try{ setDataSourceLabel('Daily', targetDate); }catch{}
-              return;
-            }
-          }catch(e){ console.warn('[mw] loadDaily fallback to aggregates', e); }
-        }
-        const [g,h] = await Promise.all([
-          fetch('../data/ai/modelswatch/daily_github.json',{cache:'no-store'}).then(r=> r.ok? r.json(): null),
-          fetch('../data/ai/modelswatch/daily_hf.json',{cache:'no-store'}).then(r=> r.ok? r.json(): null),
-        ]);
-        const gi = (g?.items||[]).map(shallowNormalize);
-        const hi = (h?.items||[]).map(shallowNormalize);
-        // merge + dedupe (prefer normalized key)
-        const seen = new Set(); const merged=[];
-        for(const it of [...gi, ...hi]){ const nk = normalizeKey(it); const k = nk ? `norm::${nk}` : `${it.source||''}::${it.id||it.url||it.name||''}`; if(seen.has(k)) continue; seen.add(k); merged.push(it); }
+        if (request !== dailyRequest) return;
         items = merged;
-        // choose the newer meta among g/h
-        const gIso = toIso(g?.updated_at);
-        const hIso = toIso(h?.updated_at);
-        const newerMeta = (gIso && hIso) ? (gIso>hIso?gIso:hIso) : (gIso || hIso || '');
-        window.__mw_updated_at = computeUpdatedAt(newerMeta, merged);
-        try{ setDataSourceLabel('Daily', newerMeta||'merged'); }catch{}
-      }catch{ items=[]; window.__mw_updated_at=''; }
+        selectedDate = date;
+        if (dateInput) dateInput.value = date;
+        window.__mw_updated_at = stamp || date;
+        window.__mw_release_date = date;
+        window.__mw_load_error = false;
+        // Optional legacy status hook is not part of loading a valid release.
+        if (typeof setDataSourceLabel === 'function') setDataSourceLabel('Daily', date);
+      } catch (error) {
+        if (request !== dailyRequest) return;
+        // Keep already displayed content; do not relabel it as the requested date.
+        window.__mw_load_error = true;
+        const shownDate = window.__mw_release_date || '';
+        selectedDate = shownDate;
+        if (dateInput) dateInput.value = shownDate;
+        if (typeof showTransientHint === 'function') showTransientHint(getLang() === 'zh' ? '该期内容暂不可用，已保留当前显示。' : 'This edition is unavailable. Keeping the current view.');
+      }
     }
 
     // Populate the date control (replace input value list) so only availableDates are selectable

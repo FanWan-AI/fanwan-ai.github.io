@@ -29,5 +29,6 @@ const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxB
 for (const entry of tracked) if (roots.has(entry) || /^(assets|blog|data|lab)\//.test(entry) || clientTools.includes(entry)) await copy(entry);
 for (const entry of ['lab/ai-startup.html', 'assets/ai-startup/startup.js', 'assets/ai-startup/startup.css', 'data/ai/startup/opportunities/latest.json', 'data/ai/startup/cases/index.json', 'publications.html', 'lang.js', 'portfolio.json']) await stat(path.join(output, entry));
 await writeFile(path.join(output, '.nojekyll'), '');
+for (const entry of ['lab/ai-paperhub.html', 'assets/paperhub/paperhub.mjs', 'assets/paperhub/view.mjs', 'assets/paperhub/contract.mjs', 'assets/paperhub/paperhub.css', 'data/ai/scholarpush/index.json', 'lab/modelswatch.html', 'assets/modelswatch/render.mjs', 'assets/modelswatch/content.mjs', 'assets/modelswatch/reading.css', 'data/ai/modelswatch/latest_release.json']) await stat(path.join(output, entry));
 console.log(`Pages: ${files} files, ${(bytes / 1024 / 1024).toFixed(1)} MiB`);
 if (bytes > 900 * 1024 * 1024) throw new Error('Pages upload exceeds the 900 MiB safety budget');
