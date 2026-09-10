@@ -32,3 +32,11 @@
 安装审计报告仍含旧构建工具链的依赖漏洞，本次没有执行破坏性 `audit fix --force` 或大版本迁移；新的静态阅读模块无浏览器端密钥。不要将本记录理解为全站安全审计。
 
 最终线上结果以本次提交对应的 **Research modules checks** 和 **Deploy static site to GitHub Pages** 运行记录及公开页面为准。
+
+## 发布确认
+
+- 功能提交 `bfbdeda2` 已推送 main；其后自动分类提交 `de162edb` 已 fast-forward 同步，本次没有 force push、reset 或覆盖他人改动。
+- [Research modules checks](https://github.com/FanWan-AI/fanwan-ai.github.io/actions/runs/34494446443)：成功。
+- [Pages 部署](https://github.com/FanWan-AI/fanwan-ai.github.io/actions/runs/34494446592)：成功。
+- 线上两张 HTML、新阅读 CSS 和两份最新 JSON 均返回 HTTP 200；内容匹配升级版，日期 2026-09-10，论文 2 篇、模型双源各 1 项。
+- 本地 sparse checkout 补充本次阅读资产、测试、论文数据和模型必要索引／近期数据，避免后续 pull 再次移除本地运行依赖；仍未下载全站的大体积音频与无关资产。旧打包目录保留为 `.tmp/pages-upload-before-research-20260910`，没有删除。
